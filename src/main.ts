@@ -18,7 +18,7 @@ import { createInput } from './input';
 import { createRunTracker } from './run';
 import { createDebugGui } from './debug-gui';
 import { createScene } from './render/scene';
-import { createBirdRig } from './render/bird';
+import { createBirdRig, type WingPose } from './render/bird';
 import { createChaseCamera, defaultCameraParams } from './render/camera';
 import { createHud } from './render/hud';
 import { createOutcomePanel } from './render/outcome';
@@ -127,7 +127,12 @@ function frame(nowMs: number) {
   interpolatedState.stamina = bird.stamina;
   interpolatedState.ending = bird.ending;
 
-  rig.update(interpolatedState, input.controls.tuck, frameTime);
+  const wings: WingPose = input.controls.brake
+    ? 'braking'
+    : input.controls.tuck
+      ? 'tucked'
+      : 'gliding';
+  rig.update(interpolatedState, wings, frameTime);
 
   // Pull back and level off once the bird is down, so the spot is legible.
   const activeCamera = bird.ending ? restCameraParams : cameraParams;

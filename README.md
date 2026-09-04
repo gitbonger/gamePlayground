@@ -18,6 +18,7 @@ Then open http://localhost:5183.
 | `Q` / `E` | Yaw left / right |
 | `Space` | Flap — costs stamina, climbs about 3 m/s |
 | `Shift` | Tuck the wings and dive |
+| `Ctrl` (or `B`) | Brake — spread the wings, fan the tail, beat backwards |
 | `R` | Respawn |
 | `H` | Hide the tuning panel |
 
@@ -32,11 +33,15 @@ all three of: descending no faster than 3.5 m/s, no faster than 10 m/s through
 the air, and wings within 20° of level. Meet them and you have landed; miss any
 one and it is a crash that names what went wrong.
 
-The manoeuvre is a flare. Come in on a glide, and at roughly **4 metres** pull
-the nose up: the bird trades speed for a moment of near-level flight, and that
-moment is your landing. Flare too high and you balloon, stall, and drop. Glide
-straight in without flaring and you arrive far too fast. Below 45 m the HUD
-shows the three checks live, so you can see which one is still red.
+The approach is **brake, then flare**. Hold `Ctrl` to spread the wings and fan
+the tail: airspeed falls from a 15 m/s cruise to about 11 m/s and stays there,
+which is a configuration you can hold and steer. Then at roughly **4 metres**
+pull the nose up. Braking into a flare settles at 8.2 m/s with 0.6 m/s of sink,
+comfortably inside both limits.
+
+Flare too high and you balloon, stall, and drop. Glide straight in without
+either tool and you arrive far too fast. Below 45 m the HUD shows the three
+checks live, so you can see which one is still red.
 
 ## Stack
 
@@ -95,6 +100,32 @@ Everything in `FlightParams` and `CameraParams` is bound to the on-screen panel.
 Tuning live is the intended workflow — the committed defaults are a starting
 point, not an answer.
 
+## How braking works
+
+A pigeon has no airbrake, so it brakes with three things at once, and all three
+are modelled:
+
+- **Spreading.** Wings out and tail fanned, `brakeAreaFactor` × 1.4 area and
+  `brakeDragFactor` × 1.6 drag. The drag term is what actually sheds speed.
+- **The alula.** `brakeStallBonus` adds 0.25 rad to the stall angle. The alula
+  is the bird's thumb feather, working as a leading-edge slat; without it a
+  steep flare just stalls, and with it the flare stays controllable. This is
+  the difference between a brake that is a tool and a brake that is a trap.
+- **Reversing the beat.** Flapping while braking beats forward and down instead
+  of back and down. The stroke plane goes nearly vertical (`brakeFlapAngle`
+  1.45 rad), so most of it holds the bird up while the rest pushes it
+  backwards — which is why braking *and* beating settles at 7.5 m/s and 2.7 m/s
+  sink, slower and gentler than braking alone.
+
+Pitching up sheds speed faster than the brake does (1.1 s to reach 10 m/s,
+against never for the brake alone, which asymptotes at 11.4 m/s). The
+difference is that a flare is a transient that ends in a stall, while the brake
+is a configuration you can sit in. They are complementary, which is why landing
+wants both.
+
+The measured effect: across a grid of open-loop approaches, flaring alone lands
+30% of the time and braking first lands 61%.
+
 ## How landing works
 
 `landingReadiness()` in `src/sim/flight.ts` answers one question — could the
@@ -137,7 +168,7 @@ edge does not read as hitting a wall.
 npm test
 ```
 
-55 tests across three files:
+65 tests across three files:
 
 - **`src/sim/flight.test.ts`** — the shape of the lift curve, glide ratio and
   sink rate staying in a plausible band, flapping climbing and draining stamina,
@@ -148,6 +179,11 @@ npm test
   flare lands across the whole spread of flare strengths, a straight-in glide is
   rejected as too fast, flaring far too high balloons and then drops, and a
   wing-down touchdown is rejected as not level.
+  Braking has its own group too: it sheds speed a glide cannot, the reversed
+  beat settles slower *and* more gently than braking alone, the alula bonus
+  keeps a fixed angle of attack unstalled that stalls without it, braking
+  overrides tucking, and an approach flared too late to save itself lands when
+  braked.
 - **`src/sim/collision.test.ts`** — entry faces and normals, radius expansion,
   nearest-hit ordering, boxes spanning several grid cells, and a fast segment
   that a point test would tunnel through.
@@ -167,7 +203,8 @@ tests the real world the player flies through, in Node, with no WebGL.
    wind field sampled at the bird's position and subtract it from velocity
    before the aerodynamics run.
 3. **Sound.** Wind noise pitched by airspeed and a wingbeat driven by
-   `flapPhase`. This is the cheapest large gain available.
+   `flapPhase`. This is the cheapest large gain available — and braking, which
+   is currently silent, is exactly the kind of thing sound sells.
 4. **Landing on rooftops and branches.** Only the ground can currently be
    landed on; a rooftop is still judged by the wall rule, so a gentle touchdown
    on one just slides. The collision layer already reports the surface normal,

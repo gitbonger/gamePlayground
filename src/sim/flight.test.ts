@@ -348,3 +348,113 @@ describe('landing readiness', () => {
     expect(readiness.ready).toBe(false);
   });
 });
+
+describe('braking', () => {
+  /** Hold a configuration from cruise and report where it settles. */
+  function settle(controls: Partial<Controls>, seconds = 6) {
+    const bird = createBird(vec(0, 5000, 0), 15.3);
+    const { telemetry } = fly(seconds, controls, {}, bird);
+    return { speed: telemetry.airspeed, sink: -telemetry.climbRate, telemetry, bird };
+  }
+
+  it('sheds airspeed a glide cannot', () => {
+    expect(settle({ brake: true }).speed).toBeLessThan(settle({}).speed - 2);
+  });
+
+  it('settles slower still when the beat is reversed', () => {
+    expect(settle({ brake: true, flap: true }).speed).toBeLessThan(settle({ brake: true }).speed);
+  });
+
+  it('sinks more gently with the reversed beat than without it', () => {
+    // The braking stroke is nearly vertical: most of it holds the bird up.
+    expect(settle({ brake: true, flap: true }).sink).toBeLessThan(settle({ brake: true }).sink);
+  });
+
+  it('reaches a landable speed and sink when braking into a flare', () => {
+    const { speed, sink } = settle({ brake: true, pitch: 0.4 });
+    expect(speed).toBeLessThanOrEqual(defaultParams.landingSpeed);
+    expect(sink).toBeLessThanOrEqual(defaultParams.landingSink);
+  });
+
+  it('holds a far higher angle of attack before stalling', () => {
+    // Fly at a fixed angle of attack chosen to sit between the clean stall
+    // angle and the braked one, so only the alula bonus decides the verdict.
+    const alpha = defaultParams.stallAngle + defaultParams.brakeStallBonus / 2;
+    const speed = 14;
+    const at = (brake: boolean) => {
+      const bird = createBird(vec(0, 5000, 0), speed);
+      bird.velocity = vec(0, -Math.sin(alpha) * speed, -Math.cos(alpha) * speed);
+      const controls = { ...neutralControls(), brake };
+      const telemetry = step(bird, controls, defaultParams, DT);
+      return telemetry;
+    };
+
+    expect(at(false).angleOfAttack).toBeCloseTo(alpha, 4);
+    expect(at(false).stalled).toBe(true);
+    expect(at(true).stalled).toBe(false);
+    // And the extra margin buys real lift, not just a relabelled verdict.
+    expect(at(true).liftCoefficient).toBeGreaterThan(at(false).liftCoefficient);
+  });
+
+  it('overrides tucking, since a player holding both wants to slow down', () => {
+    const both = settle({ brake: true, tuck: true });
+    const braked = settle({ brake: true });
+    expect(both.speed).toBeCloseTo(braked.speed, 5);
+  });
+
+  it('reverses the direction the wingbeat pushes', () => {
+    // Same bird, same beat, opposite configuration: one gains ground speed
+    // over a short burst, the other loses it.
+    const forward = createBird(vec(0, 5000, 0), 12);
+    fly(1.5, { flap: true }, {}, forward);
+    const backward = createBird(vec(0, 5000, 0), 12);
+    fly(1.5, { brake: true, flap: true }, {}, backward);
+
+    expect(-forward.velocity.z).toBeGreaterThan(-backward.velocity.z);
+  });
+
+  it('brings the same approach down slower, and lands it', () => {
+    function approach(brake: boolean) {
+      const bird = createBird(vec(0, 80, 0), 15.3);
+      const controls = { ...neutralControls() };
+      for (let t = 0; t < 60; t += DT) {
+        const alt = bird.position.y;
+        controls.brake = brake && alt < 20;
+        controls.pitch = alt < 4 ? 0.6 : 0;
+        step(bird, controls, defaultParams, DT);
+        if (bird.ending) break;
+      }
+      return bird.ending!;
+    }
+
+    expect(approach(true).speed).toBeLessThan(approach(false).speed);
+    expect(approach(true).kind).toBe('landed');
+  });
+
+  it('rescues an approach flared too late to slow down on its own', () => {
+    function approach(brake: boolean) {
+      const bird = createBird(vec(0, 80, 0), 15.3);
+      const controls = { ...neutralControls() };
+      for (let t = 0; t < 60; t += DT) {
+        const alt = bird.position.y;
+        controls.brake = brake && alt < 25;
+        controls.pitch = alt < 2 ? 0.6 : 0;
+        step(bird, controls, defaultParams, DT);
+        if (bird.ending) break;
+      }
+      return bird.ending!;
+    }
+
+    expect(approach(false).kind).toBe('crashed');
+    expect(approach(true).kind).toBe('landed');
+  });
+
+  it('leaves unbraked flight exactly as it was', () => {
+    const withParams = createBird(vec(0, 400, 0), 15);
+    fly(10, {}, {}, withParams);
+    const zeroed = createBird(vec(0, 400, 0), 15);
+    fly(10, {}, { brakeDragFactor: 99, brakeAreaFactor: 99 }, zeroed);
+
+    expect(withParams.position).toEqual(zeroed.position);
+  });
+});

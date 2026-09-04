@@ -31,6 +31,14 @@ export function createDebugGui(
   flightFolder.add(flight, 'trimAngle', 0, 0.3, 0.005);
   flightFolder.add(flight, 'mass', 0.15, 1.2, 0.01);
 
+  const brakeFolder = gui.addFolder('braking');
+  brakeFolder.add(flight, 'brakeAreaFactor', 1, 2.5, 0.05).name('wing + tail spread');
+  brakeFolder.add(flight, 'brakeDragFactor', 1, 8, 0.1).name('drag multiplier');
+  brakeFolder.add(flight, 'brakeStallBonus', 0, 0.8, 0.01).name('alula stall bonus');
+  brakeFolder.add(flight, 'brakeFlapReverse', 0, 3, 0.05).name('reverse beat strength');
+  brakeFolder.add(flight, 'brakeFlapAngle', 0.2, 1.55, 0.01).name('reverse beat angle');
+  brakeFolder.close();
+
   const flapFolder = gui.addFolder('wingbeat');
   flapFolder.add(flight, 'flapThrust', 0, 12, 0.1);
   flapFolder.add(flight, 'flapFrequency', 1, 12, 0.1);

@@ -15,6 +15,7 @@ const BINDINGS = {
   yawRight: ['KeyE'],
   flap: ['Space'],
   tuck: ['ShiftLeft', 'ShiftRight'],
+  brake: ['ControlLeft', 'ControlRight', 'KeyB'],
 } as const;
 
 export interface InputSource {
@@ -30,7 +31,14 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
   const held = new Set<string>();
   let resetRequested = false;
 
-  const controls: Controls = { pitch: 0, roll: 0, yaw: 0, flap: false, tuck: false };
+  const controls: Controls = {
+    pitch: 0,
+    roll: 0,
+    yaw: 0,
+    flap: false,
+    tuck: false,
+    brake: false,
+  };
 
   const anyHeld = (codes: readonly string[]) => codes.some((code) => held.has(code));
   const axis = (negative: readonly string[], positive: readonly string[]) =>
@@ -63,6 +71,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     controls.yaw = clamp(damp(controls.yaw, yawTarget, AXIS_HALF_LIFE, dt), -1, 1);
     controls.flap = anyHeld(BINDINGS.flap);
     controls.tuck = anyHeld(BINDINGS.tuck);
+    controls.brake = anyHeld(BINDINGS.brake);
   }
 
   function consumeReset() {

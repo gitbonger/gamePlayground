@@ -56,6 +56,33 @@ export interface FlightParams {
   /** Parasitic drag multiplier while tucked. */
   tuckDragFactor: number;
 
+  /** Wing area multiplier while braking: wings spread, tail fanned. */
+  brakeAreaFactor: number;
+  /**
+   * Drag multiplier while braking. Cupped wings, a fanned tail and lowered
+   * feet are far draggier than the extra area alone would suggest, and this
+   * is the term that actually sheds airspeed.
+   */
+  brakeDragFactor: number;
+  /**
+   * Extra angle of attack a braking bird can hold before stalling, in radians.
+   * Stands in for the alula, the thumb feather that works as a leading-edge
+   * slat -- it is what keeps a steep flare controllable instead of a stall.
+   */
+  brakeStallBonus: number;
+  /**
+   * Strength of the reversed wingbeat while braking, as a fraction of
+   * `flapThrust`. A braking pigeon beats forward and down, pushing itself
+   * backwards and holding itself up at the same time.
+   */
+  brakeFlapReverse: number;
+  /**
+   * How far above the backwards axis the braking stroke pushes, in radians.
+   * Much steeper than a cruising beat: most of a braking stroke goes into
+   * holding the bird up while it settles, not into pushing it backwards.
+   */
+  brakeFlapAngle: number;
+
   /** Peak thrust of a downstroke in newtons. */
   flapThrust: number;
   /** Wingbeats per second while actively flapping. */
@@ -122,6 +149,12 @@ export const defaultParams: FlightParams = {
   tuckAreaFactor: 0.3,
   tuckDragFactor: 0.55,
 
+  brakeAreaFactor: 1.4,
+  brakeDragFactor: 1.6,
+  brakeStallBonus: 0.25,
+  brakeFlapReverse: 1,
+  brakeFlapAngle: 1.45,
+
   flapThrust: 4.0,
   flapFrequency: 5.5,
   flapAngle: 0.45,
@@ -158,6 +191,8 @@ export interface Controls {
   flap: boolean;
   /** Tuck the wings to dive. */
   tuck: boolean;
+  /** Spread and cup the wings to shed airspeed. */
+  brake: boolean;
 }
 
 export const neutralControls = (): Controls => ({
@@ -166,6 +201,7 @@ export const neutralControls = (): Controls => ({
   yaw: 0,
   flap: false,
   tuck: false,
+  brake: false,
 });
 
 /** Why a flight ended badly. */
@@ -254,14 +290,18 @@ export function createBird(position: Vec3 = vec(0, 60, 0), speed = 14): BirdStat
  * Linear up to the stall, then decaying to a flat-plate plateau so that
  * stalling drops you out of the sky instead of producing NaNs.
  */
-export function liftCoefficient(alpha: number, p: FlightParams): number {
+export function liftCoefficient(
+  alpha: number,
+  p: FlightParams,
+  stallAngle: number = p.stallAngle,
+): number {
   const sign = Math.sign(alpha);
   const a = Math.abs(alpha);
-  const peak = p.liftSlope * p.stallAngle;
-  if (a <= p.stallAngle) return p.liftSlope * alpha;
+  const peak = p.liftSlope * stallAngle;
+  if (a <= stallAngle) return p.liftSlope * alpha;
 
-  const span = Math.max(Math.PI / 2 - p.stallAngle, 1e-6);
-  const t = clamp((a - p.stallAngle) / span, 0, 1);
+  const span = Math.max(Math.PI / 2 - stallAngle, 1e-6);
+  const t = clamp((a - stallAngle) / span, 0, 1);
   const plateau = p.postStallLift * Math.sin(2 * a);
   return sign * (peak * (1 - t) + plateau * t);
 }
@@ -285,7 +325,7 @@ export function step(
   collider?: Collider,
 ): FlightTelemetry {
   // Once the flight is over the bird is inert until the caller replaces it.
-  if (state.ending) return telemetryFor(state, p, 0, 0, 0);
+  if (state.ending) return telemetryFor(state, p, 0, 0, 0, p.stallAngle);
 
   const q = state.orientation;
 
@@ -299,10 +339,22 @@ export function step(
   // Sideslip, normalised: positive when sliding right.
   const beta = speed > 0.1 ? vBody.x / speed : 0;
 
-  const tucked = controls.tuck;
-  const area = p.wingArea * (tucked ? p.tuckAreaFactor : 1);
-  const cl = liftCoefficient(alpha, p) * (tucked ? p.tuckAreaFactor : 1);
-  const cd = dragCoefficient(alpha, cl, p) * (tucked ? p.tuckDragFactor : 1);
+  // --- Wing configuration -------------------------------------------------
+  // Braking wins over tucking: they are opposites, and a player holding both
+  // is trying to slow down.
+  const braking = controls.brake;
+  const tucked = controls.tuck && !braking;
+
+  const areaFactor = braking ? p.brakeAreaFactor : tucked ? p.tuckAreaFactor : 1;
+  const dragFactor = braking ? p.brakeDragFactor : tucked ? p.tuckDragFactor : 1;
+  const stallAngle = p.stallAngle + (braking ? p.brakeStallBonus : 0);
+
+  const area = p.wingArea * areaFactor;
+  // Folded wings shed lift out of all proportion to the area they give up:
+  // what is left is mostly body, which is a poor wing.
+  const liftFactor = tucked ? p.tuckAreaFactor : 1;
+  const cl = liftCoefficient(alpha, p, stallAngle) * liftFactor;
+  const cd = dragCoefficient(alpha, cl, p) * dragFactor;
 
   const dynamicPressure = 0.5 * p.airDensity * speed * speed;
 
@@ -339,8 +391,14 @@ export function step(
   }
 
   if (flapPower > 0) {
-    const thrustBody = vec(0, Math.sin(p.flapAngle), -Math.cos(p.flapAngle));
-    force = add(force, scale(rotate(q, thrustBody), p.flapThrust * flapPower));
+    // Braking reverses the stroke: the bird beats forward and down, which
+    // pushes it backwards while still holding it up -- a pigeon back-pedalling
+    // onto a ledge.
+    const thrustBody = braking
+      ? vec(0, Math.sin(p.brakeFlapAngle), Math.cos(p.brakeFlapAngle))
+      : vec(0, Math.sin(p.flapAngle), -Math.cos(p.flapAngle));
+    const magnitude = p.flapThrust * flapPower * (braking ? p.brakeFlapReverse : 1);
+    force = add(force, scale(rotate(q, thrustBody), magnitude));
   }
 
   // --- Rotation -----------------------------------------------------------
@@ -392,7 +450,7 @@ export function step(
           bank: Math.abs(bankAngle(state)),
           position: hit.point,
         };
-        return telemetryFor(state, p, alpha, cl, cd);
+        return telemetryFor(state, p, alpha, cl, cd, stallAngle);
       }
 
       // Survivable scrape: stop at the surface and slide along it.
@@ -412,10 +470,10 @@ export function step(
     state.ending = touchdown(state, p);
     state.velocity = vec(0, 0, 0);
     state.angularVelocity = vec(0, 0, 0);
-    return telemetryFor(state, p, alpha, cl, cd);
+    return telemetryFor(state, p, alpha, cl, cd, stallAngle);
   }
 
-  return telemetryFor(state, p, alpha, cl, cd);
+  return telemetryFor(state, p, alpha, cl, cd, stallAngle);
 }
 
 export function landingReadiness(state: BirdState, p: FlightParams): LandingReadiness {
@@ -462,6 +520,7 @@ function telemetryFor(
   alpha: number,
   cl: number,
   cd: number,
+  stallAngle: number,
 ): FlightTelemetry {
   return {
     airspeed: length(state.velocity),
@@ -470,7 +529,7 @@ function telemetryFor(
     liftCoefficient: cl,
     dragCoefficient: cd,
     climbRate: state.velocity.y,
-    stalled: Math.abs(alpha) > p.stallAngle,
+    stalled: Math.abs(alpha) > stallAngle,
   };
 }
 
