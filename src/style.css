@@ -1,0 +1,151 @@
+:root {
+  color-scheme: dark;
+  --ink: #f2f5f8;
+  --dim: rgba(242, 245, 248, 0.55);
+  --panel: rgba(12, 18, 26, 0.42);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0b1118;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  color: var(--ink);
+}
+
+#viewport {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* The overlay must never eat clicks meant for the canvas or the tuning panel. */
+#overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.hud-readouts {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.readout {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--panel);
+  backdrop-filter: blur(6px);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  min-width: 210px;
+}
+
+.readout .label {
+  flex: 1;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.readout .unit {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.readout .positive {
+  color: #7fe0a8;
+}
+
+.hud-stamina {
+  position: absolute;
+  left: 20px;
+  bottom: 132px;
+  width: 210px;
+}
+
+.hud-stamina .label {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.bar {
+  margin-top: 5px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  width: 100%;
+  background: #7fe0a8;
+  transition: background-color 0.25s ease;
+}
+
+.bar-fill.low {
+  background: #e8a24b;
+}
+
+.hud-warning {
+  position: absolute;
+  top: 12%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 15px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #ff8b6b;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6);
+}
+
+.hud-fps {
+  position: absolute;
+  right: 16px;
+  bottom: 14px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.controls-hint {
+  position: absolute;
+  left: 20px;
+  top: 20px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: var(--panel);
+  backdrop-filter: blur(6px);
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--dim);
+}
+
+.controls-hint b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* lil-gui sits above the overlay and must stay clickable. */
+.lil-gui {
+  --width: 300px;
+  z-index: 10;
+}
