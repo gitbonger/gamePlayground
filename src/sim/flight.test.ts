@@ -10,7 +10,7 @@ import {
   type Controls,
   type FlightParams,
 } from './flight';
-import { clamp, length, quatFromAxisAngle, rotate, vec } from './math3';
+import { clamp, dot, length, normalize, quatFromAxisAngle, rotate, sub, vec } from './math3';
 import { aabb, createColliderField } from './collision';
 
 const DT = 1 / 120;
@@ -534,19 +534,60 @@ describe('vertical authority', () => {
     expect(bird.position.y).toBeGreaterThan(start);
   });
 
-  it('still gets lift out of a beat from a nose-down attitude', () => {
-    // A hovering bird holds its stroke plane level and hangs beneath it. With
-    // the stroke locked to the body instead, a bird that has fallen nose-down
-    // beats itself sideways and the wingbeat stops being a way out.
-    const fall = (flapUpright: number) => {
-      const bird = createBird(vec(0, 3000, 0), 4);
-      bird.orientation = quatFromAxisAngle(vec(1, 0, 0), -1.1);
-      bird.velocity = vec(0, -4, -1);
-      fly(2, { flap: true }, { flapUpright }, bird);
-      return bird.velocity.y;
+  it('pushes out of the bird\'s back, whatever the bird is doing', () => {
+    // The stroke plane is bolted to the shoulders. A bird aims its thrust by
+    // pointing its body, so a nose-down bird beats itself sideways rather than
+    // upwards, and has to pull the nose up before the beat can save it.
+    const beatDirection = (pitch: number) => {
+      const orientation = quatFromAxisAngle(vec(1, 0, 0), pitch);
+      const bird = createBird(vec(0, 3000, 0), 6);
+      bird.orientation = orientation;
+      bird.velocity = rotate(orientation, vec(0, 0, -6));
+      bird.flapPhase = 0.25;
+
+      const before = { ...bird.velocity };
+      step(bird, { ...neutralControls(), flap: true }, defaultParams, DT);
+      const withBeat = sub(bird.velocity, before);
+
+      const coasting = createBird(vec(0, 3000, 0), 6);
+      coasting.orientation = orientation;
+      coasting.velocity = rotate(orientation, vec(0, 0, -6));
+      coasting.flapPhase = 0.25;
+      const coastBefore = { ...coasting.velocity };
+      step(coasting, neutralControls(), defaultParams, DT);
+
+      return normalize(sub(withBeat, sub(coasting.velocity, coastBefore)));
     };
 
-    expect(fall(defaultParams.flapUpright)).toBeGreaterThan(fall(0) + 1);
+    // Whatever the attitude, the beat keeps a fixed angle to the bird's back.
+    const angleToBack = (pitch: number) => {
+      const back = rotate(quatFromAxisAngle(vec(1, 0, 0), pitch), vec(0, 1, 0));
+      return Math.acos(clamp(dot(beatDirection(pitch), back), -1, 1));
+    };
+
+    expect(angleToBack(0)).toBeCloseTo(angleToBack(-1.05), 2);
+    expect(angleToBack(0)).toBeCloseTo(angleToBack(1.05), 2);
+
+    // A bird pointed straight down gets no upward help at all: its back faces
+    // sideways, and the stroke's forward tilt puts the rest into the dive.
+    expect(beatDirection(-Math.PI / 2).y).toBeLessThan(0);
+
+    // Knife-edge is the cleanest case -- the beat is purely horizontal.
+    const banked = quatFromAxisAngle(vec(0, 0, -1), Math.PI / 2);
+    const bird = createBird(vec(0, 3000, 0), 6);
+    bird.orientation = banked;
+    bird.velocity = rotate(banked, vec(0, 0, -6));
+    bird.flapPhase = 0.25;
+    const before = { ...bird.velocity };
+    step(bird, { ...neutralControls(), flap: true }, defaultParams, DT);
+    const coast = createBird(vec(0, 3000, 0), 6);
+    coast.orientation = banked;
+    coast.velocity = rotate(banked, vec(0, 0, -6));
+    coast.flapPhase = 0.25;
+    const coastBefore = { ...coast.velocity };
+    step(coast, neutralControls(), defaultParams, DT);
+    const beat = sub(sub(bird.velocity, before), sub(coast.velocity, coastBefore));
+    expect(Math.abs(beat.y)).toBeLessThan(length(beat) * 0.02);
   });
 
   it('cannot simply flap away a committed dive', () => {
@@ -712,7 +753,6 @@ describe('wingbeat rate', () => {
     const params = {
       airDensity: 0,
       flapSlowBoost: 1,
-      flapUpright: 0,
       flapStrokeSpeed: 1e9,
       flapFrequency,
     };

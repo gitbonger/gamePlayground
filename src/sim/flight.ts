@@ -20,7 +20,6 @@ import {
   dot,
   integrateOrientation,
   length,
-  lerp,
   normalize,
   quat,
   rotate,
@@ -130,14 +129,6 @@ export interface FlightParams {
    * already rushing past.
    */
   flapSlowBoost: number;
-  /**
-   * How far a slow bird can aim its stroke at the sky regardless of which way
-   * its body is pointing, 0..1. A hovering bird holds the stroke plane level
-   * and its body hangs beneath it; without this, a bird that has fallen into a
-   * nose-down attitude beats itself sideways and can never recover.
-   * Fades out with airspeed, so it never becomes a cruise cheat.
-   */
-  flapUpright: number;
   /** Stamina consumed per second of continuous flapping. */
   flapStaminaCost: number;
   /** Stamina recovered per second while gliding. */
@@ -212,7 +203,6 @@ export const defaultParams: FlightParams = {
   flapAngleSlow: 1.35,
   flapStrokeSpeed: 12,
   flapSlowBoost: 13,
-  flapUpright: 0.8,
   flapStaminaCost: 0.07,
   staminaRecovery: 0.14,
 
@@ -458,14 +448,12 @@ function forcesAt(velocity: Vec3, q: Quat, p: FlightParams, wing: WingSetup): Ai
       ? vec(0, Math.sin(p.brakeFlapAngle), Math.cos(p.brakeFlapAngle))
       : vec(0, Math.sin(strokeAngle), -Math.cos(strokeAngle));
 
-    // A slow bird holds its stroke plane level and hangs its body beneath it,
-    // so the beat still pushes at the sky even from a nose-down attitude.
-    const upright = p.flapUpright * (1 - strokeBlend);
-    const bodyDirection = rotate(q, thrustBody);
-    // Blending two nearly opposite unit vectors can land on zero, which would
-    // silently drop the beat entirely; fall back to the body stroke there.
-    const blended = lerp(bodyDirection, vec(0, 1, 0), upright);
-    const direction = length(blended) > 1e-4 ? normalize(blended) : bodyDirection;
+    // The stroke plane is bolted to the shoulders, so the force comes out of
+    // the bird's back and nowhere else. A bird aims its thrust by pointing its
+    // body -- which is why a hovering hummingbird stands its body upright, and
+    // why a pigeon diving nose-first can only beat itself sideways until it
+    // pulls the nose up first.
+    const direction = rotate(q, thrustBody);
 
     // Force goes with the square of the beat rate, so a bird that wants to
     // beat gravity beats faster.

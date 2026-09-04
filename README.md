@@ -279,15 +279,31 @@ made an early build feel dead near the ground:
   already rushing past. The effect is stark at the bottom of the envelope: at
   6 m/s, below the 8.6 m/s stall speed, the boost is the difference between
   sinking at 1 m/s and climbing at 2. By 15 m/s it contributes nothing.
-- **The stroke plane is not bolted to the body.** `flapUpright` lets a slow
-  bird aim its beat at the sky regardless of which way its body points, the way
-  a hovering bird holds the stroke plane level and hangs beneath it. Without
-  it, a bird that has fallen nose-down beats itself sideways and can never
-  recover — the wingbeat stops being a way out exactly when you need it.
+- **The stroke plane is bolted to the shoulders.** The force comes out of the
+  bird's back and nowhere else — a bird aims its thrust by pointing its *body*,
+  which is why a hovering hummingbird stands itself upright. Measured, the beat
+  holds a fixed angle to the back in every attitude (16° at rest, 39° at 6 m/s,
+  65° at cruise), while its angle to the world swings with the bird:
 
-The result: panic-flapping while pulling up recovers 12–15 m in three seconds
-from a 4 m/s sink, at any speed. A committed 45 m/s dive still cannot be
-flapped away, so the low-speed boost never becomes a universal airbrake.
+  | Attitude | Beat direction relative to the world |
+  | --- | --- |
+  | Level | 16° off straight up |
+  | 60° nose-down | 76° off up — very nearly horizontal |
+  | 90° bank | exactly horizontal, no vertical component at all |
+  | Inverted | 164° off up — driving itself at the ground |
+
+  So a diving bird cannot beat its way up; it has to pull the nose up first,
+  and only then does the beat help. An earlier version blended the force toward
+  vertical at low speed to make panic-flapping forgiving, which was a fudge and
+  is gone. It turned out to cost nothing: climb rates are identical and the
+  landing rate went *up*, because pulling up before beating was always the
+  correct technique and the blend only rescued people who did not.
+
+The result: panic-flapping *while pulling the nose up* recovers 11–14 m in
+three seconds from a 4 m/s sink, at any speed. Without the pitch input it
+recovers nothing, which is the point — attitude is how a bird aims its engine.
+A committed 45 m/s dive still cannot be flapped away, so the low-speed boost
+never becomes a universal airbrake.
 
 ## How braking works
 
@@ -376,9 +392,10 @@ npm test
   braked.
   Vertical authority is pinned separately: the low-speed boost turns a sinking
   slow bird into a climbing one and fades to nothing by cruise, the beat buys
-  altitude when slow and ground speed at cruise, a sinking bird recovers, a
-  nose-down bird still gets lift from the beat, and a committed dive still
-  cannot be flapped away.
+  altitude when slow and ground speed at cruise, a sinking bird recovers when
+  it pulls up, the beat holds a fixed angle to the bird's back in every
+  attitude (and is exactly horizontal at knife-edge), and a committed dive
+  still cannot be flapped away.
   Coasting has its own group: a coast settles well below what powered level
   flight holds, bleeds a fast entry back down in under three seconds, reaches
   the same trim from above or below, and is measurably slower and steeper than

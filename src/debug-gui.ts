@@ -49,7 +49,6 @@ export function createDebugGui(
   flapFolder.add(flight, 'flapAngleSlow', 0, 1.55, 0.01).name('stroke angle (slow)');
   flapFolder.add(flight, 'flapStrokeSpeed', 4, 30, 0.5).name('stroke tilts by (m/s)');
   flapFolder.add(flight, 'flapSlowBoost', 1, 15, 0.5).name('slow-speed power');
-  flapFolder.add(flight, 'flapUpright', 0, 1, 0.05).name('aim beat at sky');
   flapFolder.add(flight, 'flapStaminaCost', 0, 0.5, 0.01);
   flapFolder.add(flight, 'staminaRecovery', 0, 0.5, 0.01);
   flapFolder.close();
