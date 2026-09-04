@@ -434,13 +434,17 @@ describe('braking', () => {
     expect(-forward.velocity.z).toBeGreaterThan(-backward.velocity.z);
   });
 
-  /** Fly an approach, optionally braking below 20 m, flaring at `flareAt`. */
-  function approach(brake: boolean, flareAt: number, pitch = 0.6) {
+  /** Fly an approach, optionally braking and beating below 20 m. */
+  function approach(
+    options: { brake?: boolean; beat?: boolean; flareAt?: number; pitch?: number } = {},
+  ) {
+    const { brake = false, beat = false, flareAt = 4, pitch = 0.6 } = options;
     const bird = createBird(vec(0, 80, 0), 15.3);
     const controls = { ...neutralControls() };
     for (let t = 0; t < 90; t += DT) {
       const alt = bird.position.y;
       controls.brake = brake && alt < 20;
+      controls.flap = beat && alt < 20;
       controls.pitch = alt < flareAt ? pitch : 0;
       step(bird, controls, defaultParams, DT);
       if (bird.ending) break;
@@ -448,21 +452,25 @@ describe('braking', () => {
     return bird.ending!;
   }
 
-  it('brings the same approach down slower and gentler', () => {
-    expect(approach(true, 4).speed).toBeLessThan(approach(false, 4).speed);
-    expect(approach(true, 4).sink).toBeLessThan(approach(false, 4).sink);
+  it('arrives much slower, and steeper for it', () => {
+    // The airbrake buys speed with height. It is not a way to float down: with
+    // the wing giving up its lift, spreading it means dropping.
+    expect(approach({ brake: true }).speed).toBeLessThan(approach({}).speed);
+    expect(approach({ brake: true }).sink).toBeGreaterThan(approach({}).sink);
   });
 
-  it('rescues an approach whose flare alone cannot arrest the descent', () => {
-    expect(approach(false, 4).cause).toBe('hard-impact');
-    expect(approach(true, 4).kind).toBe('landed');
+  it('needs the reversed beat to arrest the descent it causes', () => {
+    // Spreading alone drops you; back-pedalling is what turns that into a
+    // landing. This is why a pigeon beats all the way onto the ledge.
+    expect(approach({ brake: true }).cause).toBe('hard-impact');
+    expect(approach({ brake: true, beat: true }).kind).toBe('landed');
   });
 
   it('leaves unbraked flight exactly as it was', () => {
     const withParams = createBird(vec(0, 400, 0), 15);
     fly(10, {}, {}, withParams);
     const zeroed = createBird(vec(0, 400, 0), 15);
-    fly(10, {}, { brakeDragFactor: 99, brakeAreaFactor: 99 }, zeroed);
+    fly(10, {}, { brakeDrag: 99, brakeAreaFactor: 99 }, zeroed);
 
     expect(withParams.position).toEqual(zeroed.position);
   });
@@ -766,6 +774,37 @@ describe('braking wings', () => {
     const braked = fly(20, { brake: true }, {}, createBird(vec(0, 20000, 0), 15));
     const coasting = fly(20, {}, {}, createBird(vec(0, 20000, 0), 15));
     expect(-braked.telemetry.climbRate).toBeGreaterThan(-coasting.telemetry.climbRate);
+  });
+
+  it('holds the speed down instead of handing it back', () => {
+    // The bug this replaced: braking dipped a couple of m/s and then climbed
+    // straight back to gliding speed, because a mere multiple of a streamlined
+    // drag coefficient could not out-pull gravity on a steepening path.
+    const braked = createBird(vec(0, 20000, 0), 16);
+    const coasting = createBird(vec(0, 20000, 0), 16);
+    // Settle both into a real glide first, the way a player arrives.
+    fly(10, {}, {}, braked);
+    fly(10, {}, {}, coasting);
+
+    const held = fly(8, { brake: true }, {}, braked);
+    const free = fly(8, {}, {}, coasting);
+
+    expect(held.telemetry.airspeed).toBeLessThan(free.telemetry.airspeed * 0.75);
+  });
+
+  it('costs far more height than coasting does', () => {
+    const braked = createBird(vec(0, 20000, 0), 16);
+    const coasting = createBird(vec(0, 20000, 0), 16);
+    fly(10, {}, {}, braked);
+    fly(10, {}, {}, coasting);
+
+    const before = { braked: braked.position.y, coasting: coasting.position.y };
+    fly(8, { brake: true }, {}, braked);
+    fly(8, {}, {}, coasting);
+
+    expect(before.braked - braked.position.y).toBeGreaterThan(
+      (before.coasting - coasting.position.y) * 1.5,
+    );
   });
 
   it('still sheds speed over the seconds an approach actually uses it', () => {

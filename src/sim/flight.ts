@@ -68,11 +68,17 @@ export interface FlightParams {
    */
   brakeLiftFactor: number;
   /**
-   * Drag multiplier while braking. Cupped wings, a fanned tail and lowered
-   * feet are far draggier than the extra area alone would suggest, and this
-   * is the term that actually sheds airspeed.
+   * Drag coefficient added while braking, referenced to wing area.
+   *
+   * This is an absolute figure rather than a multiplier on purpose. A wing
+   * held broadside with the flow separated behind it is a flat plate, and a
+   * flat plate's coefficient is of order one -- not a small multiple of the
+   * streamlined value, which is nearer 0.1. Scaling the streamlined figure
+   * gave a brake that could not actually stop anything: the bird dipped a
+   * knot or two, settled into a steeper path, and gravity handed the speed
+   * straight back.
    */
-  brakeDragFactor: number;
+  brakeDrag: number;
   /**
    * Extra angle of attack a braking bird can hold before stalling, in radians.
    * Stands in for the alula, the thumb feather that works as a leading-edge
@@ -194,7 +200,7 @@ export const defaultParams: FlightParams = {
 
   brakeAreaFactor: 1.4,
   brakeLiftFactor: 0.7,
-  brakeDragFactor: 1.6,
+  brakeDrag: 1.2,
   brakeStallBonus: 0.25,
   brakeFlapReverse: 0.16,
   brakeFlapAngle: 1.45,
@@ -375,6 +381,8 @@ interface WingSetup {
   area: number;
   liftFactor: number;
   dragFactor: number;
+  /** Absolute drag coefficient added on top, for airbrake configurations. */
+  dragOffset: number;
   stallAngle: number;
   braking: boolean;
   flapPower: number;
@@ -411,7 +419,7 @@ function forcesAt(velocity: Vec3, q: Quat, p: FlightParams, wing: WingSetup): Ai
   const beta = speed > 0.1 ? vBody.x / speed : 0;
 
   const cl = liftCoefficient(alpha, p, wing.stallAngle) * wing.liftFactor;
-  const cd = dragCoefficient(alpha, cl, p) * wing.dragFactor;
+  const cd = dragCoefficient(alpha, cl, p) * wing.dragFactor + wing.dragOffset;
 
   const dynamicPressure = 0.5 * p.airDensity * speed * speed;
   const rightWorld = rotate(q, vec(1, 0, 0));
@@ -520,7 +528,8 @@ export function step(
     // lift too, for the opposite reason: too much angle, too little airflow
     // still attached to them.
     liftFactor: braking ? p.brakeLiftFactor : tucked ? p.tuckAreaFactor : 1,
-    dragFactor: braking ? p.brakeDragFactor : tucked ? p.tuckDragFactor : 1,
+    dragFactor: tucked ? p.tuckDragFactor : 1,
+    dragOffset: braking ? p.brakeDrag : 0,
     stallAngle: p.stallAngle + (braking ? p.brakeStallBonus : 0),
     braking,
     flapPower,

@@ -33,11 +33,15 @@ all three of: descending no faster than 4 m/s, no faster than 10 m/s through
 the air, and wings within 20° of level. Meet them and you have landed; miss any
 one and it is a crash that names what went wrong.
 
-The approach is **brake, then flare**. Coasting already brings you down to
-about 11 m/s; holding `Ctrl` spreads the wings and fans the tail to take that
-to 9 m/s while giving you a configuration you can hold and steer. Then at
-roughly **2 metres** pull the nose up. Braking into a flare settles at 5.1 m/s
-with 2.2 m/s of sink, comfortably inside both limits.
+The approach is **brake to slow, beat to settle, flare to touch down**.
+Coasting brings you to about 11 m/s; holding `Ctrl` takes that to 5 m/s in two
+seconds, but it also doubles your descent rate — an airbrake is not a parachute.
+Holding `Space` at the same time reverses the wingbeat and arrests the sink,
+which is the configuration you actually land from. Then pull the nose up at
+roughly **2 metres**.
+
+Braking without beating will slow you beautifully and then drive you into the
+ground; that is correct, and it is the single most useful thing to learn.
 
 Flare too high and you balloon, stall, and drop. Glide straight in without
 either tool and you arrive far too fast. Below 45 m the HUD shows the three
@@ -209,20 +213,33 @@ only reaches 7.4 m/s after a second, but that is drag, not missing gravity —
 falling belly-first puts the wing at a 39° angle of attack with a drag
 coefficient of 0.6. A pigeon is a fairly good parachute.
 
-**A braking wing is not a wing.** Spreading and cupping the wings adds 40% to
-the area, but that area is held broadside at a high angle of attack with the
-flow separated over it, so `brakeLiftFactor` discounts the lift back down: the
-net effect is *no extra lift at all* from 40% more wing, with every bit of the
-extra area going into drag. Braking therefore gives up height noticeably faster
-than coasting (4.7 m/s against 2.6 m/s).
+**A braking wing is not a wing, and its drag is not a multiple of a wing's.**
+Spreading and cupping adds 40% to the area, but that area is held broadside
+with the flow separated behind it, so `brakeLiftFactor` discounts the lift back
+down — the net is *no extra lift at all* from 40% more wing.
 
-There is a limit to how far this can go. Push `brakeLiftFactor` lower and the
-bird converts the missing lift into descent, the flight path steepens, and
-gravity feeds the speed straight back — at which point the airbrake makes you
-*faster* in the steady state, which is the opposite of a brake. The honest
-resolution is that a real bird does not just spread its wings to slow down, it
-pitches up hard as well: brake plus flare is the configuration that works, and
-that is what the numbers are tuned around.
+The drag side is where this was originally wrong, and badly. A braking wing is
+a **flat plate**, and a flat plate's drag coefficient is of order one. The
+first version multiplied the *streamlined* coefficient by 1.6, which gave about
+0.19 — so braking dipped the airspeed a knot or two, settled into a steeper
+path, and gravity handed the speed straight back. From a real 11.6 m/s coast it
+recovered to 10.7 m/s within five seconds. It was not a brake at all.
+
+`brakeDrag` is therefore an absolute coefficient (1.2) added on top, not a
+multiplier. Braking now behaves the way it looks:
+
+| From an 11.6 m/s coast | Coasting | Braking |
+| --- | --- | --- |
+| Airspeed after 2 s | 10.7 m/s | **5.1 m/s** |
+| Airspeed after 12 s | 10.8 m/s | **6.6 m/s** |
+| Height lost over 12 s | 14 m | **27 m** |
+
+Which means braking is a way to stop, not a way to float: it costs you height
+at nearly twice the rate of a coast. Arresting that is what the **reversed
+beat** is for, and it is why a pigeon beats all the way onto the ledge rather
+than gliding the last few metres. The landing ladder reflects it — flare alone
+lands 30% of open-loop approaches, brake *and* flare only 9%, and brake with
+the reversed beat 64%.
 
 ## How the wingbeat works
 
@@ -277,8 +294,10 @@ flapped away, so the low-speed boost never becomes a universal airbrake.
 A pigeon has no airbrake, so it brakes with three things at once, and all three
 are modelled:
 
-- **Spreading.** Wings out and tail fanned, `brakeAreaFactor` × 1.4 area and
-  `brakeDragFactor` × 1.6 drag. The drag term is what actually sheds speed.
+- **Spreading.** Wings out and tail fanned: `brakeAreaFactor` × 1.4 area, and
+  `brakeDrag` adds a flat-plate coefficient of 1.2 on top of the streamlined
+  one. That absolute term is what actually sheds speed — see *How the wing
+  works* for why a multiplier could not.
 - **The alula.** `brakeStallBonus` adds 0.25 rad to the stall angle. The alula
   is the bird's thumb feather, working as a leading-edge slat; without it a
   steep flare just stalls, and with it the flare stays controllable. This is
@@ -289,15 +308,13 @@ are modelled:
   backwards — which is why braking *and* beating settles at 7.5 m/s and 2.7 m/s
   sink, slower and gentler than braking alone.
 
-Pitching up sheds speed faster than the brake does (1.1 s to reach 10 m/s,
-against never for the brake alone, which asymptotes at 11.4 m/s). The
-difference is that a flare is a transient that ends in a stall, while the brake
-is a configuration you can sit in. They are complementary, which is why landing
-wants both.
+A flare is a transient that ends in a stall; the brake is a configuration you
+can sit in, at the price of height. They are complementary, which is why
+landing wants both, plus the beat to pay the height back.
 
 The measured effect: across a grid of open-loop approaches, flaring alone lands
-30% of the time, braking first lands 73%, and braking with the reversed beat
-lands 83%.
+30% of the time, braking *without* the beat only 9% — because spreading the
+wings now genuinely drops you — and braking with the reversed beat 64%.
 
 ## How landing works
 
@@ -341,7 +358,7 @@ edge does not read as hitting a wall.
 npm test
 ```
 
-115 tests across four files:
+117 tests across four files:
 
 - **`src/sim/flight.test.ts`** — the shape of the lift curve, glide ratio and
   sink rate staying in a plausible band, flapping climbing and draining stamina,
@@ -353,7 +370,7 @@ npm test
   rejected as too fast, flaring far too high balloons and then drops, and a
   wing-down touchdown is rejected as not level.
   Braking has its own group too: it sheds speed a glide cannot, the reversed
-  beat settles slower *and* more gently than braking alone, the alula bonus
+  beat arrests the descent that spreading causes, the alula bonus
   keeps a fixed angle of attack unstalled that stalls without it, braking
   overrides tucking, and an approach flared too late to save itself lands when
   braked.
