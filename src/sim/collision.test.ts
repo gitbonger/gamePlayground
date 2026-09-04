@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { aabb, createColliderField, sweepBox, type Aabb } from './collision';
+import {
+  aabb,
+  createColliderField,
+  sweepBox,
+  turnedBox,
+  worldBounds,
+  type Aabb,
+} from './collision';
 import { vec } from './math3';
 
 /** A 10 m cube sitting on the ground at the origin. */
@@ -90,5 +97,74 @@ describe('collider field', () => {
       expect(field.sweep(vec(0, 10, -40), vec(0, 10, 40), 0.2)).not.toBeNull();
       expect(field.sweep(vec(0, 300, -40), vec(0, 300, 40), 0.2)).toBeNull();
     }
+  });
+});
+
+describe('turned boxes', () => {
+  /** A 10 x 10 m building, 20 m tall, centred on the origin. */
+  const square = (yaw: number) => turnedBox(0, 0, 10, 20, 10, yaw);
+
+  it('is unchanged when the turn is zero', () => {
+    const hit = sweepBox(vec(0, 10, -30), vec(0, 0, 60), 0, square(0));
+    expect(hit!.point.z).toBeCloseTo(-5, 6);
+    expect(hit!.normal).toEqual(vec(0, 0, -1));
+  });
+
+  it('presents its corner to a sweep that meets it at forty-five degrees', () => {
+    // Turned 45 degrees, the near face is a corner: contact comes earlier than
+    // the flat face would give, at half the diagonal rather than half a side.
+    const hit = sweepBox(vec(0, 10, -30), vec(0, 0, 60), 0, square(Math.PI / 4));
+    expect(hit).not.toBeNull();
+    expect(hit!.point.z).toBeCloseTo(-Math.SQRT2 * 5, 4);
+  });
+
+  it('is not the inflated box its world bounds describe', () => {
+    // Turned 45 degrees the solid is a diamond, and its world bounds are 40%
+    // wider than it is. A sweep into the empty corner between the two must
+    // miss the building and hit the bounds -- otherwise a building on a
+    // diagonal street would collide as a much bigger one.
+    const turned = square(Math.PI / 4);
+    const bounds = worldBounds(turned);
+    expect(bounds.maxX).toBeCloseTo(Math.SQRT2 * 5, 6);
+
+    const intoTheCorner = vec(-7, 0, -7);
+    expect(sweepBox(vec(12, 10, 12), intoTheCorner, 0, turned)).toBeNull();
+    expect(sweepBox(vec(12, 10, 12), intoTheCorner, 0, bounds)).not.toBeNull();
+  });
+
+  it('reports a normal turned with the box', () => {
+    const yaw = 0.6;
+    const hit = sweepBox(vec(0, 10, -30), vec(0, 0, 60), 0, square(yaw));
+    // The near face's outward normal starts at -Z and turns with the building.
+    expect(hit!.normal.x).toBeCloseTo(-Math.sin(yaw), 5);
+    expect(hit!.normal.z).toBeCloseTo(-Math.cos(yaw), 5);
+    expect(Math.hypot(hit!.normal.x, hit!.normal.z)).toBeCloseTo(1, 6);
+  });
+
+  it('agrees with an unturned box when the turn is a quarter of a circle', () => {
+    // A square turned 90 degrees is the same square.
+    const straight = sweepBox(vec(2, 10, -30), vec(0, 0, 60), 0, square(0));
+    const quarter = sweepBox(vec(2, 10, -30), vec(0, 0, 60), 0, square(Math.PI / 2));
+    expect(quarter!.point.z).toBeCloseTo(straight!.point.z, 5);
+  });
+
+  it('finds turned buildings through the broad phase', () => {
+    const field = createColliderField([turnedBox(60, -40, 14, 30, 9, 0.9)]);
+    expect(field.sweep(vec(60, 12, -80), vec(60, 12, 0), 0.22)).not.toBeNull();
+    expect(field.sweep(vec(200, 12, -80), vec(200, 12, 0), 0.22)).toBeNull();
+  });
+
+  it('indexes turned buildings by the space they can reach', () => {
+    // The grid must use world bounds, or a building turned across a cell
+    // boundary would be missed from the cell it sticks into.
+    const field = createColliderField([turnedBox(0, 0, 40, 30, 6, Math.PI / 4)]);
+    const corner = 40 * 0.5 * Math.SQRT1_2 * 0.8;
+    expect(field.sweep(vec(corner, 10, -40), vec(corner, 10, 40), 0.2)).not.toBeNull();
+  });
+
+  it('still reports height over a turned building', () => {
+    const field = createColliderField([turnedBox(0, 0, 10, 25, 10, 0.4)]);
+    expect(field.heightAt(0, 0)).toBe(25);
+    expect(field.heightAt(80, 80)).toBe(-Infinity);
   });
 });

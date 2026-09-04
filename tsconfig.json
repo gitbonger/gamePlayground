@@ -11,6 +11,7 @@
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": true,
     "isolatedModules": true,
+    "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "noEmit": true,

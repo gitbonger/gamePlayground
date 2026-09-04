@@ -18,6 +18,19 @@ export interface Aabb {
   maxZ: number;
 }
 
+/**
+ * A solid box, optionally turned about the vertical axis through its centre.
+ *
+ * The extents are the box's own, before the turn. Buildings lining a diagonal
+ * street want to face it, and squaring them off to the world axes instead
+ * would inflate a 12 m building's footprint by 40% at 45 degrees -- felt as
+ * invisible walls while threading between them.
+ */
+export interface Box extends Aabb {
+  /** Radians about Y. Absent or zero means the extents are the solid. */
+  yaw?: number;
+}
+
 export interface SweepHit {
   /** Fraction along the swept segment where contact happens, 0..1. */
   t: number;
@@ -35,6 +48,20 @@ export interface Collider {
   readonly boxCount: number;
 }
 
+/**
+ * Turn a point about the vertical axis through (cx, cz).
+ *
+ * `angle` follows Three.js's `rotation.y`, so a box's yaw means the same thing
+ * to the collider as it does to the mesh drawn for it.
+ */
+function turnAbout(x: number, z: number, cx: number, cz: number, angle: number): [number, number] {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const dx = x - cx;
+  const dz = z - cz;
+  return [cx + dx * cos + dz * sin, cz - dx * sin + dz * cos];
+}
+
 export function aabb(
   minX: number,
   minY: number,
@@ -46,6 +73,42 @@ export function aabb(
   return { minX, minY, minZ, maxX, maxY, maxZ };
 }
 
+/** A box centred on the ground at (x, z), turned by `yaw`. */
+export function turnedBox(
+  x: number,
+  z: number,
+  width: number,
+  height: number,
+  depth: number,
+  yaw: number,
+): Box {
+  return {
+    minX: x - width / 2,
+    minY: 0,
+    minZ: z - depth / 2,
+    maxX: x + width / 2,
+    maxY: height,
+    maxZ: z + depth / 2,
+    yaw,
+  };
+}
+
+/** World-aligned bounds of a box, wide enough to contain it however it turns. */
+export function worldBounds(box: Box): Aabb {
+  if (!box.yaw) return box;
+
+  const halfX = (box.maxX - box.minX) / 2;
+  const halfZ = (box.maxZ - box.minZ) / 2;
+  const cos = Math.abs(Math.cos(box.yaw));
+  const sin = Math.abs(Math.sin(box.yaw));
+  const spanX = halfX * cos + halfZ * sin;
+  const spanZ = halfX * sin + halfZ * cos;
+  const centreX = (box.minX + box.maxX) / 2;
+  const centreZ = (box.minZ + box.maxZ) / 2;
+
+  return aabb(centreX - spanX, box.minY, centreZ - spanZ, centreX + spanX, box.maxY, centreZ + spanZ);
+}
+
 /** Grid cell size in metres. Comfortably larger than a typical building. */
 const CELL_SIZE = 32;
 /** Cell coordinates are packed into one integer; this bounds the world. */
@@ -55,13 +118,15 @@ const GRID_STRIDE = 1024;
 const cellKey = (cx: number, cz: number) =>
   (cx + GRID_OFFSET) * GRID_STRIDE + (cz + GRID_OFFSET);
 
-export function createColliderField(boxes: readonly Aabb[]): Collider {
+export function createColliderField(boxes: readonly Box[]): Collider {
+  // Broad phase works on world bounds; the narrow phase knows about the turn.
+  const bounds = boxes.map(worldBounds);
   const grid = new Map<number, number[]>();
 
   const toCell = (v: number) =>
     Math.max(-GRID_OFFSET, Math.min(GRID_OFFSET - 1, Math.floor(v / CELL_SIZE)));
 
-  boxes.forEach((box, index) => {
+  bounds.forEach((box, index) => {
     const x0 = toCell(box.minX);
     const x1 = toCell(box.maxX);
     const z0 = toCell(box.minZ);
@@ -117,7 +182,7 @@ export function createColliderField(boxes: readonly Aabb[]): Collider {
 
     let highest = -Infinity;
     for (const index of bucket) {
-      const box = boxes[index]!;
+      const box = bounds[index]!;
       if (x < box.minX || x > box.maxX || z < box.minZ || z > box.maxZ) continue;
       if (box.maxY > highest) highest = box.maxY;
     }
@@ -137,8 +202,42 @@ export function sweepBox(
   from: Vec3,
   delta: Vec3,
   radius: number,
-  box: Aabb,
+  box: Box,
 ): SweepHit | null {
+  // A turned box is the same problem seen from a different angle: rotate the
+  // sweep into the box's own frame, run the identical slab test, and rotate
+  // the answer back. Exact, and it reuses the tested path rather than adding
+  // a second one.
+  if (box.yaw) {
+    const centreX = (box.minX + box.maxX) / 2;
+    const centreZ = (box.minZ + box.maxZ) / 2;
+    const [localX, localZ] = turnAbout(from.x, from.z, centreX, centreZ, -box.yaw);
+    const [tipX, tipZ] = turnAbout(
+      from.x + delta.x,
+      from.z + delta.z,
+      centreX,
+      centreZ,
+      -box.yaw,
+    );
+
+    const hit = sweepBox(
+      vec(localX, from.y, localZ),
+      vec(tipX - localX, delta.y, tipZ - localZ),
+      radius,
+      { ...box, yaw: 0 },
+    );
+    if (!hit) return null;
+
+    const [normalX, normalZ] = turnAbout(hit.normal.x, hit.normal.z, 0, 0, box.yaw);
+    return {
+      t: hit.t,
+      // The contact point is easier to recover from the original sweep than to
+      // rotate back, and is exact either way.
+      point: vec(from.x + delta.x * hit.t, from.y + delta.y * hit.t, from.z + delta.z * hit.t),
+      normal: vec(normalX, hit.normal.y, normalZ),
+    };
+  }
+
   const min = [box.minX - radius, box.minY - radius, box.minZ - radius];
   const max = [box.maxX + radius, box.maxY + radius, box.maxZ + radius];
   const origin = [from.x, from.y, from.z];

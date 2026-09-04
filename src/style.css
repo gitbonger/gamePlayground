@@ -153,6 +153,15 @@ body {
   color: var(--dim);
 }
 
+.hud-credit {
+  position: absolute;
+  right: 16px;
+  bottom: 30px;
+  font-size: 10px;
+  color: var(--dim);
+  opacity: 0.75;
+}
+
 .controls-hint {
   position: absolute;
   left: 20px;

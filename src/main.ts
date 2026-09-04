@@ -24,7 +24,10 @@ import { createBirdRig, type WingPose } from './render/bird';
 import { createChaseCamera, defaultCameraParams } from './render/camera';
 import { createHud } from './render/hud';
 import { createOutcomePanel } from './render/outcome';
-import { buildWorld, defaultWorldOptions } from './world/city';
+import { buildWorld } from './world/city';
+import { buildLayoutFromMap } from './world/from-map';
+import type { MapData } from './world/streets';
+import homeMap from './world/data/home.json';
 import { createWind, defaultWindParams } from './sim/wind';
 
 /** Simulation tick rate. Fixed, so the flight model stays tunable and stable. */
@@ -46,14 +49,17 @@ const canvas = document.querySelector<HTMLCanvasElement>('#viewport')!;
 const overlay = document.querySelector<HTMLElement>('#overlay')!;
 
 const { renderer, scene, camera, sun } = createScene(canvas);
-const world = buildWorld(defaultWorldOptions);
+// Real streets from OpenStreetMap, with the blocks between them filled in.
+// JSON widens the fixed-length tuples, so this crosses through unknown.
+const map = homeMap as unknown as MapData;
+const world = buildWorld(buildLayoutFromMap(map));
 scene.add(world.group);
 
 const rig = createBirdRig();
 scene.add(rig.object);
 
 const chase = createChaseCamera(camera);
-const hud = createHud(overlay);
+const hud = createHud(overlay, map.attribution);
 const outcome = createOutcomePanel(overlay);
 const input = createInput();
 

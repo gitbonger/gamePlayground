@@ -5,7 +5,8 @@
  * be generated and collision-tested in Node, without a WebGL context.
  */
 
-import { aabb, type Aabb } from '../sim/collision';
+import { aabb, type Box } from '../sim/collision';
+import type { Road } from './streets';
 
 /** Small deterministic PRNG, so the same seed always builds the same city. */
 function mulberry32(seed: number): () => number {
@@ -39,6 +40,8 @@ export interface Building {
   width: number;
   depth: number;
   height: number;
+  /** Rotation about the vertical axis, radians. Zero for the procedural city. */
+  yaw?: number;
 }
 
 export interface Tree {
@@ -52,7 +55,9 @@ export interface CityLayout {
   buildings: Building[];
   trees: Tree[];
   /** Solid volumes for every object above, in simulation coordinates. */
-  boxes: Aabb[];
+  boxes: Box[];
+  /** Streets to draw, when the world was built from a real map. */
+  roads?: Road[];
 }
 
 /** How much tighter a tree's collision box is than its visible cone. */
@@ -62,7 +67,7 @@ export function generateCityLayout(options: WorldOptions = defaultWorldOptions):
   const rand = mulberry32(options.seed);
   const buildings: Building[] = [];
   const trees: Tree[] = [];
-  const boxes: Aabb[] = [];
+  const boxes: Box[] = [];
 
   for (let i = 0; i < options.buildingCount; i++) {
     const x = (rand() * 2 - 1) * options.extent;

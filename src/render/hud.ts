@@ -13,7 +13,7 @@ export interface Hud {
   dispose(): void;
 }
 
-export function createHud(container: HTMLElement): Hud {
+export function createHud(container: HTMLElement, credit = ''): Hud {
   const root = document.createElement('div');
   root.className = 'hud';
   root.innerHTML = `
@@ -38,6 +38,7 @@ export function createHud(container: HTMLElement): Hud {
       </div>
     </div>
     <div class="hud-fps"><span data-field="fps">0</span> fps</div>
+    <div class="hud-credit" data-field="credit"></div>
   `;
   container.appendChild(root);
 
@@ -51,6 +52,8 @@ export function createHud(container: HTMLElement): Hud {
   const staminaEl = field('stamina');
   const warningEl = field('warning');
   const fpsEl = field('fps');
+  // Map data licences generally require the credit to stay on screen.
+  field('credit').textContent = credit;
   const landingEl = field('landing');
   const landingTitleEl = field('landingTitle');
   const checkSinkEl = field('checkSink');

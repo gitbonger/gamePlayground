@@ -62,10 +62,13 @@ checks live, so you can see which one is still red.
 ## Layout
 
 ```
+scripts/
+  fetch-map.ts bakes a real street network from OpenStreetMap
 src/
   sim/         flight model, 3D math, collision, wind — pure, no renderer imports
   render/      scene, bird rig, chase camera, HUD, game-over panel
-  world/       layout.ts generates the city as data; city.ts turns it into meshes
+  world/       streets.ts indexes real roads; from-map.ts and layout.ts produce
+               a CityLayout; city.ts turns one into meshes
   input.ts     keyboard to control axes
   run.ts       per-flight statistics
   debug-gui.ts live tuning panel
@@ -105,6 +108,60 @@ flapping before stamina runs out.
 Everything in `FlightParams` and `CameraParams` is bound to the on-screen panel.
 Tuning live is the intended workflow — the committed defaults are a starting
 point, not an answer.
+
+## Flying over a real place
+
+The streets are real. The buildings are not.
+
+`scripts/fetch-map.ts` queries OpenStreetMap for the roads around a point,
+projects them into local metres, simplifies the polylines and bakes a JSON
+asset. Run it once and commit the result — the game never talks to a map
+server, so it works offline and cannot be broken by someone else's rate limit.
+
+```bash
+npm run fetch-map -- --centre 47.4979,19.0402 --radius 1200 --name home
+```
+
+The shipped world is central Budapest: 1,655 roads, 2,611 segments, 132 kB.
+
+**Why not real buildings too?** Because OSM's road coverage is essentially
+complete worldwide while its building *heights* are patchy — in most cities
+you would get footprints with no height and have to invent them anyway. Seen
+from the air, what makes a place recognisable is the street pattern.
+
+**How the buildings get placed.** Not by extracting true city blocks: that
+means finding the faces of a planar graph, which is fragile against real map
+data — bridges cross tunnels without meeting, ways dangle, and one bad node
+swallows a whole block. Instead, candidates are scattered on a jittered grid
+and rejected if they fall in a road, which is robust against all of it:
+
+- Each candidate asks the street index for its nearest road.
+- It has to sit **behind the kerb by half its own depth**, so the near wall
+  clears the carriageway rather than just the centre — a deep building set back
+  only by its centre still overhangs the street it fronts.
+- It has to be inside a **frontage band**, so buildings line the streets and
+  block interiors stay open instead of filling solid. Interiors get trees.
+- Height is a floor of four storeys plus more on more important roads, which
+  is what gives European inner cities their even skyline with taller boulevards.
+
+Then the detail that does most of the work: **every building is turned to face
+its street**. That is the difference between boxes near lines and a city. From
+central Budapest it produces 126 distinct building orientations; a grid city
+would have about two.
+
+**Turning them meant the collider had to stop being axis-aligned.** The world
+bounds of a 12 m building turned 45° are 40% wider than the building, which
+would be felt as invisible walls while threading between them. A `Box` now
+carries an optional `yaw`, and the sweep rotates the ray into the box's own
+frame, runs *the identical slab test*, and rotates the answer back — exact
+oriented-box collision that reuses the tested path rather than adding a second
+one. The uniform grid still indexes world bounds for broad phase.
+
+From 2,611 real street segments: 5,758 buildings and 234 trees, built in 17 ms,
+with 20,000 collision sweeps in 18 ms.
+
+OpenStreetMap data is ODbL. The baked file is a derived database, so it carries
+the attribution and the HUD keeps it on screen.
 
 ## Wind
 
@@ -441,7 +498,7 @@ edge does not read as hitting a wall.
 npm test
 ```
 
-134 tests across five files:
+157 tests across seven files:
 
 - **`src/sim/flight.test.ts`** — the shape of the lift curve, glide ratio and
   sink rate staying in a plausible band, flapping climbing and draining stamina,
@@ -494,6 +551,12 @@ npm test
   airspeed separates from ground speed, calm air reproduces the old flight
   model bit for bit, and the energy books balance even though moving air can do
   work on the bird.
+
+- **`src/world/from-map.test.ts`** — the street index measures to the ends of
+  roads rather than infinite lines; buildings never overhang the carriageway
+  they front, stay inside the frontage band, face their street, and grow taller
+  on more important roads; the street itself is flyable end to end while
+  crossing it nearly always meets something.
 
 Because the city layout is plain data with no Three.js in it, the layout file
 tests the real world the player flies through, in Node, with no WebGL.
