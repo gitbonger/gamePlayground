@@ -31,6 +31,10 @@ lift vector pulls you round; the tail keeps the nose following the flight path.
 **Buildings and trees are solid.** Hit one above 7.5 m/s of closing speed and
 the run is over. Slower than that and you scrape to a stop and slide.
 
+**Roofs count.** Anything level enough to stand on is judged by exactly the
+same rules as the ground, so a careful arrival on a rooftop is a landing and
+the bird perches up there. A wall is still a wall.
+
 **Touching the ground is the end of the flight, not of the run.** A clean
 landing needs all three of: descending no faster than 4 m/s, no faster than
 10 m/s through the air, and wings within 20° of level. Meet them and the bird
@@ -639,10 +643,8 @@ tests the real world the player flies through, in Node, with no WebGL.
 3. **Sound.** Wind noise pitched by airspeed and a wingbeat driven by
    `flapPhase`. This is the cheapest large gain available — and braking, which
    is currently silent, is exactly the kind of thing sound sells.
-4. **Landing on rooftops and branches.** Only the ground can currently be
-   landed on; a rooftop is still judged by the wall rule, so a gentle touchdown
-   on one just slides. The collision layer already reports the surface normal,
-   so routing near-horizontal faces through `touchdown()` is most of the work.
+4. **Landing on branches.** Roofs and the ground work; a tree is still a solid
+   box with no perch on top of it.
 5. **Taking off again.** A perched bird holds its position and nothing else;
    `isPerched()` is the hook. Launching wants a leg push, and a first wingbeat
    from a standstill already carries 11.6 times body weight, so most of the

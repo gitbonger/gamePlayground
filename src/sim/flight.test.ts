@@ -14,7 +14,7 @@ import {
   type FlightParams,
 } from './flight';
 import { clamp, dot, length, normalize, quatFromAxisAngle, rotate, sub, vec } from './math3';
-import { aabb, createColliderField } from './collision';
+import { aabb, createColliderField, turnedBox } from './collision';
 
 const DT = 1 / 120;
 
@@ -919,5 +919,75 @@ describe('perching', () => {
     const resting = { ...bird.position };
     fly(5, { flap: true, pitch: 1 }, {}, bird);
     expect(bird.position).toEqual(resting);
+  });
+});
+
+describe('rooftops', () => {
+  /** A 20 m block with a roof wide enough to aim at. */
+  const block = () => createColliderField([turnedBox(0, 0, 60, 20, 60, 0)]);
+
+  /** Fly in from `startY` and flare below 24 m, which is just over the roof. */
+  function approachRoof(startY: number, speed: number, pitch: number) {
+    const bird = createBird(vec(0, startY, 40), speed);
+    const controls = { ...neutralControls() };
+    const collider = block();
+    for (let t = 0; t < 60; t += DT) {
+      controls.pitch = bird.position.y < 24 ? pitch : 0;
+      step(bird, controls, defaultParams, DT, collider);
+      if (bird.ending) break;
+    }
+    return bird;
+  }
+
+  it('lets a gentle arrival land on a roof', () => {
+    const bird = approachRoof(34, 11, 0.6);
+    expect(bird.ending!.kind).toBe('landed');
+    expect(isPerched(bird)).toBe(true);
+    // Standing on the roof, not on the ground twenty metres below it.
+    expect(bird.position.y).toBeGreaterThan(19);
+  });
+
+  it('settles a roof landing onto its feet like any other', () => {
+    const bird = approachRoof(34, 11, 0.6);
+    expect(bankAngle(bird)).toBeCloseTo(0, 6);
+    expect(rotate(bird.orientation, vec(0, 0, -1)).y).toBeCloseTo(0, 6);
+  });
+
+  it('judges a roof by the same rules as the ground', () => {
+    // Dropped onto it from just above, with no room to turn the fall into
+    // flight before it arrives.
+    const bird = createBird(vec(0, 26, 0), 1);
+    bird.velocity = vec(0, -15, 0);
+    const collider = block();
+    const controls = neutralControls();
+    for (let t = 0; t < 20; t += DT) {
+      step(bird, controls, defaultParams, DT, collider);
+      if (bird.ending) break;
+    }
+    expect(bird.ending!.kind).toBe('crashed');
+    expect(bird.ending!.cause).toBe('hard-impact');
+    expect(bird.position.y).toBeGreaterThan(19);
+  });
+
+  /** Level flight into the side of the block, close enough to get there. */
+  function flyIntoTheWall() {
+    const bird = createBird(vec(0, 10, 60), 16);
+    const collider = block();
+    const controls = neutralControls();
+    for (let t = 0; t < 60; t += DT) {
+      step(bird, controls, defaultParams, DT, collider);
+      if (bird.ending) break;
+    }
+    return bird;
+  }
+
+  it('still treats a wall as a wall', () => {
+    expect(flyIntoTheWall().ending!.cause).toBe('building');
+  });
+
+  it('reports how fast it was going when it hit the wall', () => {
+    // The arrival has to be read before the velocity is spent on it, or every
+    // crash is reported as having happened at a standstill.
+    expect(flyIntoTheWall().ending!.speed).toBeGreaterThan(defaultParams.crashSpeed);
   });
 });

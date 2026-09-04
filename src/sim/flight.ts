@@ -618,24 +618,32 @@ export function step(
   if (collider) {
     const hit = collider.sweep(from, to, p.bodyRadius);
     if (hit) {
+      // Rolling back to the contact point moves the bird vertically, so that
+      // potential energy is work done by the contact and has to be booked
+      // here: both branches below return before the shared accounting.
+      work.collision = p.mass * p.gravity * (hit.point.y - to.y);
+
+      if (hit.normal.y >= ROOF_NORMAL) {
+        // Something you could stand on. A roof is judged exactly as the ground
+        // is -- come down slow, level and gently and you have landed on it.
+        settle(state, p, work, hit.point);
+        return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work, airVelocity);
+      }
+
       const impact = closingSpeed(state.velocity, hit.normal);
       if (impact >= p.crashSpeed) {
-        // Rolling the bird back to the contact point moves it vertically, so
-        // that potential energy has to be accounted for here too -- this
-        // branch returns before the shared accounting below.
-        work.collision = p.mass * p.gravity * (hit.point.y - to.y);
+        // Read the arrival before the velocity is spent on it, or the report
+        // is of a bird that hit a wall at nothing.
+        const arrival = {
+          speed: length(state.velocity),
+          sink: -state.velocity.y,
+          bank: Math.abs(bankAngle(state)),
+        };
         state.position = hit.point;
         work.collision -= kinetic(state.velocity, p);
         state.velocity = vec(0, 0, 0);
         state.angularVelocity = vec(0, 0, 0);
-        state.ending = {
-          kind: 'crashed',
-          cause: 'building',
-          speed: length(state.velocity),
-          sink: -state.velocity.y,
-          bank: Math.abs(bankAngle(state)),
-          position: hit.point,
-        };
+        state.ending = { kind: 'crashed', cause: 'building', ...arrival, position: hit.point };
         return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work, airVelocity);
       }
 
@@ -643,10 +651,12 @@ export function step(
       state.position = add(hit.point, scale(hit.normal, 1e-3));
       const beforeScrape = kinetic(state.velocity, p);
       state.velocity = sub(state.velocity, scale(hit.normal, dot(state.velocity, hit.normal)));
-      work.collision = kinetic(state.velocity, p) - beforeScrape;
-    } else {
-      state.position = to;
+      work.collision += kinetic(state.velocity, p) - beforeScrape;
+      // The lift back out of the surface is a further correction of its own.
+      work.collision += p.mass * p.gravity * (state.position.y - hit.point.y);
+      return finish(state, p, alpha, cl, cd, wing, work, airVelocity);
     }
+    state.position = to;
   } else {
     state.position = to;
   }
@@ -655,26 +665,55 @@ export function step(
   // its potential energy. That is work done by the contact, not a leak.
   work.collision += p.mass * p.gravity * (state.position.y - to.y);
 
-  // --- Ground -------------------------------------------------------------
+  return finish(state, p, alpha, cl, cd, wing, work, airVelocity);
+}
+
+/**
+ * How level a surface has to be before the bird can put down on it, as the
+ * upward part of its normal. Buildings are boxes, so in practice this is
+ * simply "a roof rather than a wall".
+ */
+const ROOF_NORMAL = 0.5;
+
+/** Ground contact, then telemetry. Shared by every path out of `step`. */
+function finish(
+  state: BirdState,
+  p: FlightParams,
+  alpha: number,
+  cl: number,
+  cd: number,
+  wing: WingSetup,
+  work: WorkLedger,
+  airVelocity: Vec3,
+): FlightTelemetry {
   // Touching down always ends the flight; the only question is how well.
   if (state.position.y <= p.groundHeight) {
     const settled = state.position.y;
-    state.position = vec(state.position.x, p.groundHeight, state.position.z);
-    state.ending = touchdown(state, p);
-    work.collision += p.mass * p.gravity * (state.position.y - settled);
-    work.collision -= kinetic(state.velocity, p);
-    state.velocity = vec(0, 0, 0);
-    state.angularVelocity = vec(0, 0, 0);
-
-    // A bird that lands settles onto its feet: keep where it was pointing,
-    // drop the flare attitude it arrived in. A crashed one keeps its pose.
-    if (state.ending.kind === 'landed') {
-      state.orientation = quatFromAxisAngle(vec(0, 1, 0), -heading(state));
-    }
-    return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work, airVelocity);
+    const ground = vec(state.position.x, p.groundHeight, state.position.z);
+    work.collision += p.mass * p.gravity * (ground.y - settled);
+    settle(state, p, work, ground);
   }
-
   return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work, airVelocity);
+}
+
+/**
+ * Come to rest on a surface, and judge how it went.
+ *
+ * The caller has already booked the potential energy of moving the bird onto
+ * the surface; this books the kinetic energy the surface absorbs.
+ */
+function settle(state: BirdState, p: FlightParams, work: WorkLedger, at: Vec3): void {
+  state.position = at;
+  state.ending = touchdown(state, p);
+  work.collision -= kinetic(state.velocity, p);
+  state.velocity = vec(0, 0, 0);
+  state.angularVelocity = vec(0, 0, 0);
+
+  // A bird that lands settles onto its feet: keep where it was pointing, drop
+  // the flare attitude it arrived in. A crashed one keeps its pose.
+  if (state.ending.kind === 'landed') {
+    state.orientation = quatFromAxisAngle(vec(0, 1, 0), -heading(state));
+  }
 }
 
 export function landingReadiness(state: BirdState, p: FlightParams): LandingReadiness {

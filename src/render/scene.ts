@@ -14,7 +14,14 @@ const HORIZON = new THREE.Color(0xbcd3e8);
 const ZENITH = new THREE.Color(0x4a86c8);
 
 export function createScene(canvas: HTMLCanvasElement): SceneBundle {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    // The view runs from under a metre to twelve kilometres. Spread linearly
+    // across a depth buffer that wide, flat things lying on the ground have
+    // barely a bit of precision between them and flicker against it.
+    logarithmicDepthBuffer: true,
+  });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   // PCFSoft is deprecated as of three r185 and silently falls back to PCF, so

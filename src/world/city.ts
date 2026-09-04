@@ -42,6 +42,8 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
+  // Drawn first, and the only one of the three flat layers that writes depth.
+  ground.renderOrder = 0;
   group.add(ground);
   disposables.push(groundGeometry, groundMaterial, groundTexture);
 
@@ -119,8 +121,9 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
   if (layout.areas?.length) {
     for (const { geometry, material } of buildAreas(layout.areas)) {
       disposables.push(geometry, material);
-      const patch = new THREE.Mesh(geometry, material);
+      const patch = new THREE.Mesh(geometry, asDecal(material, AREA_ORDER));
       patch.receiveShadow = true;
+      patch.renderOrder = AREA_ORDER;
       group.add(patch);
     }
   }
@@ -129,8 +132,9 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
   if (layout.roads?.length) {
     const { geometry, material } = buildRoads(layout.roads);
     disposables.push(geometry, material);
-    const surface = new THREE.Mesh(geometry, material);
+    const surface = new THREE.Mesh(geometry, asDecal(material, ROAD_ORDER));
     surface.receiveShadow = true;
+    surface.renderOrder = ROAD_ORDER;
     group.add(surface);
   }
 
@@ -144,10 +148,30 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
   };
 }
 
-/** Height above the ground the road surface sits at, to avoid z-fighting. */
-const ROAD_LIFT = 0.06;
-/** Green space sits just under the roads, so paths draw over parks. */
-const AREA_LIFT = 0.04;
+/**
+ * Ground markings are decals: flat things lying on other flat things.
+ *
+ * Depth alone cannot separate them reliably -- roads cross each other and
+ * overlap at every junction, and coplanar quads with the same material fight
+ * whatever their height. So they are lifted a little, pulled towards the
+ * camera by a polygon offset, and drawn in a fixed order without writing
+ * depth, which leaves overlaps to be settled by draw order rather than by
+ * fractions of a millimetre.
+ */
+const AREA_LIFT = 0.05;
+const ROAD_LIFT = 0.12;
+
+const AREA_ORDER = 1;
+const ROAD_ORDER = 2;
+
+/** Pull a ground decal towards the camera, out of the surface it lies on. */
+function asDecal(material: THREE.Material, order: number): THREE.Material {
+  material.polygonOffset = true;
+  material.polygonOffsetFactor = -4 - order;
+  material.polygonOffsetUnits = -4 - order;
+  material.depthWrite = false;
+  return material;
+}
 
 const AREA_COLORS: Record<AreaKind, number> = {
   park: 0x5f8f43,
