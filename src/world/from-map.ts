@@ -16,6 +16,7 @@
 
 import { turnedBox, type Box } from '../sim/collision';
 import { indexStreets, type MapData, type StreetIndex } from './streets';
+import { footprintCorners, indexAreas, type AreaIndex } from './areas';
 import type { Building, CityLayout, Tree } from './layout';
 import { distance, type Point } from './geo';
 
@@ -35,6 +36,8 @@ export interface MapWorldOptions {
   maxHeight: number;
   /** Trees need this much clear ground to appear in, in metres. */
   parkland: number;
+  /** Chance of a tree on a given candidate inside a park or wood, 0..1. */
+  parkTrees: number;
   seed: number;
   /**
    * Where the pigeon is trying to get to. The building nearest it is marked,
@@ -50,6 +53,7 @@ export const defaultMapWorldOptions: MapWorldOptions = {
   minHeight: 16,
   maxHeight: 24,
   parkland: 30,
+  parkTrees: 0.55,
   seed: 11,
 };
 
@@ -67,8 +71,9 @@ function mulberry32(seed: number): () => number {
 export function buildLayoutFromMap(
   map: MapData,
   options: MapWorldOptions = defaultMapWorldOptions,
-): CityLayout & { streets: StreetIndex; target: Building | null } {
+): CityLayout & { streets: StreetIndex; green: AreaIndex; target: Building | null } {
   const streets = indexStreets(map.roads);
+  const green = indexAreas(map.areas ?? []);
   const rand = mulberry32(options.seed);
 
   const buildings: Building[] = [];
@@ -87,6 +92,20 @@ export function buildLayoutFromMap(
 
       const street = streets.nearest(px, pz, search);
       if (!street) continue;
+
+      // Ground the map already accounts for. Nobody builds a house in a park,
+      // and this is most of what stops a generated city looking generated:
+      // real cities have holes in them, and the holes are not random.
+      const ground = green.at(px, pz);
+      if (ground) {
+        // Parks and woods get planted; pitches and water stay open.
+        const plantable = ground.kind === 'park' || ground.kind === 'wood';
+        if (plantable && rand() < options.parkTrees) {
+          const height = 6 + rand() * 9;
+          trees.push({ x: px, z: pz, radius: 2.5 + rand() * 2, height });
+        }
+        continue;
+      }
 
       // Well clear of every road: block interior, so plant something.
       if (street.distance > options.parkland) {
@@ -112,6 +131,10 @@ export function buildLayoutFromMap(
       // Behind the frontage band: leave the middle of the block open.
       if (street.distance > kerb + options.frontage) continue;
 
+      // The centre being clear is not enough: a building set back from a road
+      // can still reach across a park boundary, so check the whole footprint.
+      if (green.anyInside(footprintCorners(px, pz, width, depth, yaw))) continue;
+
       const height = options.minHeight + rand() * (options.maxHeight - options.minHeight);
 
       buildings.push({ x: px, z: pz, width, depth, height, yaw });
@@ -134,5 +157,14 @@ export function buildLayoutFromMap(
     if (target) target.isTarget = true;
   }
 
-  return { buildings, trees, boxes, roads: map.roads, streets, target };
+  return {
+    buildings,
+    trees,
+    boxes,
+    roads: map.roads,
+    areas: map.areas ?? [],
+    streets,
+    green,
+    target,
+  };
 }

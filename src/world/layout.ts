@@ -7,6 +7,7 @@
 
 import { aabb, type Box } from '../sim/collision';
 import type { Road } from './streets';
+import type { Area } from './areas';
 
 /** Small deterministic PRNG, so the same seed always builds the same city. */
 function mulberry32(seed: number): () => number {
@@ -60,6 +61,8 @@ export interface CityLayout {
   boxes: Box[];
   /** Streets to draw, when the world was built from a real map. */
   roads?: Road[];
+  /** Parks, woods and water to draw. */
+  areas?: Area[];
 }
 
 /** How much tighter a tree's collision box is than its visible cone. */

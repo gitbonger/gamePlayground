@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { createColliderField, type Box, type Collider } from '../sim/collision';
 import { generateCityLayout, type CityLayout } from './layout';
 import type { Road } from './streets';
+import type { Area, AreaKind } from './areas';
 
 export { defaultWorldOptions, type WorldOptions } from './layout';
 
@@ -113,6 +114,17 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
   trees.instanceMatrix.needsUpdate = true;
   group.add(trees);
 
+  // --- Parks, woods and water ----------------------------------------------
+  // Drawn under the roads, so a path through a park still reads as a path.
+  if (layout.areas?.length) {
+    for (const { geometry, material } of buildAreas(layout.areas)) {
+      disposables.push(geometry, material);
+      const patch = new THREE.Mesh(geometry, material);
+      patch.receiveShadow = true;
+      group.add(patch);
+    }
+  }
+
   // --- Streets ------------------------------------------------------------
   if (layout.roads?.length) {
     const { geometry, material } = buildRoads(layout.roads);
@@ -134,6 +146,57 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
 
 /** Height above the ground the road surface sits at, to avoid z-fighting. */
 const ROAD_LIFT = 0.06;
+/** Green space sits just under the roads, so paths draw over parks. */
+const AREA_LIFT = 0.04;
+
+const AREA_COLORS: Record<AreaKind, number> = {
+  park: 0x5f8f43,
+  wood: 0x3d6130,
+  pitch: 0x77854a,
+  water: 0x3d6a8f,
+};
+
+/**
+ * Green space as flat patches, one merged mesh per kind.
+ *
+ * ShapeGeometry triangulates each ring; the shapes are built with the map's Z
+ * negated so that rotating the plane down onto the ground puts them back the
+ * right way round.
+ */
+function buildAreas(
+  areas: readonly Area[],
+): { geometry: THREE.BufferGeometry; material: THREE.Material }[] {
+  const byKind = new Map<AreaKind, number[]>();
+
+  for (const area of areas) {
+    if (area.points.length < 3) continue;
+
+    const shape = new THREE.Shape(area.points.map(([x, z]) => new THREE.Vector2(x, -z)));
+    const flat = new THREE.ShapeGeometry(shape);
+    const positions = flat.toNonIndexed().getAttribute('position');
+
+    const target = byKind.get(area.kind) ?? [];
+    for (let i = 0; i < positions.count; i += 1) {
+      target.push(positions.getX(i), AREA_LIFT, -positions.getY(i));
+    }
+    byKind.set(area.kind, target);
+    flat.dispose();
+  }
+
+  return [...byKind].map(([kind, positions]) => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+    return {
+      geometry,
+      material: new THREE.MeshLambertMaterial({
+        color: AREA_COLORS[kind],
+        // Rings can wind either way; a ground patch should show regardless.
+        side: THREE.DoubleSide,
+      }),
+    };
+  });
+}
 
 /**
  * Every street as a flat ribbon, merged into one mesh.

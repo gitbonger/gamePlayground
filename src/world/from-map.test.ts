@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
 import { indexStreets, type MapData, type Road } from './streets';
+import { footprintCorners, type Area } from './areas';
 import { createColliderField, worldBounds } from '../sim/collision';
 import { createBird, defaultParams, neutralControls, step } from '../sim/flight';
 import { vec } from '../sim/math3';
@@ -11,13 +12,29 @@ const CROSSROADS: Road[] = [
   { kind: 'residential', width: 8, points: [[-300, 0], [300, 0]] },
 ];
 
-const mapOf = (roads: Road[]): MapData => ({
+const mapOf = (roads: Road[], areas: Area[] = []): MapData => ({
   name: 'test',
   centre: [0, 0],
   radius: 300,
   attribution: 'test',
   roads,
+  areas,
 });
+
+/**
+ * A park along the east side of the north-south road, deliberately covering
+ * ground the generator would otherwise build on: a park in a block interior
+ * would prove nothing, because nothing goes there anyway.
+ */
+const PARK: Area = {
+  kind: 'park',
+  points: [
+    [10, -200],
+    [70, -200],
+    [70, -60],
+    [10, -60],
+  ],
+};
 
 describe('street index', () => {
   const streets = indexStreets(CROSSROADS);
@@ -178,5 +195,48 @@ describe('building a world on real streets', () => {
       if (bird.ending) break;
     }
     expect(bird.ending).not.toBeNull();
+  });
+});
+
+describe('leaving green space alone', () => {
+  const layout = buildLayoutFromMap(mapOf(CROSSROADS, [PARK]));
+
+  it('builds nothing whose footprint reaches into a park', () => {
+    // Checked at the corners, not just the centre: a building set back from a
+    // road can still reach across a boundary it is not centred on.
+    for (const building of layout.buildings) {
+      const corners = footprintCorners(
+        building.x,
+        building.z,
+        building.width,
+        building.depth,
+        building.yaw ?? 0,
+      );
+      expect(layout.green.anyInside(corners), `${building.x},${building.z}`).toBe(false);
+    }
+  });
+
+  it('would have built there without the park', () => {
+    // Otherwise the test above proves nothing: the ground has to be somewhere
+    // the generator actually wanted to build.
+    const without = buildLayoutFromMap(mapOf(CROSSROADS));
+    const inPark = without.buildings.filter((b) => layout.green.at(b.x, b.z));
+    expect(inPark.length).toBeGreaterThan(0);
+    expect(layout.buildings.length).toBeLessThan(without.buildings.length);
+  });
+
+  it('plants trees in the park instead', () => {
+    const inPark = layout.trees.filter((t) => layout.green.at(t.x, t.z));
+    expect(inPark.length).toBeGreaterThan(0);
+  });
+
+  it('carries the areas through for the renderer to draw', () => {
+    expect(layout.areas).toEqual([PARK]);
+  });
+
+  it('copes with a map that has no green space at all', () => {
+    const bare = buildLayoutFromMap(mapOf(CROSSROADS));
+    expect(bare.green.count).toBe(0);
+    expect(bare.buildings.length).toBeGreaterThan(20);
   });
 });

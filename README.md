@@ -70,8 +70,9 @@ scripts/
 src/
   sim/         flight model, 3D math, collision, wind — pure, no renderer imports
   render/      scene, bird rig, chase camera, HUD, game-over panel
-  world/       streets.ts indexes real roads; from-map.ts and layout.ts produce
-               a CityLayout; city.ts turns one into meshes
+  world/       streets.ts indexes real roads and areas.ts real parks;
+               from-map.ts and layout.ts produce a CityLayout; city.ts turns
+               one into meshes
   input.ts     keyboard to control axes
   run.ts       per-flight statistics
   debug-gui.ts live tuning panel
@@ -163,6 +164,21 @@ complete worldwide while its building *heights* are patchy — in most cities
 you would get footprints with no height and have to invent them anyway. Seen
 from the air, what makes a place recognisable is the street pattern.
 
+**Parks are left alone.** The baker also fetches green space and water —
+`leisure=park`, `landuse=grass|forest|cemetery`, `natural=wood|water` and
+friends — mapped to four coarse kinds. 243 areas here, 97% of them closed ways;
+the handful of multipolygon relations are taken as their outer rings, which
+ignores holes and at worst costs a few houses that were never there.
+
+Nothing is built on that ground, and the check is on all four corners of the
+turned footprint rather than the centre, because a building set back from a
+road can still reach across a boundary it is not centred on. Parks and woods
+get planted instead. Excluding them removed 599 buildings and nearly tripled
+the trees, from 299 to 847.
+
+This is most of what stops a generated city looking generated: real cities have
+holes in them, and the holes are not random.
+
 **How the buildings get placed.** Not by extracting true city blocks: that
 means finding the faces of a planar graph, which is fragile against real map
 data — bridges cross tunnels without meeting, ways dangle, and one bad node
@@ -192,8 +208,8 @@ frame, runs *the identical slab test*, and rotates the answer back — exact
 oriented-box collision that reuses the tested path rather than adding a second
 one. The uniform grid still indexes world bounds for broad phase.
 
-From 1,428 real street segments: 5,607 buildings and 299 trees, built in 14 ms,
-with 20,000 collision sweeps in under 20 ms.
+From 1,428 real street segments and 243 green areas: 5,008 buildings and 847
+trees, built in 24 ms, with 20,000 collision sweeps in under 20 ms.
 
 OpenStreetMap data is ODbL. The baked file is a derived database, so it carries
 the attribution and the HUD keeps it on screen.
@@ -533,7 +549,7 @@ edge does not read as hitting a wall.
 npm test
 ```
 
-159 tests across seven files:
+172 tests across eight files:
 
 - **`src/sim/flight.test.ts`** — the shape of the lift curve, glide ratio and
   sink rate staying in a plausible band, flapping climbing and draining stamina,
@@ -587,13 +603,18 @@ npm test
   model bit for bit, and the energy books balance even though moving air can do
   work on the bird.
 
+- **`src/world/areas.test.ts`** — point-in-polygon follows a concave boundary
+  rather than its bounding box, and a footprint that reaches into a park by one
+  corner is caught even when its centre is clear.
 - **`src/world/from-map.test.ts`** — the street index measures to the ends of
   roads rather than infinite lines; buildings never overhang the carriageway
   they front, stay inside the frontage band, face their street, and grow taller
   on more important roads; the street itself is flyable end to end while
   crossing it nearly always meets something; heights stay in their band
   whatever road a building is on; and exactly one building is marked as the
-  target, the one actually nearest it.
+  target, the one actually nearest it. Green space has its own group, including
+  a control that the test park covers ground the generator *would* have built
+  on — a park in a block interior would prove nothing.
 
 Because the city layout is plain data with no Three.js in it, the layout file
 tests the real world the player flies through, in Node, with no WebGL.

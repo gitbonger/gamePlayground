@@ -20,6 +20,45 @@ import { metresPerDegree } from '../src/world/geo';
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
 const ATTRIBUTION = '© OpenStreetMap contributors (ODbL)';
 
+/**
+ * Green space and water, which nobody builds houses in.
+ *
+ * Mapped to a coarse kind rather than kept as raw tags: the world generator
+ * only needs to know "this ground is spoken for", and the renderer only needs
+ * to know what colour it is.
+ */
+const AREA_KINDS: Record<string, Record<string, 'park' | 'wood' | 'water' | 'pitch'>> = {
+  leisure: {
+    park: 'park',
+    garden: 'park',
+    common: 'park',
+    dog_park: 'park',
+    nature_reserve: 'wood',
+    recreation_ground: 'park',
+    playground: 'pitch',
+    pitch: 'pitch',
+  },
+  landuse: {
+    grass: 'park',
+    village_green: 'park',
+    recreation_ground: 'park',
+    meadow: 'park',
+    cemetery: 'park',
+    allotments: 'park',
+    greenfield: 'park',
+    forest: 'wood',
+  },
+  natural: {
+    wood: 'wood',
+    scrub: 'wood',
+    grassland: 'park',
+    water: 'water',
+  },
+};
+
+/** Overpass filter for one tag key, as an alternation of its values. */
+const alternation = (key: string) => `["${key}"~"^(${Object.keys(AREA_KINDS[key]!).join('|')})$"]`;
+
 /** Road classes worth flying over, and how wide to draw them, in metres. */
 const ROAD_WIDTHS: Record<string, number> = {
   motorway: 24,
@@ -106,7 +145,11 @@ async function main() {
   const bbox = [lat - dLat, lon - dLon, lat + dLat, lon + dLon].map((v) => v.toFixed(7)).join(',');
 
   const wanted = Object.keys(ROAD_WIDTHS).join('|');
-  const query = `[out:json][timeout:180];way["highway"~"^(${wanted})$"](${bbox});out geom;`;
+  const areaFilters = Object.keys(AREA_KINDS)
+    .flatMap((key) => [`way${alternation(key)}(${bbox});`, `relation${alternation(key)}(${bbox});`])
+    .join('');
+  const query =
+    `[out:json][timeout:180];(way["highway"~"^(${wanted})$"](${bbox});${areaFilters});out geom;`;
 
   process.stderr.write(`querying OpenStreetMap for ${radius} m around ${lat}, ${lon}\n`);
   const response = await fetch(OVERPASS, {
@@ -121,31 +164,77 @@ async function main() {
   });
   if (!response.ok) throw new Error(`Overpass returned ${response.status} ${response.statusText}`);
 
+  interface Geometry {
+    lat: number;
+    lon: number;
+  }
   const payload = (await response.json()) as {
-    elements: { tags?: Record<string, string>; geometry?: { lat: number; lon: number }[] }[];
+    elements: {
+      type: string;
+      tags?: Record<string, string>;
+      geometry?: Geometry[];
+      members?: { role?: string; geometry?: Geometry[] }[];
+    }[];
   };
 
+  /** Project and thin a run of nodes. */
+  const toLocal = (nodes: Geometry[], epsilon: number) =>
+    simplify(
+      nodes.map((node) => [
+        (node.lon - lon) * perDegree.lon,
+        // North is -Z, matching the simulation's forward axis.
+        -(node.lat - lat) * perDegree.lat,
+      ]),
+      epsilon,
+    ).map((p) => [Math.round(p[0]! * 10) / 10, Math.round(p[1]! * 10) / 10]);
+
+  /** The coarse kind for an element's tags, if it is green space or water. */
+  function areaKind(tags: Record<string, string>): string | null {
+    for (const [key, values] of Object.entries(AREA_KINDS)) {
+      const value = tags[key];
+      if (value && values[value]) return values[value]!;
+    }
+    return null;
+  }
+
   const roads = [];
+  const areas = [];
   let rawPoints = 0;
+
   for (const element of payload.elements) {
-    const kind = element.tags?.['highway'];
-    if (!kind || !element.geometry || element.geometry.length < 2) continue;
+    const tags = element.tags ?? {};
+    const highway = tags['highway'];
 
-    const width = ROAD_WIDTHS[kind];
-    if (width === undefined) continue;
+    if (highway) {
+      const width = ROAD_WIDTHS[highway];
+      if (width === undefined || !element.geometry || element.geometry.length < 2) continue;
+      rawPoints += element.geometry.length;
+      const points = toLocal(element.geometry, 1.5);
+      if (points.length >= 2) roads.push({ kind: highway, width, points });
+      continue;
+    }
 
-    rawPoints += element.geometry.length;
-    const projected = element.geometry.map((node) => [
-      (node.lon - lon) * perDegree.lon,
-      // North is -Z, matching the simulation's forward axis.
-      -(node.lat - lat) * perDegree.lat,
-    ]);
+    const kind = areaKind(tags);
+    if (!kind) continue;
 
-    const points = simplify(projected, 1.5).map((p) => [
-      Math.round(p[0]! * 10) / 10,
-      Math.round(p[1]! * 10) / 10,
-    ]);
-    if (points.length >= 2) roads.push({ kind, width, points });
+    // A closed way is a ring on its own. A relation's outer members are each
+    // treated as a ring, which ignores holes -- there are few of them, and an
+    // over-large park only costs a handful of houses that were never there.
+    const rings =
+      element.type === 'relation'
+        ? (element.members ?? [])
+            .filter((member) => member.role !== 'inner' && member.geometry)
+            .map((member) => member.geometry!)
+        : element.geometry
+          ? [element.geometry]
+          : [];
+
+    for (const ring of rings) {
+      if (ring.length < 4) continue;
+      rawPoints += ring.length;
+      const points = toLocal(ring, 2.5);
+      if (points.length >= 3) areas.push({ kind, points });
+    }
   }
 
   const keptPoints = roads.reduce((total, road) => total + road.points.length, 0);
@@ -161,15 +250,17 @@ async function main() {
         generated: new Date().toISOString(),
         attribution: ATTRIBUTION,
         roads,
+        areas,
       },
       null,
       0,
     )}\n`,
   );
 
-  const kb = (Buffer.byteLength(JSON.stringify(roads)) / 1024).toFixed(0);
+  const kb = (Buffer.byteLength(JSON.stringify({ roads, areas })) / 1024).toFixed(0);
   process.stderr.write(
-    `${roads.length} roads, ${keptPoints} points (from ${rawPoints}), ${kb} kB -> ${out}\n`,
+    `${roads.length} roads (${keptPoints} points), ${areas.length} green areas, ` +
+      `${rawPoints} points before thinning, ${kb} kB -> ${out}\n`,
   );
 }
 

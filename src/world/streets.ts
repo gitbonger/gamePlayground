@@ -8,6 +8,7 @@
  */
 
 import { aabb, type Aabb } from '../sim/collision';
+import type { Area } from './areas';
 
 export interface Road {
   /** OpenStreetMap highway class: motorway, primary, residential and so on. */
@@ -24,6 +25,8 @@ export interface MapData {
   radius: number;
   attribution: string;
   roads: Road[];
+  /** Parks, woods, playing fields and water. Absent on older baked maps. */
+  areas?: Area[];
 }
 
 export interface NearestStreet {
