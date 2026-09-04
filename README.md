@@ -128,14 +128,17 @@ lands in the same place in both:
 The bird is released **pointing exactly at home**, which is what `createBird`'s
 heading argument is for.
 
-Released with no input at all, the bird reaches home **44 seconds later, 11 m
-up, doing 12.7 m/s** — which is *below* the 16–24 m rooftops, so a straight-in
-glide flies into a building before it arrives. Getting there is not the
-problem; arriving with the height and speed already spent is.
+**Distance is not the challenge, and the route is not sized against a glide.**
+Stamina recovers at 0.14/s and drains at 0.07/s, so the bird can beat its wings
+two thirds of the time indefinitely, and at that duty cycle it gains about a
+metre a second. It can stay up and keep going as long as it likes. 607 m is a
+distance you can cover several ways, not a budget you have to make last.
 
-Braking early does not solve it either: hold the brake from the start and you
-come down 465 m short, because an airbrake buys speed with height and on this
-route there is none spare.
+What the route asks for is the *arrival*: slow enough, low enough and level
+enough to put down beside the red building, in a street bounded by 16–24 m
+buildings. Coasting all the way there is one way to get it wrong — the bird
+turns up 44 seconds later doing 12.7 m/s at 11 m, below the rooftops and much
+too fast — but that is an observation about one way to fly it, not a limit.
 
 The home point itself sits on open ground 13 m from a residential street, so
 the red landmark is the building nearest it, about 32 m away.
