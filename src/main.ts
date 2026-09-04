@@ -20,7 +20,8 @@ import { createInput } from './input';
 import { createRunTracker } from './run';
 import { createDebugGui } from './debug-gui';
 import { createScene } from './render/scene';
-import { createBirdRig, type WingPose } from './render/bird';
+import { createBirdRig, PIGEON_MORPHS, type WingPose } from './render/bird';
+import { createFlock } from './flock';
 import { createChaseCamera, defaultCameraParams } from './render/camera';
 import { createHud } from './render/hud';
 import { createOutcomePanel } from './render/outcome';
@@ -69,6 +70,15 @@ scene.add(world.group);
 
 const rig = createBirdRig();
 scene.add(rig.object);
+
+// The other pigeons: same flight model, same collider, same wind, steered by
+// an autopilot that is not especially good at it.
+const flock = createFlock(PIGEON_MORPHS.length);
+const flockRigs = flock.members.map((member) => {
+  const bird = createBirdRig(PIGEON_MORPHS[member.morph]);
+  scene.add(bird.object);
+  return bird;
+});
 
 const chase = createChaseCamera(camera);
 const hud = createHud(overlay, map.attribution);
@@ -146,6 +156,7 @@ function frame(nowMs: number) {
     previousPosition = { ...bird.position };
     previousOrientation = { ...bird.orientation };
     telemetry = step(bird, input.controls, flightParams, TICK, world.collider, wind);
+    flock.update(TICK, world.collider, wind);
     if (bird.ending === null) run.update(bird, TICK);
     accumulator -= TICK;
   }
@@ -171,6 +182,11 @@ function frame(nowMs: number) {
         ? 'tucked'
         : 'gliding';
   rig.update(interpolatedState, wings, frameTime);
+
+  // The flock is far enough away that the raw tick pose is smooth enough.
+  flock.members.forEach((member, i) => {
+    flockRigs[i]!.update(member.state, isPerched(member.state) ? 'perched' : 'gliding', frameTime);
+  });
 
   // Once the bird is down the camera settles: further back and levelled off
   // for a crash, closer and lower for a perch, where the bird is the subject.

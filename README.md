@@ -72,11 +72,13 @@ checks live, so you can see which one is still red.
 scripts/
   fetch-map.ts bakes a real street network from OpenStreetMap
 src/
-  sim/         flight model, 3D math, collision, wind — pure, no renderer imports
+  sim/         flight model, 3D math, collision, wind, autopilot — pure, no
+               renderer imports
   render/      scene, bird rig, chase camera, HUD, game-over panel
   world/       streets.ts indexes real roads and areas.ts real parks;
                from-map.ts and layout.ts produce a CityLayout; city.ts turns
                one into meshes
+  flock.ts     the other pigeons, and putting them back when they die
   input.ts     keyboard to control axes
   run.ts       per-flight statistics
   debug-gui.ts live tuning panel
@@ -227,6 +229,38 @@ trees, built in 24 ms, with 20,000 collision sweeps in under 20 ms.
 
 OpenStreetMap data is ODbL. The baked file is a derived database, so it carries
 the attribution and the HUD keeps it on screen.
+
+## The other pigeons
+
+Ten of them, flying the same model the player does, on the same collider and in
+the same wind. Nothing about them is special-cased: they stall, they get blown
+off course, and when they fly into a building they die exactly as the player
+does, wait a couple of seconds, and are released again somewhere else. They
+come in the real feral pigeon colour schemes — blue bar, checker, spread, red,
+mealy, pied, white, grizzle — picked deterministically, so it is the same flock
+every run.
+
+`src/sim/autopilot.ts` flies them, and getting it to work taught three things
+the hard way. All three are the same mistake in different clothes: commanding
+an *outcome* directly instead of the thing that produces it.
+
+- **Roll is a rate, not an attitude.** Commanding roll straight from heading
+  error never stops rolling. The first version flew the whole flock inverted —
+  median bank 79°, maximum 180° — and a bird on its back falls at 17 m/s. It
+  now picks a bank angle and flies an inner loop to it, damped on the roll rate
+  already under way. Median bank went to 1°.
+- **Pitch flies the speed; the wings fly the height.** Pitching up to climb at
+  ten metres a second just bleeds the speed the wing needs, and the bird sinks
+  while pointing at the sky.
+- **Rest before exhaustion, not after.** Thrust falls away with stamina, so a
+  bird that beats until it is spent does most of its beating at a fraction of
+  full power and sinks anyway — then never stops long enough to recover. The
+  flap band sits high and narrow, which works out at about two thirds of the
+  time on the wing: exactly what draining at 0.07/s and recovering at 0.14/s
+  can sustain.
+
+Together those took the flock from 333 crashes in five minutes to 12, and from
+70% of the time airborne to 99%. Ten birds cost about 0.012 ms a tick.
 
 ## Wind
 
@@ -563,7 +597,7 @@ edge does not read as hitting a wall.
 npm test
 ```
 
-172 tests across eight files:
+189 tests across nine files:
 
 - **`src/sim/flight.test.ts`** — the shape of the lift curve, glide ratio and
   sink rate staying in a plausible band, flapping climbing and draining stamina,
@@ -617,6 +651,11 @@ npm test
   model bit for bit, and the energy books balance even though moving air can do
   work on the bird.
 
+- **`src/flock.test.ts`** — heading error takes the short way round, the
+  autopilot holds a sane bank instead of rolling over, stays airborne when left
+  to itself, flies speed with the nose and height with the wings, and rests
+  before it is spent; the flock launches in a spread of colours, keeps most of
+  itself in the air over a city, and puts birds back after they die.
 - **`src/world/areas.test.ts`** — point-in-polygon follows a concave boundary
   rather than its bounding box, and a footprint that reaches into a park by one
   corner is caught even when its centre is clear.
