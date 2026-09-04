@@ -61,6 +61,13 @@ export interface FlightParams {
   /** Wing area multiplier while braking: wings spread, tail fanned. */
   brakeAreaFactor: number;
   /**
+   * Lift multiplier while braking. Below one on purpose: cupped wings held
+   * broadside at a high angle of attack are an airbrake, not a wing. They
+   * still carry some weight -- that is what a flare is for -- but far less
+   * than their spread area would suggest.
+   */
+  brakeLiftFactor: number;
+  /**
    * Drag multiplier while braking. Cupped wings, a fanned tail and lowered
    * feet are far draggier than the extra area alone would suggest, and this
    * is the term that actually sheds airspeed.
@@ -89,6 +96,17 @@ export interface FlightParams {
   flapThrust: number;
   /** Wingbeats per second while actively flapping. */
   flapFrequency: number;
+  /**
+   * The beat rate at which `flapThrust` is the peak force, in Hz.
+   *
+   * A wing's aerodynamic force goes with the square of how fast it sweeps
+   * through the air, and that speed is set by the beat rate, so force scales
+   * with the square of frequency. Without this, `flapFrequency` only changed
+   * how fast the wings waggled: the time-averaged thrust of `max(0, sin)` is
+   * `1/pi` of the peak whatever the frequency, so beating twice as hard did
+   * nothing at all.
+   */
+  flapReferenceRate: number;
   /** How far above the forward axis the flap pushes at cruise, in radians. */
   flapAngle: number;
   /**
@@ -175,6 +193,7 @@ export const defaultParams: FlightParams = {
   tuckDragFactor: 0.55,
 
   brakeAreaFactor: 1.4,
+  brakeLiftFactor: 0.7,
   brakeDragFactor: 1.6,
   brakeStallBonus: 0.25,
   brakeFlapReverse: 0.16,
@@ -182,6 +201,7 @@ export const defaultParams: FlightParams = {
 
   flapThrust: 5,
   flapFrequency: 5.5,
+  flapReferenceRate: 5.5,
   flapAngle: 0.45,
   flapAngleSlow: 1.35,
   flapStrokeSpeed: 12,
@@ -439,8 +459,16 @@ function forcesAt(velocity: Vec3, q: Quat, p: FlightParams, wing: WingSetup): Ai
     const blended = lerp(bodyDirection, vec(0, 1, 0), upright);
     const direction = length(blended) > 1e-4 ? normalize(blended) : bodyDirection;
 
+    // Force goes with the square of the beat rate, so a bird that wants to
+    // beat gravity beats faster.
+    const rate = (p.flapFrequency / Math.max(p.flapReferenceRate, 1e-6)) ** 2;
+
     const magnitude =
-      p.flapThrust * wing.flapPower * strokeBoost * (wing.braking ? p.brakeFlapReverse : 1);
+      p.flapThrust *
+      wing.flapPower *
+      rate *
+      strokeBoost *
+      (wing.braking ? p.brakeFlapReverse : 1);
     flap = scale(direction, magnitude);
   }
 
@@ -488,8 +516,10 @@ export function step(
   const wing: WingSetup = {
     area: p.wingArea * (braking ? p.brakeAreaFactor : tucked ? p.tuckAreaFactor : 1),
     // Folded wings shed lift out of all proportion to the area they give up:
-    // what is left is mostly body, which is a poor wing.
-    liftFactor: tucked ? p.tuckAreaFactor : 1,
+    // what is left is mostly body, which is a poor wing. Braked wings give up
+    // lift too, for the opposite reason: too much angle, too little airflow
+    // still attached to them.
+    liftFactor: braking ? p.brakeLiftFactor : tucked ? p.tuckAreaFactor : 1,
     dragFactor: braking ? p.brakeDragFactor : tucked ? p.tuckDragFactor : 1,
     stallAngle: p.stallAngle + (braking ? p.brakeStallBonus : 0),
     braking,

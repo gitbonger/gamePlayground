@@ -373,8 +373,11 @@ describe('braking', () => {
     expect(timeToSlow({ brake: true }, 12)).toBeLessThan(timeToSlow({}, 12) * 0.7);
   });
 
-  it('settles slower than a coast, once both have found their trim', () => {
-    expect(settle({ brake: true }, 25).speed).toBeLessThan(settle({}, 25).speed - 1);
+  it('settles into a steeper descent than a coast', () => {
+    // Not a slower one: with the braking wing giving up its lift, holding the
+    // brake for half a minute ends in a dive, and gravity feeds the speed back.
+    // What braking buys is the first few seconds, covered above and below.
+    expect(settle({ brake: true }, 25).sink).toBeGreaterThan(settle({}, 25).sink);
   });
 
   it('settles slower still when the beat is reversed', () => {
@@ -624,5 +627,152 @@ describe('coasting', () => {
     const settled = coast(15);
     expect(settled.speed).toBeLessThan(telemetry.airspeed - 2);
     expect(settled.sink).toBeGreaterThan(-telemetry.climbRate);
+  });
+});
+
+describe('wing physics', () => {
+  /** Hold a bank angle and report how fast the bird falls out of the sky. */
+  function sinkAtBank(degrees: number) {
+    const bird = createBird(vec(0, 5000, 0), 15);
+    bird.orientation = quatFromAxisAngle(vec(0, 0, -1), (degrees * Math.PI) / 180);
+    const { telemetry } = fly(3, {}, {}, bird);
+    return -telemetry.climbRate;
+  }
+
+  it('loses its hold on the sky as the wings go vertical', () => {
+    // Lift acts perpendicular to the wing, so banking rotates it away from
+    // vertical. At ninety degrees none of it opposes gravity any more.
+    const sinks = [0, 30, 45, 60, 75, 90].map(sinkAtBank);
+    for (let i = 1; i < sinks.length; i++) {
+      expect(sinks[i]!, `bank step ${i}`).toBeGreaterThan(sinks[i - 1]!);
+    }
+    expect(sinkAtBank(0)).toBeLessThan(2);
+    expect(sinkAtBank(90)).toBeGreaterThan(10);
+  });
+
+  it('still turns hardest where it holds height worst', () => {
+    // The lift did not vanish when banked, it went sideways -- which is what
+    // makes the turn. Falling and turning are two views of the same vector.
+    const bird = createBird(vec(0, 5000, 0), 15);
+    bird.orientation = quatFromAxisAngle(vec(0, 0, -1), Math.PI / 2);
+    fly(2, {}, {}, bird);
+
+    const forward = rotate(bird.orientation, vec(0, 0, -1));
+    expect(Math.abs(forward.x)).toBeGreaterThan(0.3);
+  });
+
+  it('stalls rather than climbing when pitched steeply nose-up', () => {
+    const bird = createBird(vec(0, 5000, 0), 15);
+    bird.orientation = quatFromAxisAngle(vec(1, 0, 0), 1);
+    const { telemetry } = fly(2, {}, {}, bird);
+    expect(telemetry.stalled).toBe(true);
+    expect(telemetry.climbRate).toBeLessThan(0);
+  });
+
+  it('applies gravity at every instant, with nothing else acting', () => {
+    // From rest there is no airflow at all, so one tick must be exactly g dt.
+    const still = createBird(vec(0, 5000, 0), 0);
+    still.velocity = vec(0, 0, 0);
+    step(still, neutralControls(), defaultParams, DT);
+    expect(still.velocity.y).toBeCloseTo(-defaultParams.gravity * DT, 12);
+
+    // And with the air removed, free fall is exact over any span.
+    const vacuum = createBird(vec(0, 5000, 0), 0);
+    vacuum.velocity = vec(0, 0, 0);
+    const ticks = 240;
+    const vacuumParams = { ...defaultParams, airDensity: 0 };
+    for (let i = 0; i < ticks; i++) step(vacuum, neutralControls(), vacuumParams, DT);
+    expect(vacuum.velocity.y).toBeCloseTo(-defaultParams.gravity * ticks * DT, 9);
+  });
+
+  it('falls slower than free fall in real air, because a bird is a parachute', () => {
+    const bird = createBird(vec(0, 5000, 0), 0);
+    bird.velocity = vec(0, 0, 0);
+    const { telemetry } = fly(1, {}, {}, bird);
+    // Belly-first at a huge angle of attack is mostly drag.
+    expect(telemetry.climbRate).toBeGreaterThan(-defaultParams.gravity);
+    expect(telemetry.dragCoefficient).toBeGreaterThan(0.5);
+  });
+});
+
+describe('wingbeat rate', () => {
+  /**
+   * Vertical speed the beat alone buys, with every speed-dependent term
+   * disabled so only the rate law is left.
+   */
+  function beatImpulse(flapFrequency: number, seconds = 0.5) {
+    const params = {
+      airDensity: 0,
+      flapSlowBoost: 1,
+      flapUpright: 0,
+      flapStrokeSpeed: 1e9,
+      flapFrequency,
+    };
+    const bird = createBird(vec(0, 20000, 0), 0);
+    bird.velocity = vec(0, 0, 0);
+    fly(seconds, { flap: true }, params, bird);
+    // Back gravity out to leave just what the wings did.
+    return bird.velocity.y + defaultParams.gravity * seconds;
+  }
+
+  it('scales thrust with the square of the beat rate', () => {
+    // A wing's force goes with the square of how fast it sweeps the air, and
+    // that speed is set by the beat rate. Without this, beating harder did
+    // nothing: the time-average of max(0, sin) is 1/pi at any frequency.
+    expect(beatImpulse(4) / beatImpulse(2)).toBeCloseTo(4, 0);
+    expect(beatImpulse(8) / beatImpulse(4)).toBeCloseTo(4, 0);
+  });
+
+  it('leaves the default rate exactly where it was', () => {
+    // flapReferenceRate is the rate at which flapThrust is the peak force, so
+    // the shipped default must be a no-op.
+    expect(defaultParams.flapFrequency).toBe(defaultParams.flapReferenceRate);
+  });
+
+  /** Height gained flapping up from a standstill, as a pigeon taking off. */
+  function takeoff(flapFrequency: number) {
+    const bird = createBird(vec(0, 2000, 0), 0);
+    bird.velocity = vec(0, 0, 0);
+    const start = bird.position.y;
+    fly(2, { flap: true, pitch: 0.6 }, { flapFrequency }, bird);
+    return bird.position.y - start;
+  }
+
+  it('beats gravity somewhere between two and three beats a second', () => {
+    // Which is about what a pigeon looks like leaving the ground.
+    expect(takeoff(1)).toBeLessThan(0);
+    expect(takeoff(2)).toBeLessThan(0);
+    expect(takeoff(3)).toBeGreaterThan(0);
+    expect(takeoff(5.5)).toBeGreaterThan(takeoff(3));
+  });
+});
+
+describe('braking wings', () => {
+  /** Lift coefficient and the area it acts over, relative to a spread wing. */
+  function effectiveLift(controls: Partial<Controls>) {
+    const bird = createBird(vec(0, 5000, 0), 12);
+    const telemetry = step(bird, { ...neutralControls(), ...controls }, defaultParams, DT);
+    const areaFactor = controls.brake ? defaultParams.brakeAreaFactor : 1;
+    return telemetry.liftCoefficient * areaFactor;
+  }
+
+  it('makes less lift than a spread wing, despite covering more area', () => {
+    // Cupped and held broadside, the wing is an airbrake rather than a wing:
+    // the extra area all goes into drag.
+    expect(effectiveLift({ brake: true })).toBeLessThan(effectiveLift({}));
+  });
+
+  it('gives up height faster than a coast', () => {
+    const braked = fly(20, { brake: true }, {}, createBird(vec(0, 20000, 0), 15));
+    const coasting = fly(20, {}, {}, createBird(vec(0, 20000, 0), 15));
+    expect(-braked.telemetry.climbRate).toBeGreaterThan(-coasting.telemetry.climbRate);
+  });
+
+  it('still sheds speed over the seconds an approach actually uses it', () => {
+    // Held for half a minute the bird settles into a steep dive and the speed
+    // comes back; over the two or three seconds of a real approach it does not.
+    const braked = fly(2, { brake: true }, {}, createBird(vec(0, 20000, 0), 15.3));
+    const coasting = fly(2, {}, {}, createBird(vec(0, 20000, 0), 15.3));
+    expect(braked.telemetry.airspeed).toBeLessThan(coasting.telemetry.airspeed - 1);
   });
 });

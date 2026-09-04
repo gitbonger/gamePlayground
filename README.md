@@ -179,11 +179,75 @@ curve. `flapThrust` and `flapStrokeSpeed` had to move with it, and the landing
 sink limit went from 3.5 to 4 m/s so that a steeper coast did not make landing
 harder purely as a side effect.
 
+## How the wing works
+
+Three things about lift are worth stating, because the intuitive version of
+each is subtly wrong and the model deliberately does not follow it.
+
+**Banking does not shrink the wing, it turns the lift sideways.** Lift acts
+perpendicular to the airflow, so rolling the bird rotates the whole lift vector
+rather than reducing it. The observable is the one you would expect — a bird
+with its wings vertical has nothing holding it up and falls out of the sky, at
+about 17 m/s against 1 m/s wings-level — but the *reason* matters, because the
+lift did not vanish. It went sideways, and that sideways lift is exactly what
+makes the turn. Falling and turning are two views of the same vector, which is
+why a projected-horizontal-area model would be wrong: it would take away the
+turn along with the height.
+
+| Bank | Sink |
+| --- | --- |
+| 0° | 1.2 m/s |
+| 30° | 3.8 m/s |
+| 45° | 6.6 m/s |
+| 60° | 10.0 m/s |
+| 90° | 16.7 m/s |
+
+**Gravity is unconditional.** It is applied every tick with no special cases:
+one tick from rest is exactly `-g·dt`, and in vacuum (`airDensity: 0`) free
+fall is exact to nine decimal places. A bird dropped from rest in *real* air
+only reaches 7.4 m/s after a second, but that is drag, not missing gravity —
+falling belly-first puts the wing at a 39° angle of attack with a drag
+coefficient of 0.6. A pigeon is a fairly good parachute.
+
+**A braking wing is not a wing.** Spreading and cupping the wings adds 40% to
+the area, but that area is held broadside at a high angle of attack with the
+flow separated over it, so `brakeLiftFactor` discounts the lift back down: the
+net effect is *no extra lift at all* from 40% more wing, with every bit of the
+extra area going into drag. Braking therefore gives up height noticeably faster
+than coasting (4.7 m/s against 2.6 m/s).
+
+There is a limit to how far this can go. Push `brakeLiftFactor` lower and the
+bird converts the missing lift into descent, the flight path steepens, and
+gravity feeds the speed straight back — at which point the airbrake makes you
+*faster* in the steady state, which is the opposite of a brake. The honest
+resolution is that a real bird does not just spread its wings to slow down, it
+pitches up hard as well: brake plus flare is the configuration that works, and
+that is what the numbers are tuned around.
+
 ## How the wingbeat works
 
 A wingbeat is not a fixed push. Its direction and strength both depend on how
 fast the bird is already moving through the air, and getting this wrong is what
 made an early build feel dead near the ground:
+
+- **Beating harder means beating faster.** A wing's force goes with the square
+  of how fast it sweeps through the air, and that speed is set by the beat
+  rate, so thrust scales with the square of `flapFrequency`. This was missing
+  entirely: the time-average of `max(0, sin)` is `1/π` of the peak whatever the
+  frequency, so the beat rate only changed how fast the wings waggled. With it,
+  the model lands on a real pigeon's takeoff: below 2 beats a second the bird
+  cannot hold itself up, and somewhere between 2 and 3 it starts to climb.
+
+  | Beats/s | Average vertical force | From a standstill |
+  | --- | --- | --- |
+  | 1 | 0.3 × body weight | sinks |
+  | 2 | 0.7 × | sinks |
+  | 3 | 1.3 × | climbs |
+  | 5.5 (default) | 3.2 × | climbs strongly |
+
+  One beat at the default rate is worth about 5.7 m/s of vertical speed from a
+  standstill. `flapReferenceRate` is the rate at which `flapThrust` is the peak
+  force, and it ships equal to `flapFrequency`, so the default is a no-op.
 
 - **The stroke plane rotates.** At cruise the beat points mostly forward
   (`flapAngle`, 0.45 rad — 90% forward, 43% up) and works by making thrust,
@@ -277,7 +341,7 @@ edge does not read as hitting a wall.
 npm test
 ```
 
-104 tests across four files:
+115 tests across four files:
 
 - **`src/sim/flight.test.ts`** — the shape of the lift curve, glide ratio and
   sink rate staying in a plausible band, flapping climbing and draining stamina,
@@ -302,6 +366,11 @@ npm test
   flight holds, bleeds a fast entry back down in under three seconds, reaches
   the same trim from above or below, and is measurably slower and steeper than
   the same bird given a sleek body.
+  Wing physics has one too: sink rises monotonically with bank angle and the
+  bird still turns hardest where it holds height worst, gravity is exact from
+  rest and in vacuum, thrust scales with the square of the beat rate, takeoff
+  breaks even between two and three beats a second, and a braking wing makes
+  less lift than a spread one despite covering more area.
 - **`src/sim/collision.test.ts`** — entry faces and normals, radius expansion,
   nearest-hit ordering, boxes spanning several grid cells, and a fast segment
   that a point test would tunnel through.

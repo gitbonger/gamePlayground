@@ -33,6 +33,7 @@ export function createDebugGui(
 
   const brakeFolder = gui.addFolder('braking');
   brakeFolder.add(flight, 'brakeAreaFactor', 1, 2.5, 0.05).name('wing + tail spread');
+  brakeFolder.add(flight, 'brakeLiftFactor', 0.1, 1.5, 0.05).name('lift kept (<1 = airbrake)');
   brakeFolder.add(flight, 'brakeDragFactor', 1, 8, 0.1).name('drag multiplier');
   brakeFolder.add(flight, 'brakeStallBonus', 0, 0.8, 0.01).name('alula stall bonus');
   brakeFolder.add(flight, 'brakeFlapReverse', 0, 3, 0.05).name('reverse beat strength');
@@ -41,7 +42,9 @@ export function createDebugGui(
 
   const flapFolder = gui.addFolder('wingbeat');
   flapFolder.add(flight, 'flapThrust', 0, 12, 0.1);
-  flapFolder.add(flight, 'flapFrequency', 1, 12, 0.1);
+  // Thrust goes with the square of the rate, so this is a power control.
+  flapFolder.add(flight, 'flapFrequency', 1, 12, 0.1).name('beats per second');
+  flapFolder.add(flight, 'flapReferenceRate', 1, 12, 0.1).name('rate at full thrust');
   flapFolder.add(flight, 'flapAngle', 0, 1.2, 0.01).name('stroke angle (cruise)');
   flapFolder.add(flight, 'flapAngleSlow', 0, 1.55, 0.01).name('stroke angle (slow)');
   flapFolder.add(flight, 'flapStrokeSpeed', 4, 30, 0.5).name('stroke tilts by (m/s)');
