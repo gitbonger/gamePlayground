@@ -10,11 +10,32 @@
 import * as THREE from 'three';
 import type { BirdState } from '../sim/flight';
 
-const BODY = 0x6c7482;
-const WING = 0x59616e;
-const HEAD = 0x7d8593;
-const BEAK = 0xd7a24b;
-const LEG = 0xc8705a;
+/**
+ * A feral pigeon is pale blue-grey, which is lucky, because a dark one is
+ * invisible against a grey city seen from above. The white rump is real too,
+ * and it is the single most useful marking here: the chase camera watches the
+ * bird from behind, so the rump is the part you are looking at most of the
+ * time.
+ */
+const BODY = 0x9fadbe;
+const WING = 0xb3bfcc;
+/** The two dark bars across a feral pigeon's wing, which give it shape. */
+const WING_BAR = 0x5b6675;
+const HEAD = 0xaebaca;
+/** Iridescent neck, somewhere between green and violet depending on the light. */
+const NECK = 0x3f9e7c;
+const RUMP = 0xeef3f8;
+const BEAK = 0xe8a54b;
+const LEG = 0xd4735a;
+
+/**
+ * How much of its own colour the bird gives off.
+ *
+ * Not a light source, a floor: without it the bird falls to near-black in a
+ * building's shadow, which is exactly where it is hardest to keep track of and
+ * where losing it costs the most.
+ */
+const GLOW = 0.42;
 
 /**
  * How far the body sits above the feet when standing, in metres.
@@ -39,8 +60,13 @@ const mix = (from: number, to: number, t: number): number => from + (to - from) 
 
 export function createBirdRig(): BirdRig {
   const disposables: { dispose(): void }[] = [];
-  const material = (color: number) => {
-    const m = new THREE.MeshLambertMaterial({ color, flatShading: true });
+  const material = (color: number, glow = GLOW) => {
+    const m = new THREE.MeshLambertMaterial({
+      color,
+      flatShading: true,
+      // Lifts the bird off the background and stops shadow swallowing it.
+      emissive: new THREE.Color(color).multiplyScalar(glow),
+    });
     disposables.push(m);
     return m;
   };
@@ -61,6 +87,22 @@ export function createBirdRig(): BirdRig {
   head.castShadow = true;
   object.add(head);
 
+  // Iridescent throat, between the head and the shoulders.
+  const neck = new THREE.Mesh(
+    geometry(new THREE.BoxGeometry(0.086, 0.075, 0.07)),
+    material(NECK, 0.3),
+  );
+  neck.position.set(0, 0.035, -0.125);
+  object.add(neck);
+
+  // Pale rump over the base of the tail: the part the chase camera sees most.
+  const rump = new THREE.Mesh(
+    geometry(new THREE.BoxGeometry(0.1, 0.035, 0.1)),
+    material(RUMP, 0.5),
+  );
+  rump.position.set(0, 0.05, 0.115);
+  object.add(rump);
+
   const beak = new THREE.Mesh(geometry(new THREE.ConeGeometry(0.018, 0.06, 6)), material(BEAK));
   beak.rotation.x = -Math.PI / 2;
   beak.position.set(0, 0.04, -0.24);
@@ -74,6 +116,8 @@ export function createBirdRig(): BirdRig {
   // Wings pivot at the shoulder, so the mesh is offset inside its pivot group.
   const wingGeometry = geometry(new THREE.BoxGeometry(0.34, 0.014, 0.16));
   const wingMaterial = material(WING);
+  const barGeometry = geometry(new THREE.BoxGeometry(0.3, 0.008, 0.018));
+  const barMaterial = material(WING_BAR, 0.2);
 
   const makeWing = (side: 1 | -1) => {
     const pivot = new THREE.Group();
@@ -82,6 +126,15 @@ export function createBirdRig(): BirdRig {
     mesh.position.set(side * 0.17, 0, 0);
     mesh.castShadow = true;
     pivot.add(mesh);
+
+    // Two dark bars across a pale wing: real, and they give the wing a shape
+    // to read at a distance instead of a flat slab.
+    for (const z of [0.028, 0.056]) {
+      const bar = new THREE.Mesh(barGeometry, barMaterial);
+      bar.position.set(side * 0.17, 0.009, z);
+      pivot.add(bar);
+    }
+
     object.add(pivot);
     return pivot;
   };
