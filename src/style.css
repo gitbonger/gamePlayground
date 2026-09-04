@@ -156,25 +156,25 @@ body {
   z-index: 10;
 }
 
-/* --- Game over ---------------------------------------------------------- */
+/* --- End of flight ------------------------------------------------------ */
 
-.gameover {
+.outcome {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
   background: rgba(6, 10, 15, 0.55);
   backdrop-filter: blur(3px);
-  animation: gameover-in 0.35s ease both;
+  animation: outcome-in 0.35s ease both;
 }
 
-@keyframes gameover-in {
+@keyframes outcome-in {
   from {
     opacity: 0;
   }
 }
 
-.gameover-card {
+.outcome-card {
   min-width: 340px;
   padding: 30px 38px 26px;
   border: 1px solid rgba(242, 245, 248, 0.14);
@@ -184,7 +184,7 @@ body {
   text-align: center;
 }
 
-.gameover-card h1 {
+.outcome-card h1 {
   margin: 0;
   font-size: 26px;
   font-weight: 600;
@@ -193,13 +193,13 @@ body {
   color: #ff8b6b;
 }
 
-.gameover-cause {
+.outcome-cause {
   margin: 10px 0 24px;
   font-size: 13px;
   color: var(--dim);
 }
 
-.gameover-stats {
+.outcome-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px 30px;
@@ -207,26 +207,26 @@ body {
   text-align: left;
 }
 
-.gameover-stats div {
+.outcome-stats div {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
-.gameover-stats dt {
+.outcome-stats dt {
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--dim);
 }
 
-.gameover-stats dd {
+.outcome-stats dd {
   margin: 0;
   font-size: 19px;
   font-variant-numeric: tabular-nums;
 }
 
-.gameover-hint {
+.outcome-hint {
   margin: 0;
   padding-top: 16px;
   border-top: 1px solid rgba(242, 245, 248, 0.1);
@@ -234,10 +234,78 @@ body {
   color: var(--dim);
 }
 
-.gameover-hint b {
+.outcome-hint b {
   color: var(--ink);
 }
 
 .controls-hint .hint-warn {
   color: #e8a24b;
+}
+
+.outcome-card h1 {
+  color: #ff8b6b;
+}
+
+/* A clean landing is the one good ending, so it gets the one green headline. */
+.outcome.landed .outcome-card h1 {
+  color: #7fe0a8;
+}
+
+/* --- Approach cue -------------------------------------------------------- */
+
+.hud-landing {
+  position: absolute;
+  left: 50%;
+  bottom: 34px;
+  transform: translateX(-50%);
+  padding: 10px 16px 12px;
+  border: 1px solid rgba(242, 245, 248, 0.12);
+  border-radius: 8px;
+  background: var(--panel);
+  backdrop-filter: blur(6px);
+  text-align: center;
+  transition: border-color 0.2s ease;
+}
+
+.hud-landing.ready {
+  border-color: rgba(127, 224, 168, 0.55);
+}
+
+.landing-title {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.hud-landing.ready .landing-title {
+  color: #7fe0a8;
+}
+
+.landing-checks {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.check {
+  padding: 4px 12px;
+  border-radius: 4px;
+  background: rgba(232, 162, 75, 0.16);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #e8a24b;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.check.ok {
+  background: rgba(127, 224, 168, 0.16);
+  color: #7fe0a8;
+}
+
+.controls-hint .hint-tip {
+  color: #7fe0a8;
 }

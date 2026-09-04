@@ -3,6 +3,7 @@ import {
   bankAngle,
   createBird,
   defaultParams,
+  landingReadiness,
   liftCoefficient,
   neutralControls,
   step,
@@ -169,11 +170,11 @@ describe('stability', () => {
 });
 
 describe('ground', () => {
-  it('lands on the ground plane instead of sinking through it', () => {
+  it('stops at the ground plane instead of sinking through it', () => {
     const bird = createBird(vec(0, 3, 0), 2);
     const { bird: end } = fly(6, {}, {}, bird);
-    expect(end.position.y).toBeGreaterThanOrEqual(defaultParams.groundHeight);
-    expect(end.grounded).toBe(true);
+    expect(end.position.y).toBe(defaultParams.groundHeight);
+    expect(end.ending).not.toBeNull();
   });
 });
 
@@ -195,14 +196,14 @@ describe('crashing', () => {
     const bird = createBird(vec(0, 120, 0), 16);
     const { bird: end } = fly(12, {}, {}, bird, wall());
 
-    expect(end.crash).not.toBeNull();
-    expect(end.crash!.kind).toBe('building');
-    expect(end.crash!.speed).toBeGreaterThan(defaultParams.crashSpeed);
+    expect(end.ending).not.toBeNull();
+    expect(end.ending!.kind).toBe('crashed');
+    expect(end.ending!.cause).toBe('building');
     // Stopped at the wall's near face, not inside or beyond it.
-    expect(end.crash!.position.z).toBeCloseTo(-95, 0);
+    expect(end.ending!.position.z).toBeCloseTo(-95, 0);
   });
 
-  it('leaves the bird inert once crashed', () => {
+  it('leaves the bird inert once the flight has ended', () => {
     const bird = createBird(vec(0, 120, 0), 16);
     fly(12, {}, {}, bird, wall());
     const crashed = { ...bird.position };
@@ -215,21 +216,21 @@ describe('crashing', () => {
   it('flies clean past the same wall when there is no collider', () => {
     const bird = createBird(vec(0, 120, 0), 16);
     const { bird: end } = fly(12, {}, {}, bird);
-    expect(end.crash).toBeNull();
+    expect(end.ending).toBeNull();
     expect(end.position.z).toBeLessThan(-100);
   });
 
   it('survives a gentle brush below the crash threshold', () => {
     const bird = createBird(vec(0, 120, 0), 2);
     const { bird: end } = fly(3, {}, { gravity: 0 }, bird, wall());
-    expect(end.crash).toBeNull();
+    expect(end.ending).toBeNull();
   });
 
   it('does not tunnel through a wall during a tucked dive', () => {
     // Started below the wall's 300 m top, so it cannot simply overfly it.
     const bird = createBird(vec(0, 150, 0), 50);
     const { bird: end } = fly(20, { tuck: true }, {}, bird, wall());
-    expect(end.crash).not.toBeNull();
+    expect(end.ending!.cause).toBe('building');
     expect(end.position.z).toBeGreaterThan(-105);
   });
 
@@ -238,14 +239,112 @@ describe('crashing', () => {
     bird.orientation = quatFromAxisAngle(vec(1, 0, 0), -1.2);
     const { bird: end } = fly(20, { tuck: true }, {}, bird);
 
-    expect(end.crash).not.toBeNull();
-    expect(end.crash!.kind).toBe('ground');
+    expect(end.ending!.kind).toBe('crashed');
+    expect(end.ending!.cause).toBe('hard-impact');
+  });
+});
+
+describe('landing', () => {
+  /**
+   * Fly an approach: glide until `flareAt` metres, then hold `pitch`.
+   * This is the manoeuvre a player performs, run open-loop.
+   */
+  function approach(flareAt: number, pitch: number, extra: Partial<Controls> = {}) {
+    const bird = createBird(vec(0, 60, 0), 15);
+    const p = defaultParams;
+    const controls = { ...neutralControls(), ...extra };
+    for (let t = 0; t < 60; t += DT) {
+      controls.pitch = bird.position.y < flareAt ? pitch : (extra.pitch ?? 0);
+      step(bird, controls, p, DT);
+      if (bird.ending) break;
+    }
+    return bird;
+  }
+
+  it('lands cleanly when the flare is timed well', () => {
+    const bird = approach(4, 0.7);
+    expect(bird.ending).not.toBeNull();
+    expect(bird.ending!.kind).toBe('landed');
+    expect(bird.ending!.cause).toBeNull();
   });
 
-  it('lets a slow descent land instead of crashing', () => {
-    const bird = createBird(vec(0, 3, 0), 2);
-    const { bird: end } = fly(6, {}, {}, bird);
-    expect(end.crash).toBeNull();
-    expect(end.grounded).toBe(true);
+  it('accepts the whole spread of flare strengths at the sweet spot', () => {
+    for (const pitch of [0.3, 0.5, 0.7, 0.9, 1]) {
+      expect(approach(4, pitch).ending!.kind, `pitch ${pitch}`).toBe('landed');
+    }
+  });
+
+  it('rejects a straight-in glide as too fast', () => {
+    const bird = approach(0, 0);
+    expect(bird.ending!.kind).toBe('crashed');
+    expect(bird.ending!.cause).toBe('too-fast');
+  });
+
+  it('rejects flaring far too high, which balloons and then drops', () => {
+    const bird = approach(12, 0.9);
+    expect(bird.ending!.kind).toBe('crashed');
+    expect(bird.ending!.cause).toBe('hard-impact');
+  });
+
+  it('rejects touching down with a wing down', () => {
+    const bird = createBird(vec(0, 2, 0), 4);
+    bird.orientation = quatFromAxisAngle(vec(0, 0, 1), 0.9);
+    bird.velocity = vec(0, -0.5, -4);
+    const p = { ...defaultParams, gravity: 2 };
+    const controls = neutralControls();
+    for (let t = 0; t < 20; t += DT) {
+      step(bird, controls, p, DT);
+      if (bird.ending) break;
+    }
+    expect(bird.ending!.kind).toBe('crashed');
+    expect(bird.ending!.cause).toBe('not-level');
+  });
+
+  it('records the touchdown numbers it judged', () => {
+    const bird = approach(4, 0.7);
+    const ending = bird.ending!;
+    expect(ending.sink).toBeLessThanOrEqual(defaultParams.landingSink);
+    expect(ending.speed).toBeLessThanOrEqual(defaultParams.landingSpeed);
+    expect(ending.bank).toBeLessThanOrEqual(defaultParams.landingBank);
+    expect(ending.position.y).toBe(defaultParams.groundHeight);
+  });
+
+  it('leaves the bird stopped where it landed', () => {
+    const bird = approach(4, 0.7);
+    expect(length(bird.velocity)).toBe(0);
+    expect(bird.position.y).toBe(defaultParams.groundHeight);
+  });
+});
+
+describe('landing readiness', () => {
+  it('agrees with the verdict the touchdown actually gives', () => {
+    // A bird held just above the ground in a good attitude reads as ready.
+    const good = createBird(vec(0, 5, 0), 6);
+    good.velocity = vec(0, -1, -6);
+    expect(landingReadiness(good, defaultParams).ready).toBe(true);
+
+    const fast = createBird(vec(0, 5, 0), 20);
+    fast.velocity = vec(0, -1, -20);
+    const readiness = landingReadiness(fast, defaultParams);
+    expect(readiness.ready).toBe(false);
+    expect(readiness.speedOk).toBe(false);
+    expect(readiness.sinkOk).toBe(true);
+  });
+
+  it('flags a fast descent', () => {
+    const dropping = createBird(vec(0, 5, 0), 3);
+    dropping.velocity = vec(0, -9, -3);
+    const readiness = landingReadiness(dropping, defaultParams);
+    expect(readiness.sinkOk).toBe(false);
+    expect(readiness.ready).toBe(false);
+  });
+
+  it('flags a banked attitude', () => {
+    const banked = createBird(vec(0, 5, 0), 5);
+    banked.velocity = vec(0, -1, -5);
+    banked.orientation = quatFromAxisAngle(vec(0, 0, 1), 1);
+    const readiness = landingReadiness(banked, defaultParams);
+    expect(readiness.bankOk).toBe(false);
+    expect(readiness.ready).toBe(false);
   });
 });

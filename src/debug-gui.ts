@@ -50,9 +50,17 @@ export function createDebugGui(
 
   const collisionFolder = gui.addFolder('collision');
   collisionFolder.add(flight, 'bodyRadius', 0.05, 2, 0.01);
-  // Raise this past any speed you can reach to make the world non-lethal.
-  collisionFolder.add(flight, 'crashSpeed', 0, 60, 0.5).name('crashSpeed (0 = fragile)');
+  // Raise this past any speed you can reach to make walls non-lethal.
+  collisionFolder.add(flight, 'crashSpeed', 0, 60, 0.5).name('crashSpeed (walls)');
   collisionFolder.close();
+
+  // The three limits a touchdown is judged against. Widen them to practise the
+  // rest of the flight without the approach ending every run.
+  const landingFolder = gui.addFolder('landing');
+  landingFolder.add(flight, 'landingSink', 0.5, 20, 0.1).name('max sink (m/s)');
+  landingFolder.add(flight, 'landingSpeed', 2, 40, 0.5).name('max speed (m/s)');
+  landingFolder.add(flight, 'landingBank', 0.05, 1.5, 0.01).name('max bank (rad)');
+  landingFolder.close();
 
   const cameraFolder = gui.addFolder('camera');
   cameraFolder.add(camera, 'distance', 1, 20, 0.1);

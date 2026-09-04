@@ -14,7 +14,7 @@ function fly(start: ReturnType<typeof vec>, speed: number, seconds: number) {
   const controls = neutralControls();
   for (let t = 0; t < seconds; t += DT) {
     step(bird, controls, defaultParams, DT, collider);
-    if (bird.crash) break;
+    if (bird.ending) break;
   }
   return bird;
 }
@@ -57,8 +57,8 @@ describe('flying through the city', () => {
 
   it('crashes a bird glided into the middle of the skyline', () => {
     const bird = throughTheSkyline();
-    expect(bird.crash).not.toBeNull();
-    expect(bird.crash!.kind).toBe('building');
+    expect(bird.ending).not.toBeNull();
+    expect(bird.ending!.cause).toBe('building');
   });
 
   it('leaves the bird outside every solid box when it crashes', () => {
@@ -72,14 +72,14 @@ describe('flying through the city', () => {
 
   it('lets a bird cruising above the skyline through untouched', () => {
     const bird = fly(vec(0, tallest + 250, 900), 16, 25);
-    expect(bird.crash).toBeNull();
+    expect(bird.ending).toBeNull();
     expect(bird.position.y).toBeGreaterThan(tallest);
   });
 
-  it('eventually brings a gliding bird down somewhere, and never inside anything', () => {
+  it('eventually brings a gliding bird down somewhere, one way or another', () => {
     // Long enough that it must either land, hit a tree, or hit a tower.
     const bird = fly(vec(0, 400, 900), 16, 300);
-    expect(bird.crash !== null || bird.grounded).toBe(true);
+    expect(bird.ending).not.toBeNull();
     expect(Number.isFinite(bird.position.y)).toBe(true);
     expect(bird.position.y).toBeGreaterThanOrEqual(0);
   });

@@ -7,9 +7,11 @@ import * as THREE from 'three';
 import {
   createBird,
   defaultParams,
+  landingReadiness,
   step,
   type BirdState,
   type FlightTelemetry,
+  type LandingReadiness,
 } from './sim/flight';
 import { quat, vec, type Quat, type Vec3 } from './sim/math3';
 import { createInput } from './input';
@@ -19,7 +21,7 @@ import { createScene } from './render/scene';
 import { createBirdRig } from './render/bird';
 import { createChaseCamera, defaultCameraParams } from './render/camera';
 import { createHud } from './render/hud';
-import { createGameOverPanel } from './render/gameover';
+import { createOutcomePanel } from './render/outcome';
 import { buildWorld, defaultWorldOptions } from './world/city';
 
 /** Simulation tick rate. Fixed, so the flight model stays tunable and stable. */
@@ -32,6 +34,8 @@ const SPAWN = vec(0, 120, 260);
 const SPAWN_SPEED = 16;
 /** Clearance kept above anything standing at the spawn point. */
 const SPAWN_CLEARANCE = 40;
+/** Altitude below which the HUD starts showing the approach cue, in metres. */
+const APPROACH_ALTITUDE = 45;
 
 const SUN_OFFSET = new THREE.Vector3(-160, 240, 120);
 
@@ -47,7 +51,7 @@ scene.add(rig.object);
 
 const chase = createChaseCamera(camera);
 const hud = createHud(overlay);
-const gameOver = createGameOverPanel(overlay);
+const outcome = createOutcomePanel(overlay);
 const input = createInput();
 
 const flightParams = { ...defaultParams };
@@ -76,7 +80,7 @@ function respawn() {
   previousPosition = { ...bird.position };
   previousOrientation = { ...bird.orientation };
   run.reset(bird);
-  gameOver.hide();
+  outcome.hide();
   chase.snap(bird, cameraParams);
 }
 
@@ -84,8 +88,8 @@ createDebugGui(flightParams, cameraParams, { respawn });
 
 // --- Loop ------------------------------------------------------------------
 const interpolatedState: BirdState = { ...bird };
-// After a crash the camera drifts back to take in the wreck.
-const crashCameraParams = { ...cameraParams };
+// Once the flight is over the camera drifts back to take in the spot.
+const restCameraParams = { ...cameraParams };
 
 let accumulator = 0;
 let lastTime = performance.now() / 1000;
@@ -101,18 +105,18 @@ function frame(nowMs: number) {
   input.update(frameTime);
   if (input.consumeReset()) respawn();
 
-  const wasFlying = bird.crash === null;
+  const wasFlying = bird.ending === null;
 
   accumulator += frameTime;
   while (accumulator >= TICK) {
     previousPosition = { ...bird.position };
     previousOrientation = { ...bird.orientation };
     telemetry = step(bird, input.controls, flightParams, TICK, world.collider);
-    if (bird.crash === null) run.update(bird, TICK);
+    if (bird.ending === null) run.update(bird, TICK);
     accumulator -= TICK;
   }
 
-  if (wasFlying && bird.crash) gameOver.show(bird.crash, run.stats);
+  if (wasFlying && bird.ending) outcome.show(bird.ending, run.stats);
 
   // Blend between the last two ticks so motion is smooth at any refresh rate.
   const alpha = accumulator / TICK;
@@ -121,15 +125,14 @@ function frame(nowMs: number) {
   interpolatedState.velocity = bird.velocity;
   interpolatedState.flapPhase = bird.flapPhase;
   interpolatedState.stamina = bird.stamina;
-  interpolatedState.grounded = bird.grounded;
-  interpolatedState.crash = bird.crash;
+  interpolatedState.ending = bird.ending;
 
   rig.update(interpolatedState, input.controls.tuck, frameTime);
 
-  // Pull back and level off once the bird is down, so the crash site is legible.
-  const activeCamera = bird.crash ? crashCameraParams : cameraParams;
-  if (bird.crash) {
-    Object.assign(crashCameraParams, cameraParams, {
+  // Pull back and level off once the bird is down, so the spot is legible.
+  const activeCamera = bird.ending ? restCameraParams : cameraParams;
+  if (bird.ending) {
+    Object.assign(restCameraParams, cameraParams, {
       distance: cameraParams.distance + 5,
       height: cameraParams.height + 2.5,
       lookAhead: 0,
@@ -148,7 +151,13 @@ function frame(nowMs: number) {
   sun.position.copy(sun.target.position).add(SUN_OFFSET);
   sun.target.updateMatrixWorld();
 
-  hud.update(interpolatedState, telemetry, smoothedFps);
+  // The approach cue is only shown while still flying and low enough to act on.
+  const landing: LandingReadiness | null =
+    bird.ending === null && telemetry.altitude < APPROACH_ALTITUDE
+      ? landingReadiness(bird, flightParams)
+      : null;
+
+  hud.update(interpolatedState, telemetry, landing, smoothedFps);
   renderer.render(scene, camera);
 
   requestAnimationFrame(frame);

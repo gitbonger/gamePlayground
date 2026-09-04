@@ -1,9 +1,15 @@
 /** Flight instruments, drawn as plain DOM over the canvas. */
 
-import type { BirdState, FlightTelemetry } from '../sim/flight';
+import type { BirdState, FlightTelemetry, LandingReadiness } from '../sim/flight';
 
 export interface Hud {
-  update(state: BirdState, telemetry: FlightTelemetry, fps: number): void;
+  /** `landing` is null when the bird is too high for the approach cue to help. */
+  update(
+    state: BirdState,
+    telemetry: FlightTelemetry,
+    landing: LandingReadiness | null,
+    fps: number,
+  ): void;
   dispose(): void;
 }
 
@@ -21,6 +27,14 @@ export function createHud(container: HTMLElement): Hud {
       <div class="bar"><div class="bar-fill" data-field="stamina"></div></div>
     </div>
     <div class="hud-warning" data-field="warning"></div>
+    <div class="hud-landing" data-field="landing" hidden>
+      <div class="landing-title" data-field="landingTitle">approach</div>
+      <div class="landing-checks">
+        <span class="check" data-field="checkSink">sink</span>
+        <span class="check" data-field="checkSpeed">speed</span>
+        <span class="check" data-field="checkBank">wings</span>
+      </div>
+    </div>
     <div class="hud-fps"><span data-field="fps">0</span> fps</div>
   `;
   container.appendChild(root);
@@ -32,8 +46,18 @@ export function createHud(container: HTMLElement): Hud {
   const staminaEl = field('stamina');
   const warningEl = field('warning');
   const fpsEl = field('fps');
+  const landingEl = field('landing');
+  const landingTitleEl = field('landingTitle');
+  const checkSinkEl = field('checkSink');
+  const checkSpeedEl = field('checkSpeed');
+  const checkBankEl = field('checkBank');
 
-  function update(state: BirdState, telemetry: FlightTelemetry, fps: number) {
+  function update(
+    state: BirdState,
+    telemetry: FlightTelemetry,
+    landing: LandingReadiness | null,
+    fps: number,
+  ) {
     speedEl.textContent = (telemetry.airspeed * 3.6).toFixed(0);
     altitudeEl.textContent = telemetry.altitude.toFixed(0);
     climbEl.textContent = telemetry.climbRate.toFixed(1);
@@ -42,12 +66,18 @@ export function createHud(container: HTMLElement): Hud {
     staminaEl.style.width = `${state.stamina * 100}%`;
     staminaEl.classList.toggle('low', state.stamina < 0.25);
 
-    const warning = telemetry.stalled
-      ? 'STALL — push the nose down'
-      : state.grounded
-        ? 'on the ground — press R to launch'
-        : '';
+    const warning = telemetry.stalled && !state.ending ? 'STALL — push the nose down' : '';
     if (warningEl.textContent !== warning) warningEl.textContent = warning;
+
+    // Approach cue: only useful on the way down, and only while still flying.
+    landingEl.hidden = landing === null;
+    if (landing) {
+      checkSinkEl.classList.toggle('ok', landing.sinkOk);
+      checkSpeedEl.classList.toggle('ok', landing.speedOk);
+      checkBankEl.classList.toggle('ok', landing.bankOk);
+      landingEl.classList.toggle('ready', landing.ready);
+      landingTitleEl.textContent = landing.ready ? 'ready to land' : 'approach';
+    }
 
     fpsEl.textContent = fps.toFixed(0);
   }

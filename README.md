@@ -25,8 +25,18 @@ Turning is done by banking, not by yawing. Roll into the turn and the tilted
 lift vector pulls you round; the tail keeps the nose following the flight path.
 
 **Buildings and trees are solid.** Hit one above 7.5 m/s of closing speed and
-the run is over. Slower than that and you just scrape to a stop, so a careful
-landing is survivable — but so is brushing a wall, which is deliberate.
+the run is over. Slower than that and you scrape to a stop and slide.
+
+**Touching the ground ends the flight, well or badly.** A clean landing needs
+all three of: descending no faster than 3.5 m/s, no faster than 10 m/s through
+the air, and wings within 20° of level. Meet them and you have landed; miss any
+one and it is a crash that names what went wrong.
+
+The manoeuvre is a flare. Come in on a glide, and at roughly **4 metres** pull
+the nose up: the bird trades speed for a moment of near-level flight, and that
+moment is your landing. Flare too high and you balloon, stall, and drop. Glide
+straight in without flaring and you arrive far too fast. Below 45 m the HUD
+shows the three checks live, so you can see which one is still red.
 
 ## Stack
 
@@ -85,6 +95,22 @@ Everything in `FlightParams` and `CameraParams` is bound to the on-screen panel.
 Tuning live is the intended workflow — the committed defaults are a starting
 point, not an answer.
 
+## How landing works
+
+`landingReadiness()` in `src/sim/flight.ts` answers one question — could the
+bird put down cleanly if it touched the ground right now — and both the
+touchdown verdict and the HUD's approach cue are built on it. That is
+deliberate: the cue cannot drift out of step with the rule it reports on,
+because they are the same function.
+
+Touching the ground always ends the flight. `touchdown()` checks sink, then
+speed, then bank, and names the first limit breached as the cause. Ordering
+only affects which fault is reported, cheapest mistake to fix first; any one of
+them is enough to ruin the landing.
+
+The limits sit in the panel's `landing` folder. Widening them is the fastest way
+to practise the rest of the flight without every run ending on the approach.
+
 ## How collision works
 
 `src/sim/collision.ts` sweeps the bird's movement segment against axis-aligned
@@ -111,13 +137,17 @@ edge does not read as hitting a wall.
 npm test
 ```
 
-46 tests across three files:
+55 tests across three files:
 
 - **`src/sim/flight.test.ts`** — the shape of the lift curve, glide ratio and
   sink rate staying in a plausible band, flapping climbing and draining stamina,
   tucked dives outrunning spread ones, banking producing a heading change with
-  no yaw input, pitch stability recovering to trim, ground contact, crashes and
-  survivable scrapes, determinism, and that no input sequence produces a NaN.
+  no yaw input, pitch stability recovering to trim, crashes and survivable
+  scrapes, determinism, and that no input sequence produces a NaN.
+  Landing gets its own group that flies real approaches open-loop: a well-timed
+  flare lands across the whole spread of flare strengths, a straight-in glide is
+  rejected as too fast, flaring far too high balloons and then drops, and a
+  wing-down touchdown is rejected as not level.
 - **`src/sim/collision.test.ts`** — entry faces and normals, radius expansion,
   nearest-hit ordering, boxes spanning several grid cells, and a fast segment
   that a point test would tunnel through.
@@ -138,9 +168,12 @@ tests the real world the player flies through, in Node, with no WebGL.
    before the aerodynamics run.
 3. **Sound.** Wind noise pitched by airspeed and a wingbeat driven by
    `flapPhase`. This is the cheapest large gain available.
-4. **Something to do.** Perching, breadcrumbs, racing through gaps — the
-   collision layer already reports the surface normal, so landing on a roof
-   rather than crashing into it is mostly a matter of deciding what a gentle
-   touchdown on a horizontal face should mean.
-5. **A crash you can see.** The bird currently freezes at the impact point.
+4. **Landing on rooftops and branches.** Only the ground can currently be
+   landed on; a rooftop is still judged by the wall rule, so a gentle touchdown
+   on one just slides. The collision layer already reports the surface normal,
+   so routing near-horizontal faces through `touchdown()` is most of the work.
+5. **Taking off again.** A landed bird is inert by design for now. Resuming
+   from a standing start needs a ground mode — hopping, a flap-driven launch,
+   and something to stop the aerodynamics from running while perched.
+6. **A crash you can see.** The bird currently freezes at the impact point.
    Tumbling it, or leaving a puff of feathers, would cost little.

@@ -92,11 +92,18 @@ export interface FlightParams {
   /** Collision radius of the bird, in metres. */
   bodyRadius: number;
   /**
-   * Closing speed at which an impact kills rather than bumps, in m/s.
-   * Below this the bird just scrapes to a stop, so a careful landing or a
-   * gentle brush against a wall is survivable.
+   * Closing speed at which hitting a wall kills rather than bumps, in m/s.
+   * Below this the bird scrapes to a stop and slides along the surface.
+   * Touching the ground is judged by the landing limits below instead.
    */
   crashSpeed: number;
+
+  /** Greatest descent rate the legs can absorb on touchdown, in m/s. */
+  landingSink: number;
+  /** Greatest airspeed a clean touchdown can be made at, in m/s. */
+  landingSpeed: number;
+  /** Greatest bank angle a clean touchdown can be made at, in radians. */
+  landingBank: number;
 }
 
 export const defaultParams: FlightParams = {
@@ -134,6 +141,10 @@ export const defaultParams: FlightParams = {
 
   bodyRadius: 0.22,
   crashSpeed: 7.5,
+
+  landingSink: 3.5,
+  landingSpeed: 10,
+  landingBank: 0.35,
 };
 
 export interface Controls {
@@ -157,13 +168,44 @@ export const neutralControls = (): Controls => ({
   tuck: false,
 });
 
-export type CrashKind = 'building' | 'ground';
+/** Why a flight ended badly. */
+export type CrashCause =
+  /** Flew into something solid. */
+  | 'building'
+  /** Came down harder than the legs can absorb. */
+  | 'hard-impact'
+  /** Touched down without bleeding off enough speed. */
+  | 'too-fast'
+  /** Touched down with a wing well down. */
+  | 'not-level';
 
-export interface Crash {
-  kind: CrashKind;
-  /** Closing speed at the moment of impact, in m/s. */
+export interface Ending {
+  kind: 'landed' | 'crashed';
+  /** Null on a clean landing. */
+  cause: CrashCause | null;
+  /** Airspeed at contact, in m/s. */
   speed: number;
+  /** Descent rate at contact, in m/s; negative if still climbing. */
+  sink: number;
+  /** Bank angle magnitude at contact, in radians. */
+  bank: number;
   position: Vec3;
+}
+
+/**
+ * Whether the bird could put down cleanly if it touched the ground right now.
+ * Drives both the touchdown verdict and the HUD's approach cue, so the cue
+ * cannot drift out of step with the rule it is reporting on.
+ */
+export interface LandingReadiness {
+  sink: number;
+  speed: number;
+  bank: number;
+  sinkOk: boolean;
+  speedOk: boolean;
+  bankOk: boolean;
+  /** True when all three are within limits. */
+  ready: boolean;
 }
 
 export interface BirdState {
@@ -176,10 +218,11 @@ export interface BirdState {
   stamina: number;
   /** 0..1 position within the current wingbeat, for animation. */
   flapPhase: number;
-  /** True while resting on the ground. */
-  grounded: boolean;
-  /** Set once on impact; the bird is out of the game while this is non-null. */
-  crash: Crash | null;
+  /**
+   * Set once the flight is over, cleanly or otherwise. The bird is inert while
+   * this is non-null; the caller decides when to launch a new one.
+   */
+  ending: Ending | null;
 }
 
 /** Read-only diagnostics from the last step, for the HUD and tuning. */
@@ -202,8 +245,7 @@ export function createBird(position: Vec3 = vec(0, 60, 0), speed = 14): BirdStat
     angularVelocity: vec(),
     stamina: 1,
     flapPhase: 0,
-    grounded: false,
-    crash: null,
+    ending: null,
   };
 }
 
@@ -242,8 +284,8 @@ export function step(
   dt: number,
   collider?: Collider,
 ): FlightTelemetry {
-  // A crashed bird is inert: the caller decides when to respawn it.
-  if (state.crash) return telemetryFor(state, p, 0, 0, 0);
+  // Once the flight is over the bird is inert until the caller replaces it.
+  if (state.ending) return telemetryFor(state, p, 0, 0, 0);
 
   const q = state.orientation;
 
@@ -342,7 +384,14 @@ export function step(
         state.position = hit.point;
         state.velocity = vec(0, 0, 0);
         state.angularVelocity = vec(0, 0, 0);
-        state.crash = { kind: 'building', speed: impact, position: hit.point };
+        state.ending = {
+          kind: 'crashed',
+          cause: 'building',
+          speed: length(state.velocity),
+          sink: -state.velocity.y,
+          bank: Math.abs(bankAngle(state)),
+          position: hit.point,
+        };
         return telemetryFor(state, p, alpha, cl, cd);
       }
 
@@ -357,26 +406,54 @@ export function step(
   }
 
   // --- Ground -------------------------------------------------------------
-  state.grounded = false;
+  // Touching down always ends the flight; the only question is how well.
   if (state.position.y <= p.groundHeight) {
-    const impact = -state.velocity.y;
     state.position = vec(state.position.x, p.groundHeight, state.position.z);
-
-    if (impact >= p.crashSpeed) {
-      state.velocity = vec(0, 0, 0);
-      state.angularVelocity = vec(0, 0, 0);
-      state.crash = { kind: 'ground', speed: impact, position: state.position };
-      return telemetryFor(state, p, alpha, cl, cd);
-    }
-
-    if (state.velocity.y < 0) {
-      // Absorb the impact rather than bouncing; scrub off horizontal speed too.
-      state.velocity = vec(state.velocity.x * 0.6, 0, state.velocity.z * 0.6);
-    }
-    state.grounded = true;
+    state.ending = touchdown(state, p);
+    state.velocity = vec(0, 0, 0);
+    state.angularVelocity = vec(0, 0, 0);
+    return telemetryFor(state, p, alpha, cl, cd);
   }
 
   return telemetryFor(state, p, alpha, cl, cd);
+}
+
+export function landingReadiness(state: BirdState, p: FlightParams): LandingReadiness {
+  const sink = -state.velocity.y;
+  const speed = length(state.velocity);
+  const bank = Math.abs(bankAngle(state));
+
+  const sinkOk = sink <= p.landingSink;
+  const speedOk = speed <= p.landingSpeed;
+  const bankOk = bank <= p.landingBank;
+
+  return { sink, speed, bank, sinkOk, speedOk, bankOk, ready: sinkOk && speedOk && bankOk };
+}
+
+/**
+ * Judge a touch of the ground. Any one limit breached ruins the landing; the
+ * order below only decides which fault gets named to the player, cheapest
+ * mistake to fix first.
+ */
+function touchdown(state: BirdState, p: FlightParams): Ending {
+  const r = landingReadiness(state, p);
+
+  const cause: CrashCause | null = !r.sinkOk
+    ? 'hard-impact'
+    : !r.speedOk
+      ? 'too-fast'
+      : !r.bankOk
+        ? 'not-level'
+        : null;
+
+  return {
+    kind: cause ? 'crashed' : 'landed',
+    cause,
+    speed: r.speed,
+    sink: r.sink,
+    bank: r.bank,
+    position: state.position,
+  };
 }
 
 function telemetryFor(
