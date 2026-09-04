@@ -2,7 +2,7 @@
 
 A flight simulator where you are a homing pigeon.
 
-You are released 289 m from home, pointed straight at it. Home is the **red
+You are released 543 m from home, pointed straight at it. Home is the **red
 building**. Get there and land on the ground beside it.
 
 ```bash
@@ -120,14 +120,22 @@ lands in the same place in both:
 
 | | |
 | --- | --- |
-| Release | 47.492337, 19.079367 |
+| Release | 47.491540, 19.075658 |
 | Home | 47.494593, 19.081282 — the map's centre |
-| Distance | 289 m, on a bearing of 30° |
+| Distance | 543 m, on a bearing of 51° |
 
 The bird is released **pointing exactly at home**, which is what `createBird`'s
-heading argument is for. A 4:1 glide from 120 m carries about 480 m, so the
-trip is reachable without a single wingbeat — the difficulty is arriving slow
-and low enough to land rather than getting there at all.
+heading argument is for.
+
+The distance is close to the edge of what a glide will carry, which is what
+makes it worth flying. Released with no input at all, the bird arrives over
+home **39 seconds later, 21 m up, still doing 14.8 m/s** — level with the
+rooftops and far too fast to land. So getting there is not the problem;
+arriving with the height and speed already spent is.
+
+Braking early does not solve it: hold the brake from the start and you come
+down 397 m short, because an airbrake buys speed with height and there is none
+to spare.
 
 Whichever generated building lands nearest the home point is marked, and drawn
 in red. It gets its own mesh rather than a seventh instanced bucket, because it
