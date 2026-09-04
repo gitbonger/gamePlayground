@@ -119,10 +119,12 @@ asset. Run it once and commit the result — the game never talks to a map
 server, so it works offline and cannot be broken by someone else's rate limit.
 
 ```bash
-npm run fetch-map -- --centre 47.4979,19.0402 --radius 1200 --name home
+npm run fetch-map -- --centre 47.494593,19.081282 --radius 1200 --name home
 ```
 
-The shipped world is central Budapest: 1,655 roads, 2,611 segments, 132 kB.
+The shipped world is that square of Budapest: 986 roads, 1,428 segments, 77 kB.
+The bird spawns directly over the centre point, raised clear of whatever stands
+there.
 
 **Why not real buildings too?** Because OSM's road coverage is essentially
 complete worldwide while its building *heights* are patchy — in most cities
@@ -157,8 +159,8 @@ frame, runs *the identical slab test*, and rotates the answer back — exact
 oriented-box collision that reuses the tested path rather than adding a second
 one. The uniform grid still indexes world bounds for broad phase.
 
-From 2,611 real street segments: 5,758 buildings and 234 trees, built in 17 ms,
-with 20,000 collision sweeps in 18 ms.
+From 1,428 real street segments: 5,638 buildings and 299 trees, built in 14 ms,
+with 20,000 collision sweeps in under 20 ms.
 
 OpenStreetMap data is ODbL. The baked file is a derived database, so it carries
 the attribution and the HUD keeps it on screen.

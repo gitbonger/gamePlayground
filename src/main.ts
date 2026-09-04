@@ -36,7 +36,9 @@ const TICK = 1 / 120;
  *  backgrounded for a minute should not try to catch up all of it. */
 const MAX_FRAME_TIME = 0.25;
 
-const SPAWN = vec(0, 120, 260);
+// Directly over the map's centre point, which is what the coordinates in
+// `fetch-map` name. Raised clear of whatever stands there by SPAWN_CLEARANCE.
+const SPAWN = vec(0, 120, 0);
 const SPAWN_SPEED = 16;
 /** Clearance kept above anything standing at the spawn point. */
 const SPAWN_CLEARANCE = 40;
