@@ -16,7 +16,7 @@ Then open http://localhost:5183.
 | `W` / `S` | Pitch down / up |
 | `A` / `D` | Roll left / right |
 | `Q` / `E` | Yaw left / right |
-| `Space` | Flap — costs stamina, climbs about 3 m/s |
+| `Space` | Flap — costs stamina; climbs hardest when slow |
 | `Shift` | Tuck the wings and dive |
 | `Ctrl` (or `B`) | Brake — spread the wings, fan the tail, beat backwards |
 | `R` | Respawn |
@@ -100,6 +100,34 @@ Everything in `FlightParams` and `CameraParams` is bound to the on-screen panel.
 Tuning live is the intended workflow — the committed defaults are a starting
 point, not an answer.
 
+## How the wingbeat works
+
+A wingbeat is not a fixed push. Its direction and strength both depend on how
+fast the bird is already moving through the air, and getting this wrong is what
+made an early build feel dead near the ground:
+
+- **The stroke plane rotates.** At cruise the beat points mostly forward
+  (`flapAngle`, 0.45 rad — 90% forward, 43% up) and works by making thrust,
+  which the wing turns into lift. Slow down and it swings toward vertical
+  (`flapAngleSlow`, 1.35 rad), because a bird bursting off the ground beats
+  almost straight down. Holding the cruise angle at every speed leaves the
+  average upward force at 16% of body weight, and a slow bird simply cannot
+  hold itself up.
+- **Slow air is worth more.** `flapSlowBoost` multiplies thrust up to ×9 at a
+  standstill, falling off with the *square* of airspeed so cruise is untouched.
+  A wing beating against still air does far more than one beating against air
+  already rushing past — which is also why climb performance peaks well below
+  cruise, for a real pigeon and now for this one.
+- **The stroke plane is not bolted to the body.** `flapUpright` lets a slow
+  bird aim its beat at the sky regardless of which way its body points, the way
+  a hovering bird holds the stroke plane level and hangs beneath it. Without
+  it, a bird that has fallen nose-down beats itself sideways and can never
+  recover — the wingbeat stops being a way out exactly when you need it.
+
+The result: panic-flapping while pulling up recovers roughly 15 m in three
+seconds from a 4 m/s sink, at any speed. A committed 45 m/s dive still cannot
+be flapped away, so the low-speed boost never becomes a universal airbrake.
+
 ## How braking works
 
 A pigeon has no airbrake, so it brakes with three things at once, and all three
@@ -168,7 +196,7 @@ edge does not read as hitting a wall.
 npm test
 ```
 
-65 tests across three files:
+71 tests across three files:
 
 - **`src/sim/flight.test.ts`** — the shape of the lift curve, glide ratio and
   sink rate staying in a plausible band, flapping climbing and draining stamina,
@@ -184,6 +212,10 @@ npm test
   keeps a fixed angle of attack unstalled that stalls without it, braking
   overrides tucking, and an approach flared too late to save itself lands when
   braked.
+  Vertical authority is pinned separately: climbing is better slow than fast,
+  the beat buys altitude when slow and ground speed at cruise, a sinking bird
+  recovers, a nose-down bird still gets lift from the beat, a committed dive
+  still cannot be flapped away, and cruising flight is unchanged by the boost.
 - **`src/sim/collision.test.ts`** — entry faces and normals, radius expansion,
   nearest-hit ordering, boxes spanning several grid cells, and a fast segment
   that a point test would tunnel through.

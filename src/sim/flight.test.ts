@@ -458,3 +458,73 @@ describe('braking', () => {
     expect(withParams.position).toEqual(zeroed.position);
   });
 });
+
+describe('vertical authority', () => {
+  /** Climb rate after holding a wingbeat from a given starting airspeed. */
+  function climbFrom(speed: number, controls: Partial<Controls> = {}, seconds = 2.5) {
+    const bird = createBird(vec(0, 3000, 0), speed);
+    const { telemetry } = fly(seconds, { flap: true, ...controls }, {}, bird);
+    return telemetry.climbRate;
+  }
+
+  it('climbs best at slow speed, the way a real bird does', () => {
+    // Climb performance peaks well below cruise. A model where flapping only
+    // works once you are already fast leaves a slow bird unable to save itself.
+    expect(climbFrom(6)).toBeGreaterThan(climbFrom(11));
+    expect(climbFrom(6)).toBeGreaterThan(0);
+  });
+
+  it('aims the stroke upward when slow and forward at cruise', () => {
+    // Slow: the beat should buy altitude rather than ground speed.
+    const slow = createBird(vec(0, 3000, 0), 4);
+    fly(1.5, { flap: true }, {}, slow);
+    expect(slow.velocity.y).toBeGreaterThan(0);
+
+    // Cruise: the beat should buy ground speed.
+    const fast = createBird(vec(0, 3000, 0), 15);
+    const before = -fast.velocity.z;
+    fly(1.5, { flap: true }, {}, fast);
+    expect(-fast.velocity.z).toBeGreaterThan(before);
+  });
+
+  it('pulls a slow bird out of a sink instead of mushing into the ground', () => {
+    const bird = createBird(vec(0, 40, 0), 6);
+    bird.velocity = vec(0, -4, -6);
+    const start = bird.position.y;
+    fly(3, { flap: true, pitch: 0.5 }, {}, bird);
+
+    expect(bird.position.y).toBeGreaterThan(start);
+  });
+
+  it('still gets lift out of a beat from a nose-down attitude', () => {
+    // A hovering bird holds its stroke plane level and hangs beneath it. With
+    // the stroke locked to the body instead, a bird that has fallen nose-down
+    // beats itself sideways and the wingbeat stops being a way out.
+    const fall = (flapUpright: number) => {
+      const bird = createBird(vec(0, 3000, 0), 4);
+      bird.orientation = quatFromAxisAngle(vec(1, 0, 0), -1.1);
+      bird.velocity = vec(0, -4, -1);
+      fly(2, { flap: true }, { flapUpright }, bird);
+      return bird.velocity.y;
+    };
+
+    expect(fall(defaultParams.flapUpright)).toBeGreaterThan(fall(0) + 1);
+  });
+
+  it('cannot simply flap away a committed dive', () => {
+    // The low-speed boost must not become a universal airbrake.
+    const bird = createBird(vec(0, 3000, 0), 5);
+    bird.velocity = vec(0, -45, -3);
+    const { telemetry } = fly(1, { flap: true }, {}, bird);
+    expect(telemetry.climbRate).toBeLessThan(-8);
+  });
+
+  it('leaves cruising flight where it was', () => {
+    // The boost falls off with the square of airspeed, so it is a low-speed
+    // fix and not a general buff to flapping.
+    const boosted = climbFrom(15);
+    const bird = createBird(vec(0, 3000, 0), 15);
+    const { telemetry } = fly(2.5, { flap: true }, { flapSlowBoost: 1 }, bird);
+    expect(Math.abs(boosted - telemetry.climbRate)).toBeLessThan(0.5);
+  });
+});

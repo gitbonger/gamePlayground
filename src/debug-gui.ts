@@ -42,7 +42,11 @@ export function createDebugGui(
   const flapFolder = gui.addFolder('wingbeat');
   flapFolder.add(flight, 'flapThrust', 0, 12, 0.1);
   flapFolder.add(flight, 'flapFrequency', 1, 12, 0.1);
-  flapFolder.add(flight, 'flapAngle', 0, 1.2, 0.01);
+  flapFolder.add(flight, 'flapAngle', 0, 1.2, 0.01).name('stroke angle (cruise)');
+  flapFolder.add(flight, 'flapAngleSlow', 0, 1.55, 0.01).name('stroke angle (slow)');
+  flapFolder.add(flight, 'flapStrokeSpeed', 4, 30, 0.5).name('stroke tilts by (m/s)');
+  flapFolder.add(flight, 'flapSlowBoost', 1, 15, 0.5).name('slow-speed power');
+  flapFolder.add(flight, 'flapUpright', 0, 1, 0.05).name('aim beat at sky');
   flapFolder.add(flight, 'flapStaminaCost', 0, 0.5, 0.01);
   flapFolder.add(flight, 'staminaRecovery', 0, 0.5, 0.01);
   flapFolder.close();

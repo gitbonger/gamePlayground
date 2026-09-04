@@ -19,6 +19,7 @@ import {
   dot,
   integrateOrientation,
   length,
+  lerp,
   normalize,
   quat,
   rotate,
@@ -87,8 +88,31 @@ export interface FlightParams {
   flapThrust: number;
   /** Wingbeats per second while actively flapping. */
   flapFrequency: number;
-  /** How far above the forward axis the flap pushes, in radians. */
+  /** How far above the forward axis the flap pushes at cruise, in radians. */
   flapAngle: number;
+  /**
+   * Stroke angle at a standstill, in radians. A bird taking off beats almost
+   * straight down and gets a nearly vertical force out of it; only at speed
+   * does the stroke plane tilt forward and turn into thrust. Holding the
+   * cruise angle at every airspeed leaves a slow bird unable to hold itself up.
+   */
+  flapAngleSlow: number;
+  /** Airspeed at which the stroke plane has fully tilted to `flapAngle`. */
+  flapStrokeSpeed: number;
+  /**
+   * Thrust multiplier at a standstill, easing to 1 at `flapStrokeSpeed`.
+   * Beating against still air is worth far more than beating against air
+   * already rushing past.
+   */
+  flapSlowBoost: number;
+  /**
+   * How far a slow bird can aim its stroke at the sky regardless of which way
+   * its body is pointing, 0..1. A hovering bird holds the stroke plane level
+   * and its body hangs beneath it; without this, a bird that has fallen into a
+   * nose-down attitude beats itself sideways and can never recover.
+   * Fades out with airspeed, so it never becomes a cruise cheat.
+   */
+  flapUpright: number;
   /** Stamina consumed per second of continuous flapping. */
   flapStaminaCost: number;
   /** Stamina recovered per second while gliding. */
@@ -152,12 +176,16 @@ export const defaultParams: FlightParams = {
   brakeAreaFactor: 1.4,
   brakeDragFactor: 1.6,
   brakeStallBonus: 0.25,
-  brakeFlapReverse: 1,
+  brakeFlapReverse: 0.3,
   brakeFlapAngle: 1.45,
 
   flapThrust: 4.0,
   flapFrequency: 5.5,
   flapAngle: 0.45,
+  flapAngleSlow: 1.35,
+  flapStrokeSpeed: 18,
+  flapSlowBoost: 9,
+  flapUpright: 0.8,
   flapStaminaCost: 0.07,
   staminaRecovery: 0.14,
 
@@ -391,14 +419,30 @@ export function step(
   }
 
   if (flapPower > 0) {
+    // The stroke plane rotates with airspeed: near-vertical force when slow,
+    // forward thrust at cruise. This is what lets a slow bird claw its way
+    // back up instead of mushing into the ground.
+    const strokeBlend = clamp(speed / p.flapStrokeSpeed, 0, 1);
+    const strokeAngle = p.flapAngleSlow + (p.flapAngle - p.flapAngleSlow) * strokeBlend;
+    // Squared falloff, so this stays a genuinely low-speed effect and leaves
+    // cruising flight as it was.
+    const strokeBoost = 1 + (p.flapSlowBoost - 1) * (1 - strokeBlend) ** 2;
+
     // Braking reverses the stroke: the bird beats forward and down, which
     // pushes it backwards while still holding it up -- a pigeon back-pedalling
     // onto a ledge.
     const thrustBody = braking
       ? vec(0, Math.sin(p.brakeFlapAngle), Math.cos(p.brakeFlapAngle))
-      : vec(0, Math.sin(p.flapAngle), -Math.cos(p.flapAngle));
-    const magnitude = p.flapThrust * flapPower * (braking ? p.brakeFlapReverse : 1);
-    force = add(force, scale(rotate(q, thrustBody), magnitude));
+      : vec(0, Math.sin(strokeAngle), -Math.cos(strokeAngle));
+
+    // A slow bird holds its stroke plane level and hangs its body beneath it,
+    // so the beat still pushes at the sky even from a nose-down attitude.
+    const upright = p.flapUpright * (1 - strokeBlend);
+    const direction = normalize(lerp(rotate(q, thrustBody), vec(0, 1, 0), upright));
+
+    const magnitude =
+      p.flapThrust * flapPower * strokeBoost * (braking ? p.brakeFlapReverse : 1);
+    force = add(force, scale(direction, magnitude));
   }
 
   // --- Rotation -----------------------------------------------------------
