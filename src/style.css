@@ -78,16 +78,27 @@ body {
   color: #7fe0a8;
 }
 
-/* Energy height is context for the numbers above it, not a headline. */
+/* Energy height and wind are context for the numbers above, not headlines. */
 .readout.secondary {
   font-size: 15px;
   opacity: 0.72;
 }
 
+.readout .aside {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.readout .aside.adverse {
+  color: #e8a24b;
+}
+
 .hud-stamina {
   position: absolute;
   left: 20px;
-  bottom: 172px;
+  bottom: 212px;
   width: 210px;
 }
 

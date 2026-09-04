@@ -23,6 +23,7 @@ import { createChaseCamera, defaultCameraParams } from './render/camera';
 import { createHud } from './render/hud';
 import { createOutcomePanel } from './render/outcome';
 import { buildWorld, defaultWorldOptions } from './world/city';
+import { createWind, defaultWindParams } from './sim/wind';
 
 /** Simulation tick rate. Fixed, so the flight model stays tunable and stable. */
 const TICK = 1 / 120;
@@ -56,6 +57,14 @@ const input = createInput();
 
 const flightParams = { ...defaultParams };
 const cameraParams = { ...defaultCameraParams };
+const windParams = { ...defaultWindParams };
+
+// Rebuilt whenever the panel changes the air, since the field closes over its
+// parameters rather than reading them each tick.
+let wind = createWind(windParams);
+const rebuildWind = () => {
+  wind = createWind(windParams);
+};
 
 // The spawn is hand-placed, but the city is procedural, so make sure nothing
 // has been generated into the space the bird appears in.
@@ -68,6 +77,7 @@ const spawn = vec(
 
 let bird: BirdState = createBird(spawn, SPAWN_SPEED);
 let telemetry: FlightTelemetry = step(bird, input.controls, flightParams, TICK);
+
 const run = createRunTracker(bird);
 
 // Previous tick's pose, so rendering can interpolate between ticks instead of
@@ -84,7 +94,7 @@ function respawn() {
   chase.snap(bird, cameraParams);
 }
 
-createDebugGui(flightParams, cameraParams, { respawn });
+createDebugGui(flightParams, cameraParams, windParams, { respawn, rebuildWind });
 
 // --- Loop ------------------------------------------------------------------
 const interpolatedState: BirdState = { ...bird };
@@ -111,7 +121,7 @@ function frame(nowMs: number) {
   while (accumulator >= TICK) {
     previousPosition = { ...bird.position };
     previousOrientation = { ...bird.orientation };
-    telemetry = step(bird, input.controls, flightParams, TICK, world.collider);
+    telemetry = step(bird, input.controls, flightParams, TICK, world.collider, wind);
     if (bird.ending === null) run.update(bird, TICK);
     accumulator -= TICK;
   }

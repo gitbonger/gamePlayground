@@ -12,6 +12,7 @@
 import type { Collider } from './collision';
 import { closingSpeed } from './collision';
 import { energyOf, workDone, zeroWork, type EnergyState, type WorkLedger } from './energy';
+import { calm, type WindField } from './wind';
 import {
   add,
   clamp,
@@ -299,6 +300,8 @@ export interface BirdState {
   stamina: number;
   /** 0..1 position within the current wingbeat, for animation. */
   flapPhase: number;
+  /** Seconds since launch. Drives anything that has to evolve in time. */
+  age: number;
   /**
    * Set once the flight is over, cleanly or otherwise. The bird is inert while
    * this is non-null; the caller decides when to launch a new one.
@@ -315,6 +318,12 @@ export interface FlightTelemetry {
   dragCoefficient: number;
   climbRate: number;
   stalled: boolean;
+  /** Speed over the ground, in m/s. Differs from airspeed in wind. */
+  groundSpeed: number;
+  /** Air velocity where the bird is, in m/s. */
+  wind: Vec3;
+  /** Headwind component, positive when the air opposes the flight path. */
+  headwind: number;
   /** Mechanical energy at the end of the tick. */
   energy: EnergyState;
   /** Joules each force added or removed over the tick. */
@@ -330,6 +339,7 @@ export function createBird(position: Vec3 = vec(0, 60, 0), speed = 14): BirdStat
     angularVelocity: vec(),
     stamina: 1,
     flapPhase: 0,
+    age: 0,
     ending: null,
   };
 }
@@ -480,9 +490,14 @@ export function step(
   p: FlightParams,
   dt: number,
   collider?: Collider,
+  wind: WindField = calm,
 ): FlightTelemetry {
   // Once the flight is over the bird is inert until the caller replaces it.
-  if (state.ending) return telemetryFor(state, p, 0, 0, 0, p.stallAngle, zeroWork());
+  if (state.ending) {
+    return telemetryFor(state, p, 0, 0, 0, p.stallAngle, zeroWork(), vec(0, 0, 0));
+  }
+
+  state.age += dt;
 
   const q = state.orientation;
 
@@ -527,9 +542,15 @@ export function step(
   const gravityForce = vec(0, -p.mass * p.gravity, 0);
   const before = state.velocity;
 
-  const start = forcesAt(before, q, p, wing);
+  // Wings work against the air, not the ground. Everything aerodynamic uses
+  // velocity relative to the local air; gravity and the position update stay
+  // in the world frame.
+  const airVelocity = wind.at(state.position, state.age);
+
+  const start = forcesAt(sub(before, airVelocity), q, p, wing);
   const predicted = add(before, scale(sumForces(start, gravityForce), dt / p.mass));
-  const flow = forcesAt(scale(add(before, predicted), 0.5), q, p, wing);
+  const mean = scale(add(before, predicted), 0.5);
+  const flow = forcesAt(sub(mean, airVelocity), q, p, wing);
 
   const { alpha, beta, cl, cd } = flow;
   const speed = start.speed;
@@ -601,7 +622,7 @@ export function step(
           bank: Math.abs(bankAngle(state)),
           position: hit.point,
         };
-        return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work);
+        return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work, airVelocity);
       }
 
       // Survivable scrape: stop at the surface and slide along it.
@@ -630,10 +651,10 @@ export function step(
     work.collision -= kinetic(state.velocity, p);
     state.velocity = vec(0, 0, 0);
     state.angularVelocity = vec(0, 0, 0);
-    return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work);
+    return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work, airVelocity);
   }
 
-  return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work);
+  return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work, airVelocity);
 }
 
 export function landingReadiness(state: BirdState, p: FlightParams): LandingReadiness {
@@ -682,15 +703,22 @@ function telemetryFor(
   cd: number,
   stallAngle: number,
   work: WorkLedger,
+  wind: Vec3,
 ): FlightTelemetry {
+  const through = sub(state.velocity, wind);
+  const airspeed = length(through);
   return {
-    airspeed: length(state.velocity),
+    airspeed,
     altitude: state.position.y - p.groundHeight,
     angleOfAttack: alpha,
     liftCoefficient: cl,
     dragCoefficient: cd,
     climbRate: state.velocity.y,
     stalled: Math.abs(alpha) > stallAngle,
+    groundSpeed: length(state.velocity),
+    wind,
+    // Positive when the air is pushing back along the direction of travel.
+    headwind: airspeed > 1e-6 ? -dot(wind, scale(through, 1 / airspeed)) : 0,
     energy: birdEnergy(state, p),
     work,
   };

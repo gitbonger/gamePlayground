@@ -61,7 +61,7 @@ checks live, so you can see which one is still red.
 
 ```
 src/
-  sim/         flight model, 3D math, collision — pure, no renderer imports
+  sim/         flight model, 3D math, collision, wind — pure, no renderer imports
   render/      scene, bird rig, chase camera, HUD, game-over panel
   world/       layout.ts generates the city as data; city.ts turns it into meshes
   input.ts     keyboard to control axes
@@ -103,6 +103,57 @@ flapping before stamina runs out.
 Everything in `FlightParams` and `CameraParams` is bound to the on-screen panel.
 Tuning live is the intended workflow — the committed defaults are a starting
 point, not an answer.
+
+## Wind
+
+Pigeons almost never coast in a straight line. `src/sim/wind.ts` is why this
+one doesn't either.
+
+There is **no stored wind map**. The field is a pure function of position and
+time, so only the air the bird is actually flying through ever gets computed.
+Two layers:
+
+- **A mean that strengthens with height**, on the power law used for
+  atmospheric boundary layers. Friction drags the lowest air to a near
+  standstill and the `shear` exponent says how quickly it recovers — about 0.3
+  over rooftops. At the defaults that is 0 m/s at ground level, 2.0 at 10 m,
+  4.0 at 100 m, 5.3 at 250 m.
+- **Gusts on top**, as smooth spatial noise that also churns in place, scaled
+  by the local mean so the air is rougher where it is faster.
+
+**Faster across the map means rougher air, and nothing in the model tracks
+ground speed to achieve it.** Because the gusts vary with *position*, covering
+ground quickly means running through them quickly. Measured as the rate the
+wind vector changes under the bird:
+
+| Ground speed | Air changes at |
+| --- | --- |
+| 0 m/s (holding station) | 0.32 m/s per second |
+| 11 m/s (cruise) | 0.64 |
+| 20 m/s | 1.08 |
+| 50 m/s (dive) | 2.60 |
+
+Getting that monotonic took two goes. The first field had every octave drifting
+the same way, so at about 30 m/s the bird surfed along with the pattern and the
+gusts went eerily still — churn *fell* from 0.67 to 0.06. The octaves now point
+every which way with mixed-sign rates, and a test sweeps ground speeds from 2
+to 60 m/s to make sure no such blind spot comes back.
+
+Wings work against the air, not the ground, so every aerodynamic force now uses
+velocity **relative to the local air**, while gravity and the position update
+stay in the world frame. That splits airspeed from ground speed — both are on
+the HUD, along with the local wind and whether it is head, tail or cross.
+
+One consequence worth knowing: **in wind, drag can add energy to the bird.**
+Drag is only guaranteed dissipative in the air's own frame; measured against
+the ground, a tailwind gust hands you energy. That is real, and the ledger
+still balances to floating point because the work is booked where it happens.
+
+Landing barely notices: the best technique goes from 67% to 61% across the
+open-loop grid. Set `mean at 100 m` to 0 in the `wind` folder for dead calm.
+
+The asymmetric beating pigeons use to hold a line against a crosswind is not
+modelled.
 
 ## Energy
 
@@ -374,7 +425,7 @@ edge does not read as hitting a wall.
 npm test
 ```
 
-117 tests across four files:
+129 tests across five files:
 
 - **`src/sim/flight.test.ts`** — the shape of the lift curve, glide ratio and
   sink rate staying in a plausible band, flapping climbing and draining stamina,
@@ -419,6 +470,14 @@ npm test
   the rules: lift does under 1% of drag's work, drag and the keel never add
   energy, a collision never leaves the bird with more than it had, and *nothing
   but flapping* can raise total energy for any control input.
+
+- **`src/sim/wind.test.ts`** — the profile is still at ground level and
+  strengthens with height, gusts scale with the mean, the air roughens
+  monotonically with ground speed, no ground speed between 2 and 60 m/s makes
+  it go quiet, a coast drifts off a straight line while a calm one does not,
+  airspeed separates from ground speed, calm air reproduces the old flight
+  model bit for bit, and the energy books balance even though moving air can do
+  work on the bird.
 
 Because the city layout is plain data with no Three.js in it, the layout file
 tests the real world the player flies through, in Node, with no WebGL.

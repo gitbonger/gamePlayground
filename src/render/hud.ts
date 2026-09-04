@@ -22,6 +22,7 @@ export function createHud(container: HTMLElement): Hud {
       <div class="readout"><span class="label">altitude</span><span data-field="altitude">0</span><span class="unit">m</span></div>
       <div class="readout"><span class="label">climb</span><span data-field="climb">0</span><span class="unit">m/s</span></div>
       <div class="readout secondary" title="Height you could reach by trading all your speed for climb"><span class="label">energy</span><span data-field="energy">0</span><span class="unit">m</span></div>
+      <div class="readout secondary" title="Local wind, and how much of it is against you"><span class="label">wind</span><span data-field="wind">0</span><span class="unit">m/s</span><span class="aside" data-field="headwind"></span></div>
     </div>
     <div class="hud-stamina">
       <span class="label">stamina</span>
@@ -45,6 +46,8 @@ export function createHud(container: HTMLElement): Hud {
   const altitudeEl = field('altitude');
   const climbEl = field('climb');
   const energyEl = field('energy');
+  const windEl = field('wind');
+  const headwindEl = field('headwind');
   const staminaEl = field('stamina');
   const warningEl = field('warning');
   const fpsEl = field('fps');
@@ -68,6 +71,14 @@ export function createHud(container: HTMLElement): Hud {
     // Specific energy: altitude plus the height your airspeed is worth. It is
     // what actually says whether you can clear the roofline ahead.
     energyEl.textContent = telemetry.energy.height.toFixed(0);
+
+    // Airspeed already reflects the wind; this says where it is coming from.
+    const strength = Math.hypot(telemetry.wind.x, telemetry.wind.y, telemetry.wind.z);
+    windEl.textContent = strength.toFixed(1);
+    const head = telemetry.headwind;
+    headwindEl.textContent =
+      strength < 0.2 ? 'calm' : head > 0.3 ? 'head' : head < -0.3 ? 'tail' : 'cross';
+    headwindEl.classList.toggle('adverse', head > 0.3);
 
     staminaEl.style.width = `${state.stamina * 100}%`;
     staminaEl.classList.toggle('low', state.stamina < 0.25);

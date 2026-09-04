@@ -8,6 +8,7 @@
 import GUI from 'lil-gui';
 
 import type { FlightParams } from './sim/flight';
+import type { WindParams } from './sim/wind';
 import type { CameraParams } from './render/camera';
 
 export interface DebugGui {
@@ -17,7 +18,8 @@ export interface DebugGui {
 export function createDebugGui(
   flight: FlightParams,
   camera: CameraParams,
-  actions: { respawn(): void },
+  air: WindParams,
+  actions: { respawn(): void; rebuildWind(): void },
 ): DebugGui {
   const gui = new GUI({ title: 'pigeon sim' });
 
@@ -75,6 +77,18 @@ export function createDebugGui(
   landingFolder.add(flight, 'landingSpeed', 2, 40, 0.5).name('max speed (m/s)');
   landingFolder.add(flight, 'landingBank', 0.05, 1.5, 0.01).name('max bank (rad)');
   landingFolder.close();
+
+  // The wind field closes over its parameters, so every change rebuilds it.
+  const windFolder = gui.addFolder('wind');
+  const rebuild = () => actions.rebuildWind();
+  windFolder.add(air, 'speed', 0, 20, 0.5).name('mean at 100 m (0 = calm)').onChange(rebuild);
+  windFolder.add(air, 'shear', 0, 0.8, 0.01).name('height gradient').onChange(rebuild);
+  windFolder.add(air, 'bearing', 0, Math.PI * 2, 0.05).name('bearing (rad)').onChange(rebuild);
+  windFolder.add(air, 'gustiness', 0, 1.5, 0.05).name('gusts (x mean)').onChange(rebuild);
+  windFolder.add(air, 'gustScale', 5, 200, 5).name('gust size (m)').onChange(rebuild);
+  windFolder.add(air, 'gustRate', 0, 2, 0.05).name('gust churn (Hz)').onChange(rebuild);
+  windFolder.add(air, 'verticalGusts', 0, 1, 0.05).name('vertical share').onChange(rebuild);
+  windFolder.close();
 
   const cameraFolder = gui.addFolder('camera');
   cameraFolder.add(camera, 'distance', 1, 20, 0.1);
