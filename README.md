@@ -28,10 +28,12 @@ lift vector pulls you round; the tail keeps the nose following the flight path.
 **Buildings and trees are solid.** Hit one above 7.5 m/s of closing speed and
 the run is over. Slower than that and you scrape to a stop and slide.
 
-**Touching the ground ends the flight, well or badly.** A clean landing needs
-all three of: descending no faster than 4 m/s, no faster than 10 m/s through
-the air, and wings within 20° of level. Meet them and you have landed; miss any
-one and it is a crash that names what went wrong.
+**Touching the ground is the end of the flight, not of the run.** A clean
+landing needs all three of: descending no faster than 4 m/s, no faster than
+10 m/s through the air, and wings within 20° of level. Meet them and the bird
+settles onto its feet, wings folded, facing where it landed — no summary
+screen, because the game is not over. Miss any one and it is a crash, which
+does end the run and does name what went wrong.
 
 The approach is **brake to slow, beat to settle, flare to touch down**.
 Coasting brings you to about 11 m/s; holding `Ctrl` takes that to 5 m/s in two
@@ -383,6 +385,20 @@ The measured effect: across a grid of open-loop approaches, flaring alone lands
 30% of the time, braking *without* the beat only 9% — because spreading the
 wings now genuinely drops you — and braking with the reversed beat 64%.
 
+## Landing, and being perched
+
+`isPerched()` and `hasCrashed()` split what used to be one terminal state. A
+crash raises the end-of-flight panel and the run is over. A landing does not:
+the bird stands there, wings folded and legs down, with the camera settled
+close in on it, and the HUD saying so.
+
+Two small things that make it read as standing rather than stopped. The bird's
+orientation is levelled on touchdown, keeping its heading, because a bird that
+lands settles onto its feet instead of freezing in its flare. And the rendered
+body is lifted 0.14 m — the simulation tracks a point at the bird's centre and
+stops it at ground level, which would otherwise bury half the model. That
+offset is a rendering concern and lives in the rig, not the flight model.
+
 ## How landing works
 
 `landingReadiness()` in `src/sim/flight.ts` answers one question — could the
@@ -425,7 +441,7 @@ edge does not read as hitting a wall.
 npm test
 ```
 
-129 tests across five files:
+134 tests across five files:
 
 - **`src/sim/flight.test.ts`** — the shape of the lift curve, glide ratio and
   sink rate staying in a plausible band, flapping climbing and draining stamina,
@@ -496,8 +512,10 @@ tests the real world the player flies through, in Node, with no WebGL.
    landed on; a rooftop is still judged by the wall rule, so a gentle touchdown
    on one just slides. The collision layer already reports the surface normal,
    so routing near-horizontal faces through `touchdown()` is most of the work.
-5. **Taking off again.** A landed bird is inert by design for now. Resuming
-   from a standing start needs a ground mode — hopping, a flap-driven launch,
-   and something to stop the aerodynamics from running while perched.
+5. **Taking off again.** A perched bird holds its position and nothing else;
+   `isPerched()` is the hook. Launching wants a leg push, and a first wingbeat
+   from a standstill already carries 11.6 times body weight, so most of the
+   physics is there — what is missing is the transition out of the resting
+   state.
 6. **A crash you can see.** The bird currently freezes at the impact point.
    Tumbling it, or leaving a puff of feathers, would cost little.

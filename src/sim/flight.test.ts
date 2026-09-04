@@ -3,6 +3,9 @@ import {
   bankAngle,
   createBird,
   defaultParams,
+  hasCrashed,
+  heading,
+  isPerched,
   landingReadiness,
   liftCoefficient,
   neutralControls,
@@ -853,5 +856,68 @@ describe('braking wings', () => {
     const braked = fly(2, { brake: true }, {}, createBird(vec(0, 20000, 0), 15.3));
     const coasting = fly(2, {}, {}, createBird(vec(0, 20000, 0), 15.3));
     expect(braked.telemetry.airspeed).toBeLessThan(coasting.telemetry.airspeed - 1);
+  });
+});
+
+describe('perching', () => {
+  /** Fly an approach that ends however `flareAt` and `pitch` dictate. */
+  function land(flareAt: number, pitch: number) {
+    const bird = createBird(vec(0, 80, 0), 15.3);
+    const controls = { ...neutralControls() };
+    for (let t = 0; t < 90; t += DT) {
+      const alt = bird.position.y;
+      controls.brake = alt < 20;
+      controls.flap = alt < 20;
+      controls.pitch = alt < flareAt ? pitch : 0;
+      step(bird, controls, defaultParams, DT);
+      if (bird.ending) break;
+    }
+    return bird;
+  }
+
+  it('treats a clean landing as perched, not as an ending', () => {
+    const bird = land(4, 0.6);
+    expect(bird.ending!.kind).toBe('landed');
+    expect(isPerched(bird)).toBe(true);
+    expect(hasCrashed(bird)).toBe(false);
+  });
+
+  it('treats a crash as the end of the run', () => {
+    const bird = createBird(vec(0, 60, 0), 5);
+    bird.orientation = quatFromAxisAngle(vec(1, 0, 0), -1.2);
+    fly(20, { tuck: true }, {}, bird);
+
+    expect(hasCrashed(bird)).toBe(true);
+    expect(isPerched(bird)).toBe(false);
+  });
+
+  it('settles a landed bird onto its feet, keeping where it was pointing', () => {
+    const bird = land(4, 0.6);
+    const before = heading(bird);
+
+    // Wings level and nose level: a standing bird, not a frozen flare.
+    expect(bankAngle(bird)).toBeCloseTo(0, 6);
+    const forward = rotate(bird.orientation, vec(0, 0, -1));
+    expect(forward.y).toBeCloseTo(0, 6);
+    // And still facing the way it landed.
+    expect(heading(bird)).toBeCloseTo(before, 6);
+  });
+
+  it('leaves a crashed bird in the attitude it hit at', () => {
+    const bird = createBird(vec(0, 60, 0), 5);
+    const attitude = quatFromAxisAngle(vec(1, 0, 0), -1.2);
+    bird.orientation = attitude;
+    fly(20, { tuck: true }, {}, bird);
+
+    expect(hasCrashed(bird)).toBe(true);
+    const forward = rotate(bird.orientation, vec(0, 0, -1));
+    expect(forward.y).toBeLessThan(-0.2);
+  });
+
+  it('stays put once perched', () => {
+    const bird = land(4, 0.6);
+    const resting = { ...bird.position };
+    fly(5, { flap: true, pitch: 1 }, {}, bird);
+    expect(bird.position).toEqual(resting);
   });
 });

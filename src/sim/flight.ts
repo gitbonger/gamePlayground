@@ -23,6 +23,7 @@ import {
   length,
   normalize,
   quat,
+  quatFromAxisAngle,
   rotate,
   rotateInverse,
   scale,
@@ -261,6 +262,13 @@ export type CrashCause =
   /** Touched down with a wing well down. */
   | 'not-level';
 
+/**
+ * How a flight finished.
+ *
+ * Only `crashed` ends the run. A `landed` bird is perched: at rest on the
+ * ground, out of the air but still very much in the game, waiting for a
+ * takeoff that does not exist yet.
+ */
 export interface Ending {
   kind: 'landed' | 'crashed';
   /** Null on a clean landing. */
@@ -651,6 +659,12 @@ export function step(
     work.collision -= kinetic(state.velocity, p);
     state.velocity = vec(0, 0, 0);
     state.angularVelocity = vec(0, 0, 0);
+
+    // A bird that lands settles onto its feet: keep where it was pointing,
+    // drop the flare attitude it arrived in. A crashed one keeps its pose.
+    if (state.ending.kind === 'landed') {
+      state.orientation = quatFromAxisAngle(vec(0, 1, 0), -heading(state));
+    }
     return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work, airVelocity);
   }
 
@@ -730,6 +744,12 @@ const kinetic = (velocity: Vec3, p: FlightParams): number =>
 /** Mechanical energy of the bird, relative to the ground plane. */
 export const birdEnergy = (state: BirdState, p: FlightParams): EnergyState =>
   energyOf(state.velocity, state.position.y - p.groundHeight, p.mass, p.gravity);
+
+/** True while the bird is resting on the ground after a clean landing. */
+export const isPerched = (state: BirdState): boolean => state.ending?.kind === 'landed';
+
+/** True once the flight has ended badly and the run is over. */
+export const hasCrashed = (state: BirdState): boolean => state.ending?.kind === 'crashed';
 
 /** Heading in radians, measured clockwise from north (-Z). */
 export function heading(state: BirdState): number {

@@ -1,6 +1,6 @@
 /** Flight instruments, drawn as plain DOM over the canvas. */
 
-import type { BirdState, FlightTelemetry, LandingReadiness } from '../sim/flight';
+import { isPerched, type BirdState, type FlightTelemetry, type LandingReadiness } from '../sim/flight';
 
 export interface Hud {
   /** `landing` is null when the bird is too high for the approach cue to help. */
@@ -83,8 +83,13 @@ export function createHud(container: HTMLElement): Hud {
     staminaEl.style.width = `${state.stamina * 100}%`;
     staminaEl.classList.toggle('low', state.stamina < 0.25);
 
-    const warning = telemetry.stalled && !state.ending ? 'STALL — push the nose down' : '';
+    const warning = isPerched(state)
+      ? 'perched — press R to fly again'
+      : telemetry.stalled && !state.ending
+        ? 'STALL — push the nose down'
+        : '';
     if (warningEl.textContent !== warning) warningEl.textContent = warning;
+    warningEl.classList.toggle('calm', isPerched(state));
 
     // Approach cue: only useful on the way down, and only while still flying.
     landingEl.hidden = landing === null;

@@ -14,15 +14,28 @@ const BODY = 0x6c7482;
 const WING = 0x59616e;
 const HEAD = 0x7d8593;
 const BEAK = 0xd7a24b;
+const LEG = 0xc8705a;
+
+/**
+ * How far the body sits above the feet when standing, in metres.
+ *
+ * The simulation tracks a point at the bird's centre and stops it at ground
+ * level, which would bury half the model. This is the offset from that point
+ * to where the body actually belongs -- a rendering concern, not a physical
+ * one, so it lives here rather than in the flight model.
+ */
+const STANDING_HEIGHT = 0.14;
 
 /** What the wings are doing, which is most of what the bird reads as. */
-export type WingPose = 'tucked' | 'gliding' | 'braking';
+export type WingPose = 'tucked' | 'gliding' | 'braking' | 'perched';
 
 export interface BirdRig {
   object: THREE.Object3D;
   update(state: BirdState, pose: WingPose, dt: number): void;
   dispose(): void;
 }
+
+const mix = (from: number, to: number, t: number): number => from + (to - from) * t;
 
 export function createBirdRig(): BirdRig {
   const disposables: { dispose(): void }[] = [];
@@ -76,12 +89,36 @@ export function createBirdRig(): BirdRig {
   const leftWing = makeWing(-1);
   const rightWing = makeWing(1);
 
-  // Smoothed wing pose on one axis: -1 folded, 0 gliding, +1 braking. One
-  // number keeps the three poses from fighting each other mid-transition.
+  // Legs, folded away in flight and put down to stand on.
+  const legGeometry = geometry(new THREE.BoxGeometry(0.012, 0.09, 0.012));
+  const legMaterial = material(LEG);
+  const makeLeg = (side: 1 | -1) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(side * 0.025, -0.05, 0.01);
+    const mesh = new THREE.Mesh(legGeometry, legMaterial);
+    mesh.position.set(0, -0.045, 0);
+    mesh.castShadow = true;
+    pivot.add(mesh);
+    object.add(pivot);
+    return pivot;
+  };
+  const leftLeg = makeLeg(-1);
+  const rightLeg = makeLeg(1);
+
+  // Smoothed wing pose on one axis: -1 folded, 0 gliding, +1 braking.
   let pose = 0;
+  // Separate axis for standing, which is about the whole body, not the wings.
+  let stand = 0;
 
   function update(state: BirdState, wings: WingPose, dt: number) {
-    object.position.set(state.position.x, state.position.y, state.position.z);
+    const standing = wings === 'perched';
+    stand += ((standing ? 1 : 0) - stand) * Math.min(1, dt * 7);
+
+    object.position.set(
+      state.position.x,
+      state.position.y + STANDING_HEIGHT * stand,
+      state.position.z,
+    );
     object.quaternion.set(
       state.orientation.x,
       state.orientation.y,
@@ -89,6 +126,8 @@ export function createBirdRig(): BirdRig {
       state.orientation.w,
     );
 
+    // Flying pose first, on one axis: -1 folded, 0 gliding, +1 braking. One
+    // number keeps the three from fighting each other mid-transition.
     const target = wings === 'tucked' ? -1 : wings === 'braking' ? 1 : 0;
     pose += (target - pose) * Math.min(1, dt * 9);
 
@@ -98,31 +137,41 @@ export function createBirdRig(): BirdRig {
 
     // One wingbeat per flapPhase cycle: down on the first half, up on the second.
     const beat = Math.sin(state.flapPhase * Math.PI * 2);
-    const flapAngle = beat * spread;
 
     // Folded wings sweep back and tuck down against the body; braking wings
     // throw forward and cup upward, presenting themselves to the airflow.
-    const sweep = brake * 0.9 - fold * 1.3;
-    const cup = brake * 0.8 - fold * 0.65;
+    // A little dihedral while gliding reads as a bird rather than a plank.
+    let flapAngle = beat * spread;
+    let sweep = brake * 0.9 - fold * 1.3;
+    let cup = brake * 0.8 - fold * 0.65 - 0.12 * spread;
+    let stretch = 1 + brake * 0.25;
+    let tailPitch = -0.15 * spread - brake;
+    let tailWidth = 1 + brake * 0.7;
+
+    // Then blend the whole thing toward standing, which is not a wing pose at
+    // all: everything folds away and comes to rest.
+    flapAngle = mix(flapAngle, 0, stand);
+    sweep = mix(sweep, -1.45, stand);
+    cup = mix(cup, 0.06, stand);
+    stretch = mix(stretch, 0.68, stand);
+    tailPitch = mix(tailPitch, 0.34, stand);
+    tailWidth = mix(tailWidth, 0.85, stand);
 
     leftWing.rotation.z = -flapAngle + cup;
     rightWing.rotation.z = flapAngle - cup;
     leftWing.rotation.y = sweep;
     rightWing.rotation.y = -sweep;
-
-    // A little dihedral while gliding reads as a bird rather than a plank.
-    const dihedral = 0.12 * spread;
-    leftWing.rotation.z -= dihedral;
-    rightWing.rotation.z += dihedral;
-
-    // Spread wings reach further out when braking.
-    const stretch = 1 + brake * 0.25;
     leftWing.scale.setScalar(stretch);
     rightWing.scale.setScalar(stretch);
 
-    // The tail fans wide and drops as an airbrake of its own.
-    tail.rotation.x = -0.15 * spread - brake * 1;
-    tail.scale.set(1 + brake * 0.7, 1, 1 + brake * 0.4);
+    tail.rotation.x = tailPitch;
+    tail.scale.set(tailWidth, 1, 1 + brake * 0.4);
+
+    // Legs swing down to stand and tuck back up in flight.
+    leftLeg.rotation.x = (1 - stand) * 1.5;
+    rightLeg.rotation.x = (1 - stand) * 1.5;
+    leftLeg.visible = stand > 0.02;
+    rightLeg.visible = stand > 0.02;
   }
 
   return {

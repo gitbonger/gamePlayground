@@ -7,6 +7,8 @@ import * as THREE from 'three';
 import {
   createBird,
   defaultParams,
+  hasCrashed,
+  isPerched,
   landingReadiness,
   step,
   type BirdState,
@@ -126,7 +128,9 @@ function frame(nowMs: number) {
     accumulator -= TICK;
   }
 
-  if (wasFlying && bird.ending) outcome.show(bird.ending, run.stats);
+  // Only a crash ends the run. A clean landing leaves the bird perched, which
+  // is a place to watch it from rather than a screen to dismiss.
+  if (wasFlying && hasCrashed(bird)) outcome.show(bird.ending!, run.stats);
 
   // Blend between the last two ticks so motion is smooth at any refresh rate.
   const alpha = accumulator / TICK;
@@ -137,23 +141,40 @@ function frame(nowMs: number) {
   interpolatedState.stamina = bird.stamina;
   interpolatedState.ending = bird.ending;
 
-  const wings: WingPose = input.controls.brake
-    ? 'braking'
-    : input.controls.tuck
-      ? 'tucked'
-      : 'gliding';
+  const wings: WingPose = isPerched(bird)
+    ? 'perched'
+    : input.controls.brake
+      ? 'braking'
+      : input.controls.tuck
+        ? 'tucked'
+        : 'gliding';
   rig.update(interpolatedState, wings, frameTime);
 
-  // Pull back and level off once the bird is down, so the spot is legible.
+  // Once the bird is down the camera settles: further back and levelled off
+  // for a crash, closer and lower for a perch, where the bird is the subject.
   const activeCamera = bird.ending ? restCameraParams : cameraParams;
   if (bird.ending) {
-    Object.assign(restCameraParams, cameraParams, {
-      distance: cameraParams.distance + 5,
-      height: cameraParams.height + 2.5,
-      lookAhead: 0,
-      rollFollow: 0,
-      positionHalfLife: 0.5,
-    });
+    Object.assign(
+      restCameraParams,
+      cameraParams,
+      isPerched(bird)
+        ? {
+            distance: 1.4,
+            height: 0.35,
+            lookAhead: 0.3,
+            rollFollow: 0,
+            positionHalfLife: 0.7,
+            baseFov: 55,
+            fovGain: 0,
+          }
+        : {
+            distance: cameraParams.distance + 5,
+            height: cameraParams.height + 2.5,
+            lookAhead: 0,
+            rollFollow: 0,
+            positionHalfLife: 0.5,
+          },
+    );
   }
   chase.update(interpolatedState, activeCamera, frameTime);
 
