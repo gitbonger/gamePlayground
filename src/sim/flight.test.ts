@@ -405,7 +405,9 @@ describe('braking', () => {
       return telemetry;
     };
 
-    expect(at(false).angleOfAttack).toBeCloseTo(alpha, 4);
+    // Telemetry reports the flow at the midpoint of the tick, not at its
+    // start, so this lands near the commanded angle rather than exactly on it.
+    expect(at(false).angleOfAttack).toBeCloseTo(alpha, 2);
     expect(at(false).stalled).toBe(true);
     expect(at(true).stalled).toBe(false);
     // And the extra margin buys real lift, not just a relabelled verdict.

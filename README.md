@@ -100,6 +100,57 @@ Everything in `FlightParams` and `CameraParams` is bound to the on-screen panel.
 Tuning live is the intended workflow — the committed defaults are a starting
 point, not an answer.
 
+## Energy
+
+The simulation is Newtonian, so it conserves energy for free — but only if
+every force is honest. `src/sim/energy.ts` audits that rather than assuming it.
+Each tick, `FlightTelemetry.work` reports the joules every force moved:
+
+| Term | Sign | Meaning |
+| --- | --- | --- |
+| `flap` | ± | The only source of energy. Negative when braking, because beating backwards against your own motion is a brake, not a motor |
+| `lift` | ≈ 0 | Lift acts perpendicular to the airflow, so it must do no work |
+| `drag` | ≤ 0 | Dissipation |
+| `keel` | ≤ 0 | Sideslip resistance |
+| `collision` | — | Kinetic energy absorbed by a surface, plus the potential energy of being pushed clear of one |
+| `integration` | ± | Not physics: the fixed-step integrator's own artefact, named rather than hidden in a tolerance |
+
+**The ledger balances exactly, not approximately.** With semi-implicit Euler the
+change in kinetic energy is *identically* the work done at the mean velocity:
+
+```
+dKE = ½m(|v₁|² − |v₀|²) = F · (v₀ + v₁)/2 · dt
+```
+
+Potential energy moves with the end velocity instead, because that is what the
+position update uses, and the difference is exactly `m·g·dt·(v₁.y − v₀.y)/2`.
+Reporting that as its own term means everything else has to add up to
+floating-point rounding — about 4 × 10⁻¹² J on a few hundred joules. Any force
+that quietly creates energy shows up immediately, which is the point: that kind
+of bug reads as "the flight feel is off" rather than as an obvious error.
+
+Two things the audit caught when it was first switched on:
+
+- **Positional corrections leaked energy.** Clamping to the ground plane, or
+  rolling back to a contact point, moves the bird vertically and so changes its
+  potential energy. That is work done by the contact and is now booked as such.
+- **Lift was creating energy in hard turns** — about 13 J over a 20 second
+  manoeuvre, always positive. Lift is perpendicular to the airflow at the
+  *start* of a tick, but the velocity rotates during that tick, so holding the
+  direction fixed leaves a small component along the flight path. Forces are
+  now evaluated at the tick midpoint (predict, then re-evaluate), which cuts
+  that by a factor of 26 and flips the residual negative, so it can no longer
+  spuriously accelerate the bird. The flight envelope did not move: glide,
+  brake, climb curve and landing rates are all unchanged.
+
+The HUD shows **energy height** — altitude plus the height your airspeed is
+worth, `h + v²/2g`. Pilots call it specific energy, and it is the number that
+actually answers whether you can clear the roofline ahead.
+
+Stamina is still a clock rather than a fuel gauge: it drains per second of
+flapping, not per joule delivered. Tying it to `work.flap` would be the honest
+next step.
+
 ## How coasting works
 
 A pigeon is a powered flier, not a soarer. Stop beating and it should slow down
@@ -226,7 +277,7 @@ edge does not read as hitting a wall.
 npm test
 ```
 
-78 tests across three files:
+104 tests across four files:
 
 - **`src/sim/flight.test.ts`** — the shape of the lift curve, glide ratio and
   sink rate staying in a plausible band, flapping climbing and draining stamina,
@@ -259,7 +310,14 @@ npm test
   box, passes clean overhead when high enough, and that the broad phase stays
   fast.
 
-Because the city layout is plain data with no Three.js in it, that last file
+- **`src/sim/energy.test.ts`** — audits the energy books on every tick of ten
+  scenarios (including inverted, sideways and a deliberately violent entry),
+  through crashes and landings, and at four different timesteps. Then it pins
+  the rules: lift does under 1% of drag's work, drag and the keel never add
+  energy, a collision never leaves the bird with more than it had, and *nothing
+  but flapping* can raise total energy for any control input.
+
+Because the city layout is plain data with no Three.js in it, the layout file
 tests the real world the player flies through, in Node, with no WebGL.
 
 ## Where this goes next

@@ -21,6 +21,7 @@ export function createHud(container: HTMLElement): Hud {
       <div class="readout"><span class="label">airspeed</span><span data-field="speed">0</span><span class="unit">km/h</span></div>
       <div class="readout"><span class="label">altitude</span><span data-field="altitude">0</span><span class="unit">m</span></div>
       <div class="readout"><span class="label">climb</span><span data-field="climb">0</span><span class="unit">m/s</span></div>
+      <div class="readout secondary" title="Height you could reach by trading all your speed for climb"><span class="label">energy</span><span data-field="energy">0</span><span class="unit">m</span></div>
     </div>
     <div class="hud-stamina">
       <span class="label">stamina</span>
@@ -43,6 +44,7 @@ export function createHud(container: HTMLElement): Hud {
   const speedEl = field('speed');
   const altitudeEl = field('altitude');
   const climbEl = field('climb');
+  const energyEl = field('energy');
   const staminaEl = field('stamina');
   const warningEl = field('warning');
   const fpsEl = field('fps');
@@ -62,6 +64,10 @@ export function createHud(container: HTMLElement): Hud {
     altitudeEl.textContent = telemetry.altitude.toFixed(0);
     climbEl.textContent = telemetry.climbRate.toFixed(1);
     climbEl.classList.toggle('positive', telemetry.climbRate > 0.2);
+
+    // Specific energy: altitude plus the height your airspeed is worth. It is
+    // what actually says whether you can clear the roofline ahead.
+    energyEl.textContent = telemetry.energy.height.toFixed(0);
 
     staminaEl.style.width = `${state.stamina * 100}%`;
     staminaEl.classList.toggle('low', state.stamina < 0.25);

@@ -11,6 +11,7 @@
 
 import type { Collider } from './collision';
 import { closingSpeed } from './collision';
+import { energyOf, workDone, zeroWork, type EnergyState, type WorkLedger } from './energy';
 import {
   add,
   clamp,
@@ -298,6 +299,10 @@ export interface FlightTelemetry {
   dragCoefficient: number;
   climbRate: number;
   stalled: boolean;
+  /** Mechanical energy at the end of the tick. */
+  energy: EnergyState;
+  /** Joules each force added or removed over the tick. */
+  work: WorkLedger;
 }
 
 export function createBird(position: Vec3 = vec(0, 60, 0), speed = 14): BirdState {
@@ -345,6 +350,106 @@ export function dragCoefficient(alpha: number, cl: number, p: FlightParams): num
  * Mutates and returns `state` -- the loop runs this at a fixed rate and
  * allocating a fresh state per tick would be wasted garbage.
  */
+/** Everything about the wings that does not depend on how fast the air moves. */
+interface WingSetup {
+  area: number;
+  liftFactor: number;
+  dragFactor: number;
+  stallAngle: number;
+  braking: boolean;
+  flapPower: number;
+}
+
+/** Velocity-dependent forces and the flow angles they came from. */
+interface Airflow {
+  speed: number;
+  alpha: number;
+  beta: number;
+  cl: number;
+  cd: number;
+  lift: Vec3;
+  drag: Vec3;
+  keel: Vec3;
+  flap: Vec3;
+}
+
+/**
+ * Aerodynamic and wingbeat forces for a given velocity through the air.
+ *
+ * Pure in the velocity, so `step` can evaluate it twice and use the midpoint.
+ * That matters for more than accuracy: lift is perpendicular to the airflow
+ * and must therefore do no work, and holding a start-of-tick lift direction
+ * across the whole tick quietly breaks that in hard turns.
+ */
+function forcesAt(velocity: Vec3, q: Quat, p: FlightParams, wing: WingSetup): Airflow {
+  const speed = length(velocity);
+  const vBody = rotateInverse(q, velocity);
+
+  // Angle of attack is positive when the nose sits above the flight path.
+  const alpha = speed > 0.1 ? Math.atan2(-vBody.y, Math.abs(-vBody.z) + 1e-6) : 0;
+  // Sideslip, normalised: positive when sliding right.
+  const beta = speed > 0.1 ? vBody.x / speed : 0;
+
+  const cl = liftCoefficient(alpha, p, wing.stallAngle) * wing.liftFactor;
+  const cd = dragCoefficient(alpha, cl, p) * wing.dragFactor;
+
+  const dynamicPressure = 0.5 * p.airDensity * speed * speed;
+  const rightWorld = rotate(q, vec(1, 0, 0));
+
+  let lift = vec(0, 0, 0);
+  let drag = vec(0, 0, 0);
+  let keel = vec(0, 0, 0);
+
+  if (speed > 0.05) {
+    const vHat = normalize(velocity);
+    // Lift acts perpendicular to the airflow in the plane of symmetry, so a
+    // banked wing tilts its lift sideways and the bird carves a turn.
+    const liftDir = normalize(cross(rightWorld, vHat));
+
+    lift = scale(liftDir, dynamicPressure * wing.area * cl);
+    drag = scale(vHat, -dynamicPressure * wing.area * cd);
+    // The body and tail resist sideways slip.
+    keel = scale(rightWorld, -dynamicPressure * wing.area * p.keelDrag * beta);
+  }
+
+  let flap = vec(0, 0, 0);
+  if (wing.flapPower > 0) {
+    // The stroke plane rotates with airspeed: near-vertical force when slow,
+    // forward thrust at cruise. This is what lets a slow bird claw its way
+    // back up instead of mushing into the ground.
+    const strokeBlend = clamp(speed / p.flapStrokeSpeed, 0, 1);
+    const strokeAngle = p.flapAngleSlow + (p.flapAngle - p.flapAngleSlow) * strokeBlend;
+    // Squared falloff, so this stays a genuinely low-speed effect and leaves
+    // cruising flight as it was.
+    const strokeBoost = 1 + (p.flapSlowBoost - 1) * (1 - strokeBlend) ** 2;
+
+    // Braking reverses the stroke: the bird beats forward and down, which
+    // pushes it backwards while still holding it up -- a pigeon back-pedalling
+    // onto a ledge.
+    const thrustBody = wing.braking
+      ? vec(0, Math.sin(p.brakeFlapAngle), Math.cos(p.brakeFlapAngle))
+      : vec(0, Math.sin(strokeAngle), -Math.cos(strokeAngle));
+
+    // A slow bird holds its stroke plane level and hangs its body beneath it,
+    // so the beat still pushes at the sky even from a nose-down attitude.
+    const upright = p.flapUpright * (1 - strokeBlend);
+    const bodyDirection = rotate(q, thrustBody);
+    // Blending two nearly opposite unit vectors can land on zero, which would
+    // silently drop the beat entirely; fall back to the body stroke there.
+    const blended = lerp(bodyDirection, vec(0, 1, 0), upright);
+    const direction = length(blended) > 1e-4 ? normalize(blended) : bodyDirection;
+
+    const magnitude =
+      p.flapThrust * wing.flapPower * strokeBoost * (wing.braking ? p.brakeFlapReverse : 1);
+    flap = scale(direction, magnitude);
+  }
+
+  return { speed, alpha, beta, cl, cd, lift, drag, keel, flap };
+}
+
+const sumForces = (a: Airflow, gravity: Vec3): Vec3 =>
+  add(add(gravity, a.lift), add(a.drag, add(a.keel, a.flap)));
+
 export function step(
   state: BirdState,
   controls: Controls,
@@ -353,57 +458,16 @@ export function step(
   collider?: Collider,
 ): FlightTelemetry {
   // Once the flight is over the bird is inert until the caller replaces it.
-  if (state.ending) return telemetryFor(state, p, 0, 0, 0, p.stallAngle);
+  if (state.ending) return telemetryFor(state, p, 0, 0, 0, p.stallAngle, zeroWork());
 
   const q = state.orientation;
 
-  // --- Body frame airflow -------------------------------------------------
-  const speed = length(state.velocity);
-  const vBody = rotateInverse(q, state.velocity);
-  const forwardSpeed = -vBody.z;
-
-  // Angle of attack is positive when the nose sits above the flight path.
-  const alpha = speed > 0.1 ? Math.atan2(-vBody.y, Math.abs(forwardSpeed) + 1e-6) : 0;
-  // Sideslip, normalised: positive when sliding right.
-  const beta = speed > 0.1 ? vBody.x / speed : 0;
-
-  // --- Wing configuration -------------------------------------------------
-  // Braking wins over tucking: they are opposites, and a player holding both
-  // is trying to slow down.
+  // --- Wingbeat -----------------------------------------------------------
+  // Advanced before the forces, because the phase and stamina are state rather
+  // than functions of velocity, and must not be stepped twice below.
   const braking = controls.brake;
   const tucked = controls.tuck && !braking;
 
-  const areaFactor = braking ? p.brakeAreaFactor : tucked ? p.tuckAreaFactor : 1;
-  const dragFactor = braking ? p.brakeDragFactor : tucked ? p.tuckDragFactor : 1;
-  const stallAngle = p.stallAngle + (braking ? p.brakeStallBonus : 0);
-
-  const area = p.wingArea * areaFactor;
-  // Folded wings shed lift out of all proportion to the area they give up:
-  // what is left is mostly body, which is a poor wing.
-  const liftFactor = tucked ? p.tuckAreaFactor : 1;
-  const cl = liftCoefficient(alpha, p, stallAngle) * liftFactor;
-  const cd = dragCoefficient(alpha, cl, p) * dragFactor;
-
-  const dynamicPressure = 0.5 * p.airDensity * speed * speed;
-
-  // --- Aerodynamic forces, in world space ---------------------------------
-  let force = vec(0, -p.mass * p.gravity, 0);
-
-  if (speed > 0.05) {
-    const vHat = normalize(state.velocity);
-    const rightWorld = rotate(q, vec(1, 0, 0));
-    // Lift acts perpendicular to the airflow in the plane of symmetry, so a
-    // banked wing tilts its lift sideways and the bird carves a turn.
-    const liftDir = normalize(cross(rightWorld, vHat));
-
-    force = add(force, scale(liftDir, dynamicPressure * area * cl));
-    force = add(force, scale(vHat, -dynamicPressure * area * cd));
-
-    // The body and tail resist sideways slip.
-    force = add(force, scale(rightWorld, -dynamicPressure * area * p.keelDrag * beta));
-  }
-
-  // --- Wingbeat -----------------------------------------------------------
   let flapPower = 0;
   if (controls.flap && !tucked && state.stamina > 0) {
     state.flapPhase = (state.flapPhase + p.flapFrequency * dt) % 1;
@@ -418,32 +482,30 @@ export function step(
     state.stamina = clamp(state.stamina + p.staminaRecovery * dt, 0, 1);
   }
 
-  if (flapPower > 0) {
-    // The stroke plane rotates with airspeed: near-vertical force when slow,
-    // forward thrust at cruise. This is what lets a slow bird claw its way
-    // back up instead of mushing into the ground.
-    const strokeBlend = clamp(speed / p.flapStrokeSpeed, 0, 1);
-    const strokeAngle = p.flapAngleSlow + (p.flapAngle - p.flapAngleSlow) * strokeBlend;
-    // Squared falloff, so this stays a genuinely low-speed effect and leaves
-    // cruising flight as it was.
-    const strokeBoost = 1 + (p.flapSlowBoost - 1) * (1 - strokeBlend) ** 2;
+  // --- Wing configuration -------------------------------------------------
+  // Braking wins over tucking: they are opposites, and a player holding both
+  // is trying to slow down.
+  const wing: WingSetup = {
+    area: p.wingArea * (braking ? p.brakeAreaFactor : tucked ? p.tuckAreaFactor : 1),
+    // Folded wings shed lift out of all proportion to the area they give up:
+    // what is left is mostly body, which is a poor wing.
+    liftFactor: tucked ? p.tuckAreaFactor : 1,
+    dragFactor: braking ? p.brakeDragFactor : tucked ? p.tuckDragFactor : 1,
+    stallAngle: p.stallAngle + (braking ? p.brakeStallBonus : 0),
+    braking,
+    flapPower,
+  };
 
-    // Braking reverses the stroke: the bird beats forward and down, which
-    // pushes it backwards while still holding it up -- a pigeon back-pedalling
-    // onto a ledge.
-    const thrustBody = braking
-      ? vec(0, Math.sin(p.brakeFlapAngle), Math.cos(p.brakeFlapAngle))
-      : vec(0, Math.sin(strokeAngle), -Math.cos(strokeAngle));
+  // --- Forces, evaluated at the midpoint of the tick -----------------------
+  const gravityForce = vec(0, -p.mass * p.gravity, 0);
+  const before = state.velocity;
 
-    // A slow bird holds its stroke plane level and hangs its body beneath it,
-    // so the beat still pushes at the sky even from a nose-down attitude.
-    const upright = p.flapUpright * (1 - strokeBlend);
-    const direction = normalize(lerp(rotate(q, thrustBody), vec(0, 1, 0), upright));
+  const start = forcesAt(before, q, p, wing);
+  const predicted = add(before, scale(sumForces(start, gravityForce), dt / p.mass));
+  const flow = forcesAt(scale(add(before, predicted), 0.5), q, p, wing);
 
-    const magnitude =
-      p.flapThrust * flapPower * strokeBoost * (braking ? p.brakeFlapReverse : 1);
-    force = add(force, scale(direction, magnitude));
-  }
+  const { alpha, beta, cl, cd } = flow;
+  const speed = start.speed;
 
   // --- Rotation -----------------------------------------------------------
   // Control authority fades as the air gets thin over the wings, so a stalled
@@ -469,8 +531,21 @@ export function step(
   // --- Integrate ----------------------------------------------------------
   // Semi-implicit Euler: velocity first, then position, which stays stable at
   // the tick rates we care about.
-  const acceleration = scale(force, 1 / p.mass);
-  state.velocity = add(state.velocity, scale(acceleration, dt));
+  const acceleration = scale(sumForces(flow, gravityForce), 1 / p.mass);
+  state.velocity = add(before, scale(acceleration, dt));
+
+  // --- Energy ledger ------------------------------------------------------
+  // Work at the mean velocity, which for this integrator is exactly the change
+  // in kinetic energy -- so the books balance to floating-point, not to a
+  // tolerance. The leftover term is the integrator's own O(dt^2) artefact,
+  // named rather than absorbed.
+  const meanVelocity = scale(add(before, state.velocity), 0.5);
+  const work = zeroWork();
+  work.flap = workDone(flow.flap, meanVelocity, dt);
+  work.lift = workDone(flow.lift, meanVelocity, dt);
+  work.drag = workDone(flow.drag, meanVelocity, dt);
+  work.keel = workDone(flow.keel, meanVelocity, dt);
+  work.integration = (p.mass * p.gravity * dt * (state.velocity.y - before.y)) / 2;
 
   const from = state.position;
   const to = add(from, scale(state.velocity, dt));
@@ -483,7 +558,12 @@ export function step(
     if (hit) {
       const impact = closingSpeed(state.velocity, hit.normal);
       if (impact >= p.crashSpeed) {
+        // Rolling the bird back to the contact point moves it vertically, so
+        // that potential energy has to be accounted for here too -- this
+        // branch returns before the shared accounting below.
+        work.collision = p.mass * p.gravity * (hit.point.y - to.y);
         state.position = hit.point;
+        work.collision -= kinetic(state.velocity, p);
         state.velocity = vec(0, 0, 0);
         state.angularVelocity = vec(0, 0, 0);
         state.ending = {
@@ -494,12 +574,14 @@ export function step(
           bank: Math.abs(bankAngle(state)),
           position: hit.point,
         };
-        return telemetryFor(state, p, alpha, cl, cd, stallAngle);
+        return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work);
       }
 
       // Survivable scrape: stop at the surface and slide along it.
       state.position = add(hit.point, scale(hit.normal, 1e-3));
+      const beforeScrape = kinetic(state.velocity, p);
       state.velocity = sub(state.velocity, scale(hit.normal, dot(state.velocity, hit.normal)));
+      work.collision = kinetic(state.velocity, p) - beforeScrape;
     } else {
       state.position = to;
     }
@@ -507,17 +589,24 @@ export function step(
     state.position = to;
   }
 
+  // Any positional correction above moved the bird vertically, which changes
+  // its potential energy. That is work done by the contact, not a leak.
+  work.collision += p.mass * p.gravity * (state.position.y - to.y);
+
   // --- Ground -------------------------------------------------------------
   // Touching down always ends the flight; the only question is how well.
   if (state.position.y <= p.groundHeight) {
+    const settled = state.position.y;
     state.position = vec(state.position.x, p.groundHeight, state.position.z);
     state.ending = touchdown(state, p);
+    work.collision += p.mass * p.gravity * (state.position.y - settled);
+    work.collision -= kinetic(state.velocity, p);
     state.velocity = vec(0, 0, 0);
     state.angularVelocity = vec(0, 0, 0);
-    return telemetryFor(state, p, alpha, cl, cd, stallAngle);
+    return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work);
   }
 
-  return telemetryFor(state, p, alpha, cl, cd, stallAngle);
+  return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work);
 }
 
 export function landingReadiness(state: BirdState, p: FlightParams): LandingReadiness {
@@ -565,6 +654,7 @@ function telemetryFor(
   cl: number,
   cd: number,
   stallAngle: number,
+  work: WorkLedger,
 ): FlightTelemetry {
   return {
     airspeed: length(state.velocity),
@@ -574,8 +664,17 @@ function telemetryFor(
     dragCoefficient: cd,
     climbRate: state.velocity.y,
     stalled: Math.abs(alpha) > stallAngle,
+    energy: birdEnergy(state, p),
+    work,
   };
 }
+
+const kinetic = (velocity: Vec3, p: FlightParams): number =>
+  0.5 * p.mass * dot(velocity, velocity);
+
+/** Mechanical energy of the bird, relative to the ground plane. */
+export const birdEnergy = (state: BirdState, p: FlightParams): EnergyState =>
+  energyOf(state.velocity, state.position.y - p.groundHeight, p.mass, p.gravity);
 
 /** Heading in radians, measured clockwise from north (-Z). */
 export function heading(state: BirdState): number {

@@ -78,10 +78,16 @@ body {
   color: #7fe0a8;
 }
 
+/* Energy height is context for the numbers above it, not a headline. */
+.readout.secondary {
+  font-size: 15px;
+  opacity: 0.72;
+}
+
 .hud-stamina {
   position: absolute;
   left: 20px;
-  bottom: 132px;
+  bottom: 172px;
   width: 210px;
 }
 
