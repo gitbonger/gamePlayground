@@ -27,6 +27,8 @@ export interface World {
 }
 
 const BUILDING_COLORS = [0x8d8477, 0x9c9284, 0x7a7167, 0xa8a091, 0x6f675e, 0xb0a596];
+/** The building being homed in on, picked out to be findable from a distance. */
+const TARGET_COLOR = 0xc0392b;
 
 export function buildWorld(layout: CityLayout = generateCityLayout()): World {
   const group = new THREE.Group();
@@ -66,7 +68,23 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
   const scale = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
 
+  // The landmark is one building among thousands, so it gets its own mesh
+  // rather than a seventh instanced bucket holding a single entry.
+  const landmark = layout.buildings.find((building) => building.isTarget);
+  if (landmark) {
+    const material = new THREE.MeshLambertMaterial({ color: TARGET_COLOR });
+    disposables.push(material);
+    const mesh = new THREE.Mesh(boxGeometry, material);
+    mesh.position.set(landmark.x, landmark.height / 2, landmark.z);
+    mesh.rotation.y = landmark.yaw ?? 0;
+    mesh.scale.set(landmark.width, landmark.height, landmark.depth);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+
   layout.buildings.forEach((building, i) => {
+    if (building.isTarget) return;
     position.set(building.x, building.height / 2, building.z);
     // Buildings on a real map face their street, so the instance carries a
     // turn as well as a size.

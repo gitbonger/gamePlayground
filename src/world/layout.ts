@@ -42,6 +42,8 @@ export interface Building {
   height: number;
   /** Rotation about the vertical axis, radians. Zero for the procedural city. */
   yaw?: number;
+  /** The landmark the pigeon is homing on. At most one building has this. */
+  isTarget?: boolean;
 }
 
 export interface Tree {

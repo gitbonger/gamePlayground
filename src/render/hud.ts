@@ -8,6 +8,8 @@ export interface Hud {
     state: BirdState,
     telemetry: FlightTelemetry,
     landing: LandingReadiness | null,
+    /** Metres still to fly to the target, along the ground. */
+    toGo: number,
     fps: number,
   ): void;
   dispose(): void;
@@ -17,16 +19,19 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
   const root = document.createElement('div');
   root.className = 'hud';
   root.innerHTML = `
-    <div class="hud-readouts">
-      <div class="readout"><span class="label">airspeed</span><span data-field="speed">0</span><span class="unit">km/h</span></div>
-      <div class="readout"><span class="label">altitude</span><span data-field="altitude">0</span><span class="unit">m</span></div>
-      <div class="readout"><span class="label">climb</span><span data-field="climb">0</span><span class="unit">m/s</span></div>
-      <div class="readout secondary" title="Height you could reach by trading all your speed for climb"><span class="label">energy</span><span data-field="energy">0</span><span class="unit">m</span></div>
-      <div class="readout secondary" title="Local wind, and how much of it is against you"><span class="label">wind</span><span data-field="wind">0</span><span class="unit">m/s</span><span class="aside" data-field="headwind"></span></div>
-    </div>
-    <div class="hud-stamina">
-      <span class="label">stamina</span>
-      <div class="bar"><div class="bar-fill" data-field="stamina"></div></div>
+    <div class="hud-column">
+      <div class="hud-stamina">
+        <span class="label">stamina</span>
+        <div class="bar"><div class="bar-fill" data-field="stamina"></div></div>
+      </div>
+      <div class="hud-readouts">
+        <div class="readout"><span class="label">airspeed</span><span data-field="speed">0</span><span class="unit">km/h</span></div>
+        <div class="readout"><span class="label">altitude</span><span data-field="altitude">0</span><span class="unit">m</span></div>
+        <div class="readout"><span class="label">climb</span><span data-field="climb">0</span><span class="unit">m/s</span></div>
+        <div class="readout secondary" title="Height you could reach by trading all your speed for climb"><span class="label">energy</span><span data-field="energy">0</span><span class="unit">m</span></div>
+        <div class="readout secondary" title="Local wind, and how much of it is against you"><span class="label">wind</span><span data-field="wind">0</span><span class="unit">m/s</span><span class="aside" data-field="headwind"></span></div>
+        <div class="readout" title="Distance still to fly to the red building"><span class="label">home</span><span data-field="home">0</span><span class="unit">m</span></div>
+      </div>
     </div>
     <div class="hud-warning" data-field="warning"></div>
     <div class="hud-landing" data-field="landing" hidden>
@@ -48,6 +53,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
   const climbEl = field('climb');
   const energyEl = field('energy');
   const windEl = field('wind');
+  const homeEl = field('home');
   const headwindEl = field('headwind');
   const staminaEl = field('stamina');
   const warningEl = field('warning');
@@ -64,6 +70,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     state: BirdState,
     telemetry: FlightTelemetry,
     landing: LandingReadiness | null,
+    toGo: number,
     fps: number,
   ) {
     speedEl.textContent = (telemetry.airspeed * 3.6).toFixed(0);
@@ -103,6 +110,9 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
       landingEl.classList.toggle('ready', landing.ready);
       landingTitleEl.textContent = landing.ready ? 'ready to land' : 'approach';
     }
+
+    homeEl.textContent = toGo.toFixed(0);
+    homeEl.classList.toggle('positive', toGo < 40);
 
     fpsEl.textContent = fps.toFixed(0);
   }

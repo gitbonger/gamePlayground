@@ -22,7 +22,6 @@ import {
   integrateOrientation,
   length,
   normalize,
-  quat,
   quatFromAxisAngle,
   rotate,
   rotateInverse,
@@ -338,12 +337,19 @@ export interface FlightTelemetry {
   work: WorkLedger;
 }
 
-export function createBird(position: Vec3 = vec(0, 60, 0), speed = 14): BirdState {
+export function createBird(
+  position: Vec3 = vec(0, 60, 0),
+  speed = 14,
+  /** Compass heading to launch on, radians clockwise from north. */
+  heading = 0,
+): BirdState {
+  // Three.js measures rotation about Y the other way round from a compass.
+  const orientation = quatFromAxisAngle(vec(0, 1, 0), -heading);
   return {
     position,
-    // Launched gliding forward along -Z.
-    velocity: vec(0, 0, -speed),
-    orientation: quat(),
+    // Launched gliding along whatever way it is pointed.
+    velocity: rotate(orientation, vec(0, 0, -speed)),
+    orientation,
     angularVelocity: vec(),
     stamina: 1,
     flapPhase: 0,

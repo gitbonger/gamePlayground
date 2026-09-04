@@ -15,8 +15,9 @@
  */
 
 import { turnedBox, type Box } from '../sim/collision';
-import { indexStreets, ROAD_IMPORTANCE, type MapData, type StreetIndex } from './streets';
+import { indexStreets, type MapData, type StreetIndex } from './streets';
 import type { Building, CityLayout, Tree } from './layout';
+import { distance, type Point } from './geo';
 
 export interface MapWorldOptions {
   /** Spacing of the candidate grid, in metres. */
@@ -25,28 +26,29 @@ export interface MapWorldOptions {
   setback: number;
   /** How far back from the kerb buildings still front the street, in metres. */
   frontage: number;
-  /** Storey height, in metres. */
-  storey: number;
   /**
-   * Storeys every building gets, whatever street it is on. European inner
-   * cities are uniformly five or six floors; without a floor under the height
-   * model the residential streets come out as a carpet of sheds.
+   * Building heights, in metres. A flat band rather than something derived
+   * from road importance: this neighbourhood is uniformly about seven floors,
+   * and that evenness is what its skyline looks like.
    */
-  baseStoreys: number;
-  /** Extra storeys a building on the busiest road can reach. */
-  extraStoreys: number;
+  minHeight: number;
+  maxHeight: number;
   /** Trees need this much clear ground to appear in, in metres. */
   parkland: number;
   seed: number;
+  /**
+   * Where the pigeon is trying to get to. The building nearest it is marked,
+   * so the renderer can pick it out as a landmark to home in on.
+   */
+  target?: Point;
 }
 
 export const defaultMapWorldOptions: MapWorldOptions = {
   spacing: 17,
   setback: 2.5,
   frontage: 17,
-  storey: 3.4,
-  baseStoreys: 4,
-  extraStoreys: 9,
+  minHeight: 16,
+  maxHeight: 24,
   parkland: 30,
   seed: 11,
 };
@@ -65,7 +67,7 @@ function mulberry32(seed: number): () => number {
 export function buildLayoutFromMap(
   map: MapData,
   options: MapWorldOptions = defaultMapWorldOptions,
-): CityLayout & { streets: StreetIndex } {
+): CityLayout & { streets: StreetIndex; target: Building | null } {
   const streets = indexStreets(map.roads);
   const rand = mulberry32(options.seed);
 
@@ -110,20 +112,27 @@ export function buildLayoutFromMap(
       // Behind the frontage band: leave the middle of the block open.
       if (street.distance > kerb + options.frontage) continue;
 
-      const importance = ROAD_IMPORTANCE[street.kind] ?? 0.3;
-      const storeys = Math.max(
-        1,
-        Math.round(
-          options.baseStoreys * (0.7 + rand() * 0.6) +
-            options.extraStoreys * importance * rand(),
-        ),
-      );
-      const height = storeys * options.storey;
+      const height = options.minHeight + rand() * (options.maxHeight - options.minHeight);
 
       buildings.push({ x: px, z: pz, width, depth, height, yaw });
       boxes.push(turnedBox(px, pz, width, height, depth, yaw));
     }
   }
 
-  return { buildings, trees, boxes, roads: map.roads, streets };
+  // Mark the building nearest the destination, so there is something to aim
+  // at rather than a bare coordinate.
+  let target: Building | null = null;
+  if (options.target) {
+    let nearest = Infinity;
+    for (const building of buildings) {
+      const away = distance(options.target, building);
+      if (away < nearest) {
+        nearest = away;
+        target = building;
+      }
+    }
+    if (target) target.isTarget = true;
+  }
+
+  return { buildings, trees, boxes, roads: map.roads, streets, target };
 }

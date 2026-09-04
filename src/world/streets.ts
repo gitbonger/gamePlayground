@@ -44,24 +44,6 @@ export interface StreetIndex {
   readonly segmentCount: number;
 }
 
-/** How much of a city a road class implies around it, 0..1. */
-export const ROAD_IMPORTANCE: Record<string, number> = {
-  motorway: 1,
-  trunk: 0.95,
-  primary: 0.85,
-  secondary: 0.7,
-  tertiary: 0.55,
-  unclassified: 0.35,
-  residential: 0.3,
-  living_street: 0.25,
-  pedestrian: 0.4,
-  motorway_link: 0.6,
-  trunk_link: 0.6,
-  primary_link: 0.55,
-  secondary_link: 0.45,
-  tertiary_link: 0.4,
-};
-
 interface Segment {
   x0: number;
   z0: number;

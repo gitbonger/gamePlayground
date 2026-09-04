@@ -92,16 +92,43 @@ describe('building a world on real streets', () => {
     }
   });
 
-  it('builds taller on the more important road', () => {
+  it('builds to an even height, whatever street it is on', () => {
+    // This neighbourhood is uniformly about seven floors, so heights come from
+    // a flat band rather than from how important the road is.
+    for (const building of layout.buildings) {
+      expect(building.height).toBeGreaterThanOrEqual(defaultMapWorldOptions.minHeight);
+      expect(building.height).toBeLessThanOrEqual(defaultMapWorldOptions.maxHeight);
+    }
+
     const near = (kind: string) =>
-      layout.buildings.filter(
-        (b) => layout.streets.nearest(b.x, b.z, 200)!.kind === kind,
-      );
+      layout.buildings.filter((b) => layout.streets.nearest(b.x, b.z, 200)!.kind === kind);
     const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
-    expect(mean(near('primary').map((b) => b.height))).toBeGreaterThan(
+    expect(mean(near('primary').map((b) => b.height))).toBeCloseTo(
       mean(near('residential').map((b) => b.height)),
+      0,
     );
+  });
+
+  it('marks exactly one building as the target, the one nearest it', () => {
+    const home = { x: 40, z: -40 };
+    const homing = buildLayoutFromMap(mapOf(CROSSROADS), {
+      ...defaultMapWorldOptions,
+      target: home,
+    });
+
+    const marked = homing.buildings.filter((b) => b.isTarget);
+    expect(marked).toHaveLength(1);
+    expect(homing.target).toBe(marked[0]);
+
+    const away = (b: { x: number; z: number }) => Math.hypot(b.x - home.x, b.z - home.z);
+    const nearest = Math.min(...homing.buildings.map(away));
+    expect(away(homing.target!)).toBeCloseTo(nearest, 9);
+  });
+
+  it('marks nothing when there is nowhere to home to', () => {
+    expect(layout.target).toBeNull();
+    expect(layout.buildings.some((b) => b.isTarget)).toBe(false);
   });
 
   it('is deterministic for a given map and seed', () => {

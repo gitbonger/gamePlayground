@@ -25,7 +25,8 @@ import { createChaseCamera, defaultCameraParams } from './render/camera';
 import { createHud } from './render/hud';
 import { createOutcomePanel } from './render/outcome';
 import { buildWorld } from './world/city';
-import { buildLayoutFromMap } from './world/from-map';
+import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
+import { bearing, distance, project } from './world/geo';
 import type { MapData } from './world/streets';
 import homeMap from './world/data/home.json';
 import { createWind, defaultWindParams } from './sim/wind';
@@ -38,7 +39,11 @@ const MAX_FRAME_TIME = 0.25;
 
 // Directly over the map's centre point, which is what the coordinates in
 // `fetch-map` name. Raised clear of whatever stands there by SPAWN_CLEARANCE.
-const SPAWN = vec(0, 120, 0);
+/** Where the pigeon is released, and where it is trying to get back to. */
+const RELEASE_POINT: [number, number] = [47.492337, 19.079367];
+const HOME_POINT: [number, number] = [47.494593, 19.081282];
+
+const SPAWN_ALTITUDE = 120;
 const SPAWN_SPEED = 16;
 /** Clearance kept above anything standing at the spawn point. */
 const SPAWN_CLEARANCE = 40;
@@ -54,7 +59,12 @@ const { renderer, scene, camera, sun } = createScene(canvas);
 // Real streets from OpenStreetMap, with the blocks between them filled in.
 // JSON widens the fixed-length tuples, so this crosses through unknown.
 const map = homeMap as unknown as MapData;
-const world = buildWorld(buildLayoutFromMap(map));
+
+const release = project(RELEASE_POINT[0], RELEASE_POINT[1], map.centre);
+const home = project(HOME_POINT[0], HOME_POINT[1], map.centre);
+
+const layout = buildLayoutFromMap(map, { ...defaultMapWorldOptions, target: home });
+const world = buildWorld(layout);
 scene.add(world.group);
 
 const rig = createBirdRig();
@@ -76,16 +86,20 @@ const rebuildWind = () => {
   wind = createWind(windParams);
 };
 
-// The spawn is hand-placed, but the city is procedural, so make sure nothing
-// has been generated into the space the bird appears in.
-const spawnFloor = world.collider.heightAt(SPAWN.x, SPAWN.z);
+// The release point is named in degrees, but the city around it is generated,
+// so make sure nothing has been built into the space the bird appears in.
+const spawnFloor = world.collider.heightAt(release.x, release.z);
 const spawn = vec(
-  SPAWN.x,
-  Number.isFinite(spawnFloor) ? Math.max(SPAWN.y, spawnFloor + SPAWN_CLEARANCE) : SPAWN.y,
-  SPAWN.z,
+  release.x,
+  Number.isFinite(spawnFloor)
+    ? Math.max(SPAWN_ALTITUDE, spawnFloor + SPAWN_CLEARANCE)
+    : SPAWN_ALTITUDE,
+  release.z,
 );
+// Released pointing straight at home, the way a homing pigeon starts out.
+const spawnHeading = bearing(release, home);
 
-let bird: BirdState = createBird(spawn, SPAWN_SPEED);
+let bird: BirdState = createBird(spawn, SPAWN_SPEED, spawnHeading);
 let telemetry: FlightTelemetry = step(bird, input.controls, flightParams, TICK);
 
 const run = createRunTracker(bird);
@@ -96,7 +110,7 @@ let previousPosition: Vec3 = { ...bird.position };
 let previousOrientation: Quat = { ...bird.orientation };
 
 function respawn() {
-  bird = createBird(spawn, SPAWN_SPEED);
+  bird = createBird(spawn, SPAWN_SPEED, spawnHeading);
   previousPosition = { ...bird.position };
   previousOrientation = { ...bird.orientation };
   run.reset(bird);
@@ -201,7 +215,13 @@ function frame(nowMs: number) {
       ? landingReadiness(bird, flightParams)
       : null;
 
-  hud.update(interpolatedState, telemetry, landing, smoothedFps);
+  hud.update(
+    interpolatedState,
+    telemetry,
+    landing,
+    distance(interpolatedState.position, home),
+    smoothedFps,
+  );
   renderer.render(scene, camera);
 
   requestAnimationFrame(frame);

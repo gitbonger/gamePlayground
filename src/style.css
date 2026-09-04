@@ -39,10 +39,18 @@ body {
   user-select: none;
 }
 
-.hud-readouts {
+/* One column, so adding a readout never has to be paid for in pixel offsets
+   somewhere else. */
+.hud-column {
   position: absolute;
   left: 20px;
   bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hud-readouts {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -96,9 +104,6 @@ body {
 }
 
 .hud-stamina {
-  position: absolute;
-  left: 20px;
-  bottom: 212px;
   width: 210px;
 }
 

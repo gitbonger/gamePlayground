@@ -15,6 +15,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
+import { metresPerDegree } from '../src/world/geo';
+
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
 const ATTRIBUTION = '© OpenStreetMap contributors (ODbL)';
 
@@ -60,15 +62,6 @@ function parseArgs(argv: string[]): Args {
   if (!/^[a-z0-9-]+$/i.test(name)) throw new Error('--name must be a plain identifier');
 
   return { centre: [centre[0]!, centre[1]!], radius, name };
-}
-
-/** Metres per degree at a latitude, on the WGS84 ellipsoid. */
-function metresPerDegree(latitude: number): { lat: number; lon: number } {
-  const phi = (latitude * Math.PI) / 180;
-  return {
-    lat: 111132.92 - 559.82 * Math.cos(2 * phi) + 1.175 * Math.cos(4 * phi),
-    lon: 111412.84 * Math.cos(phi) - 93.5 * Math.cos(3 * phi) + 0.118 * Math.cos(5 * phi),
-  };
 }
 
 /** Perpendicular distance from `p` to the line through `a` and `b`. */

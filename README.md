@@ -1,6 +1,9 @@
 # Pigeon Sim
 
-A flight simulator where you are a pigeon.
+A flight simulator where you are a homing pigeon.
+
+You are released 289 m from home, pointed straight at it. Home is the **red
+building**. Get there and land on the ground beside it.
 
 ```bash
 npm install
@@ -19,7 +22,7 @@ Then open http://localhost:5183.
 | `Space` | Flap — costs stamina; climbs hardest when slow |
 | `Shift` | Tuck the wings and dive |
 | `Ctrl` (or `B`) | Brake — spread the wings, fan the tail, beat backwards |
-| `R` | Respawn |
+| `R` | Release again |
 | `H` | Hide the tuning panel |
 
 Turning is done by banking, not by yawing. Roll into the turn and the tilted
@@ -109,6 +112,27 @@ Everything in `FlightParams` and `CameraParams` is bound to the on-screen panel.
 Tuning live is the intended workflow — the committed defaults are a starting
 point, not an answer.
 
+## The route
+
+Two points in the world, named in degrees and projected into local metres by
+`src/world/geo.ts`, which the map baker and the game share so a coordinate
+lands in the same place in both:
+
+| | |
+| --- | --- |
+| Release | 47.492337, 19.079367 |
+| Home | 47.494593, 19.081282 — the map's centre |
+| Distance | 289 m, on a bearing of 30° |
+
+The bird is released **pointing exactly at home**, which is what `createBird`'s
+heading argument is for. A 4:1 glide from 120 m carries about 480 m, so the
+trip is reachable without a single wingbeat — the difficulty is arriving slow
+and low enough to land rather than getting there at all.
+
+Whichever generated building lands nearest the home point is marked, and drawn
+in red. It gets its own mesh rather than a seventh instanced bucket, because it
+is one building among five thousand.
+
 ## Flying over a real place
 
 The streets are real. The buildings are not.
@@ -143,8 +167,9 @@ and rejected if they fall in a road, which is robust against all of it:
   only by its centre still overhangs the street it fronts.
 - It has to be inside a **frontage band**, so buildings line the streets and
   block interiors stay open instead of filling solid. Interiors get trees.
-- Height is a floor of four storeys plus more on more important roads, which
-  is what gives European inner cities their even skyline with taller boulevards.
+- Height comes from a flat 16–24 m band rather than from road importance. This
+  neighbourhood is uniformly about seven floors, and that evenness *is* what
+  its skyline looks like.
 
 Then the detail that does most of the work: **every building is turned to face
 its street**. That is the difference between boxes near lines and a city. From
@@ -159,7 +184,7 @@ frame, runs *the identical slab test*, and rotates the answer back — exact
 oriented-box collision that reuses the tested path rather than adding a second
 one. The uniform grid still indexes world bounds for broad phase.
 
-From 1,428 real street segments: 5,638 buildings and 299 trees, built in 14 ms,
+From 1,428 real street segments: 5,607 buildings and 299 trees, built in 14 ms,
 with 20,000 collision sweeps in under 20 ms.
 
 OpenStreetMap data is ODbL. The baked file is a derived database, so it carries
@@ -500,7 +525,7 @@ edge does not read as hitting a wall.
 npm test
 ```
 
-157 tests across seven files:
+159 tests across seven files:
 
 - **`src/sim/flight.test.ts`** — the shape of the lift curve, glide ratio and
   sink rate staying in a plausible band, flapping climbing and draining stamina,
@@ -558,7 +583,9 @@ npm test
   roads rather than infinite lines; buildings never overhang the carriageway
   they front, stay inside the frontage band, face their street, and grow taller
   on more important roads; the street itself is flyable end to end while
-  crossing it nearly always meets something.
+  crossing it nearly always meets something; heights stay in their band
+  whatever road a building is on; and exactly one building is marked as the
+  target, the one actually nearest it.
 
 Because the city layout is plain data with no Three.js in it, the layout file
 tests the real world the player flies through, in Node, with no WebGL.
