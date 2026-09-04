@@ -20,8 +20,8 @@ Then open http://localhost:5183.
 | `A` / `D` | Roll left / right |
 | `Q` / `E` | Yaw left / right |
 | `Space` | Flap — costs stamina; climbs hardest when slow |
-| `Shift` | Tuck the wings and dive |
-| `Ctrl` (or `B`) | Brake — spread the wings, fan the tail, beat backwards |
+| `T` | Tuck the wings and dive |
+| `B` | Brake — spread the wings, fan the tail, beat backwards |
 | `R` | Release again |
 | `H` | Hide the tuning panel |
 
@@ -142,6 +142,11 @@ too fast — but that is an observation about one way to fly it, not a limit.
 
 The home point itself sits on open ground 13 m from a residential street, so
 the red landmark is the building nearest it, about 32 m away.
+
+Every control is a plain key. Modifiers make poor ones: the operating system
+claims combinations built on them, and while one is held the browser often
+stops delivering key-up events, so a control bound to a modifier can stick down
+with no way to let go of it. Pressing one now releases everything instead.
 
 Whichever generated building lands nearest the home point is marked, and drawn
 in red. It gets its own mesh rather than a seventh instanced bucket, because it

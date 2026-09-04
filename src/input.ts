@@ -6,6 +6,14 @@ import type { Controls } from './sim/flight';
 /** Half-life in seconds for an axis to reach its commanded value. */
 const AXIS_HALF_LIFE = 0.06;
 
+/**
+ * Controls are plain keys only, never modifiers.
+ *
+ * Modifiers make poor controls: the operating system claims combinations
+ * involving them, and while one is held the browser often stops delivering
+ * key-up events at all, so a control bound to one can stick down with no way
+ * to release it.
+ */
 const BINDINGS = {
   pitchUp: ['KeyS', 'ArrowDown'],
   pitchDown: ['KeyW', 'ArrowUp'],
@@ -14,9 +22,19 @@ const BINDINGS = {
   yawLeft: ['KeyQ'],
   yawRight: ['KeyE'],
   flap: ['Space'],
-  tuck: ['ShiftLeft', 'ShiftRight'],
-  brake: ['ControlLeft', 'ControlRight', 'KeyB'],
+  tuck: ['KeyT'],
+  brake: ['KeyB'],
 } as const;
+
+/** Keys the operating system builds shortcuts out of, which we stay clear of. */
+const SYSTEM_MODIFIERS = new Set([
+  'MetaLeft',
+  'MetaRight',
+  'ControlLeft',
+  'ControlRight',
+  'AltLeft',
+  'AltRight',
+]);
 
 export interface InputSource {
   controls: Controls;
@@ -47,6 +65,15 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
   const onKeyDown = (event: Event) => {
     const e = event as KeyboardEvent;
     if (e.repeat) return;
+
+    // A modifier going down means the next keystroke belongs to the operating
+    // system, not to us -- and the key-ups that follow may never arrive. Let
+    // go of everything rather than risk a control stuck on.
+    if (SYSTEM_MODIFIERS.has(e.code) || e.metaKey || e.ctrlKey || e.altKey) {
+      held.clear();
+      return;
+    }
+
     held.add(e.code);
     if (e.code === 'KeyR') resetRequested = true;
     // Space and the arrows scroll the page otherwise, which fights the controls.
