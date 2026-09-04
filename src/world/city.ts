@@ -4,49 +4,32 @@
  * Nothing here is meant to be pretty -- it exists so there is something to fly
  * past. Speed is only legible against nearby geometry, so the layout cares more
  * about giving the eye things to sweep by than about looking like a real city.
+ *
+ * The layout itself lives in `./layout`, as plain data; this module only turns
+ * it into meshes.
  */
 
 import * as THREE from 'three';
 
-/** Small deterministic PRNG, so the same seed always builds the same city. */
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+import { createColliderField, type Aabb, type Collider } from '../sim/collision';
+import { defaultWorldOptions, generateCityLayout, type WorldOptions } from './layout';
 
-export interface WorldOptions {
-  seed: number;
-  /** Half-width of the built-up area in metres. */
-  extent: number;
-  buildingCount: number;
-  treeCount: number;
-}
-
-export const defaultWorldOptions: WorldOptions = {
-  seed: 7,
-  extent: 900,
-  buildingCount: 900,
-  treeCount: 500,
-};
+export { defaultWorldOptions, type WorldOptions } from './layout';
 
 export interface World {
   group: THREE.Group;
-  /** Axis-aligned boxes for every solid object, for collision later. */
-  colliders: THREE.Box3[];
+  /** Every solid object as an axis-aligned box, in simulation coordinates. */
+  boxes: Aabb[];
+  /** Broad-phase-accelerated view of `boxes`, ready to sweep against. */
+  collider: Collider;
   dispose(): void;
 }
 
 const BUILDING_COLORS = [0x8d8477, 0x9c9284, 0x7a7167, 0xa8a091, 0x6f675e, 0xb0a596];
 
 export function buildWorld(options: WorldOptions = defaultWorldOptions): World {
-  const rand = mulberry32(options.seed);
+  const layout = generateCityLayout(options);
   const group = new THREE.Group();
-  const colliders: THREE.Box3[] = [];
   const disposables: { dispose(): void }[] = [];
 
   // --- Ground -------------------------------------------------------------
@@ -65,7 +48,7 @@ export function buildWorld(options: WorldOptions = defaultWorldOptions): World {
   const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
   disposables.push(boxGeometry);
 
-  const perColour = Math.ceil(options.buildingCount / BUILDING_COLORS.length);
+  const perColour = Math.ceil(layout.buildings.length / BUILDING_COLORS.length);
   const buckets: THREE.InstancedMesh[] = BUILDING_COLORS.map((colour) => {
     const material = new THREE.MeshLambertMaterial({ color: colour });
     disposables.push(material);
@@ -78,30 +61,13 @@ export function buildWorld(options: WorldOptions = defaultWorldOptions): World {
   });
 
   const matrix = new THREE.Matrix4();
-  for (let i = 0; i < options.buildingCount; i++) {
-    const x = (rand() * 2 - 1) * options.extent;
-    const z = (rand() * 2 - 1) * options.extent;
-
-    // Taller towers cluster toward the middle, so the skyline has a centre.
-    const distance = Math.hypot(x, z) / options.extent;
-    const centreBias = Math.max(0, 1 - distance);
-    const height = 8 + rand() * 22 + centreBias * centreBias * (30 + rand() * 90);
-    const width = 8 + rand() * 16;
-    const depth = 8 + rand() * 16;
-
-    matrix.makeScale(width, height, depth);
-    matrix.setPosition(x, height / 2, z);
+  layout.buildings.forEach((building, i) => {
+    matrix.makeScale(building.width, building.height, building.depth);
+    matrix.setPosition(building.x, building.height / 2, building.z);
 
     const bucket = buckets[i % buckets.length]!;
     bucket.setMatrixAt(bucket.count++, matrix);
-
-    colliders.push(
-      new THREE.Box3(
-        new THREE.Vector3(x - width / 2, 0, z - depth / 2),
-        new THREE.Vector3(x + width / 2, height, z + depth / 2),
-      ),
-    );
-  }
+  });
   for (const bucket of buckets) bucket.instanceMatrix.needsUpdate = true;
 
   // --- Trees --------------------------------------------------------------
@@ -110,23 +76,20 @@ export function buildWorld(options: WorldOptions = defaultWorldOptions): World {
   const treeMaterial = new THREE.MeshLambertMaterial({ color: 0x3f5f34, flatShading: true });
   disposables.push(treeGeometry, treeMaterial);
 
-  const trees = new THREE.InstancedMesh(treeGeometry, treeMaterial, options.treeCount);
+  const trees = new THREE.InstancedMesh(treeGeometry, treeMaterial, layout.trees.length);
   trees.castShadow = true;
-  for (let i = 0; i < options.treeCount; i++) {
-    const x = (rand() * 2 - 1) * options.extent * 1.9;
-    const z = (rand() * 2 - 1) * options.extent * 1.9;
-    const height = 6 + rand() * 9;
-    const radius = 2.5 + rand() * 2;
-    matrix.makeScale(radius, height, radius);
-    matrix.setPosition(x, height / 2, z);
+  layout.trees.forEach((tree, i) => {
+    matrix.makeScale(tree.radius, tree.height, tree.radius);
+    matrix.setPosition(tree.x, tree.height / 2, tree.z);
     trees.setMatrixAt(i, matrix);
-  }
+  });
   trees.instanceMatrix.needsUpdate = true;
   group.add(trees);
 
   return {
     group,
-    colliders,
+    boxes: layout.boxes,
+    collider: createColliderField(layout.boxes),
     dispose() {
       for (const d of disposables) d.dispose();
     },

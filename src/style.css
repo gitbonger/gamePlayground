@@ -9,6 +9,12 @@
   box-sizing: border-box;
 }
 
+/* Author `display` rules beat the UA stylesheet's [hidden], regardless of
+   specificity, so restate it here or `el.hidden = true` silently does nothing. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -148,4 +154,90 @@ body {
 .lil-gui {
   --width: 300px;
   z-index: 10;
+}
+
+/* --- Game over ---------------------------------------------------------- */
+
+.gameover {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 10, 15, 0.55);
+  backdrop-filter: blur(3px);
+  animation: gameover-in 0.35s ease both;
+}
+
+@keyframes gameover-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.gameover-card {
+  min-width: 340px;
+  padding: 30px 38px 26px;
+  border: 1px solid rgba(242, 245, 248, 0.14);
+  border-radius: 10px;
+  background: rgba(12, 18, 26, 0.86);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.gameover-card h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #ff8b6b;
+}
+
+.gameover-cause {
+  margin: 10px 0 24px;
+  font-size: 13px;
+  color: var(--dim);
+}
+
+.gameover-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 30px;
+  margin: 0 0 24px;
+  text-align: left;
+}
+
+.gameover-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.gameover-stats dt {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.gameover-stats dd {
+  margin: 0;
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gameover-hint {
+  margin: 0;
+  padding-top: 16px;
+  border-top: 1px solid rgba(242, 245, 248, 0.1);
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.gameover-hint b {
+  color: var(--ink);
+}
+
+.controls-hint .hint-warn {
+  color: #e8a24b;
 }

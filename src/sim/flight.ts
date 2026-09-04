@@ -9,6 +9,8 @@
  * Body axes follow the Three.js convention: +X right, +Y up, -Z forward.
  */
 
+import type { Collider } from './collision';
+import { closingSpeed } from './collision';
 import {
   add,
   clamp,
@@ -22,6 +24,7 @@ import {
   rotate,
   rotateInverse,
   scale,
+  sub,
   vec,
   type Quat,
   type Vec3,
@@ -85,6 +88,15 @@ export interface FlightParams {
 
   /** Ground plane height in metres. */
   groundHeight: number;
+
+  /** Collision radius of the bird, in metres. */
+  bodyRadius: number;
+  /**
+   * Closing speed at which an impact kills rather than bumps, in m/s.
+   * Below this the bird just scrapes to a stop, so a careful landing or a
+   * gentle brush against a wall is survivable.
+   */
+  crashSpeed: number;
 }
 
 export const defaultParams: FlightParams = {
@@ -119,6 +131,9 @@ export const defaultParams: FlightParams = {
   yawStability: 2.6,
 
   groundHeight: 0,
+
+  bodyRadius: 0.22,
+  crashSpeed: 7.5,
 };
 
 export interface Controls {
@@ -142,6 +157,15 @@ export const neutralControls = (): Controls => ({
   tuck: false,
 });
 
+export type CrashKind = 'building' | 'ground';
+
+export interface Crash {
+  kind: CrashKind;
+  /** Closing speed at the moment of impact, in m/s. */
+  speed: number;
+  position: Vec3;
+}
+
 export interface BirdState {
   position: Vec3;
   velocity: Vec3;
@@ -154,6 +178,8 @@ export interface BirdState {
   flapPhase: number;
   /** True while resting on the ground. */
   grounded: boolean;
+  /** Set once on impact; the bird is out of the game while this is non-null. */
+  crash: Crash | null;
 }
 
 /** Read-only diagnostics from the last step, for the HUD and tuning. */
@@ -177,6 +203,7 @@ export function createBird(position: Vec3 = vec(0, 60, 0), speed = 14): BirdStat
     stamina: 1,
     flapPhase: 0,
     grounded: false,
+    crash: null,
   };
 }
 
@@ -213,7 +240,11 @@ export function step(
   controls: Controls,
   p: FlightParams,
   dt: number,
+  collider?: Collider,
 ): FlightTelemetry {
+  // A crashed bird is inert: the caller decides when to respawn it.
+  if (state.crash) return telemetryFor(state, p, 0, 0, 0);
+
   const q = state.orientation;
 
   // --- Body frame airflow -------------------------------------------------
@@ -296,12 +327,48 @@ export function step(
   // the tick rates we care about.
   const acceleration = scale(force, 1 / p.mass);
   state.velocity = add(state.velocity, scale(acceleration, dt));
-  state.position = add(state.position, scale(state.velocity, dt));
+
+  const from = state.position;
+  const to = add(from, scale(state.velocity, dt));
+
+  // --- World collision ----------------------------------------------------
+  // Sweep rather than test the end point: at a tucked-dive 50 m/s the bird
+  // covers most of a tree in a single tick.
+  if (collider) {
+    const hit = collider.sweep(from, to, p.bodyRadius);
+    if (hit) {
+      const impact = closingSpeed(state.velocity, hit.normal);
+      if (impact >= p.crashSpeed) {
+        state.position = hit.point;
+        state.velocity = vec(0, 0, 0);
+        state.angularVelocity = vec(0, 0, 0);
+        state.crash = { kind: 'building', speed: impact, position: hit.point };
+        return telemetryFor(state, p, alpha, cl, cd);
+      }
+
+      // Survivable scrape: stop at the surface and slide along it.
+      state.position = add(hit.point, scale(hit.normal, 1e-3));
+      state.velocity = sub(state.velocity, scale(hit.normal, dot(state.velocity, hit.normal)));
+    } else {
+      state.position = to;
+    }
+  } else {
+    state.position = to;
+  }
 
   // --- Ground -------------------------------------------------------------
   state.grounded = false;
   if (state.position.y <= p.groundHeight) {
+    const impact = -state.velocity.y;
     state.position = vec(state.position.x, p.groundHeight, state.position.z);
+
+    if (impact >= p.crashSpeed) {
+      state.velocity = vec(0, 0, 0);
+      state.angularVelocity = vec(0, 0, 0);
+      state.crash = { kind: 'ground', speed: impact, position: state.position };
+      return telemetryFor(state, p, alpha, cl, cd);
+    }
+
     if (state.velocity.y < 0) {
       // Absorb the impact rather than bouncing; scrub off horizontal speed too.
       state.velocity = vec(state.velocity.x * 0.6, 0, state.velocity.z * 0.6);
@@ -309,8 +376,18 @@ export function step(
     state.grounded = true;
   }
 
+  return telemetryFor(state, p, alpha, cl, cd);
+}
+
+function telemetryFor(
+  state: BirdState,
+  p: FlightParams,
+  alpha: number,
+  cl: number,
+  cd: number,
+): FlightTelemetry {
   return {
-    airspeed: speed,
+    airspeed: length(state.velocity),
     altitude: state.position.y - p.groundHeight,
     angleOfAttack: alpha,
     liftCoefficient: cl,
