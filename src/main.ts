@@ -41,7 +41,7 @@ const MAX_FRAME_TIME = 0.25;
 // `fetch-map` name. Raised clear of whatever stands there by SPAWN_CLEARANCE.
 /** Where the pigeon is released, and where it is trying to get back to. */
 const RELEASE_POINT: [number, number] = [47.49154, 19.075658];
-const HOME_POINT: [number, number] = [47.494593, 19.081282];
+const HOME_POINT: [number, number] = [47.494953, 19.081954];
 
 const SPAWN_ALTITUDE = 120;
 const SPAWN_SPEED = 16;
