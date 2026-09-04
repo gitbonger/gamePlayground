@@ -29,15 +29,15 @@ lift vector pulls you round; the tail keeps the nose following the flight path.
 the run is over. Slower than that and you scrape to a stop and slide.
 
 **Touching the ground ends the flight, well or badly.** A clean landing needs
-all three of: descending no faster than 3.5 m/s, no faster than 10 m/s through
+all three of: descending no faster than 4 m/s, no faster than 10 m/s through
 the air, and wings within 20° of level. Meet them and you have landed; miss any
 one and it is a crash that names what went wrong.
 
-The approach is **brake, then flare**. Hold `Ctrl` to spread the wings and fan
-the tail: airspeed falls from a 15 m/s cruise to about 11 m/s and stays there,
-which is a configuration you can hold and steer. Then at roughly **4 metres**
-pull the nose up. Braking into a flare settles at 8.2 m/s with 0.6 m/s of sink,
-comfortably inside both limits.
+The approach is **brake, then flare**. Coasting already brings you down to
+about 11 m/s; holding `Ctrl` spreads the wings and fans the tail to take that
+to 9 m/s while giving you a configuration you can hold and steer. Then at
+roughly **2 metres** pull the nose up. Braking into a flare settles at 5.1 m/s
+with 2.2 m/s of sink, comfortably inside both limits.
 
 Flare too high and you balloon, stall, and drop. Glide straight in without
 either tool and you arrive far too fast. Below 45 m the HUD shows the three
@@ -100,6 +100,34 @@ Everything in `FlightParams` and `CameraParams` is bound to the on-screen panel.
 Tuning live is the intended workflow — the committed defaults are a starting
 point, not an answer.
 
+## How coasting works
+
+A pigeon is a powered flier, not a soarer. Stop beating and it should slow down
+and give up height quickly — you should not be able to cross the city on one
+glide. Two parameters carry that:
+
+- **`trimAngle`** (0.17 rad) is the angle of attack the bird settles at with no
+  input, and it sets the speed a coast decays *to*. Trimmed nose-up like this,
+  the bird flies slowly when left alone: powered level flight holds about
+  17 m/s, and letting go bleeds that back to 11 m/s in a couple of seconds.
+  Trimmed flatter, the glide equilibrium sits up at cruise speed and coasting
+  never slows you at all, which is what made an earlier build feel like it had
+  no brakes even before there was a brake.
+- **`dragBase`** (0.12) sets how steeply that coast descends. It takes the
+  glide ratio from a sailplane-like 8:1 down to about 4:1, which is the right
+  neighbourhood for a bird with a round body, a head out front and its feet
+  tucked up under it.
+
+The two do different jobs and are worth tuning separately: trim decides *how
+slow* a coast ends up, drag decides *how steep* it is.
+
+The trade-off worth knowing about, if you retune: drag costs climb. Tripling
+`dragBase` more than halves the climb rate at a given speed, and dropping the
+glide speed pushes the bird permanently into the low-speed part of the wingbeat
+curve. `flapThrust` and `flapStrokeSpeed` had to move with it, and the landing
+sink limit went from 3.5 to 4 m/s so that a steeper coast did not make landing
+harder purely as a side effect.
+
 ## How the wingbeat works
 
 A wingbeat is not a fixed push. Its direction and strength both depend on how
@@ -113,20 +141,21 @@ made an early build feel dead near the ground:
   almost straight down. Holding the cruise angle at every speed leaves the
   average upward force at 16% of body weight, and a slow bird simply cannot
   hold itself up.
-- **Slow air is worth more.** `flapSlowBoost` multiplies thrust up to ×9 at a
+- **Slow air is worth more.** `flapSlowBoost` multiplies thrust up to ×13 at a
   standstill, falling off with the *square* of airspeed so cruise is untouched.
   A wing beating against still air does far more than one beating against air
-  already rushing past — which is also why climb performance peaks well below
-  cruise, for a real pigeon and now for this one.
+  already rushing past. The effect is stark at the bottom of the envelope: at
+  6 m/s, below the 8.6 m/s stall speed, the boost is the difference between
+  sinking at 1 m/s and climbing at 2. By 15 m/s it contributes nothing.
 - **The stroke plane is not bolted to the body.** `flapUpright` lets a slow
   bird aim its beat at the sky regardless of which way its body points, the way
   a hovering bird holds the stroke plane level and hangs beneath it. Without
   it, a bird that has fallen nose-down beats itself sideways and can never
   recover — the wingbeat stops being a way out exactly when you need it.
 
-The result: panic-flapping while pulling up recovers roughly 15 m in three
-seconds from a 4 m/s sink, at any speed. A committed 45 m/s dive still cannot
-be flapped away, so the low-speed boost never becomes a universal airbrake.
+The result: panic-flapping while pulling up recovers 12–15 m in three seconds
+from a 4 m/s sink, at any speed. A committed 45 m/s dive still cannot be
+flapped away, so the low-speed boost never becomes a universal airbrake.
 
 ## How braking works
 
@@ -152,7 +181,8 @@ is a configuration you can sit in. They are complementary, which is why landing
 wants both.
 
 The measured effect: across a grid of open-loop approaches, flaring alone lands
-30% of the time and braking first lands 61%.
+30% of the time, braking first lands 73%, and braking with the reversed beat
+lands 83%.
 
 ## How landing works
 
@@ -196,7 +226,7 @@ edge does not read as hitting a wall.
 npm test
 ```
 
-71 tests across three files:
+78 tests across three files:
 
 - **`src/sim/flight.test.ts`** — the shape of the lift curve, glide ratio and
   sink rate staying in a plausible band, flapping climbing and draining stamina,
@@ -212,10 +242,15 @@ npm test
   keeps a fixed angle of attack unstalled that stalls without it, braking
   overrides tucking, and an approach flared too late to save itself lands when
   braked.
-  Vertical authority is pinned separately: climbing is better slow than fast,
-  the beat buys altitude when slow and ground speed at cruise, a sinking bird
-  recovers, a nose-down bird still gets lift from the beat, a committed dive
-  still cannot be flapped away, and cruising flight is unchanged by the boost.
+  Vertical authority is pinned separately: the low-speed boost turns a sinking
+  slow bird into a climbing one and fades to nothing by cruise, the beat buys
+  altitude when slow and ground speed at cruise, a sinking bird recovers, a
+  nose-down bird still gets lift from the beat, and a committed dive still
+  cannot be flapped away.
+  Coasting has its own group: a coast settles well below what powered level
+  flight holds, bleeds a fast entry back down in under three seconds, reaches
+  the same trim from above or below, and is measurably slower and steeper than
+  the same bird given a sleek body.
 - **`src/sim/collision.test.ts`** — entry faces and normals, radius expansion,
   nearest-hit ordering, boxes spanning several grid cells, and a fast segment
   that a point test would tunnel through.

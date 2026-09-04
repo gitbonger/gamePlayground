@@ -166,7 +166,7 @@ export const defaultParams: FlightParams = {
   liftSlope: 4.5,
   stallAngle: 0.28,
   postStallLift: 0.8,
-  dragBase: 0.04,
+  dragBase: 0.12,
   inducedDrag: 0.062,
   keelDrag: 0.35,
 
@@ -176,15 +176,15 @@ export const defaultParams: FlightParams = {
   brakeAreaFactor: 1.4,
   brakeDragFactor: 1.6,
   brakeStallBonus: 0.25,
-  brakeFlapReverse: 0.3,
+  brakeFlapReverse: 0.16,
   brakeFlapAngle: 1.45,
 
-  flapThrust: 4.0,
+  flapThrust: 5,
   flapFrequency: 5.5,
   flapAngle: 0.45,
   flapAngleSlow: 1.35,
-  flapStrokeSpeed: 18,
-  flapSlowBoost: 9,
+  flapStrokeSpeed: 12,
+  flapSlowBoost: 13,
   flapUpright: 0.8,
   flapStaminaCost: 0.07,
   staminaRecovery: 0.14,
@@ -194,7 +194,7 @@ export const defaultParams: FlightParams = {
   yawRate: 1.1,
   controlHalfLife: 0.09,
   controlRefSpeed: 12,
-  trimAngle: 0.09,
+  trimAngle: 0.17,
   pitchStability: 2.2,
   yawStability: 2.6,
 
@@ -203,7 +203,7 @@ export const defaultParams: FlightParams = {
   bodyRadius: 0.22,
   crashSpeed: 7.5,
 
-  landingSink: 3.5,
+  landingSink: 4,
   landingSpeed: 10,
   landingBank: 0.35,
 };

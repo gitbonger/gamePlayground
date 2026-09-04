@@ -51,9 +51,10 @@ describe('generated city', () => {
 describe('flying through the city', () => {
   const tallest = Math.max(...layout.boxes.map((b) => b.maxY));
 
-  // Released outside the city at rooftop height, this glide crosses the dense
-  // centre low enough that it cannot get through without hitting a tower.
-  const throughTheSkyline = () => fly(vec(0, 120, 900), 16, 120);
+  // Released outside the city with just enough height to reach the dense
+  // centre, and low enough there that it cannot get through without hitting a
+  // tower. A pigeon glides at about 4:1, so height and distance are coupled.
+  const throughTheSkyline = () => fly(vec(0, 200, 900), 16, 120);
 
   it('crashes a bird glided into the middle of the skyline', () => {
     const bird = throughTheSkyline();

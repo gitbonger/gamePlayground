@@ -10,7 +10,7 @@ import {
   type Controls,
   type FlightParams,
 } from './flight';
-import { length, quatFromAxisAngle, rotate, vec } from './math3';
+import { clamp, length, quatFromAxisAngle, rotate, vec } from './math3';
 import { aabb, createColliderField } from './collision';
 
 const DT = 1 / 120;
@@ -70,8 +70,10 @@ describe('gliding', () => {
     const travelled = Math.hypot(end.position.x - start.x, end.position.z - start.z);
     const glideRatio = travelled / dropped;
 
+    // A pigeon is a powered flier, not a soarer. Anything much past 6 is
+    // sailplane territory and lets you cross the whole city on one glide.
     expect(glideRatio).toBeGreaterThan(3);
-    expect(glideRatio).toBeLessThan(14);
+    expect(glideRatio).toBeLessThan(6.5);
   });
 
   it('settles toward a steady airspeed instead of accelerating forever', () => {
@@ -262,7 +264,7 @@ describe('landing', () => {
   }
 
   it('lands cleanly when the flare is timed well', () => {
-    const bird = approach(4, 0.7);
+    const bird = approach(2, 0.7);
     expect(bird.ending).not.toBeNull();
     expect(bird.ending!.kind).toBe('landed');
     expect(bird.ending!.cause).toBeNull();
@@ -270,7 +272,7 @@ describe('landing', () => {
 
   it('accepts the whole spread of flare strengths at the sweet spot', () => {
     for (const pitch of [0.3, 0.5, 0.7, 0.9, 1]) {
-      expect(approach(4, pitch).ending!.kind, `pitch ${pitch}`).toBe('landed');
+      expect(approach(2, pitch).ending!.kind, `pitch ${pitch}`).toBe('landed');
     }
   });
 
@@ -281,7 +283,7 @@ describe('landing', () => {
   });
 
   it('rejects flaring far too high, which balloons and then drops', () => {
-    const bird = approach(12, 0.9);
+    const bird = approach(8, 0.9);
     expect(bird.ending!.kind).toBe('crashed');
     expect(bird.ending!.cause).toBe('hard-impact');
   });
@@ -301,7 +303,7 @@ describe('landing', () => {
   });
 
   it('records the touchdown numbers it judged', () => {
-    const bird = approach(4, 0.7);
+    const bird = approach(2, 0.7);
     const ending = bird.ending!;
     expect(ending.sink).toBeLessThanOrEqual(defaultParams.landingSink);
     expect(ending.speed).toBeLessThanOrEqual(defaultParams.landingSpeed);
@@ -310,7 +312,7 @@ describe('landing', () => {
   });
 
   it('leaves the bird stopped where it landed', () => {
-    const bird = approach(4, 0.7);
+    const bird = approach(2, 0.7);
     expect(length(bird.velocity)).toBe(0);
     expect(bird.position.y).toBe(defaultParams.groundHeight);
   });
@@ -357,8 +359,22 @@ describe('braking', () => {
     return { speed: telemetry.airspeed, sink: -telemetry.climbRate, telemetry, bird };
   }
 
-  it('sheds airspeed a glide cannot', () => {
-    expect(settle({ brake: true }).speed).toBeLessThan(settle({}).speed - 2);
+  it('bleeds a fast entry down far quicker than coasting does', () => {
+    /** Time to fall below `target` airspeed from a 22 m/s entry. */
+    const timeToSlow = (controls: Partial<Controls>, target: number) => {
+      const bird = createBird(vec(0, 5000, 0), 22);
+      const c = { ...neutralControls(), ...controls };
+      for (let t = 0; t < 20; t += DT) {
+        if (step(bird, c, defaultParams, DT).airspeed <= target) return t;
+      }
+      return Infinity;
+    };
+
+    expect(timeToSlow({ brake: true }, 12)).toBeLessThan(timeToSlow({}, 12) * 0.7);
+  });
+
+  it('settles slower than a coast, once both have found their trim', () => {
+    expect(settle({ brake: true }, 25).speed).toBeLessThan(settle({}, 25).speed - 1);
   });
 
   it('settles slower still when the beat is reversed', () => {
@@ -413,40 +429,28 @@ describe('braking', () => {
     expect(-forward.velocity.z).toBeGreaterThan(-backward.velocity.z);
   });
 
-  it('brings the same approach down slower, and lands it', () => {
-    function approach(brake: boolean) {
-      const bird = createBird(vec(0, 80, 0), 15.3);
-      const controls = { ...neutralControls() };
-      for (let t = 0; t < 60; t += DT) {
-        const alt = bird.position.y;
-        controls.brake = brake && alt < 20;
-        controls.pitch = alt < 4 ? 0.6 : 0;
-        step(bird, controls, defaultParams, DT);
-        if (bird.ending) break;
-      }
-      return bird.ending!;
+  /** Fly an approach, optionally braking below 20 m, flaring at `flareAt`. */
+  function approach(brake: boolean, flareAt: number, pitch = 0.6) {
+    const bird = createBird(vec(0, 80, 0), 15.3);
+    const controls = { ...neutralControls() };
+    for (let t = 0; t < 90; t += DT) {
+      const alt = bird.position.y;
+      controls.brake = brake && alt < 20;
+      controls.pitch = alt < flareAt ? pitch : 0;
+      step(bird, controls, defaultParams, DT);
+      if (bird.ending) break;
     }
+    return bird.ending!;
+  }
 
-    expect(approach(true).speed).toBeLessThan(approach(false).speed);
-    expect(approach(true).kind).toBe('landed');
+  it('brings the same approach down slower and gentler', () => {
+    expect(approach(true, 4).speed).toBeLessThan(approach(false, 4).speed);
+    expect(approach(true, 4).sink).toBeLessThan(approach(false, 4).sink);
   });
 
-  it('rescues an approach flared too late to slow down on its own', () => {
-    function approach(brake: boolean) {
-      const bird = createBird(vec(0, 80, 0), 15.3);
-      const controls = { ...neutralControls() };
-      for (let t = 0; t < 60; t += DT) {
-        const alt = bird.position.y;
-        controls.brake = brake && alt < 25;
-        controls.pitch = alt < 2 ? 0.6 : 0;
-        step(bird, controls, defaultParams, DT);
-        if (bird.ending) break;
-      }
-      return bird.ending!;
-    }
-
-    expect(approach(false).kind).toBe('crashed');
-    expect(approach(true).kind).toBe('landed');
+  it('rescues an approach whose flare alone cannot arrest the descent', () => {
+    expect(approach(false, 4).cause).toBe('hard-impact');
+    expect(approach(true, 4).kind).toBe('landed');
   });
 
   it('leaves unbraked flight exactly as it was', () => {
@@ -467,11 +471,28 @@ describe('vertical authority', () => {
     return telemetry.climbRate;
   }
 
-  it('climbs best at slow speed, the way a real bird does', () => {
-    // Climb performance peaks well below cruise. A model where flapping only
-    // works once you are already fast leaves a slow bird unable to save itself.
-    expect(climbFrom(6)).toBeGreaterThan(climbFrom(11));
-    expect(climbFrom(6)).toBeGreaterThan(0);
+  /** Climb rate while flapping from `speed`, with the boost set to `boost`. */
+  function climbWithBoost(speed: number, flapSlowBoost: number) {
+    const bird = createBird(vec(0, 3000, 0), speed);
+    const { telemetry } = fly(2.5, { flap: true }, { flapSlowBoost }, bird);
+    return telemetry.climbRate;
+  }
+
+  it('turns a sinking slow bird into a climbing one', () => {
+    // Below the 8.6 m/s stall speed the wing has little left to give, so the
+    // beat itself has to do the work. Without the boost a bird at 6 m/s cannot
+    // climb at all, which is what made flapping feel useless near the ground.
+    expect(climbWithBoost(6, 1)).toBeLessThan(0);
+    expect(climbWithBoost(6, defaultParams.flapSlowBoost)).toBeGreaterThan(0);
+  });
+
+  it('fades to nothing by cruise, so it is not a general buff', () => {
+    const cruise = 15;
+    expect(
+      Math.abs(
+        climbWithBoost(cruise, defaultParams.flapSlowBoost) - climbWithBoost(cruise, 1),
+      ),
+    ).toBeLessThan(0.1);
   });
 
   it('aims the stroke upward when slow and forward at cruise', () => {
@@ -480,11 +501,15 @@ describe('vertical authority', () => {
     fly(1.5, { flap: true }, {}, slow);
     expect(slow.velocity.y).toBeGreaterThan(0);
 
-    // Cruise: the beat should buy ground speed.
-    const fast = createBird(vec(0, 3000, 0), 15);
-    const before = -fast.velocity.z;
-    fly(1.5, { flap: true }, {}, fast);
-    expect(-fast.velocity.z).toBeGreaterThan(before);
+    // Cruise: the beat should buy ground speed. Compared against the same
+    // bird coasting, because at cruise it is above its gliding trim speed and
+    // slowing down either way.
+    const flapped = createBird(vec(0, 3000, 0), 15);
+    fly(1.5, { flap: true }, {}, flapped);
+    const coasted = createBird(vec(0, 3000, 0), 15);
+    fly(1.5, {}, {}, coasted);
+
+    expect(-flapped.velocity.z).toBeGreaterThan(-coasted.velocity.z);
   });
 
   it('pulls a slow bird out of a sink instead of mushing into the ground', () => {
@@ -526,5 +551,76 @@ describe('vertical authority', () => {
     const bird = createBird(vec(0, 3000, 0), 15);
     const { telemetry } = fly(2.5, { flap: true }, { flapSlowBoost: 1 }, bird);
     expect(Math.abs(boosted - telemetry.climbRate)).toBeLessThan(0.5);
+  });
+});
+
+describe('coasting', () => {
+  /** Airspeed and sink after coasting long enough to settle. */
+  function coast(entrySpeed: number, seconds = 25) {
+    const bird = createBird(vec(0, 20000, 0), entrySpeed);
+    const { telemetry } = fly(seconds, {}, {}, bird);
+    return { speed: telemetry.airspeed, sink: -telemetry.climbRate };
+  }
+
+  /**
+   * Level powered cruise. Needs an altitude hold, because a bird left to flap
+   * freely zoom-climbs and *slows down* -- and stamina has to be pinned, since
+   * thrust scales with it and would otherwise measure a tiring bird.
+   */
+  function poweredLevel() {
+    const bird = createBird(vec(0, 20000, 0), 15);
+    const target = bird.position.y;
+    const controls = { ...neutralControls(), flap: true };
+    let telemetry;
+    for (let t = 0; t < 25; t += DT) {
+      bird.stamina = 1;
+      controls.pitch = clamp(
+        (target - bird.position.y) * 0.06 - bird.velocity.y * 0.25,
+        -1,
+        1,
+      );
+      telemetry = step(bird, controls, defaultParams, DT);
+    }
+    return telemetry!.airspeed;
+  }
+
+  it('settles well below the speed flapping can hold in level flight', () => {
+    // Stop beating and the bird slows noticeably, rather than coasting on at
+    // cruise speed. This is what trimming nose-up buys.
+    expect(coast(15).speed).toBeLessThan(poweredLevel() - 3);
+  });
+
+  it('bleeds a fast entry back down within a couple of seconds', () => {
+    const settled = coast(15).speed;
+    const bird = createBird(vec(0, 20000, 0), 25);
+    const controls = neutralControls();
+
+    let elapsed = Infinity;
+    for (let t = 0; t < 20; t += DT) {
+      if (step(bird, controls, defaultParams, DT).airspeed <= settled + 1) {
+        elapsed = t;
+        break;
+      }
+    }
+    expect(elapsed).toBeLessThan(3);
+  });
+
+  it('reaches the same trim whether it enters fast or slow', () => {
+    expect(coast(25).speed).toBeCloseTo(coast(11).speed, 0);
+  });
+
+  it('gives up height at a rate you can feel', () => {
+    const { sink } = coast(15);
+    expect(sink).toBeGreaterThan(2);
+    expect(sink).toBeLessThan(4);
+  });
+
+  it('is slower and steeper than flying with a low-drag body would be', () => {
+    const sleek = createBird(vec(0, 20000, 0), 15);
+    const { telemetry } = fly(25, {}, { dragBase: 0.04, trimAngle: 0.09 }, sleek);
+
+    const settled = coast(15);
+    expect(settled.speed).toBeLessThan(telemetry.airspeed - 2);
+    expect(settled.sink).toBeGreaterThan(-telemetry.climbRate);
   });
 });
