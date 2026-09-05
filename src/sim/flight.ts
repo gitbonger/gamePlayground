@@ -166,6 +166,24 @@ export interface FlightParams {
    */
   crashSpeed: number;
 
+  // --- On foot ------------------------------------------------------------
+  /**
+   * Walking speed in m/s, reached at once and held. A pigeon on the ground
+   * has one gear: it is either walking or it is not.
+   */
+  walkSpeed: number;
+  /** How fast it turns on the spot while walking, in rad/s. */
+  walkTurnRate: number;
+  /** The tallest thing it will step up onto, in metres. */
+  walkStepUp: number;
+  /**
+   * The longest drop it will step down, in metres. Anything further is
+   * walking off an edge, and the bird is in the air again.
+   */
+  walkStepDown: number;
+  /** Ground covered by one full stride, in metres. Drives the animation. */
+  walkStride: number;
+
   /** Greatest descent rate the legs can absorb on touchdown, in m/s. */
   landingSink: number;
   /** Greatest airspeed a clean touchdown can be made at, in m/s. */
@@ -220,6 +238,12 @@ export const defaultParams: FlightParams = {
 
   bodyRadius: 0.22,
   crashSpeed: 7.5,
+
+  walkSpeed: 1.2,
+  walkTurnRate: 2.5,
+  walkStepUp: 0.12,
+  walkStepDown: 0.25,
+  walkStride: 0.16,
 
   landingSink: 4,
   landingSpeed: 10,
@@ -307,6 +331,8 @@ export interface BirdState {
   stamina: number;
   /** 0..1 position within the current wingbeat, for animation. */
   flapPhase: number;
+  /** 0..1 position within the current stride, for animation on foot. */
+  stridePhase: number;
   /** Seconds since launch. Drives anything that has to evolve in time. */
   age: number;
   /**
@@ -362,6 +388,7 @@ export function createBird(
     angularVelocity: vec(),
     stamina: 1,
     flapPhase: 0,
+    stridePhase: 0,
     age: 0,
     ending: null,
     restingOn: null,
@@ -683,7 +710,7 @@ export function step(
  * upward part of its normal. Buildings are boxes, so in practice this is
  * simply "a roof rather than a wall".
  */
-const ROOF_NORMAL = 0.5;
+export const ROOF_NORMAL = 0.5;
 
 /** Ground contact, then telemetry. Shared by every path out of `step`. */
 function finish(

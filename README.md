@@ -25,6 +25,14 @@ Then open http://localhost:5183.
 | `R` | Release again |
 | `H` | Hide the tuning panel |
 
+Once you are down, the same keys mean something else:
+
+| Key | Action, on foot |
+| --- | --- |
+| `W` / `S` or `↑` / `↓` | Walk forward / back |
+| `A` / `D` or `←` / `→` | Turn on the spot |
+| `R` | Release again |
+
 Turning is done by banking, not by yawing. Roll into the turn and the tilted
 lift vector pulls you round; the tail keeps the nose following the flight path.
 
@@ -1006,6 +1014,81 @@ in a test rather than written down twice: lengthen a leg and the test fails.
 The first version of that constant was 14 cm, taken from two poses instead of
 four, and it would have held the bird a clear 7 cm above the rail.
 
+## Walking
+
+A landed pigeon is not stuck where it came down. `src/sim/walk.ts` is a second
+mode, live exactly when the flight model is not: `walk()` ignores a bird that
+is not on its feet and `step()` ignores one whose flight has ended, so which of
+the two does anything is decided by the bird's own state rather than by a flag
+kept beside it. Both are called every tick and one of them is always a no-op.
+
+**It is not the flight model with the numbers turned down.** On foot there is
+one speed, reached on the first tick and held while the key is held, and gone
+the tick it is released. No momentum, no acceleration, no drag — a pigeon
+walking is not a pigeon coasting, and modelling it as one would be modelling
+something that does not happen. The whole of the motion is a heading and a
+fixed 1.2 m/s along it.
+
+What the two modes do share is the world. Walking sweeps the same collider with
+the same body radius, so a wall is a wall either way, and a bird that walks
+across a wagon picks up the same carrier tag a bird that landed on it does —
+which is what makes a walking pigeon ride a moving train without any of it
+knowing what a train is.
+
+Three things make it feel like walking rather than sliding:
+
+**It slides along what it walks into** rather than sticking to it. Two sweeps,
+not a loop: one is enough to follow a wall, and a second pass would only be for
+the inside of a corner, where stopping is the right answer.
+
+**It steps up and down.** The horizontal sweep is done with the bird lifted by
+its step height, so a kerb, a rail or a sleeper is something to walk over
+rather than a wall, and a probe straight down afterwards puts it back on the
+ground. Twelve centimetres up, twenty-five down. That probe needs no check that
+the surface is level enough to stand on, which is worth saying because the
+first version had one: a vertical sweep is a slab test whose entry axis can
+only be an axis the ray moves along, so it comes back with an upward normal or
+with nothing.
+
+**And the head bobs.** A pigeon's head is thrust forward and then held still in
+the air while the body walks on under it, which relative to the body is a quick
+snap forward and a long slow drift back. That is the one thing that makes a
+walking pigeon read as a pigeon, so the head is a group of its own that the
+body slides beneath, on a sawtooth rather than the sine wave a bob would
+otherwise be. The legs swing in antiphase under it and the forward one lifts.
+All of it is driven by ground covered rather than by the clock, so a bird
+standing still stands still and one walking backwards paddles backwards.
+
+### Falling
+
+There is no maximum survivable drop, and that is the design rather than an
+omission. Walking off an edge hands the bird straight back to the flight model,
+in the air at the pace it stepped off with — because a pigeon that steps off a
+ledge is a pigeon flying, and what happens at the bottom is judged by the same
+landing rules that judge every other arrival. A drop is only fatal if you do
+nothing about it.
+
+Measured, off a roof, with no separate rule anywhere:
+
+| What you do | Survivable from |
+| --- | --- |
+| Nothing | 0.7 m |
+| Brake — spread the wings | 1.0 m |
+| Flap and brake from the standstill | 5.6 m |
+| Dive to build airspeed, then flare | any building on the map |
+
+The last row is the point of the whole arrangement: a 24 m block is survivable
+if you tuck, let the speed build, and flare from about twelve metres up — and
+not survivable if you leave the flare until four, because there is no arresting
+twenty metres of fall in four. That is an aviation rule rather than a game
+rule, and nothing in the code states it; it falls out of the wing.
+
+One consequence worth knowing, and worth arguing about: **the dangerous height
+is a low one.** Two to four metres is survivable by neither doing nothing nor
+flying, because there is not enough air under you to build the speed a recovery
+needs. Walking off a garden wall is more lethal than stepping off a roof. That
+is what the physics says, and it may or may not be what a game wants.
+
 ## How landing works
 
 `landingReadiness()` in `src/sim/flight.ts` answers one question — could the
@@ -1166,6 +1249,29 @@ npm test
   position always stays inside the interval the last two ticks bracket, which
   is the one thing that separates interpolating from extrapolating and the only
   test that catches it.
+- **`src/sim/walk.test.ts`** — a second of walking covers one walking speed of
+  ground and the very first tick is already at full speed, which is what "no
+  acceleration" means and what a ramp would fail; it stops dead on release,
+  walks backwards at the same one speed, turns on the spot without moving, and
+  goes where it is pointed rather than where it started pointed. A flying bird
+  and a crashed one are both left alone. It stops its own radius short of a
+  wall given twelve metres of walking to get through it, and slides along one
+  met at an angle — stated against the point it first touches, because a bird
+  that merely stopped on contact would already be past a looser bound. It steps
+  onto a kerb, is stopped by a table, and steps back down rather than falling
+  off. Walking off an edge puts it in the air at the pace it stepped off with,
+  and the two metres that follow are fatal unflown and survivable flown. A
+  24 m block is survivable by diving and flaring from twelve metres up, not
+  survivable by doing nothing, and not survivable by leaving the flare until
+  four — which is the fall rule, and is nowhere written down. The stride
+  advances with ground covered rather than the clock, stays inside one cycle
+  either way round, and holds still while the bird does.
+- **`src/render/bird.test.ts`** also covers the walk cycle: the legs swing in
+  opposite directions and only the forward one lifts, both return together at
+  the top of the stride, and the head reaches furthest forward in the first
+  third of it and then only ever comes back. That last one finds the peak
+  rather than assuming where it is, which is what tells a thrust from a plain
+  symmetric bob. None of it moves on a bird that is not on its feet.
 - **`src/render/units.test.ts`** — a metre a second is 3.6 km/h, a car through
   a Budapest street is 50 and a racing pigeon reads at the speed a racing
   pigeon flies, all stated as figures nobody has to look up rather than

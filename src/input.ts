@@ -2,6 +2,7 @@
 
 import { clamp, damp } from './sim/math3';
 import type { Controls } from './sim/flight';
+import type { WalkControls } from './sim/walk';
 
 /** Half-life in seconds for an axis to reach its commanded value. */
 const AXIS_HALF_LIFE = 0.06;
@@ -26,6 +27,21 @@ const BINDINGS = {
   brake: ['KeyB'],
 } as const;
 
+/**
+ * The same keys again, meaning what they mean on foot.
+ *
+ * Deliberately the same physical keys: walking and flying are different modes
+ * and only one of them is ever live, so there is nothing to collide. W is the
+ * nose down in the air and forward on the ground, which is what both of those
+ * keys already feel like they should do.
+ */
+const WALK_BINDINGS = {
+  back: ['KeyS', 'ArrowDown'],
+  forward: ['KeyW', 'ArrowUp'],
+  left: ['KeyA', 'ArrowLeft'],
+  right: ['KeyD', 'ArrowRight'],
+} as const;
+
 /** Keys the operating system builds shortcuts out of, which we stay clear of. */
 const SYSTEM_MODIFIERS = new Set([
   'MetaLeft',
@@ -38,6 +54,14 @@ const SYSTEM_MODIFIERS = new Set([
 
 export interface InputSource {
   controls: Controls;
+  /**
+   * The same keyboard, read as walking.
+   *
+   * Not smoothed, unlike the flight axes: a pigeon on its feet has one speed
+   * and reaches it at once, so an eased axis would be describing something
+   * that does not happen.
+   */
+  walk: WalkControls;
   /** Advance axis smoothing; call once per rendered frame. */
   update(dt: number): void;
   /** True on the frame a reset was requested. */
@@ -57,6 +81,8 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     tuck: false,
     brake: false,
   };
+
+  const walk: WalkControls = { forward: 0, turn: 0 };
 
   const anyHeld = (codes: readonly string[]) => codes.some((code) => held.has(code));
   const axis = (negative: readonly string[], positive: readonly string[]) =>
@@ -99,6 +125,9 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     controls.flap = anyHeld(BINDINGS.flap);
     controls.tuck = anyHeld(BINDINGS.tuck);
     controls.brake = anyHeld(BINDINGS.brake);
+
+    walk.forward = axis(WALK_BINDINGS.back, WALK_BINDINGS.forward);
+    walk.turn = axis(WALK_BINDINGS.left, WALK_BINDINGS.right);
   }
 
   function consumeReset() {
@@ -109,6 +138,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
 
   return {
     controls,
+    walk,
     update,
     consumeReset,
     dispose() {

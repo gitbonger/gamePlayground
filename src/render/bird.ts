@@ -149,6 +149,22 @@ export const FOOT_DROP = 0.07;
  */
 const FOOT_CLEARANCE = 0.02;
 
+/**
+ * How far forward the head is thrust over a stride, in metres, and how much of
+ * the stride the thrust itself takes.
+ *
+ * A pigeon's head really does hold still in the air while the body walks under
+ * it, which relative to the body is a backward slide at walking pace over most
+ * of the cycle and a quick snap forward at the end of it. Three and a half
+ * centimetres is about the excursion on a bird this size.
+ */
+const HEAD_REACH = 0.035;
+const HEAD_THRUST = 0.3;
+
+/** How far each leg swings fore and aft, and how far the free foot lifts. */
+const LEG_SWING = 0.026;
+const LEG_LIFT = 0.012;
+
 /** What the wings are doing, which is most of what the bird reads as. */
 export type WingPose = 'tucked' | 'gliding' | 'braking' | 'perched';
 
@@ -207,11 +223,19 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
   object.add(part(geometry(new THREE.BoxGeometry(0.105, 0.085, 0.12)), bodyMaterial, 0, -0.035, -0.085));
 
   // --- Head ---------------------------------------------------------------
-  object.add(part(geometry(new THREE.BoxGeometry(0.078, 0.076, 0.086)), headMaterial, 0, 0.052, -0.172));
-  // Rounder crown, so the head is not a plain cube.
-  object.add(part(geometry(new THREE.BoxGeometry(0.058, 0.03, 0.066)), headMaterial, 0, 0.084, -0.174));
+  // A group of its own, because a walking pigeon's head does not travel with
+  // its body: it is thrust forward and then held still in the air while the
+  // body catches up. That is the whole of what makes a pigeon walk read as a
+  // pigeon walking, and it cannot be done to parts bolted to the body.
+  const head = new THREE.Group();
+  object.add(head);
 
-  // Iridescent throat, between the head and the shoulders.
+  head.add(part(geometry(new THREE.BoxGeometry(0.078, 0.076, 0.086)), headMaterial, 0, 0.052, -0.172));
+  // Rounder crown, so the head is not a plain cube.
+  head.add(part(geometry(new THREE.BoxGeometry(0.058, 0.03, 0.066)), headMaterial, 0, 0.084, -0.174));
+
+  // Iridescent throat, between the head and the shoulders. Stays on the body:
+  // it is the neck the head slides on, so it does not slide with it.
   object.add(
     part(geometry(new THREE.BoxGeometry(0.09, 0.082, 0.075)), material(morph.neck, 0.3), 0, 0.03, -0.125),
   );
@@ -220,9 +244,9 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
   const beak = new THREE.Mesh(geometry(new THREE.ConeGeometry(0.016, 0.055, 6)), beakMaterial);
   beak.rotation.x = -Math.PI / 2;
   beak.position.set(0, 0.045, -0.238);
-  object.add(beak);
+  head.add(beak);
   // The cere: the pale wattle over a pigeon's bill.
-  object.add(part(geometry(new THREE.BoxGeometry(0.03, 0.018, 0.02)), material(0xf0f4f8), 0, 0.058, -0.213));
+  head.add(part(geometry(new THREE.BoxGeometry(0.03, 0.018, 0.02)), material(0xf0f4f8), 0, 0.058, -0.213));
 
   // Orange eyes, which is the detail that makes it look back at you.
   const eyeGeometry = geometry(new THREE.BoxGeometry(0.016, 0.016, 0.014));
@@ -307,6 +331,10 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
     object.add(hip);
     legs.push(hip);
   }
+  // Where each hip sits when the bird is standing still, which the walk cycle
+  // swings either side of.
+  const hipRest = legs.map((hip) => hip.position.z);
+  const hipHeight = legs.map((hip) => hip.position.y);
 
   // Smoothed wing pose on one axis: -1 folded, 0 gliding, +1 braking.
   let pose = 0;
@@ -394,6 +422,33 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
       hip.rotation.x = (1 - stand) * 1.5;
       hip.visible = stand > 0.02;
     }
+
+    // --- On foot ----------------------------------------------------------
+    // Driven by the stride, which the walk model advances by ground covered
+    // rather than by the clock, so a bird standing still is a bird standing
+    // still and one walking backwards paddles backwards.
+    const cycle2 = state.stridePhase * Math.PI * 2;
+    const swing = Math.sin(cycle2) * stand;
+    legs.forEach((hip, index) => {
+      const side = index === 0 ? 1 : -1;
+      hip.position.z = hipRest[index]! + side * LEG_SWING * swing;
+      // The leg swinging forward is the one off the ground.
+      hip.position.y = hipHeight[index]! + Math.max(0, side * swing) * LEG_LIFT;
+    });
+
+    head.position.z = -HEAD_REACH * headReach(state.stridePhase) * stand;
+  }
+
+  /**
+   * How far forward of neutral the head is, 0..1, over one stride.
+   *
+   * Quick thrust, then a long drift back: relative to the body, holding the
+   * head still in the air *is* drifting backwards at walking pace.
+   */
+  function headReach(phase: number): number {
+    return phase < HEAD_THRUST
+      ? phase / HEAD_THRUST
+      : 1 - (phase - HEAD_THRUST) / (1 - HEAD_THRUST);
   }
 
   return {

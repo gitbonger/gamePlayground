@@ -55,6 +55,7 @@ import {
   WAGON,
 } from './world/train';
 import { createSmoke } from './world/smoke';
+import { walk, type WalkTelemetry } from './sim/walk';
 import { bearing, distance, project } from './world/geo';
 import type { MapData } from './world/streets';
 import homeMap from './world/data/home.json';
@@ -235,6 +236,8 @@ const spawnHeading = bearing(release, home);
 
 let bird: BirdState = createBird(spawn, SPAWN_SPEED, spawnHeading);
 let telemetry: FlightTelemetry = step(bird, input.controls, flightParams, TICK);
+/** What the bird did on its feet this tick, when it was on them. */
+let onFoot: WalkTelemetry = { grounded: false, travelled: 0, blocked: false };
 
 const run = createRunTracker(bird);
 
@@ -391,6 +394,11 @@ function frame(nowMs: number) {
     previousPosition = { ...bird.position };
     previousOrientation = { ...bird.orientation };
     solid = moveTrains(TICK);
+    // Two modes, one of them live at a time. `walk` ignores a bird that is not
+    // on its feet and `step` ignores one whose flight has ended, so which of
+    // the two does anything is decided by the bird's own state rather than by
+    // a flag kept alongside it.
+    onFoot = walk(bird, input.walk, flightParams, TICK, solid);
     telemetry = step(bird, input.controls, flightParams, TICK, solid, wind);
     flock.update(TICK, solid, wind);
     if (bird.ending === null) run.update(bird, TICK);
@@ -412,6 +420,7 @@ function frame(nowMs: number) {
   // Carried over too, or anything reading the drawn state is told the bird is
   // still standing on whatever it was riding when the run started.
   interpolatedState.restingOn = bird.restingOn;
+  interpolatedState.stridePhase = bird.stridePhase;
 
   const wings: WingPose = isPerched(bird)
     ? 'perched'
@@ -472,9 +481,12 @@ function frame(nowMs: number) {
         ? {
             distance: 1.4,
             height: 0.35,
-            lookAhead: 0.3,
+            // A walking bird is going somewhere, so the camera looks ahead of
+            // it and keeps up. A standing one is the subject of the shot, and
+            // a boom that drifts in over most of a second suits it.
+            lookAhead: onFoot.travelled > 0 ? 2.2 : 0.3,
             rollFollow: 0,
-            positionHalfLife: 0.7,
+            positionHalfLife: onFoot.travelled > 0 ? 0.12 : 0.7,
             baseFov: 55,
             fovGain: 0,
           }
@@ -510,6 +522,7 @@ function frame(nowMs: number) {
     landing,
     distance(interpolatedState.position, objective(LEVELS[level])?.position ?? home),
     smoothedFps,
+    onFoot,
   );
   renderer.render(scene, camera);
   // Then the arrows, on a fresh depth buffer so the world cannot cover them.

@@ -2,6 +2,7 @@
 
 import { isPerched, type BirdState, type FlightTelemetry, type LandingReadiness } from '../sim/flight';
 import { rateText, speedText } from './units';
+import type { WalkTelemetry } from '../sim/walk';
 
 export interface Hud {
   /** `landing` is null when the bird is too high for the approach cue to help. */
@@ -12,6 +13,8 @@ export interface Hud {
     /** Metres still to fly to the target, along the ground. */
     toGo: number,
     fps: number,
+    /** What the bird did on its feet this tick, for the on-foot cue. */
+    onFoot: WalkTelemetry,
   ): void;
   dispose(): void;
 }
@@ -73,6 +76,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     landing: LandingReadiness | null,
     toGo: number,
     fps: number,
+    onFoot: WalkTelemetry,
   ) {
     speedEl.textContent = speedText(telemetry.airspeed);
     altitudeEl.textContent = telemetry.altitude.toFixed(0);
@@ -97,7 +101,11 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     staminaEl.classList.toggle('low', state.stamina < 0.25);
 
     const warning = isPerched(state)
-      ? 'perched — press R to fly again'
+      ? onFoot.blocked
+        ? 'blocked — turn and walk round it'
+        : onFoot.travelled > 0
+          ? 'walking — mind the edge'
+          : 'on foot — WASD or arrows to walk, R to fly again'
       : telemetry.stalled && !state.ending
         ? 'STALL — push the nose down'
         : '';
