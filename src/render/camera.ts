@@ -31,8 +31,8 @@ export interface CameraParams {
 }
 
 export const defaultCameraParams: CameraParams = {
-  distance: 3.4,
-  height: 1.0,
+  distance: 1.7,
+  height: 0.5,
   lookAhead: 9,
   positionHalfLife: 0.075,
   targetHalfLife: 0.05,
