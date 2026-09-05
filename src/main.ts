@@ -36,7 +36,6 @@ import { loadProgress, saveProgress } from './progress';
 import { createLevelMenu } from './render/menu';
 import {
   combineColliders,
-  aabb,
   createColliderField,
   type Collider,
 } from './sim/collision';
@@ -44,7 +43,7 @@ import { createChaseCamera, defaultCameraParams, defaultWatchParams } from './re
 import { createHud } from './render/hud';
 import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
-import { buildWorld, PATCH_HEIGHT, targetFlash } from './world/city';
+import { buildWorld, targetFlash } from './world/city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
 import {
   carriedBy,
@@ -157,20 +156,10 @@ const patches = LEVELS.filter((spec) => spec.target.kind === 'patch').map((spec)
   const at = project(on.at[0], on.at[1], map.centre);
   return { name: spec.name, x: at.x, z: at.z, size: on.size };
 });
-// Solid, so landing on one is landing on it rather than on the grass beside
-// it, and so a bird can walk on and off it like any other kerb.
-for (const patch of patches) {
-  layout.boxes.push(
-    aabb(
-      patch.x - patch.size / 2,
-      0,
-      patch.z - patch.size / 2,
-      patch.x + patch.size / 2,
-      PATCH_HEIGHT,
-      patch.z + patch.size / 2,
-    ),
-  );
-}
+// Nothing solid: a patch is level with the grass, so it is a marking rather
+// than a step. Landing on it, landing beside it and walking across from one
+// to the other are all the same surface, which is what keeps the first level
+// a first level.
 
 const world = buildWorld(layout, {
   ...(landmarkLevel ? { landmark: landmarkLevel.name } : {}),
@@ -419,14 +408,17 @@ function standingSpot(spec: Level): { at: Vec3; facing: number; on: number | nul
     };
   }
 
-  // Everything else is a fixed thing with a top, so the only question is
-  // where that top is. The marker already knows, having been built on it.
+  // Everything else is a fixed thing, and the only question is what height
+  // its top is. The marker already knows, having been built on it -- except
+  // for a patch, whose marker sits on the marking and whose *surface* is the
+  // ground the marking is painted on.
   const marker = objective(spec.name);
   if (!marker) return null;
+  const top = spec.target.kind === 'patch' ? defaultParams.groundHeight : marker.position.y;
   return {
     at: vec(
       marker.position.x + person.along,
-      marker.position.y + defaultParams.bodyRadius,
+      top + defaultParams.bodyRadius,
       marker.position.z + person.across,
     ),
     facing: Math.PI / 2,
@@ -624,11 +616,15 @@ function reachLevel(): void {
   const here = LEVELS[level];
   if (!here || talkingTo?.completes !== here.name) return;
 
-  reached = here.name;
-  reachedAt = clock;
   // The next one, if there is one. Staying put on the last is the honest
   // answer until there is something to move on to.
   if (level + 1 < LEVELS.length) playLevel(level + 1);
+
+  // Announced *after* moving on, because starting a level clears the note --
+  // which is right when you pick one out of the menu and wrong when you have
+  // just earned it. Set here it survives, and says which one you finished.
+  reached = here.name;
+  reachedAt = clock;
 }
 
 /** The resident this level is about, if it has one. */

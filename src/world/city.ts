@@ -645,22 +645,28 @@ export function buildWorld(
 
   // --- Concrete ------------------------------------------------------------
   // A patch of it in the park, so that a level about landing on open ground
-  // is a level about landing on a thing, like all the others.
+  // is a level about landing on a thing, like all the others. Flat with the
+  // grass, so you can put down beside it and walk on.
   for (const patch of options.patches ?? []) {
-    const slab = new THREE.BoxGeometry(patch.size, PATCH_HEIGHT, patch.size);
-    const concrete = new THREE.MeshLambertMaterial({ color: PATCH_COLOR });
+    const slab = new THREE.PlaneGeometry(patch.size, patch.size);
+    slab.rotateX(-Math.PI / 2);
+    const concrete = new THREE.MeshLambertMaterial({
+      color: PATCH_COLOR,
+      side: THREE.DoubleSide,
+    });
     disposables.push(slab, concrete);
 
-    const mesh = new THREE.Mesh(slab, concrete);
-    mesh.position.set(patch.x, PATCH_HEIGHT / 2, patch.z);
+    const mesh = new THREE.Mesh(slab, asDecal(concrete, PATCH_ORDER));
+    mesh.position.set(patch.x, PATCH_LIFT, patch.z);
     mesh.receiveShadow = true;
+    mesh.renderOrder = PATCH_ORDER;
     group.add(mesh);
 
     markers.push(
       createMarker(
         patch.name,
         concrete,
-        new THREE.Vector3(patch.x, PATCH_HEIGHT, patch.z),
+        new THREE.Vector3(patch.x, PATCH_LIFT, patch.z),
         disposables,
         overlay,
       ),
@@ -799,12 +805,15 @@ const AREA_LIFT = 0.05;
 const ROAD_LIFT = 0.12;
 const RAIL_LIFT = 0.18;
 /**
- * How thick a concrete patch is, in metres.
+ * How far a concrete patch is lifted off the ground plane, in metres.
  *
- * Low enough to walk on and off -- `walkStepUp` is 12 cm -- so it is somewhere
- * to stand about rather than a plinth to be stuck on.
+ * Level with the ground rather than laid on top of it. A slab even ten
+ * centimetres proud is a step, and a level whose target you have to land
+ * *inside* is a much harder level than one whose target you land near and
+ * walk onto. So it is a flat layer like the roads and the parkland, lifted
+ * only by the hair that stops it fighting the ground for the same pixels.
  */
-export const PATCH_HEIGHT = 0.1;
+const PATCH_LIFT = 0.07;
 /** Poured concrete, a bit paler than the roads. */
 const PATCH_COLOR = 0x9a9a94;
 
@@ -854,8 +863,9 @@ function onRibbon(
 }
 
 const AREA_ORDER = 1;
-const ROAD_ORDER = 2;
-const RAIL_ORDER = 3;
+const PATCH_ORDER = 2;
+const ROAD_ORDER = 3;
+const RAIL_ORDER = 4;
 
 /** Pull a ground decal towards the camera, out of the surface it lies on. */
 function asDecal(material: THREE.Material, order: number): THREE.Material {

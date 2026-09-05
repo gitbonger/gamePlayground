@@ -206,11 +206,16 @@ evening sun, which is the first target that will not wait for you.
 **Every target is a thing, never a place.** Open ground was the awkward case:
 a wagon and a building are objects with a material each to flash and a top to
 land on, and a field is a field. Rather than teach the marker about targets
-that are not things, a level that wants one lays one — a patch of concrete,
-ten centimetres thick so you can walk on and off it, solid so that landing on
-it is landing on *it* rather than on the grass beside it. Everything
-downstream then treats all three kinds the same, and there is no special case
-anywhere.
+that are not things, a level that wants one lays one — a patch of concrete in
+the park. Everything downstream then treats all three kinds the same, and
+there is no special case anywhere.
+
+**And the patch is level with the grass**, a flat layer like the roads rather
+than a slab sitting on top. A step of even ten centimetres makes the first
+level a much harder one: you would have to put down *inside* the marking
+rather than near it. Flush, landing on it, landing beside it and walking from
+one to the other are all the same surface — which is the difficulty a first
+level should have.
 
 **A level is data, in `src/levels.ts`.** The map is settled, so a coordinate
 written there means the same place for good — which is what makes a level
