@@ -62,6 +62,11 @@ export interface World {
   collider: Collider;
   /** Everything the pigeon can be sent to, in the order it was named. */
   markers: TargetMarker[];
+  /**
+   * Height of the drawn ground at a point -- the road or railway painted over
+   * the plane, or the plane itself. What a bird resting there stands on.
+   */
+  surfaceAt(x: number, z: number): number;
   /** Move the rolling stock to where the layout says the trains have got to. */
   updateTrains(trains: readonly Train[]): void;
   /**
@@ -632,6 +637,7 @@ export function buildWorld(
     boxes: layout.boxes,
     collider: createColliderField(layout.boxes),
     markers,
+    surfaceAt: (x, z) => groundSurfaceAt(x, z, layout.roads, layout.rails),
     overlay,
     updateTrains,
     updateSmoke,
@@ -723,6 +729,51 @@ function createMarker(
 const AREA_LIFT = 0.05;
 const ROAD_LIFT = 0.12;
 const RAIL_LIFT = 0.18;
+
+/**
+ * Height of whatever is drawn flat on the ground at a point, in metres.
+ *
+ * The lifts above are a drawing trick, but they are still the surface a player
+ * sees: the railhead is painted 18 cm above the plane the simulation stops a
+ * bird on, so a bird resting on the plane under a track is a bird standing
+ * inside it. Asked once when something comes to rest rather than every frame,
+ * which is why a plain scan of the ribbons is fast enough.
+ *
+ * Rails beat roads because that is the order they are drawn in: at a level
+ * crossing the rail is the surface you would stand on.
+ */
+export function groundSurfaceAt(
+  x: number,
+  z: number,
+  roads: readonly Road[] = [],
+  rails: readonly Rail[] = [],
+): number {
+  for (const rail of rails) if (onRibbon(x, z, rail.points, rail.width)) return RAIL_LIFT;
+  for (const road of roads) if (onRibbon(x, z, road.points, road.width)) return ROAD_LIFT;
+  return 0;
+}
+
+/** Whether a point lies within `width` of a polyline, measured across it. */
+function onRibbon(
+  x: number,
+  z: number,
+  points: readonly (readonly [number, number])[],
+  width: number,
+): boolean {
+  const half = width / 2;
+  for (let i = 1; i < points.length; i += 1) {
+    const [x0, z0] = points[i - 1]!;
+    const [x1, z1] = points[i]!;
+    const dx = x1 - x0;
+    const dz = z1 - z0;
+    const span = dx * dx + dz * dz;
+    // Clamped projection onto the segment: past either end, the nearest point
+    // is that end, which is what rounds off a ribbon's corners.
+    const t = span < 1e-12 ? 0 : Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / span));
+    if (Math.hypot(x - (x0 + dx * t), z - (z0 + dz * t)) <= half) return true;
+  }
+  return false;
+}
 
 const AREA_ORDER = 1;
 const ROAD_ORDER = 2;

@@ -130,12 +130,37 @@ export const PIGEON_MORPHS: readonly PigeonMorph[] = [
  */
 const STANDING_HEIGHT = 0.14;
 
+/**
+ * How far the feet hang below the point the simulation tracks, in metres.
+ *
+ * The feet and not the whole model: spread wings in the braking pose droop
+ * nearly 30 cm, and a wingtip touching the ground is a bird braking, while a
+ * foot under the ground is a bug. Measured off the built model rather than
+ * asserted -- there is a test that fails if a leg grows past it.
+ */
+export const FOOT_DROP = 0.07;
+
+/**
+ * How far above a surface the feet are put, in metres.
+ *
+ * Clearing it exactly is not the same as being seen to stand on it: at a
+ * millimetre the feet read as sunk into the rail rather than resting on it,
+ * and a chase camera two metres back has no depth cue to say otherwise.
+ */
+const FOOT_CLEARANCE = 0.02;
+
 /** What the wings are doing, which is most of what the bird reads as. */
 export type WingPose = 'tucked' | 'gliding' | 'braking' | 'perched';
 
 export interface BirdRig {
   object: THREE.Object3D;
-  update(state: BirdState, pose: WingPose, dt: number): void;
+  /**
+   * `surfaceY` is the height of the drawn ground beneath the bird, if it is
+   * near enough to matter. The simulation stops a bird on a plane that the
+   * roads and railways are painted *above*, so a bird resting on a track
+   * stands in it unless the model is lifted clear.
+   */
+  update(state: BirdState, pose: WingPose, dt: number, surfaceY?: number): void;
   dispose(): void;
 }
 
@@ -275,6 +300,10 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
     hip.position.set(side * 0.026, -0.05, 0.012);
     hip.add(part(legGeometry, legMaterial, 0, -0.038, 0));
     hip.add(part(footGeometry, legMaterial, 0, -0.077, -0.008));
+    // Named so the test that measures FOOT_DROP can find the feet rather
+    // than the whole bird: braking wings hang far lower than any leg, and
+    // a wingtip brushing the ground is not the thing being guarded.
+    hip.name = 'leg';
     object.add(hip);
     legs.push(hip);
   }
@@ -284,13 +313,23 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
   // Separate axis for standing, which is about the whole body, not the wings.
   let stand = 0;
 
-  function update(state: BirdState, wingPose: WingPose, dt: number) {
+  function update(
+    state: BirdState,
+    wingPose: WingPose,
+    dt: number,
+    surfaceY = Number.NEGATIVE_INFINITY,
+  ) {
     const standing = wingPose === 'perched';
     stand += ((standing ? 1 : 0) - stand) * Math.min(1, dt * 7);
 
+    // Never lowered, only raised: on plain ground and on every roof and deck
+    // the bird is already well clear and this does nothing at all.
     object.position.set(
       state.position.x,
-      state.position.y + STANDING_HEIGHT * stand,
+      Math.max(
+        state.position.y + STANDING_HEIGHT * stand,
+        surfaceY + FOOT_DROP + FOOT_CLEARANCE,
+      ),
       state.position.z,
     );
     object.quaternion.set(

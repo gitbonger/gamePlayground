@@ -701,6 +701,19 @@ velocity **relative to the local air**, while gravity and the position update
 stay in the world frame. That splits airspeed from ground speed — both are on
 the HUD, along with the local wind and whether it is head, tail or cross.
 
+**Every speed on screen is km/h, and one function makes it so.** The simulation
+is metric throughout and thinks in metres per second, which is right for the
+physics and wrong for a speedometer, so each readout converted for itself --
+and the airspeed converted while the ground-impact message beside it did not,
+leaving two numbers a second apart on screen disagreeing about what a speed is.
+`src/render/units.ts` now owns the conversion and every display goes through
+it, vertical rates included: climb and sink in m/s beside an airspeed in km/h
+is the aviation convention and a perfectly good one, but a pigeon is not an
+instrument-rated aircraft. Thresholds stay in m/s -- `strength < 0.2` for
+"calm" is a fact about the air, not about how it is written down. The debug
+panel stays in m/s too, because its sliders are the simulation's own
+parameters and the tests state them in those units.
+
 One consequence worth knowing: **in wind, drag can add energy to the bird.**
 Drag is only guaranteed dissipative in the air's own frame; measured against
 the ground, a tailwind gust hands you energy. That is real, and the ledger
@@ -971,6 +984,28 @@ body is lifted 0.14 m — the simulation tracks a point at the bird's centre and
 stops it at ground level, which would otherwise bury half the model. That
 offset is a rendering concern and lives in the rig, not the flight model.
 
+**And it has to clear whatever is painted on the ground.** The flat layers —
+parkland at 5 cm, roads at 12, railways at 18 — are lifted off the ground plane
+to settle which of them draws over which, because coplanar quads sharing a
+material fight whatever their depth. The simulation knows nothing about any of
+that: it stops a bird on the plane at zero. On grass that is invisible, and on
+a railway it meant a pigeon standing 4 cm inside the rail it had just landed
+on, which is exactly how it was reported.
+
+So `World.surfaceAt` answers what is drawn under a point, and the rig lifts the
+bird until its feet are 2 cm clear of it. Three things make that safe. It only
+ever raises, so a roof, a wagon deck and plain grass are all untouched — each
+is already well above. It is measured on the *feet* rather than the model,
+because spread wings in the braking pose droop nearly 30 cm and a wingtip
+brushing the ballast is a bird braking, not a bug. And it is asked only of a
+bird within a metre of the ground and not riding anything, which is what makes
+a plain scan of every road and railway on the map cheap enough to do at all.
+
+The 7 cm the feet hang below the tracked point is measured off the built model
+in a test rather than written down twice: lengthen a leg and the test fails.
+The first version of that constant was 14 cm, taken from two poses instead of
+four, and it would have held the bird a clear 7 cm above the rail.
+
 ## How landing works
 
 `landingReadiness()` in `src/sim/flight.ts` answers one question — could the
@@ -1131,6 +1166,30 @@ npm test
   position always stays inside the interval the last two ticks bracket, which
   is the one thing that separates interpolating from extrapolating and the only
   test that catches it.
+- **`src/render/units.test.ts`** — a metre a second is 3.6 km/h, a car through
+  a Budapest street is 50 and a racing pigeon reads at the speed a racing
+  pigeon flies, all stated as figures nobody has to look up rather than
+  against the constant that produces them. Rounding never moves a number by
+  more than half a km/h, climbing stays distinguishable from sinking, and a
+  bird in level flight is never told it is descending — `-0.01 m/s` prints as
+  `-0` without care, which reads as a fault in the instrument. The last test
+  greps the two display modules for a conversion of their own: a guard against
+  the original bug coming back, not a proof, since it cannot see a new file
+  doing the same thing.
+- **`src/render/bird.test.ts`** — the feet never hang further below the tracked
+  point than `FOOT_DROP` says, in any of the four poses, and `FOOT_DROP` is
+  within 5 mm of the deepest they actually reach, so it cannot quietly grow
+  into holding the bird off the ground. Measured off the built model, so
+  lengthening a leg fails it. On a surface drawn above the plane the feet end
+  up clear of it in every pose — and the same measurement without the surface
+  shows them under it, which is the bug as reported. Plain ground, a roof and
+  a wagon deck are all left exactly where they were.
+- **`src/world/city.test.ts`** — the surface under a resting bird is the
+  railhead over a track, stated against the height the ribbon is actually
+  drawn at rather than the constant behind it; the plane again once you step
+  off; rounded off at a ribbon's ends rather than running on down the line;
+  and the rail, not the road, at a level crossing where the same point is on
+  both.
 - **`src/render/sun.test.ts`** — the sun is overhead at the equator at noon on
   the equinox, reaches 90 minus the latitude plus the tilt at midsummer noon
   and due south with it, is a full two tilts lower at midwinter, rises in the

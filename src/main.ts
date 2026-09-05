@@ -361,6 +361,19 @@ let accumulator = 0;
 let lastTime = performance.now() / 1000;
 let smoothedFps = 60;
 
+/**
+ * The drawn ground under a bird, when it is close enough for that to show.
+ *
+ * Only asked while a bird is on or just above the surface: the answer is a
+ * scan of every road and railway on the map, and it changes nothing at all
+ * for a bird that is flying, standing on a roof or riding a wagon.
+ */
+function surfaceUnder(state: BirdState): number {
+  if (state.restingOn !== null) return Number.NEGATIVE_INFINITY;
+  if (state.position.y > flightParams.groundHeight + 1) return Number.NEGATIVE_INFINITY;
+  return world.surfaceAt(state.position.x, state.position.z);
+}
+
 function frame(nowMs: number) {
   const now = nowMs / 1000;
   const frameTime = Math.min(now - lastTime, MAX_FRAME_TIME);
@@ -396,6 +409,9 @@ function frame(nowMs: number) {
   interpolatedState.flapPhase = bird.flapPhase;
   interpolatedState.stamina = bird.stamina;
   interpolatedState.ending = bird.ending;
+  // Carried over too, or anything reading the drawn state is told the bird is
+  // still standing on whatever it was riding when the run started.
+  interpolatedState.restingOn = bird.restingOn;
 
   const wings: WingPose = isPerched(bird)
     ? 'perched'
@@ -418,7 +434,7 @@ function frame(nowMs: number) {
     })),
   );
   world.updateSmoke(smoke.puffs, camera.quaternion);
-  rig.update(interpolatedState, wings, frameTime);
+  rig.update(interpolatedState, wings, frameTime, surfaceUnder(interpolatedState));
 
   // Flash the target and size its arrow. Both want the drawn position rather
   // than the tick position, or the arrow judders against everything else.
@@ -437,7 +453,12 @@ function frame(nowMs: number) {
     // A bird waiting its turn to be let out is not in the air, and should not
     // be standing on the wagon either.
     flockRigs[i]!.object.visible = member.down <= 0;
-    flockRigs[i]!.update(member.state, isPerched(member.state) ? 'perched' : 'gliding', frameTime);
+    flockRigs[i]!.update(
+      member.state,
+      isPerched(member.state) ? 'perched' : 'gliding',
+      frameTime,
+      surfaceUnder(member.state),
+    );
   });
 
   // Once the bird is down the camera settles: further back and levelled off

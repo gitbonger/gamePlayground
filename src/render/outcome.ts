@@ -2,6 +2,7 @@
 
 import type { Ending } from '../sim/flight';
 import type { RunStats } from '../run';
+import { speedText } from './units';
 
 export interface OutcomePanel {
   show(ending: Ending, stats: RunStats): void;
@@ -13,19 +14,19 @@ export interface OutcomePanel {
 const OUTCOMES: Record<string, { title: string; detail: (e: Ending) => string }> = {
   landed: {
     title: 'Landed',
-    detail: (e) => `Touched down at ${(e.speed * 3.6).toFixed(0)} km/h`,
+    detail: (e) => `Touched down at ${speedText(e.speed)} km/h`,
   },
   building: {
     title: 'Game over',
-    detail: (e) => `You flew into a building at ${(e.speed * 3.6).toFixed(0)} km/h`,
+    detail: (e) => `You flew into a building at ${speedText(e.speed)} km/h`,
   },
   'hard-impact': {
     title: 'Game over',
-    detail: (e) => `You hit the ground at ${e.sink.toFixed(1)} m/s — flare later and harder`,
+    detail: (e) => `You hit the ground at ${speedText(e.sink)} km/h — flare later and harder`,
   },
   'too-fast': {
     title: 'Game over',
-    detail: (e) => `Too fast to land at ${(e.speed * 3.6).toFixed(0)} km/h — bleed off speed first`,
+    detail: (e) => `Too fast to land at ${speedText(e.speed)} km/h — bleed off speed first`,
   },
   'not-level': {
     title: 'Game over',
@@ -63,7 +64,7 @@ export function createOutcomePanel(container: HTMLElement): OutcomePanel {
       stats.distance >= 1000
         ? `${(stats.distance / 1000).toFixed(2)} km`
         : `${stats.distance.toFixed(0)} m`;
-    field('topSpeed').textContent = `${(stats.topSpeed * 3.6).toFixed(0)} km/h`;
+    field('topSpeed').textContent = `${speedText(stats.topSpeed)} km/h`;
     field('ceiling').textContent = `${stats.ceiling.toFixed(0)} m`;
 
     root.classList.toggle('landed', ending.kind === 'landed');

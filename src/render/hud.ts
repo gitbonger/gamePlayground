@@ -1,6 +1,7 @@
 /** Flight instruments, drawn as plain DOM over the canvas. */
 
 import { isPerched, type BirdState, type FlightTelemetry, type LandingReadiness } from '../sim/flight';
+import { rateText, speedText } from './units';
 
 export interface Hud {
   /** `landing` is null when the bird is too high for the approach cue to help. */
@@ -27,9 +28,9 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
       <div class="hud-readouts">
         <div class="readout"><span class="label">airspeed</span><span data-field="speed">0</span><span class="unit">km/h</span></div>
         <div class="readout"><span class="label">altitude</span><span data-field="altitude">0</span><span class="unit">m</span></div>
-        <div class="readout"><span class="label">climb</span><span data-field="climb">0</span><span class="unit">m/s</span></div>
+        <div class="readout"><span class="label">climb</span><span data-field="climb">0</span><span class="unit">km/h</span></div>
         <div class="readout secondary" title="Height you could reach by trading all your speed for climb"><span class="label">energy</span><span data-field="energy">0</span><span class="unit">m</span></div>
-        <div class="readout secondary" title="Local wind, and how much of it is against you"><span class="label">wind</span><span data-field="wind">0</span><span class="unit">m/s</span><span class="aside" data-field="headwind"></span></div>
+        <div class="readout secondary" title="Local wind, and how much of it is against you"><span class="label">wind</span><span data-field="wind">0</span><span class="unit">km/h</span><span class="aside" data-field="headwind"></span></div>
         <div class="readout" title="Distance still to fly to the marked target"><span class="label">home</span><span data-field="home">0</span><span class="unit">m</span></div>
       </div>
     </div>
@@ -73,9 +74,9 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     toGo: number,
     fps: number,
   ) {
-    speedEl.textContent = (telemetry.airspeed * 3.6).toFixed(0);
+    speedEl.textContent = speedText(telemetry.airspeed);
     altitudeEl.textContent = telemetry.altitude.toFixed(0);
-    climbEl.textContent = telemetry.climbRate.toFixed(1);
+    climbEl.textContent = rateText(telemetry.climbRate);
     climbEl.classList.toggle('positive', telemetry.climbRate > 0.2);
 
     // Specific energy: altitude plus the height your airspeed is worth. It is
@@ -83,8 +84,10 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     energyEl.textContent = telemetry.energy.height.toFixed(0);
 
     // Airspeed already reflects the wind; this says where it is coming from.
+    // The thresholds below stay in m/s: they are facts about the air, not
+    // about how it is written down.
     const strength = Math.hypot(telemetry.wind.x, telemetry.wind.y, telemetry.wind.z);
-    windEl.textContent = strength.toFixed(1);
+    windEl.textContent = speedText(strength);
     const head = telemetry.headwind;
     headwindEl.textContent =
       strength < 0.2 ? 'calm' : head > 0.3 ? 'head' : head < -0.3 ? 'tail' : 'cross';
