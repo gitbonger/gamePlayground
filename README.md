@@ -254,6 +254,38 @@ oriented-box collision that reuses the tested path rather than adding a second
 one. The uniform grid still indexes world bounds for broad phase. 141 distinct
 building orientations here; a grid city would have about two.
 
+**Windows and roof tiles are drawn in the shader, off world coordinates.**
+Both patterns face the same problem: the walls are one shared box scaled per
+instance, so anything keyed to the mesh UVs stretches, and a 26 m house would
+get the same number of windows as a 14 m one, each twice the size. Reading the
+pattern off world position and the surface normal instead makes a window the
+same real size on every building on the map, with nothing stored per instance.
+The ground floor gets none, where the shopfronts are, and about one pane in
+eight is lit.
+
+The roofs are gabled, pitched about 27 degrees, in courses of clay tile 26 cm
+across, with the gable ends left as the party walls they are. The roof takes
+the top few metres *of* the building rather than being piled on top of it, so
+the ridge is still the height the layout says and the collision box, which
+stops there, keeps its meaning.
+
+**Roofs are merged into one mesh; walls stay instanced.** The opposite of each
+other, on purpose. An instance carries its shape as a scale, and a normal does
+not survive a non-uniform one: scaling a unit prism to 17 m wide by 4 m tall
+flattens its slope normals almost level, which is not a subtle error -- every
+roof face tested as a gable end and the entire city came out rendered in grey.
+A box does not care, because its normals are axis-aligned and stay that way
+under any scale. So the buildings keep the six instanced buckets that hold the
+whole skyline at a handful of draw calls, and every roof on the map is baked
+into one geometry in world coordinates, for one more.
+
+Which is also the answer to whether any of this needed optimising: it did not.
+Timed by rendering explicitly and waiting for the GPU, a frame costs **0.8 ms**
+across 371 draw calls and 217,000 triangles. An earlier reading of 51 fps, and
+the worry that went with it, was the browser throttling a hidden tab rather
+than anything the renderer was doing -- a frame rate read from a page that is
+not on screen measures the page not being on screen.
+
 From 1,428 real street segments and 243 green areas: 144 blocks, 2,249
 buildings, 69 courtyards and 5,304 trees, built in 27 ms, with 20,000 collision
 sweeps in 10 ms.
@@ -715,6 +747,9 @@ npm test
   is caught even when its centre is clear; and the sample grid is never coarser
   than its step and always has a point on the centre, which is the hole a small
   park hides in.
+- **`src/world/city.test.ts`** — a roof comes out of the building's height
+  rather than being added to it, is pitched to the depth of the wing it covers
+  up to a limit, and never swallows a building short enough for it to.
 - **`src/world/from-map.test.ts`** — the ring closes, so leaving the courtyard
   in any of 24 directions meets building before it reaches the street, while
   the courtyard itself stays open to fly in; gardens are in courtyards and

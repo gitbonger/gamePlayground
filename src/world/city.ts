@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 
 import { createColliderField, type Box, type Collider } from '../sim/collision';
-import { generateCityLayout, type CityLayout } from './layout';
+import { generateCityLayout, type Building, type CityLayout } from './layout';
 import type { Road } from './streets';
 import type { Area, AreaKind } from './areas';
 
@@ -102,6 +102,159 @@ function withWindows(material: THREE.MeshLambertMaterial): THREE.MeshLambertMate
 /** The building being homed in on, picked out to be findable from a distance. */
 const TARGET_COLOR = 0xc0392b;
 
+/** Rise of a roof per metre of half-depth: about 27 degrees off horizontal. */
+const ROOF_PITCH = 0.5;
+/** However deep the wing, a roof stops growing here, in metres. */
+const ROOF_MAX_RISE = 5;
+/** And never takes more than this share of the building's total height. */
+const ROOF_MAX_SHARE = 0.35;
+
+/** How tall the roof on a given building is, in metres. */
+export function roofRise(building: { depth: number; height: number }): number {
+  return Math.min(ROOF_MAX_RISE, (building.depth / 2) * ROOF_PITCH, building.height * ROOF_MAX_SHARE);
+}
+
+/** One course of tile, up the slope, and one tile across it, in metres. */
+const TILE_COURSE = 0.34;
+const TILE_WIDTH = 0.26;
+
+/** The six triangles of a gabled unit prism: ridge along X, base on y = 0. */
+function roofPrism(): [number, number, number][][] {
+  const a0: [number, number, number] = [-0.5, 0, -0.5];
+  const a1: [number, number, number] = [0.5, 0, -0.5];
+  const b0: [number, number, number] = [0.5, 0, 0.5];
+  const b1: [number, number, number] = [-0.5, 0, 0.5];
+  const r0: [number, number, number] = [-0.5, 1, 0];
+  const r1: [number, number, number] = [0.5, 1, 0];
+
+  return [
+    // The slope facing -Z, then the one facing +Z. Wound so they face out:
+    // a back-facing roof is invisible rather than obviously wrong.
+    [a0, r1, a1],
+    [a0, r0, r1],
+    [b0, r0, b1],
+    [b0, r1, r0],
+    // The gable ends, which are party wall rather than tile.
+    [a0, b1, r0],
+    [b0, a1, r1],
+  ];
+}
+
+/**
+ * Every roof on the map, as one merged mesh in world coordinates.
+ *
+ * Merged rather than instanced, which is the opposite of what the walls want,
+ * and for a reason worth writing down: an instance carries its shape as a
+ * scale, and a normal does not survive a non-uniform one. Scale a unit prism
+ * to 17 m wide by 4 m tall and its slope normals are flattened almost level --
+ * enough that every roof face tested as a gable end and the whole city came
+ * out rendered in grey. Baking the vertices means the normals are simply
+ * correct, and 2,249 roofs still cost one draw call.
+ */
+function buildRoofs(buildings: readonly Building[]): THREE.BufferGeometry {
+  const prism = roofPrism();
+  const positions = new Float32Array(buildings.length * prism.length * 9);
+  const matrix = new THREE.Matrix4();
+  const place = new THREE.Vector3();
+  const turn = new THREE.Quaternion();
+  const size = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+  const vertex = new THREE.Vector3();
+
+  let at = 0;
+  for (const building of buildings) {
+    const rise = roofRise(building);
+    turn.setFromAxisAngle(up, building.yaw ?? 0);
+    place.set(building.x, building.height - rise, building.z);
+    // Eaves overhang front and back but not along the street: a house shares
+    // its side walls with its neighbours, and an overhang there would bury
+    // itself in them.
+    size.set(building.width, rise, building.depth + 0.7);
+    matrix.compose(place, turn, size);
+
+    for (const face of prism) {
+      for (const point of face) {
+        vertex.set(point[0], point[1], point[2]).applyMatrix4(matrix);
+        positions[at++] = vertex.x;
+        positions[at++] = vertex.y;
+        positions[at++] = vertex.z;
+      }
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  // Nothing is shared between faces, so this is flat shading.
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/**
+ * Clay tiles, in courses running along the ridge.
+ *
+ * Read off world position and the surface normal for the same reason the
+ * windows are: one prism is scaled per instance, so anything keyed to the mesh
+ * UVs would stretch, and a wide roof would get the same number of enormous
+ * tiles as a narrow one. Derived this way a tile is 26 cm across on every roof
+ * on the map, whatever its size.
+ */
+function withTiles(material: THREE.MeshLambertMaterial): THREE.MeshLambertMaterial {
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = `varying vec3 vRoofPos;\nvarying vec3 vRoofNormal;\n${shader.vertexShader}`.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+        vRoofPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        vRoofNormal = normalize(mat3(modelMatrix) * objectNormal);`,
+    );
+
+    shader.fragmentShader = `varying vec3 vRoofPos;\nvarying vec3 vRoofNormal;\n${shader.fragmentShader}`.replace(
+      '#include <color_fragment>',
+      `#include <color_fragment>
+      {
+        vec3 face = normalize(vRoofNormal);
+        if (face.y > 0.25) {
+          // Along the ridge, and up the slope. The horizontal part of the
+          // normal points straight down the slope, so turning it a quarter
+          // turn gives the direction the courses run in.
+          vec2 fall = vec2(face.x, face.z);
+          float steep = length(fall);
+          vec2 along = steep > 1e-3 ? normalize(vec2(-fall.y, fall.x)) : vec2(1.0, 0.0);
+          float u = dot(vRoofPos.xz, along) / ${TILE_WIDTH.toFixed(3)};
+          // Divided by the normal's rise, so a course is measured along the
+          // slope rather than vertically: shallow roofs are not stretched.
+          float v = (vRoofPos.y / max(face.y, 0.25)) / ${TILE_COURSE.toFixed(3)};
+
+          float course = floor(v);
+          // Every other course offset by half a tile, as they are laid.
+          float across = u + fract(course * 0.5) * 1.0;
+          float tile = floor(across);
+
+          float roll = fract(sin(dot(vec2(tile, course), vec2(12.9898, 78.233))) * 43758.5453);
+          vec3 clay = mix(vec3(0.55, 0.20, 0.11), vec3(0.80, 0.38, 0.20), roll);
+          // A few tiles weathered grey, which is what stops a roof reading as
+          // one flat colour from the air.
+          clay = mix(clay, vec3(0.46, 0.34, 0.28), smoothstep(0.86, 1.0, roll) * 0.7);
+
+          // Widened with the screen-space derivative, so distant roofs settle
+          // to an even tint instead of crawling.
+          vec2 soft = fwidth(vec2(across, v)) * 1.2 + 0.01;
+          float lap = smoothstep(0.0, 0.16 + soft.y, fract(v));
+          float joint = smoothstep(0.0, 0.09 + soft.x, fract(across))
+                      * smoothstep(0.0, 0.09 + soft.x, 1.0 - fract(across));
+
+          diffuseColor.rgb = clay * (0.70 + 0.30 * lap) * (0.86 + 0.14 * joint);
+        } else {
+          // The gable ends are the party walls between neighbours: render,
+          // not tile.
+          diffuseColor.rgb = vec3(0.62, 0.60, 0.56);
+        }
+      }`,
+    );
+  };
+  material.customProgramCacheKey = () => 'roof-tiles';
+  return material;
+}
+
 export function buildWorld(layout: CityLayout = generateCityLayout()): World {
   const group = new THREE.Group();
   const disposables: { dispose(): void }[] = [];
@@ -148,22 +301,37 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
   if (landmark) {
     const material = withWindows(new THREE.MeshLambertMaterial({ color: TARGET_COLOR }));
     disposables.push(material);
+    const walls = landmark.height - roofRise(landmark);
     const mesh = new THREE.Mesh(boxGeometry, material);
-    mesh.position.set(landmark.x, landmark.height / 2, landmark.z);
+    mesh.position.set(landmark.x, walls / 2, landmark.z);
     mesh.rotation.y = landmark.yaw ?? 0;
-    mesh.scale.set(landmark.width, landmark.height, landmark.depth);
+    mesh.scale.set(landmark.width, walls, landmark.depth);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     group.add(mesh);
   }
 
+  // --- Roofs ----------------------------------------------------------------
+  // The roof takes the top few metres of the building rather than being piled
+  // on top of it, so the ridge is still the height the layout says it is and
+  // the collision box -- which stops at that height -- keeps its meaning.
+  const roofGeometry = buildRoofs(layout.buildings);
+  const roofMaterial = withTiles(new THREE.MeshLambertMaterial({ color: 0xffffff }));
+  disposables.push(roofGeometry, roofMaterial);
+
+  const roofs = new THREE.Mesh(roofGeometry, roofMaterial);
+  roofs.castShadow = true;
+  roofs.receiveShadow = true;
+  group.add(roofs);
+
   layout.buildings.forEach((building, i) => {
     if (building.isTarget) return;
-    position.set(building.x, building.height / 2, building.z);
+    const walls = building.height - roofRise(building);
+    rotation.setFromAxisAngle(up, building.yaw ?? 0);
+    position.set(building.x, walls / 2, building.z);
     // Buildings on a real map face their street, so the instance carries a
     // turn as well as a size.
-    rotation.setFromAxisAngle(up, building.yaw ?? 0);
-    scale.set(building.width, building.height, building.depth);
+    scale.set(building.width, walls, building.depth);
     matrix.compose(position, rotation, scale);
 
     const bucket = buckets[i % buckets.length]!;
