@@ -15,6 +15,8 @@ export interface Hud {
     fps: number,
     /** What the bird did on its feet this tick, for the on-foot cue. */
     onFoot: WalkTelemetry,
+    /** Something that has just been achieved, or null. Outranks everything. */
+    note: string | null,
   ): void;
   dispose(): void;
 }
@@ -77,6 +79,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     toGo: number,
     fps: number,
     onFoot: WalkTelemetry,
+    note: string | null,
   ) {
     speedEl.textContent = speedText(telemetry.airspeed);
     altitudeEl.textContent = telemetry.altitude.toFixed(0);
@@ -100,7 +103,9 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     staminaEl.style.width = `${state.stamina * 100}%`;
     staminaEl.classList.toggle('low', state.stamina < 0.25);
 
-    const warning = isPerched(state)
+    const warning = note
+      ? note
+      : isPerched(state)
       ? onFoot.blocked
         ? 'blocked — turn and walk round it'
         : onFoot.travelled > 0
@@ -110,7 +115,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
         ? 'STALL — push the nose down'
         : '';
     if (warningEl.textContent !== warning) warningEl.textContent = warning;
-    warningEl.classList.toggle('calm', isPerched(state));
+    warningEl.classList.toggle('calm', isPerched(state) || note !== null);
 
     // Approach cue: only useful on the way down, and only while still flying.
     landingEl.hidden = landing === null;

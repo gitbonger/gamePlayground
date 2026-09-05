@@ -53,9 +53,10 @@ import {
   trainBoxes,
   turnedBetween,
   tweenAlong,
+  WAGON,
 } from './world/train';
 import { createSmoke } from './world/smoke';
-import { walk, type WalkControls, type WalkTelemetry } from './sim/walk';
+import { meeting, walk, type WalkControls, type WalkTelemetry } from './sim/walk';
 import { bearing, distance, project } from './world/geo';
 import type { MapData } from './world/streets';
 import homeMap from './world/data/home.json';
@@ -235,6 +236,65 @@ const flockRigs = flock.members.map((member) => {
   return rig;
 });
 
+/**
+ * Pigeons that stay where they are, and finishing a level means walking up to
+ * one of them.
+ *
+ * Not part of the flock: the flock flies, and these do not do anything at all.
+ * A resident is an ordinary `BirdState` marked as landed, standing on a named
+ * solid, so that everything that already knows what to do with a bird on its
+ * feet -- riding the wagon it is on, being drawn perched, being met -- works
+ * on it without knowing it is not a player.
+ */
+interface Resident {
+  state: BirdState;
+  rig: ReturnType<typeof createBirdRig>;
+  /** The level walking up to it completes. */
+  completes: string;
+}
+
+/**
+ * Which tag a vehicle's collision boxes are given.
+ *
+ * Shared with `moveTrains`, which assigns them, so a resident can say which
+ * wagon it is standing on without the two drifting apart.
+ */
+function carrierOf(train: number, vehicle: number): number {
+  let base = 0;
+  for (let i = 0; i < train; i += 1) base += layout.trains[i]?.vehicles.length ?? 0;
+  return base + vehicle;
+}
+
+const residents: Resident[] = [];
+{
+  const wagon = layout.trains[0]?.vehicles[middleCar];
+  if (wagon) {
+    // A little along the deck from the middle, so meeting it is a short walk
+    // rather than something that happens the moment you touch down.
+    const spot = onVehicle(wagon, 2.5, 0);
+    const state = createBird(
+      vec(spot.x, WAGON.deck + defaultParams.bodyRadius, spot.z),
+      0,
+      // Facing across the wagon, so it reads as standing about rather than
+      // waiting to leave.
+      wagon.yaw + Math.PI / 2,
+    );
+    state.velocity = vec(0, 0, 0);
+    state.restingOn = carrierOf(0, middleCar);
+    state.ending = {
+      kind: 'landed',
+      cause: null,
+      speed: 0,
+      sink: 0,
+      bank: 0,
+      position: state.position,
+    };
+    const rig = createBirdRig(PIGEON_MORPHS[3]);
+    scene.add(rig.object);
+    residents.push({ state, rig, completes: LEVELS[0] });
+  }
+}
+
 const run = createRunTracker(bird);
 
 // Previous tick's pose, so rendering can interpolate between ticks instead of
@@ -314,7 +374,11 @@ function moveTrains(dt: number) {
   // Anything standing on a wagon goes where the wagon goes. Without this a
   // bird that has just landed watches the train slide out from under it.
   const after = allVehicles();
-  for (const passenger of [bird, ...flock.members.map((member) => member.state)]) {
+  for (const passenger of [
+    bird,
+    ...flock.members.map((member) => member.state),
+    ...residents.map((resident) => resident.state),
+  ]) {
     const riding = passenger.restingOn;
     if (riding === null) continue;
     const was = before[riding];
@@ -373,6 +437,33 @@ function surfaceUnder(state: BirdState): number {
   return world.surfaceAt(state.position.x, state.position.z);
 }
 
+/**
+ * Walking up to the resident that belongs to the level being flown finishes
+ * it, and lights the next one.
+ *
+ * Both birds on their feet, both standing on the same solid, and within arm's
+ * reach -- the middle of those is what stops a train running under a rooftop
+ * from counting. `meeting` is where all three live; this only decides what
+ * happens next.
+ */
+function reachLevel(): void {
+  const here = LEVELS[level];
+  if (!here) return;
+  const met = residents.some(
+    (resident) => resident.completes === here && meeting(bird, resident.state),
+  );
+  if (!met) return;
+
+  reached = here;
+  if (level + 1 < LEVELS.length) {
+    level += 1;
+    for (const marker of world.markers) marker.setActive(marker.name === LEVELS[level]);
+  }
+}
+
+/** The last level finished, for the HUD to say so. Null until one is. */
+let reached: string | null = null;
+
 function frame(nowMs: number) {
   const now = nowMs / 1000;
   const frameTime = Math.min(now - lastTime, MAX_FRAME_TIME);
@@ -406,6 +497,7 @@ function frame(nowMs: number) {
     telemetry = step(bird, input.controls, flightParams, TICK, solid, wind);
     flock.update(TICK, solid, wind);
     if (bird.ending === null) run.update(bird, TICK);
+    reachLevel();
     accumulator -= TICK;
   }
   if (ticked) launchPending = false;
@@ -460,6 +552,7 @@ function frame(nowMs: number) {
       interpolatedState.position.y,
       interpolatedState.position.z,
     ),
+    isPerched(bird),
   );
 
   // The flock is far enough away that the raw tick pose is smooth enough.
@@ -474,6 +567,10 @@ function frame(nowMs: number) {
       surfaceUnder(member.state),
     );
   });
+
+  for (const resident of residents) {
+    resident.rig.update(resident.state, 'perched', frameTime, surfaceUnder(resident.state));
+  }
 
   // Once the bird is down the camera settles: further back and levelled off
   // for a crash, closer and lower for a perch, where the bird is the subject.
@@ -528,6 +625,11 @@ function frame(nowMs: number) {
     distance(interpolatedState.position, objective(LEVELS[level])?.position ?? home),
     smoothedFps,
     onFoot,
+    reached === null
+      ? null
+      : level > LEVELS.indexOf(reached as (typeof LEVELS)[number])
+        ? `${reached} reached — now for ${LEVELS[level]}`
+        : `${reached} reached — that is all of them`,
   );
   renderer.render(scene, camera);
   // Then the arrows, on a fresh depth buffer so the world cannot cover them.

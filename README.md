@@ -199,7 +199,39 @@ proportional to range with a floor so it does not vanish underfoot.
 the rake the flock roosts on; Level 2 is the loft, which is where the homing
 pigeon was always headed. Both are built, both have a marker, and the one being
 flown is the one switched on — so moving the game forward is a matter of
-lighting the next one. How that happens is not decided yet.
+lighting the next one.
+
+**A level is finished by meeting somebody.** There is a pigeon standing on the
+middle wagon, and walking up to it lights Level 2. That is one rule, not a
+special case: `meeting()` in `src/sim/walk.ts` asks three things of any two
+birds, and what happens next is the caller's business.
+
+- **Both on their feet.** Flying past at speed is not meeting anyone.
+- **Both on the same solid**, by the tag the collider gave whatever they came
+  to rest on. This is the one that does the work: a bird on the ballast beside
+  a wagon is a metre from a bird on its deck, and they have not met. Passing
+  by on the track does not count.
+- **Within two metres**, which is close enough that you had to walk up to it.
+
+The distance is the whole distance rather than the ground plan, because two
+metres straight up is a real place to be on a wagon with stakes. One case it
+cannot tell apart is a low roof from the ground beneath it — neither is
+tagged, so both read as "nothing" — and tagging buildings is the fix if
+anything ever gets close enough for it to matter.
+
+The resident is an ordinary `BirdState` marked as landed, standing on a named
+solid, and nothing else. Everything that already knows what to do with a bird
+on its feet then works on it without being told it is not a player: it rides
+the wagon it is standing on through the same `carriedBy` pass the flock and
+the player use, it is drawn perched by the same rig, and it is met by the same
+rule that would let two players meet.
+
+**The target flashes right up to touchdown.** It used to fade out inside
+130 m, on the reasoning that a building blinking in your face while you are
+trying to put down on it is a distraction. That is backwards: the last stretch
+of an approach is exactly when you want to be certain you are lining up on the
+right roof. Distance is no longer a reason to stop, and being down is the only
+one.
 
 Nothing about the marker is specific to buildings: it takes a material to
 recolour and a height to hang the arrow over. Marking a wagon needed two
@@ -1508,6 +1540,15 @@ npm test
   contact, because the scraped bird dies too, on the ground a second later,
   having slid all the way down. And it does not stop you landing on top of a
   moving deck, which is the exception the whole thing turns on.
+
+  And on meeting: two birds on their feet, on the same solid, within reach.
+  Not from further off than that; not for a bird passing underneath on the
+  ground, which is close enough to touch and not the same place at all; not
+  for the next wagon along; not while either is flying or one of them is dead.
+  The distance is the whole distance and not the ground plan, since two metres
+  straight up is somewhere you can stand on a wagon. Two birds on open ground
+  do meet, because both standing on nothing is both standing on the same
+  ground.
 - **`src/render/bird.test.ts`** also covers the walk cycle: the legs swing in
   opposite directions and only the forward one lifts, both return together at
   the top of the stride, and the head reaches furthest forward in the first
@@ -1547,7 +1588,8 @@ npm test
   nothing is marked until a level is made active, and the marked wagon comes
   out of the rake without being duplicated or dropped. The target flashes once a second, is dark for
   most of it, swells and fades rather than snapping, repeats whenever you look,
-  stops when the bird is close and fades out across the band rather than
+  goes on doing it however close the bird gets, and stops the moment the bird
+  is on its feet — which replaced fading out across a band rather than
   switching off; the arrow keeps a constant apparent size at any range, with a
   floor so it does not vanish underfoot. A roof comes out of the building's height
   rather than being added to it, is pitched to the depth of the wing it covers

@@ -105,22 +105,21 @@ describe('roofs', () => {
 
 describe('marking the target', () => {
   it('flashes once a second, and is dark for most of it', () => {
-    const far = 500;
     // One clean pulse per second: nothing at the turn of the second, a peak
     // partway through, and dark again well before the next one.
-    expect(targetFlash(0, far)).toBeCloseTo(0, 6);
-    expect(targetFlash(0.225, far)).toBeCloseTo(1, 6);
-    expect(targetFlash(0.45, far)).toBeCloseTo(0, 6);
+    expect(targetFlash(0, false)).toBeCloseTo(0, 6);
+    expect(targetFlash(0.225, false)).toBeCloseTo(1, 6);
+    expect(targetFlash(0.45, false)).toBeCloseTo(0, 6);
 
     let dark = 0;
-    for (let t = 0; t < 1; t += 0.01) if (targetFlash(t, far) < 0.05) dark += 1;
+    for (let t = 0; t < 1; t += 0.01) if (targetFlash(t, false) < 0.05) dark += 1;
     expect(dark / 100).toBeGreaterThan(0.6);
   });
 
   it('repeats every second, whenever you look', () => {
     for (const second of [0, 1, 7, 123]) {
-      expect(targetFlash(second + 0.225, 500)).toBeCloseTo(1, 6);
-      expect(targetFlash(second + 0.8, 500)).toBeCloseTo(0, 6);
+      expect(targetFlash(second + 0.225, false)).toBeCloseTo(1, 6);
+      expect(targetFlash(second + 0.8, false)).toBeCloseTo(0, 6);
     }
   });
 
@@ -128,31 +127,29 @@ describe('marking the target', () => {
     // A hard edge at this size reads as a rendering fault rather than a
     // signal, so the pulse has to be continuous at both ends.
     let biggest = 0;
-    let last = targetFlash(0, 500);
+    let last = targetFlash(0, false);
     for (let t = 0; t < 1; t += 1 / 240) {
-      const now = targetFlash(t, 500);
+      const now = targetFlash(t, false);
       biggest = Math.max(biggest, Math.abs(now - last));
       last = now;
     }
     expect(biggest).toBeLessThan(0.05);
   });
 
-  it('stops flashing once the bird is close enough to see it', () => {
-    for (const t of [0, 0.2, 0.225, 0.4]) {
-      expect(targetFlash(t, 100), `${t}s`).toBe(0);
-      expect(targetFlash(t, 129), `${t}s`).toBe(0);
+  it('goes on flashing right up to the moment of touchdown', () => {
+    // It used to stop inside 130 m, which is the part of an approach where
+    // you most want to be sure you are lining up on the right roof. Distance
+    // is not a reason to stop any more, and being down is the only one.
+    for (const t of [0, 0.225, 0.4, 60.225]) {
+      expect(targetFlash(t, false), `${t}s`).toBe(targetFlash(t % 1, false));
     }
+    expect(targetFlash(0.225, false)).toBeCloseTo(1, 6);
   });
 
-  it('fades out across the band rather than switching off', () => {
-    // Snapping to nothing at a threshold makes the last flash before it look
-    // like the marker breaking.
-    const peak = (away: number) => targetFlash(0.225, away);
-    expect(peak(130)).toBeCloseTo(0, 6);
-    expect(peak(185)).toBeGreaterThan(0.3);
-    expect(peak(185)).toBeLessThan(0.7);
-    expect(peak(240)).toBeCloseTo(1, 6);
-    expect(peak(2000)).toBeCloseTo(1, 6);
+  it('and stops the moment the bird is on its feet', () => {
+    for (const t of [0, 0.2, 0.225, 0.4, 0.9]) {
+      expect(targetFlash(t, true), `${t}s`).toBe(0);
+    }
   });
 
   it('keeps the arrow the same apparent size however far off it is', () => {

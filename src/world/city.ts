@@ -36,8 +36,13 @@ export interface TargetMarker {
   readonly rides: { train: number; vehicle: number } | null;
   /** Whether it is the one being flown to. Only one usually is. */
   setActive(active: boolean): void;
-  /** Flash the target and size the arrow. Once a frame, when active. */
-  update(elapsed: number, viewer: THREE.Vector3, bird: THREE.Vector3): void;
+  /**
+   * Flash the target and size the arrow. Once a frame, when active.
+   *
+   * `down` stops the flashing: the bird is on its feet and no longer looking
+   * for the place to put them.
+   */
+  update(elapsed: number, viewer: THREE.Vector3, bird: THREE.Vector3, down: boolean): void;
 }
 
 export interface ObjectiveOptions {
@@ -179,30 +184,24 @@ const TARGET_COLOR = 0xd0281c;
 const FLASH_PERIOD = 1;
 const FLASH_DUTY = 0.45;
 /**
- * Where the flashing fades out, in metres.
- *
- * Close up you can see the thing perfectly well, and a building blinking in
- * your face while you are trying to put down on it is a distraction rather
- * than a help. It fades across the band rather than switching off, or the last
- * flash before the threshold reads as the marker breaking.
- */
-const FLASH_NEAR = 130;
-const FLASH_FAR = 240;
-
-/**
- * How red the target is, at `elapsed` seconds and `away` metres from the bird.
+ * How red the target is, at `elapsed` seconds.
  *
  * A raised cosine over the first part of each second, so it swells and fades
  * rather than snapping on -- a hard square wave at this size reads as a
  * rendering fault. Pure arithmetic, and tested as such.
+ *
+ * It used to fade out inside 130 m, on the reasoning that a building blinking
+ * in your face while you are trying to put down on it is a distraction. It is
+ * the opposite: the last stretch of an approach is exactly when you want to
+ * be sure you are lining up on the right roof. It runs until the bird is
+ * down, and `down` is the only thing that stops it.
  */
-export function targetFlash(elapsed: number, away: number): number {
-  const near = Math.min(1, Math.max(0, (away - FLASH_NEAR) / (FLASH_FAR - FLASH_NEAR)));
-  if (near <= 0) return 0;
+export function targetFlash(elapsed: number, down: boolean): number {
+  if (down) return 0;
 
   const phase = ((elapsed % FLASH_PERIOD) + FLASH_PERIOD) % FLASH_PERIOD;
   if (phase >= FLASH_DUTY) return 0;
-  return near * 0.5 * (1 - Math.cos((phase / FLASH_DUTY) * Math.PI * 2));
+  return 0.5 * (1 - Math.cos((phase / FLASH_DUTY) * Math.PI * 2));
 }
 
 /**
@@ -701,10 +700,10 @@ function createMarker(
       arrow.visible = on;
       if (!on) material.emissive.setScalar(0);
     },
-    update(elapsed, viewer, bird) {
+    update(elapsed, viewer, _bird, down) {
       if (!active) return;
 
-      material.emissive.copy(lit).multiplyScalar(targetFlash(elapsed, position.distanceTo(bird)));
+      material.emissive.copy(lit).multiplyScalar(targetFlash(elapsed, down));
 
       const size = arrowScale(position.distanceTo(viewer));
       arrow.scale.setScalar(size);

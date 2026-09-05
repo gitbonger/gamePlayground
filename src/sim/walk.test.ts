@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { neutralWalk, walk, type WalkControls } from './walk';
+import { MEET_RADIUS, meeting, neutralWalk, walk, type WalkControls } from './walk';
 import {
   createBird,
   defaultParams,
@@ -465,6 +465,72 @@ describe('taking off', () => {
     walk(bird, launch(), p, TICK);
     expect(bird.restingOn).toBeNull();
     expect(bird.velocity.y).toBeGreaterThan(1);
+  });
+});
+
+describe('meeting another pigeon', () => {
+  /** A bird on its feet at `at`, standing on `on`. */
+  const standing = (at: ReturnType<typeof vec>, on: number | null) => {
+    const b = landed(at);
+    b.restingOn = on;
+    return b;
+  };
+
+  it('counts when both are on foot, on the same thing, and within reach', () => {
+    const a = standing(vec(0, 1.47, 0), 6);
+    const b = standing(vec(1.5, 1.47, 0), 6);
+    expect(meeting(a, b)).toBe(true);
+  });
+
+  it('does not count from further off than arm’s reach', () => {
+    const a = standing(vec(0, 1.47, 0), 6);
+    const b = standing(vec(MEET_RADIUS + 0.1, 1.47, 0), 6);
+    expect(meeting(a, b)).toBe(false);
+  });
+
+  it('does not count for a bird passing underneath on the ground', () => {
+    // The one the whole rule exists for: a train running under a rooftop, or
+    // a pigeon on the ballast beside the wagon you are standing on. Close
+    // enough to touch, and not the same place at all.
+    const onDeck = standing(vec(0, 1.47, 0), 6);
+    const onGround = standing(vec(0, 0.22, 0), null);
+    expect(Math.abs(onDeck.position.y - onGround.position.y)).toBeLessThan(MEET_RADIUS);
+    expect(meeting(onDeck, onGround)).toBe(false);
+  });
+
+  it('does not count for the next wagon along', () => {
+    const a = standing(vec(0, 1.47, 0), 6);
+    const b = standing(vec(1, 1.47, 0), 7);
+    expect(meeting(a, b)).toBe(false);
+  });
+
+  it('does not count while either of them is flying', () => {
+    const grounded = standing(vec(0, 1.47, 0), 6);
+    const flying = standing(vec(1, 1.47, 0), 6);
+    flying.ending = null;
+    expect(meeting(grounded, flying)).toBe(false);
+    expect(meeting(flying, grounded)).toBe(false);
+
+    // And a crashed one is not somebody you have met either.
+    const dead = standing(vec(1, 1.47, 0), 6);
+    dead.ending = { ...dead.ending!, kind: 'crashed', cause: 'struck' };
+    expect(meeting(grounded, dead)).toBe(false);
+  });
+
+  it('measures the whole distance, not just the ground plan', () => {
+    // Two metres directly above is two metres away, and on a wagon with
+    // stakes that is a real place to be.
+    const a = standing(vec(0, 1.47, 0), 6);
+    const b = standing(vec(0, 1.47 + MEET_RADIUS + 0.1, 0), 6);
+    expect(meeting(a, b)).toBe(false);
+  });
+
+  it('lets two birds meet on open ground', () => {
+    // Both standing on nothing is both standing on the same ground, and the
+    // reach is what keeps that honest.
+    const a = standing(vec(0, STANDING, 0), null);
+    const b = standing(vec(1, STANDING, 0), null);
+    expect(meeting(a, b)).toBe(true);
   });
 });
 

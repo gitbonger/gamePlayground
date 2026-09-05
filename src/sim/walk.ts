@@ -283,3 +283,38 @@ export function takeOff(state: BirdState, p: FlightParams): void {
   state.ending = null;
   state.restingOn = null;
 }
+
+/**
+ * How near two birds have to be to have met, in metres.
+ *
+ * Close enough that you had to walk up to it deliberately, rather than close
+ * enough that flying past counts.
+ */
+export const MEET_RADIUS = 2;
+
+/**
+ * Whether two birds have met.
+ *
+ * Three things, and the middle one is what stops a train passing under a
+ * rooftop from being a meeting: both have to be on their feet, both have to
+ * be standing on the same thing, and they have to be within arm's reach.
+ *
+ * "The same thing" is whatever the collider tagged the solid they came to
+ * rest on. Two birds on open ground are both standing on nothing, which
+ * counts -- they are on the same ground -- and the reach is what keeps that
+ * honest. The one case it cannot tell apart is a low roof from the ground
+ * beneath it, because neither is tagged; nothing in the game is close enough
+ * to the other for that to arise, and tagging buildings is the fix if it ever
+ * does.
+ */
+export function meeting(a: BirdState, b: BirdState, within = MEET_RADIUS): boolean {
+  if (!isPerched(a) || !isPerched(b)) return false;
+  if (a.restingOn !== b.restingOn) return false;
+  return (
+    Math.hypot(
+      a.position.x - b.position.x,
+      a.position.y - b.position.y,
+      a.position.z - b.position.z,
+    ) <= within
+  );
+}
