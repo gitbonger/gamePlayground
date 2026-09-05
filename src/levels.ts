@@ -88,7 +88,10 @@ export const LEVELS: readonly Level[] = [
     // Twenty-four metres up, on a roof among other roofs. Still nothing
     // moving, but now you have to pick the right one and stop on it.
     name: 'The Loft',
-    start: [47.503261, 19.091374],
+    // Three hundred metres out and a hundred and twenty up, which is a good
+    // deal steeper than a pigeon glides: 1:2.5 against a best glide of 1:6.2,
+    // so the height has to be got rid of rather than merely flown off.
+    start: [47.494610, 19.086245],
     // Late afternoon in midsummer: 24 degrees up and a little north of due
     // west, which hangs the sun over the rooftops instead of above the top of
     // the frame, and makes the shadows long enough to read from the air.
