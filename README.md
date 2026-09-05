@@ -240,9 +240,26 @@ and a level nobody is playing having somebody waiting on it reads, correctly,
 as a city with pigeons in it.
 
 `playLevel` is the single path in. Starting the game, picking one out of the
-menu and finishing the one before are all the same thing happening: light the
-target, move the sun, remember the choice, and release from the level's own
-point pointed at its own target.
+menu and flying on from the one before are all the same thing happening: light
+the target, move the sun, remember the choice, and release from the level's
+own point pointed at its own target.
+
+**Levels are separate places, not one long flight.** Finishing one and moving
+on are two things. You meet the pigeon waiting at the target and that is the
+level done — and then you are standing there with them, which is where the
+conversation goes once there is one. The next level begins when you leave, at
+its own point and its own hour, with nothing carried over.
+
+Leaving is the take-off key, because flying on *is* what you do, but it is
+taken before the flight model can have it: from a finished conversation it is
+a transition to somewhere else rather than a launch from where you are. On the
+last level there is nowhere to go, so it stays an ordinary take-off.
+
+That split is what the story will hang on — a dialogue has to happen
+*somewhere*, and standing with somebody having just arrived is the somewhere.
+It is also less to build than a continuous world, and a fresh start each time
+is rather more of an occasion than gliding on from wherever you happened to
+put down.
 
 **Which level you are on is remembered**, in local storage, and anything else
 found there is treated as the beginning — a number from a build with more

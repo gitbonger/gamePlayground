@@ -31,7 +31,7 @@ import { createDebugGui } from './debug-gui';
 import { createScene } from './render/scene';
 import { createBirdRig, PIGEON_MORPHS, type WingPose } from './render/bird';
 import { createFlock } from './flock';
-import { LEVELS, levelNamed, type Level, type LevelTarget } from './levels';
+import { LEVELS, type Level, type LevelTarget } from './levels';
 import { loadProgress, saveProgress } from './progress';
 import { createLevelMenu } from './render/menu';
 import {
@@ -190,17 +190,31 @@ function storage(): Storage | undefined {
 /** The one being flown, remembered between visits. */
 let level = loadProgress(storage(), LEVELS.length);
 
+/** Seconds of simulated time since the page loaded. */
+let clock = 0;
+
 /**
- * The last level finished and when, for the HUD to say so.
+ * Whether the level being flown has been finished.
  *
- * It says so for a few seconds and then stops. An announcement that never
- * goes away is not an announcement, and this one sits in the slot everything
- * else has to speak through -- including the line telling you how to leave
- * the conversation you are in.
+ * Finishing it and moving on are two things. You meet the pigeon waiting at
+ * the target and that is the level done -- and then you are standing there
+ * with them, which is where the conversation goes once there is one. The next
+ * level begins when you leave, from its own point at its own hour, with
+ * nothing carried over. Levels are separate places rather than one long
+ * flight, which is easier to build and, with a fresh start each time, rather
+ * more of an occasion.
  */
-let reached: string | null = null;
-let reachedAt = 0;
-const NOTE_SECONDS = 6;
+let finished = false;
+
+/**
+ * The level just started, named on screen for a few seconds.
+ *
+ * Set by whatever started it, so picking one out of the menu says the same
+ * thing as flying on from the one before.
+ */
+let started: string | null = null;
+let startedAt = 0;
+const NOTE_SECONDS = 5;
 
 /**
  * The resident the hero is standing with, or null.
@@ -462,7 +476,9 @@ function playLevel(at: number): void {
   setSun(sunVector(map.centre[0], map.centre[1], new Date(spec.when)));
   sunOffset.copy(sunDirection).multiplyScalar(SUN_RANGE);
 
-  reached = null;
+  finished = false;
+  started = spec.name;
+  startedAt = clock;
   talkingTo = null;
   start = releaseFor(spec);
   respawn();
@@ -487,7 +503,6 @@ const restCameraParams = { ...cameraParams };
  * else every tick and carries its own field, rebuilt from scratch each time.
  * That costs 0.012 ms for a rake of thirteen, which is nothing worth avoiding.
  */
-let clock = 0;
 /**
  * Where each train stood at the previous tick, for drawing between them.
  *
@@ -614,17 +629,39 @@ function reachLevel(): void {
   talkingTo = residents.find((resident) => meeting(bird, resident.state)) ?? null;
 
   const here = LEVELS[level];
-  if (!here || talkingTo?.completes !== here.name) return;
+  // Meeting them finishes the level and nothing else. What happens next is
+  // the player's move, not the game's: they are standing with somebody.
+  if (here && talkingTo?.completes === here.name) finished = true;
+}
 
-  // The next one, if there is one. Staying put on the last is the honest
-  // answer until there is something to move on to.
-  if (level + 1 < LEVELS.length) playLevel(level + 1);
+/**
+ * Leave a finished conversation, which is what starts the next level.
+ *
+ * The take-off key, because flying on *is* what you do -- but taken here
+ * rather than left to the flight model, so that leaving is a transition to
+ * somewhere else rather than a launch from where you are. On the last level
+ * there is nowhere to go, so it stays an ordinary take-off.
+ */
+/**
+ * The line across the top of the screen, when there is one.
+ *
+ * Finishing outranks everything: it is the one moment the player is waiting
+ * to be told about, and it says what the key in their hand will do next.
+ */
+function banner(): string | null {
+  const here = LEVELS[level]?.name;
+  if (finished && talkingTo) {
+    const next = LEVELS[level + 1]?.name;
+    return next ? `${here} complete — SPACE to fly on to ${next}` : `${here} complete`;
+  }
+  if (started && clock - startedAt <= NOTE_SECONDS) return `now flying — ${started}`;
+  return null;
+}
 
-  // Announced *after* moving on, because starting a level clears the note --
-  // which is right when you pick one out of the menu and wrong when you have
-  // just earned it. Set here it survives, and says which one you finished.
-  reached = here.name;
-  reachedAt = clock;
+function flyOn(): boolean {
+  if (!finished || !talkingTo || level + 1 >= LEVELS.length) return false;
+  playLevel(level + 1);
+  return true;
 }
 
 /** The resident this level is about, if it has one. */
@@ -651,7 +688,10 @@ function frame(nowMs: number) {
     if (picked !== null) playLevel(picked);
   }
   if (input.consumeReset()) respawn();
-  if (input.consumeLaunch()) launchPending = true;
+  // Leaving a finished conversation starts the next level rather than taking
+  // off from this one, so the key is taken here before the flight model can
+  // have it.
+  if (input.consumeLaunch()) launchPending = !flyOn();
 
   // Alive rather than flying: a walking bird is not flying, and being run
   // over while on foot is still a death that has to raise the panel.
@@ -835,11 +875,7 @@ function frame(nowMs: number) {
     distance(interpolatedState.position, objective(LEVELS[level]?.name ?? '')?.position ?? home),
     smoothedFps,
     onFoot,
-    reached === null || clock - reachedAt > NOTE_SECONDS
-      ? null
-      : level > levelNamed(reached)
-        ? `${reached} reached — now for ${LEVELS[level]?.name}`
-        : `${reached} reached — that is all of them`,
+    banner(),
     stance === 'talking',
   );
   renderer.render(scene, camera);

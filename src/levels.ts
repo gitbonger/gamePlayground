@@ -97,7 +97,3 @@ export const LEVELS: readonly Level[] = [
     person: { morph: 3, along: 2.5, across: 0 },
   },
 ];
-
-/** The level a name belongs to, or -1. */
-export const levelNamed = (name: string): number =>
-  LEVELS.findIndex((level) => level.name === name);
