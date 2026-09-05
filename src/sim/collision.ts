@@ -34,8 +34,24 @@ export interface Box extends Aabb {
    * on. Boxes that never move need none.
    */
   carrier?: number;
+  /**
+   * How fast the solid itself is travelling, in m/s. Absent means still.
+   *
+   * Nothing here does anything with it -- a sweep reports it and stops. It is
+   * the difference between walking into a wall and being run over by a train,
+   * and the rules about which of those is survivable belong to whatever owns
+   * the bird, not to the geometry.
+   */
+  speed?: number;
   /** Radians about Y. Absent or zero means the extents are the solid. */
   yaw?: number;
+}
+
+/** A solid found overlapping a sphere, and what it is. */
+export interface Touch {
+  carrier: number | null;
+  /** How fast it is itself moving, in m/s. */
+  speed: number;
 }
 
 export interface SweepHit {
@@ -53,11 +69,23 @@ export interface SweepHit {
    * back to whoever knows what the number means.
    */
   carrier: number | null;
+  /** How fast the thing that was hit is itself moving, in m/s. */
+  speed: number;
 }
 
 export interface Collider {
   /** Sweep a sphere of `radius` from `from` to `to`; nearest hit or null. */
   sweep(from: Vec3, to: Vec3, radius: number): SweepHit | null;
+  /**
+   * The fastest-moving solid overlapping a sphere right now, or null.
+   *
+   * A sweep cannot answer this. It is a slab test, and a ray that starts
+   * already inside a box has no entry face to report, so it comes back with
+   * nothing -- which is exactly the case of something arriving on top of you
+   * while you stand still. A bird waiting on the rails as a wagon reaches it
+   * is not moving, and neither is the question.
+   */
+  touching(point: Vec3, radius: number): Touch | null;
   /** Height of the tallest box overlapping this column, or -Infinity. */
   heightAt(x: number, z: number): number;
   readonly boxCount: number;
@@ -195,6 +223,35 @@ export function createColliderField(boxes: readonly Box[]): Collider {
     return best;
   }
 
+  /**
+   * Squared distance from a point to the nearest part of a box, in the box's
+   * own frame, so a turned box is tested as the solid it actually is.
+   */
+  function gapTo(point: Vec3, box: Box): number {
+    const [x, z] = box.yaw
+      ? turnAbout(point.x, point.z, (box.minX + box.maxX) / 2, (box.minZ + box.maxZ) / 2, -box.yaw)
+      : [point.x, point.z];
+    const dx = Math.max(box.minX - x, 0, x - box.maxX);
+    const dy = Math.max(box.minY - point.y, 0, point.y - box.maxY);
+    const dz = Math.max(box.minZ - z, 0, z - box.maxZ);
+    return dx * dx + dy * dy + dz * dz;
+  }
+
+  function touching(point: Vec3, radius: number): Touch | null {
+    const bucket = grid.get(cellKey(toCell(point.x), toCell(point.z)));
+    if (!bucket) return null;
+
+    let found: Touch | null = null;
+    for (const index of bucket) {
+      const box = boxes[index]!;
+      if (gapTo(point, box) > radius * radius) continue;
+      const speed = box.speed ?? 0;
+      // The fastest, because that is the one that decides what happens.
+      if (!found || speed > found.speed) found = { carrier: box.carrier ?? null, speed };
+    }
+    return found;
+  }
+
   function heightAt(x: number, z: number): number {
     const bucket = grid.get(cellKey(toCell(x), toCell(z)));
     if (!bucket) return -Infinity;
@@ -208,7 +265,7 @@ export function createColliderField(boxes: readonly Box[]): Collider {
     return highest;
   }
 
-  return { sweep, heightAt, boxCount: boxes.length };
+  return { sweep, touching, heightAt, boxCount: boxes.length };
 }
 
 /**
@@ -255,6 +312,7 @@ export function sweepBox(
       point: vec(from.x + delta.x * hit.t, from.y + delta.y * hit.t, from.z + delta.z * hit.t),
       normal: vec(normalX, hit.normal.y, normalZ),
       carrier: box.carrier ?? null,
+      speed: box.speed ?? 0,
     };
   }
 
@@ -313,6 +371,7 @@ export function sweepBox(
     ),
     normal,
     carrier: box.carrier ?? null,
+    speed: box.speed ?? 0,
   };
 }
 
@@ -336,6 +395,14 @@ export function combineColliders(...fields: readonly Collider[]): Collider {
         if (hit && (!nearest || hit.t < nearest.t)) nearest = hit;
       }
       return nearest;
+    },
+    touching(point, radius) {
+      let found: Touch | null = null;
+      for (const field of fields) {
+        const hit = field.touching(point, radius);
+        if (hit && (!found || hit.speed > found.speed)) found = hit;
+      }
+      return found;
     },
     heightAt(x, z) {
       let tallest = -Infinity;

@@ -28,6 +28,10 @@ const OUTCOMES: Record<string, { title: string; detail: (e: Ending) => string }>
     title: 'Game over',
     detail: (e) => `Too fast to land at ${speedText(e.speed)} km/h — bleed off speed first`,
   },
+  struck: {
+    title: 'Game over',
+    detail: () => 'Something ran into you — mind the trains',
+  },
   'not-level': {
     title: 'Game over',
     detail: (e) => `You landed banked ${((e.bank * 180) / Math.PI).toFixed(0)}° — level the wings`,

@@ -165,6 +165,21 @@ export interface FlightParams {
    * Touching the ground is judged by the landing limits below instead.
    */
   crashSpeed: number;
+  /**
+   * How fast a solid has to be moving before being touched by it is fatal,
+   * in m/s.
+   *
+   * Because a wall you walk into and a train that runs into you are not the
+   * same event, however similar the geometry: one of them chose the moment.
+   * A pigeon standing on a rail as a wagon arrives is not going to scrape
+   * gently along the side of it.
+   *
+   * Which way round the two are moving does not come into it. A bird that
+   * walks into the flank of a moving train has been run over just as surely
+   * as one that stood still and let it come, and asking whose fault it was
+   * would need a closing speed the collider does not report.
+   */
+  struckSpeed: number;
 
   // --- On foot ------------------------------------------------------------
   /**
@@ -249,6 +264,7 @@ export const defaultParams: FlightParams = {
 
   bodyRadius: 0.22,
   crashSpeed: 7.5,
+  struckSpeed: 0.5,
 
   walkSpeed: 1.2,
   walkTurnRate: 2.5,
@@ -296,7 +312,9 @@ export type CrashCause =
   /** Touched down without bleeding off enough speed. */
   | 'too-fast'
   /** Touched down with a wing well down. */
-  | 'not-level';
+  | 'not-level'
+  /** Run into by something that was already moving. */
+  | 'struck';
 
 /**
  * How a flight finished.
@@ -680,8 +698,18 @@ export function step(
         return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work, airVelocity);
       }
 
+      // Being run into is not the same event as running into something, and
+      // the difference is whether the other thing was going anywhere. Below
+      // `crashSpeed` a bird bumps a wall and slides off it; the flank of a
+      // moving train it does not. The exception is above, not here: putting
+      // down on the deck is judged as a landing before any of this is reached.
+      // Both being null is not a match: a bird in the air is riding nothing
+      // and an untagged solid belongs to nobody, and reading that as "it is
+      // standing on the thing that hit it" exempts the whole world.
+      const aboard = state.restingOn !== null && hit.carrier === state.restingOn;
+      const struck = hit.speed >= p.struckSpeed && !aboard;
       const impact = closingSpeed(state.velocity, hit.normal);
-      if (impact >= p.crashSpeed) {
+      if (struck || impact >= p.crashSpeed) {
         // Read the arrival before the velocity is spent on it, or the report
         // is of a bird that hit a wall at nothing.
         const arrival = {
@@ -693,7 +721,12 @@ export function step(
         work.collision -= kinetic(state.velocity, p);
         state.velocity = vec(0, 0, 0);
         state.angularVelocity = vec(0, 0, 0);
-        state.ending = { kind: 'crashed', cause: 'building', ...arrival, position: hit.point };
+        state.ending = {
+          kind: 'crashed',
+          cause: struck ? 'struck' : 'building',
+          ...arrival,
+          position: hit.point,
+        };
         return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work, airVelocity);
       }
 

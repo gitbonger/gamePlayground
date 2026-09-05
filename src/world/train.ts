@@ -259,12 +259,22 @@ export function onVehicle(
 export function trainBoxes(
   vehicles: readonly Vehicle[],
   carrierOf?: (vehicle: number) => number,
+  /**
+   * How fast the rake is running, in m/s.
+   *
+   * Carried on every box so that whatever the bird hits knows it was going
+   * somewhere. A standing train is a wall; a running one is a train.
+   */
+  speed = 0,
 ): Box[] {
   const boxes: Box[] = [];
   // Every box a vehicle owns carries the same tag, so anything that comes to
   // rest on a solebar, a stake or the deck knows which wagon it is aboard.
-  const tag = (box: Box, index: number): Box =>
-    carrierOf ? { ...box, carrier: carrierOf(index) } : box;
+  const tag = (box: Box, index: number): Box => ({
+    ...box,
+    ...(carrierOf ? { carrier: carrierOf(index) } : {}),
+    ...(speed ? { speed } : {}),
+  });
 
   for (const [index, vehicle] of vehicles.entries()) {
     if (vehicle.kind === 'engine') {

@@ -1209,6 +1209,42 @@ the gust field, worst sink 3.38 against a limit of 4 and worst arrival 9.14
 against 10. It still clears 1.7 m from a standing start and travels 20 m before
 setting down, and it climbs away the moment you keep the key held.
 
+### Being run over
+
+A wall you walk into and a train that runs into you are not the same event,
+however similar the geometry: one of them chose the moment. So a `Box` can say
+how fast it is itself moving, a sweep reports that back, and touching anything
+above `struckSpeed` is fatal — flying or on foot, whichever of you was doing
+the moving. Nothing in the collider acts on it; the geometry reports a number
+and the rules about what it means belong to whatever owns the bird.
+
+Two exceptions, and both are the same one wearing different clothes.
+
+**Landing on top of it is landing.** In flight the roof test comes first, so
+putting down on the deck of a running wagon is judged as a landing before any
+of this is reached. On foot the ground probe is a separate sweep straight
+down, so it is never the thing that kills you either.
+
+**And what you are already riding cannot run you over.** A pigeon aboard a
+wagon walks into its own stakes all the time, and those are moving at exactly
+the speed it is. The first version of that test read `hit.carrier !==
+state.restingOn`, which looks right and is not: a bird on the ground is riding
+nothing and an untagged solid belongs to nobody, so `null !== null` was false
+and *every* moving object in the world was exempt from ever hurting anybody.
+It has to be a bird that is actually aboard something.
+
+A standing bird needs more than a sweep can give. A sweep is a slab test, and
+a ray that starts already inside a box has no entry face to report — so it
+comes back with nothing, which is exactly the case of a wagon arriving on top
+of a pigeon that is not moving. `Collider.touching` answers that instead: the
+fastest solid overlapping a sphere right now. Standing still on a railway line
+is how you are hit by a train, not how you avoid it.
+
+This also turned up a gap that walking had quietly left. The end-of-flight
+panel was raised on `wasFlying && hasCrashed`, and a walking bird is not
+flying — so being run over on foot killed you without ever saying so. It is
+`wasAlive` now.
+
 ### Falling
 
 There is no maximum survivable drop, and that is the design rather than an
@@ -1462,6 +1498,16 @@ npm test
   off and do nothing else, on all sixteen compass bearings through the gust
   field, and every one of them lands rather than crashes — while holding the
   key climbs past 20 m.
+
+  And on being run over: walking into something moving is fatal, and so is
+  standing still while something moving arrives — the second is the half a
+  sweep cannot see. The same solid standing still is not fatal, nor is one
+  creeping below the speed limit, nor is the wagon the bird is riding, though
+  a different wagon of the same train still is. In the air it kills at a
+  closing speed that would only have scraped a wall — judged at the moment of
+  contact, because the scraped bird dies too, on the ground a second later,
+  having slid all the way down. And it does not stop you landing on top of a
+  moving deck, which is the exception the whole thing turns on.
 - **`src/render/bird.test.ts`** also covers the walk cycle: the legs swing in
   opposite directions and only the forward one lifts, both return together at
   the top of the stride, and the head reaches furthest forward in the first

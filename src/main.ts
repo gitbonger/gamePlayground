@@ -302,7 +302,13 @@ function moveTrains(dt: number) {
     train.vehicles = layOutTrain(train.line, train.along, train.vehicles.length - 1);
     const base = tagged;
     tagged += train.vehicles.length;
-    fields.push(createColliderField(trainBoxes(train.vehicles, (vehicle) => base + vehicle)));
+    // Every box knows how fast the rake is running, which is what makes
+    // being touched by one fatal rather than merely blocking.
+    fields.push(
+      createColliderField(
+        trainBoxes(train.vehicles, (vehicle) => base + vehicle, train.speed),
+      ),
+    );
   });
 
   // Anything standing on a wagon goes where the wagon goes. Without this a
@@ -378,7 +384,9 @@ function frame(nowMs: number) {
   if (input.consumeReset()) respawn();
   if (input.consumeLaunch()) launchPending = true;
 
-  const wasFlying = bird.ending === null;
+  // Alive rather than flying: a walking bird is not flying, and being run
+  // over while on foot is still a death that has to raise the panel.
+  const wasAlive = !hasCrashed(bird);
 
   accumulator += frameTime;
   let ticked = false;
@@ -404,7 +412,7 @@ function frame(nowMs: number) {
 
   // Only a crash ends the run. A clean landing leaves the bird perched, which
   // is a place to watch it from rather than a screen to dismiss.
-  if (wasFlying && hasCrashed(bird)) outcome.show(bird.ending!, run.stats);
+  if (wasAlive && hasCrashed(bird)) outcome.show(bird.ending!, run.stats);
 
   // Blend between the last two ticks so motion is smooth at any refresh rate.
   const alpha = accumulator / TICK;

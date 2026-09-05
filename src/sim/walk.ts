@@ -18,7 +18,7 @@
  * rules that judge every other arrival.
  */
 
-import type { Collider } from './collision';
+import type { Collider, SweepHit } from './collision';
 import { heading, isPerched, type BirdState, type FlightParams } from './flight';
 import {
   add,
@@ -73,6 +73,15 @@ export function walk(
     return { grounded: false, travelled: 0, blocked: false };
   }
 
+  // Asked before anything else, and whether or not the bird is going
+  // anywhere: standing still on a railway line is the way to be hit by a
+  // train, not a way to avoid it.
+  const arriving = collider?.touching(state.position, p.bodyRadius);
+  if (arriving && arriving.speed >= p.struckSpeed && !aboard(state, arriving.carrier)) {
+    runOver(state, p, state.position);
+    return { grounded: false, travelled: 0, blocked: true };
+  }
+
   // --- Turning ------------------------------------------------------------
   // On the spot, and level: a walking pigeon has no bank and no pitch, so the
   // whole attitude is one number.
@@ -91,7 +100,11 @@ export function walk(
   const raised = add(state.position, lift);
   const wanted = scale(forward, stride);
 
-  const { moved, blocked } = slide(raised, wanted, p.bodyRadius, collider);
+  const { moved, blocked, struck } = slide(raised, wanted, p.bodyRadius, collider, p, state);
+  if (struck) {
+    runOver(state, p, struck);
+    return { grounded: false, travelled: 0, blocked: true };
+  }
 
   // --- Where the foot lands ------------------------------------------------
   const footing = groundUnder(moved, p, collider);
@@ -134,12 +147,16 @@ function slide(
   from: Vec3,
   wanted: Vec3,
   radius: number,
-  collider?: Collider,
-): { moved: Vec3; blocked: boolean } {
-  if (!collider) return { moved: add(from, wanted), blocked: false };
+  collider: Collider | undefined,
+  p: FlightParams,
+  state: BirdState,
+): { moved: Vec3; blocked: boolean; struck: Vec3 | null } {
+  const clear = { moved: add(from, wanted), blocked: false, struck: null };
+  if (!collider) return clear;
 
   const first = collider.sweep(from, add(from, wanted), radius);
-  if (!first) return { moved: add(from, wanted), blocked: false };
+  if (!first) return clear;
+  if (runsOver(first, p, state)) return { ...clear, struck: first.point };
 
   // Up to the contact, held a hair off the surface so the next sweep starts
   // outside it rather than in it.
@@ -151,8 +168,52 @@ function slide(
   const along = sub(left, scale(first.normal, into));
 
   const second = collider.sweep(contact, add(contact, along), radius);
-  if (!second) return { moved: add(contact, along), blocked: true };
-  return { moved: add(second.point, scale(second.normal, 1e-3)), blocked: true };
+  if (!second) return { moved: add(contact, along), blocked: true, struck: null };
+  if (runsOver(second, p, state)) {
+    return { moved: contact, blocked: true, struck: second.point };
+  }
+  return {
+    moved: add(second.point, scale(second.normal, 1e-3)),
+    blocked: true,
+    struck: null,
+  };
+}
+
+/**
+ * Whether this contact is something arriving rather than something in the way.
+ *
+ * The thing already underfoot is exempt: a bird riding a wagon walks into its
+ * own stakes all the time, and those are moving at exactly the speed it is.
+ */
+function runsOver(hit: SweepHit, p: FlightParams, state: BirdState): boolean {
+  return hit.speed >= p.struckSpeed && !aboard(state, hit.carrier);
+}
+
+/**
+ * Whether the bird is riding the thing it just touched.
+ *
+ * Both being null is not a match. A bird on the ground has nothing under it
+ * and an untagged solid is nobody's -- reading that as "it is standing on the
+ * thing that hit it" exempts every moving object in the world from ever
+ * hurting anybody, which is what the first version of this did.
+ */
+function aboard(state: BirdState, carrier: number | null): boolean {
+  return state.restingOn !== null && carrier === state.restingOn;
+}
+
+/** Struck by something moving. On foot there is no version of this you walk away from. */
+function runOver(state: BirdState, p: FlightParams, where: Vec3): void {
+  state.ending = {
+    kind: 'crashed',
+    cause: 'struck',
+    speed: p.walkSpeed,
+    sink: 0,
+    bank: 0,
+    position: where,
+  };
+  state.velocity = vec(0, 0, 0);
+  state.angularVelocity = vec(0, 0, 0);
+  state.restingOn = null;
 }
 
 /**

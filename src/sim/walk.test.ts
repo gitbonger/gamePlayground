@@ -258,6 +258,118 @@ describe('flying out of a fall off a building', () => {
   });
 });
 
+describe('being run over', () => {
+  /** A wall across the bird's path, four metres ahead, going somewhere. */
+  const moving = (speed: number, carrier?: number) =>
+    createColliderField([
+      { ...aabb(-10, 0, -4.5, 10, 2, -3.5), speed, ...(carrier === undefined ? {} : { carrier }) },
+    ]);
+
+  it('kills a bird that walks into something moving', () => {
+    const bird = landed();
+    walked(bird, forward(), 10, moving(6) as never);
+    expect(bird.ending?.kind).toBe('crashed');
+    expect(bird.ending?.cause).toBe('struck');
+  });
+
+  it('kills a bird standing still that something moving reaches', () => {
+    // The other half, and the one a sweep cannot see: a slab test that starts
+    // inside a box has no entry face to report. Standing on the rails is how
+    // you are hit by a train, not how you avoid it.
+    const bird = landed(vec(0, STANDING, -4));
+    const out = walk(bird, neutralWalk(), p, TICK, moving(6) as never);
+    expect(out.grounded).toBe(false);
+    expect(bird.ending?.cause).toBe('struck');
+  });
+
+  it('does not kill a bird against the same thing standing still', () => {
+    // A wall you walk into and a train that runs into you are not the same
+    // event, and the geometry cannot tell them apart. The speed can.
+    const bird = landed();
+    walked(bird, forward(), 10, moving(0) as never);
+    expect(isPerched(bird)).toBe(true);
+  });
+
+  it('does not kill a bird by the thing it is standing on', () => {
+    // A pigeon riding a wagon walks into its own stakes all the time, and
+    // they are moving at exactly the speed it is.
+    const bird = landed(vec(0, STANDING, -4));
+    bird.restingOn = 7;
+    const out = walk(bird, forward(), p, TICK, moving(6, 7) as never);
+    expect(bird.ending?.kind).toBe('landed');
+    expect(out.grounded).toBe(true);
+
+    // And a different wagon on the same train still does.
+    const unlucky = landed(vec(0, STANDING, -4));
+    unlucky.restingOn = 2;
+    walk(unlucky, forward(), p, TICK, moving(6, 7) as never);
+    expect(unlucky.ending?.cause).toBe('struck');
+  });
+
+  it('takes a real speed, not any speed at all', () => {
+    // A rake being shunted at a centimetre a second is not running anybody
+    // over. Stated either side of the limit rather than at it.
+    const creeping = landed();
+    walked(creeping, forward(), 10, moving(p.struckSpeed * 0.5) as never);
+    expect(isPerched(creeping)).toBe(true);
+
+    const running = landed();
+    walked(running, forward(), 10, moving(p.struckSpeed * 2) as never);
+    expect(running.ending?.cause).toBe('struck');
+  });
+});
+
+describe('flying into something moving', () => {
+  const movingWall = createColliderField([
+    { ...aabb(-10, 0, -4.5, 10, 20, -3.5), speed: 6 },
+  ]);
+  const stillWall = createColliderField([aabb(-10, 0, -4.5, 10, 20, -3.5)]);
+
+  it('is fatal at a speed that would only have scraped a wall', () => {
+    // Below `crashSpeed` a bird meets a wall, stops against it and slides
+    // down. The flank of a moving train it does not. Judged at the moment of
+    // contact rather than at the end, because the scraped bird dies too --
+    // on the ground, a second later, having slid all the way down the wall.
+    const gentle = () => createBird(vec(0, 10, 0), 3, 0);
+    /** Fly at the wall until it is reached, and report the state there. */
+    const upTo = (field: typeof stillWall) => {
+      const bird = gentle();
+      for (let i = 0; i < 240; i += 1) {
+        step(bird, neutralControls(), p, TICK, field as never);
+        // Contact stops the bird a body radius off the wall's near face, at
+        // z = -3.28. Either resolution leaves it within a millimetre of that,
+        // and nothing on the approach is anywhere near it.
+        if (bird.ending !== null || bird.position.z <= -3.27) break;
+      }
+      return bird;
+    };
+
+    const scraped = upTo(stillWall);
+    const hit = upTo(movingWall);
+
+    // Both are at the wall, well off the ground.
+    expect(scraped.position.y).toBeGreaterThan(4);
+    expect(hit.position.y).toBeGreaterThan(4);
+    // One of them is still flying.
+    expect(scraped.ending).toBeNull();
+    expect(hit.ending?.cause).toBe('struck');
+  });
+
+  it('does not stop you landing on top of one', () => {
+    // The exception the whole thing turns on: putting down on the deck of a
+    // moving wagon is judged as a landing, before any of this is reached.
+    const deck = createColliderField([
+      { ...aabb(-20, 0, -20, 20, 1.25, 20), speed: 6, carrier: 1 },
+    ]);
+    const bird = createBird(vec(0, 1.25 + 1.5, 0), 7, 0);
+    for (let i = 0; i < 2400 && bird.ending === null; i += 1) {
+      step(bird, neutralControls(), p, TICK, deck as never);
+    }
+    expect(bird.ending?.kind).toBe('landed');
+    expect(bird.restingOn).toBe(1);
+  });
+});
+
 describe('taking off', () => {
   const launch = (): WalkControls => ({ ...neutralWalk(), launch: true });
 
