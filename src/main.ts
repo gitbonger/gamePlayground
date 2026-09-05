@@ -142,11 +142,14 @@ const layout = buildLayoutFromMap(map, {
   trains: [
     // The rake of stake wagons, shuttling up and down the yard.
     { near: train, cars: 12 },
-    // And a passenger train standing in the platform: same engine, six
-    // coaches, going nowhere. A roof four metres up to land on, and being
-    // stationary it is a thing to bump into rather than a thing that runs
-    // you over.
+    // And three passenger trains standing in the platforms: the same engine
+    // each, going nowhere. A roof four metres up to land on, and being
+    // stationary they are things to bump into rather than things that run you
+    // over. Different lengths so the yard reads as a station with several
+    // trains in it rather than as one train drawn three times.
     { near: train, cars: 6, stock: 'carriage', speed: 0 },
+    { near: train, cars: 4, stock: 'carriage', speed: 0 },
+    { near: train, cars: 8, stock: 'carriage', speed: 0 },
   ],
 });
 /**

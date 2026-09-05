@@ -647,11 +647,18 @@ the difference is invisible on a straight line: with the wagon's yaw at zero,
 arithmetic. The test for it runs on a line laid diagonally for exactly that
 reason — on an axis-aligned one it passes either way.
 
-**There are two of them.** A rake of stake wagons shuttling up and down, and
-a passenger train standing in the platform: the same engine, six coaches, and
-not going anywhere. Both are asked for at the same point, and a train takes
-the roomiest line near it *that nothing else has taken* — so the second ends
-up on the next track over, which is what two trains in a yard look like.
+**There are four of them.** A rake of stake wagons shuttling up and down, and
+three passenger trains standing in the platforms — the same engine each, of
+four, six and eight coaches, none of them going anywhere. Different lengths so
+the yard reads as a station with several trains in it rather than as one train
+drawn three times.
+
+All four are asked for at the same point, and a train takes the roomiest line
+near it *that nothing else has taken* — so each ends up on the next track
+over, which is what a station looks like. Without that rule they would all
+take the roomiest siding and stand in one another. Measured on the real map,
+the three passenger trains come out on adjacent tracks 19 to 44 m apart, which
+against a coach 2.95 m wide is a platform between each pair.
 
 The standing one is not a special case anywhere, which is the point of the
 speed being a number rather than a flag. It shuttles nowhere because its step
