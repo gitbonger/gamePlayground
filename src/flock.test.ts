@@ -9,7 +9,7 @@ import { vec } from './sim/math3';
 const DT = 1 / 120;
 
 /** A leader that stays put, so what the flock does is the only thing moving. */
-const still = (x = 0, y = 60, z = 0, heading = 0) => () => ({ x, y, z, heading });
+const still = (x = 0, y = 60, z = 0, heading = 0) => () => ({ x, y, z, heading, speed: 0 });
 
 describe('heading error', () => {
   it('takes the short way round', () => {
@@ -240,7 +240,7 @@ describe('keeping the player company', () => {
     // A leader crossing the map: every bird let out is put behind wherever
     // the leader is by then, not behind where it started.
     let along = 0;
-    const flock = createFlock(4, () => ({ x: along, y: 60, z: 0, heading: Math.PI / 2 }));
+    const flock = createFlock(4, () => ({ x: along, y: 60, z: 0, heading: Math.PI / 2, speed: 5 }));
     const wind = createWind();
 
     for (let t = 0; t < 12; t += DT) {
@@ -318,6 +318,29 @@ describe('keeping the player company', () => {
 
 describe('where they are aiming', () => {
   /**
+   * Every distinct target a flock picks over a long flight beside a leader
+   * hanging well clear of the ground, so nothing is clamped by the floor.
+   */
+  function sampleTargets(leaderY: number) {
+    const flock = createFlock(8, still(0, leaderY, 0));
+    const wind = createWind();
+    const targets: { x: number; z: number; altitude: number }[] = [];
+    const was = flock.members.map((m) => `${m.aiming.x},${m.aiming.z}`);
+
+    for (let t = 0; t < 240; t += DT) {
+      flock.update(DT, undefined, wind);
+      flock.members.forEach((member, i) => {
+        const key = `${member.aiming.x},${member.aiming.z}`;
+        if (key !== was[i]) {
+          targets.push({ ...member.aiming });
+          was[i] = key;
+        }
+      });
+    }
+    return { targets };
+  }
+
+  /**
    * Targets are private, so they are read from where the birds go: with a
    * stationary leader and no collider, the nearest each bird gets over a long
    * flight bounds where it was aiming.
@@ -356,42 +379,47 @@ describe('where they are aiming', () => {
     }
   });
 
-  it('picks its targets inside the radius, and never outside it', () => {
+  it('picks its targets inside the radius, in three dimensions', () => {
+    // A ball, not a disc with a separate slab of height: the distance that is
+    // bounded is the whole distance, height included.
     const flock = createFlock(6, still(0, 60, 0));
     const wind = createWind();
     for (let t = 0; t < 120; t += DT) {
       flock.update(DT, undefined, wind);
       for (const member of flock.members) {
-        const away = Math.hypot(member.aiming.x, member.aiming.z);
+        const away = Math.hypot(member.aiming.x, member.aiming.z, member.aiming.altitude - 60);
         expect(away).toBeLessThanOrEqual(defaultFlockOptions.radius + 1e-9);
       }
     }
   });
 
-  it('spreads its targets over the circle instead of favouring the middle', () => {
-    // Taking the radius straight from a random number bunches points at the
-    // centre: half of them would land inside half the radius, which is a
-    // quarter of the area. Evenly covered, it should be a quarter of them.
-    const flock = createFlock(8, still(0, 60, 0));
-    const wind = createWind();
-    const radii: number[] = [];
-    let was = flock.members.map((m) => `${m.aiming.x},${m.aiming.z}`);
+  it('flies at the leader’s own height, give or take', () => {
+    // Not at a height of its own: the flock shares the player's airspace, so
+    // the offset is spread about zero rather than sitting off to one side.
+    const { targets } = sampleTargets(200);
+    const offsets = targets.map((t) => t.altitude - 200);
 
-    for (let t = 0; t < 240; t += DT) {
-      flock.update(DT, undefined, wind);
-      flock.members.forEach((member, i) => {
-        const key = `${member.aiming.x},${member.aiming.z}`;
-        if (key !== was[i]) {
-          radii.push(Math.hypot(member.aiming.x, member.aiming.z));
-          was[i] = key;
-        }
-      });
-    }
+    const mean = offsets.reduce((a, b) => a + b, 0) / offsets.length;
+    expect(Math.abs(mean)).toBeLessThan(defaultFlockOptions.radius * 0.15);
+    // Spread, not pinned to the leader exactly.
+    expect(offsets.filter((d) => Math.abs(d) > 3).length / offsets.length).toBeGreaterThan(0.4);
+    // Above as often as below.
+    const above = offsets.filter((d) => d > 0).length / offsets.length;
+    expect(above).toBeGreaterThan(0.35);
+    expect(above).toBeLessThan(0.65);
+  });
+
+  it('fills the ball evenly instead of favouring the middle', () => {
+    // Taking the radius straight from a random number puts half the targets
+    // inside half the radius, which is an eighth of the volume. The cube root
+    // is what makes the ball evenly filled.
+    const { targets } = sampleTargets(200);
+    const radii = targets.map((t) => Math.hypot(t.x, t.z, t.altitude - 200));
 
     expect(radii.length).toBeGreaterThan(200);
     const inner = radii.filter((r) => r < defaultFlockOptions.radius / 2).length / radii.length;
-    expect(inner).toBeGreaterThan(0.15);
-    expect(inner).toBeLessThan(0.35);
+    expect(inner).toBeGreaterThan(0.06);
+    expect(inner).toBeLessThan(0.2);
   });
 
   it('keeps up with a leader it can match, rather than being recycled', () => {
@@ -400,7 +428,7 @@ describe('where they are aiming', () => {
     // bird chases the memory until the stray rule hauls it back, which is a
     // teleport rather than flying.
     let along = 0;
-    const flock = createFlock(6, () => ({ x: along, y: 60, z: 0, heading: Math.PI / 2 }));
+    const flock = createFlock(6, () => ({ x: along, y: 60, z: 0, heading: Math.PI / 2, speed: 5 }));
     const wind = createWind();
     let recycles = 0;
     const was = flock.members.map(() => 0);
@@ -421,20 +449,131 @@ describe('where they are aiming', () => {
   });
 });
 
+describe('flying with a leader who is going somewhere', () => {
+  /** A leader crossing the map due east at a steady speed. */
+  function crossing(speed: number) {
+    let along = 0;
+    const leader = () => ({ x: along, y: 60, z: 0, heading: Math.PI / 2, speed });
+    return { leader, advance: (dt: number) => { along += speed * dt; }, at: () => along };
+  }
+
+  it('aims ahead of the leader rather than at them', () => {
+    // Pure pursuit -- aiming at where somebody is -- always arrives behind
+    // them. The ball is centred on where the leader will be.
+    const { leader, advance } = crossing(17);
+    const flock = createFlock(6, leader);
+    const wind = createWind();
+
+    // Sampled as each target is chosen. Read later it would be measuring how
+    // stale the target had got, since the leader keeps going past it.
+    const ahead: number[] = [];
+    const was = flock.members.map((m) => `${m.aiming.x},${m.aiming.z}`);
+    for (let t = 0; t < 30; t += DT) {
+      advance(DT);
+      flock.update(DT, undefined, wind);
+      flock.members.forEach((member, i) => {
+        const key = `${member.aiming.x},${member.aiming.z}`;
+        if (key !== was[i]) {
+          ahead.push(member.aiming.x - leader().x);
+          was[i] = key;
+        }
+      });
+    }
+
+    expect(ahead.length).toBeGreaterThan(20);
+    // Every one of them in front, and by more than the ball is wide: aimed at
+    // the leader, half would be behind.
+    expect(ahead.every((d) => d > defaultFlockOptions.radius)).toBe(true);
+  });
+
+  it('does not aim ahead of a leader who is not going anywhere', () => {
+    // At rest the lead is nothing and the ball sits on the leader exactly,
+    // which is the case the twenty-metre-sphere rule most obviously means.
+    const flock = createFlock(6, still(0, 60, 0));
+    const wind = createWind();
+    for (let t = 0; t < 20; t += DT) {
+      flock.update(DT, undefined, wind);
+      for (const member of flock.members) {
+        expect(Math.hypot(member.aiming.x, member.aiming.z)).toBeLessThanOrEqual(
+          defaultFlockOptions.radius + 1e-9,
+        );
+      }
+    }
+  });
+
+  it('flies at the leader’s pace, with a little in hand', () => {
+    // Two birds at the same speed released ten metres apart stay ten metres
+    // apart for ever, so matching exactly is not enough to ever come past.
+    for (const pace of [12, 20]) {
+      const { leader, advance } = crossing(pace);
+      const flock = createFlock(6, leader);
+      const wind = createWind();
+      for (let t = 0; t < 40; t += DT) {
+        advance(DT);
+        flock.update(DT, undefined, wind);
+      }
+      const speeds = flock.members
+        .filter((m) => m.down <= 0)
+        .map((m) => Math.hypot(m.state.velocity.x, m.state.velocity.y, m.state.velocity.z));
+      const mean = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+      expect(mean, `${pace} m/s`).toBeGreaterThan(pace);
+    }
+  });
+
+  it('gets in front of the camera at cruise, which is the whole point', () => {
+    // The complaint this answers was that you could not see them. Measured
+    // the way the player sees it: how often anything is inside the chase
+    // camera's cone. Aimed at the leader instead of ahead of them, and
+    // matching their speed instead of bettering it, this is zero.
+    const HALF_FOV = (68 / 2) * (Math.PI / 180);
+    const { leader, advance } = crossing(17);
+    const flock = createFlock(6, leader);
+    const wind = createWind();
+
+    let seen = 0;
+    let frames = 0;
+    for (let t = 0; t < 120; t += DT) {
+      advance(DT);
+      flock.update(DT, undefined, wind);
+      // Let the flock fill up before judging it.
+      if (t < 15 || Math.abs(t % 0.5) > DT) continue;
+      frames += 1;
+      // The chase camera sits just behind the bird, looking along its heading.
+      const camera = { x: leader().x - 1.7, y: 60.5, z: 0 };
+      const anyInShot = flock.members.some((member) => {
+        if (member.down > 0) return false;
+        const dx = member.state.position.x - camera.x;
+        const dy = member.state.position.y - camera.y;
+        const dz = member.state.position.z - camera.z;
+        const range = Math.hypot(dx, dy, dz);
+        return range < 300 && Math.acos(dx / Math.max(range, 1e-9)) < HALF_FOV;
+      });
+      if (anyInShot) seen += 1;
+    }
+
+    expect(seen / frames).toBeGreaterThan(0.6);
+  });
+});
+
 describe('letting them out', () => {
   const open = createColliderField([]);
 
-  it('emits one at a time rather than all at once', () => {
-    // A loft waking up, not a spawn: the first is out immediately and the
-    // rest follow at the emission interval.
+  it('lets one out every second rather than all at once', () => {
+    // Stated in seconds and birds rather than against the constant that
+    // produces them: this is the rate the game is meant to have, and a test
+    // that divides by `emitInterval` agrees with whatever it is set to.
     const flock = createFlock(4, still(0, 6, 0));
     const wind = createWind();
     const inTheAir = () => flock.members.filter((m) => m.down <= 0).length;
 
     expect(inTheAir()).toBe(1);
-    for (const seconds of [3, 6, 9]) {
+    for (const [seconds, out] of [
+      [3, 4],
+      [6, 7],
+      [9, 10],
+    ] as const) {
       for (let t = 0; t < 3; t += DT) flock.update(DT, open, wind);
-      expect(inTheAir(), `${seconds}s`).toBe(seconds / defaultFlockOptions.emitInterval + 1);
+      expect(inTheAir(), `${seconds}s`).toBe(out);
     }
   });
 

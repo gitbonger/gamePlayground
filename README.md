@@ -607,13 +607,13 @@ the attribution and the HUD keeps it on screen.
 ## The other pigeons
 
 Ten of them, and they keep the player company rather than living anywhere. A
-bird appears ten metres behind the player, picks somewhere at random within
-twenty metres of them to fly to, and picks somewhere else near them when it
+bird appears ten metres behind the player, picks somewhere at random inside a
+fifteen-metre ball on their track to fly to, and picks somewhere else when it
 gets there. The effect is a loose escort that keeps breaking up and re-forming,
 which is what a flock does and, more to the point, means there is another
 pigeon in shot.
 
-**They come out one at a time**, three seconds apart, so it reads as a flock
+**They come out one at a time**, a second apart, so it reads as a flock
 gathering rather than as ten birds spawning at once. That was what the code
 already claimed to do — there was a comment about staggering the start —
 sitting directly above a line that set every bird's timer back to zero. And a
@@ -627,7 +627,7 @@ worth writing down. The note that used to be here read: *"Chasing that with a
 flock anchored to the player never really worked either."* It did not, because
 the flock was flying the autopilot that crosses a city — 14 m/s, banking to 28
 degrees, which is a turn of 37 m radius. A bird on those numbers physically
-cannot stay inside a twenty-metre circle. Left on them it wheels out to 137 m
+cannot stay inside a fifteen-metre ball. Left on them it wheels out to 137 m
 and is only ever brought back by the stray rule, which is a teleport rather
 than flying, and at that range it is three pixels of nothing.
 
@@ -639,26 +639,57 @@ limit before. The floor came down with it, from 38 m to 8: the player can be
 standing on the ground now, and a flock that climbs away from a walking pigeon
 is not keeping it company.
 
-Three rules keep it honest:
+### Being seen
 
-**A target is picked evenly over the disc**, taking the radius as
-`radius · √random` rather than `radius · random` — the second bunches half of
-them inside half the radius, which is a quarter of the area.
+Getting them near the player turned out not to be the same problem as getting
+them *in shot*, and the second one is the one that matters. Measured the way a
+player experiences it — how often anything is inside the chase camera's 68
+degree cone — a flock that stays close and flies at a sensible speed scores
+**zero**. All ten airborne, all behind the lens. Two things fix it, and neither
+is obvious from thinking about distances.
+
+**Aim where the leader will be, not where they are.** Aiming at the point
+somebody is standing on is pure pursuit, and pure pursuit always arrives behind
+them: by the time the bird gets there the leader has moved on. The ball is
+centred three seconds down the leader's track. At a standstill that lead is
+zero and the ball sits on the leader exactly, which is the case the rule most
+obviously means.
+
+**And fly a little faster than them, not the same speed.** Birds are released
+ten metres back, and two birds at the same speed stay ten metres apart for
+ever — matching exactly can never bring one past. The cruise is the leader's
+own speed plus 3 m/s, held between 11 and 30. Only a little in hand: at six the
+flock overshoots, sits further out, and starts tripping the stray rule.
+
+Fraction of frames with a pigeon in shot, over three minutes:
+
+| Leader | Aimed at them, own speed | Aimed ahead, plus 3 m/s |
+| --- | --- | --- |
+| Still | 97% | 97% |
+| 5 m/s | 38% | 86% |
+| 11 m/s | 0% | 82% |
+| 17 m/s — cruise | 0% | 85% |
+| 22 m/s — diving | 0% | 31% |
+
+The right-hand column is also the one with almost no recycling: aiming ahead
+means a bird arrives where the leader is rather than where they were, so the
+stray rule stops having to do the work.
+
+### Three rules that keep it honest
+
+**A target is picked evenly through the ball**, taking the radius as
+`radius · ∛random` rather than `radius · random` — the second bunches half of
+them inside half the radius, which is an eighth of the volume. The direction
+comes from a cosine picked uniformly rather than an angle, because picking the
+angle crowds the poles.
 
 **Targets go stale.** A target is chosen against where the leader was at the
-time, and a leader doing 19 m/s is 76 m away four seconds later. Without a
-timeout a bird chases the memory until the stray rule hauls it back: beside a
-leader moving at 5 m/s, that is twelve recycles in two minutes and a mean
-distance of 63 m, against zero recycles and 32 m with one.
+time. Without a timeout a bird chases the memory until the stray rule hauls it
+back: beside a leader moving at 5 m/s, that is twelve recycles in two minutes
+and a mean distance of 63 m, against zero recycles and 32 m with one.
 
 **Nothing is aimed at the ground.** The leader can be on foot, and a target at
 the leader's own height is then a target in the dirt.
-
-One thing the player will notice: at full cruise, about 19 m/s, you outrun
-them. The flock does 11 and cannot keep up, so they fall behind and are put
-back behind you; beside a leader at 5 or 11 m/s they hold station without ever
-being recycled. That is a consequence of picking a speed that can turn tightly,
-and it is the trade the feature is built on.
 
 They fly the same model the player does, on the same collider and in the same
 wind, and nothing about them is special-cased: they stall, they get blown off
@@ -1222,8 +1253,10 @@ npm test
   model bit for bit, and the energy books balance even though moving air can do
   work on the bird.
 
-- **`src/flock.test.ts`** — birds come out one at a time rather than all at
-  once, the ones still waiting are not in the air, and a dead one is back on
+- **`src/flock.test.ts`** — birds come out one every second rather than all at
+  once — stated in seconds and birds rather than by dividing by the constant
+  that sets it, so the test disagrees with the wrong rate instead of agreeing
+  with whatever it is — the ones still waiting are not in the air, and a dead one is back on
   the wing on the tick it died — counted by watching them reappear, since an
   ending no longer survives to be polled for. Heading error takes the short way
   round, the autopilot holds a sane bank instead of rolling over, stays
@@ -1244,9 +1277,23 @@ npm test
   climbing away, and never gets nearer than four metres. Targets are always
   inside the radius, spread evenly over the disc rather than bunched in the
   middle — a quarter of them inside half the radius, which is the quarter of
-  the area that is; and beside a leader it can match, the flock keeps up by
+  the volume that is; and beside a leader it can match, the flock keeps up by
   re-aiming rather than being recycled by the stray rule, which is the one
-  thing the attention span is for.
+  thing the attention span is for. Targets track the leader's own height,
+  spread above and below it about equally rather than sitting off to one side,
+  and are bounded in three dimensions rather than as a disc with a slab of
+  height bolted on.
+
+  And on being seen, which is what the rest of it is for: with a leader going
+  somewhere, targets are picked ahead of them — every one, by more than the
+  ball is wide, sampled as it is chosen rather than later, when it would be
+  measuring how stale the target had got. A leader standing still gets no lead
+  at all. The flock flies faster than the leader rather than merely matching,
+  because two birds at one speed released ten metres apart stay ten metres
+  apart. And the whole point, stated the way the player sees it: something is
+  inside the chase camera's cone for most of a two-minute cruise — which is
+  zero if you aim at the leader instead of ahead of them, and zero again if
+  you match their speed instead of bettering it.
 - **`src/world/polygon.test.ts`** — the sign of an area says which way a ring
   winds; insetting moves every edge by the distance asked for, takes a distance
   per edge, and cuts a sharp corner off rather than flinging it into the

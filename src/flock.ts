@@ -38,16 +38,22 @@ export interface FlockOptions {
   count: number;
   /** How far behind the leader a bird is released, in metres. */
   spawnBehind: number;
-  /** Radius around the leader that targets are picked inside, in metres. */
+  /**
+   * Radius of the ball around the leader that targets are picked inside, in
+   * metres.
+   *
+   * A ball and not a disc: height is part of the same radius, so a target is
+   * as likely to be above or below the leader as beside them, and the flock
+   * shares the player's airspace rather than a slab of it.
+   */
   radius: number;
-  /** How far above or below the leader a target may be, in metres. */
-  altitudeSpread: number;
   /**
    * The lowest a target is ever put, in metres.
    *
-   * Because the leader can be standing on the ground. Aiming at the leader's
-   * own height then means aiming at the dirt, and the flock would spend its
-   * time ploughing into it instead of wheeling about overhead.
+   * Because the leader can be standing on the ground, or flying low over it.
+   * Aiming at the leader's own height then means aiming at the dirt, and the
+   * flock would spend its time ploughing into it rather than wheeling about
+   * overhead.
    */
   minAltitude: number;
   /**
@@ -121,17 +127,53 @@ export const escortAutopilot: AutopilotParams = {
   minSpeed: 8,
 };
 
+/**
+ * The band the flock's own cruise is held in, in m/s.
+ *
+ * Because birds flying with you fly at your speed, and a flock that does not
+ * is a flock you never see. Fixed at 11 they are all airborne and all behind
+ * the camera: at a leader doing 11 m/s or more, *none* of them is inside the
+ * view cone, which is the whole complaint. The floor is there so that a
+ * stationary or walking leader still has them wheeling about rather than
+ * stalling out of the sky, and the ceiling so a dive does not drag the flock
+ * along with it.
+ */
+const CRUISE_FLOOR = 11;
+const CRUISE_CEILING = 30;
+
+/**
+ * How much faster than the leader they fly, in m/s.
+ *
+ * Matching exactly is not enough: they are released ten metres back, and two
+ * birds at the same speed stay ten metres apart for ever. A little in hand is
+ * what lets one close the gap and come past. Only a little -- at six the flock
+ * overshoots, sits further out, and starts tripping the stray rule.
+ */
+const CRUISE_SURPLUS = 3;
+
+/**
+ * How far ahead of the leader targets are centred, in seconds.
+ *
+ * Aiming at the point somebody is standing on is pure pursuit, and pure
+ * pursuit always arrives behind them. With the flock aimed where the player
+ * *is*, not one bird was ever inside the camera's cone at cruise -- all ten
+ * airborne, all behind the lens, which is exactly what "I can't see many of
+ * our fellow birds" looks like from the inside.
+ *
+ * At a standstill this is zero and the ball sits on the leader exactly.
+ */
+const LOOKAHEAD = 3;
+
 export const defaultFlockOptions: FlockOptions = {
   count: 10,
   spawnBehind: 10,
-  radius: 20,
-  altitudeSpread: 8,
-  minAltitude: 12,
+  radius: 15,
+  minAltitude: 10,
   arrivalRadius: 8,
   attentionSpan: 4,
   strayDistance: 140,
   respawnDelay: 0,
-  emitInterval: 3,
+  emitInterval: 1,
   seed: 1234,
   autopilot: escortAutopilot,
 };
@@ -149,6 +191,8 @@ export interface Leader {
   z: number;
   /** Heading in radians clockwise from north. */
   heading: number;
+  /** How fast it is going, in m/s. The flock flies at the same pace. */
+  speed: number;
 }
 
 export interface FlockMember {
@@ -179,7 +223,7 @@ function mulberry32(seed: number): () => number {
 
 export function createFlock(
   morphCount: number,
-  leader: () => Leader = () => ({ x: 0, y: 60, z: 0, heading: 0 }),
+  leader: () => Leader = () => ({ x: 0, y: 60, z: 0, heading: 0, speed: 0 }),
   options: FlockOptions = defaultFlockOptions,
   flight: FlightParams = defaultParams,
 ): Flock {
@@ -195,18 +239,35 @@ export function createFlock(
 
   /** Somewhere near the leader to make for, chosen fresh each time. */
   const target = (at: Leader): Waypoint => {
-    // Square-rooted so the points are spread evenly over the disc rather than
-    // bunched at the middle of it, which is what taking the radius straight
-    // from the random number would do.
-    const away = options.radius * Math.sqrt(rand());
+    // Centred on where the leader will be, not where they are. Aiming at a
+    // point somebody is standing on is pure pursuit, and pure pursuit always
+    // arrives behind them: by the time the bird gets there the leader has
+    // moved on, so the flock spends the whole run trailing out of shot. This
+    // is the one thing that puts a pigeon in front of the camera.
+    const lead = at.speed * LOOKAHEAD;
+    at = {
+      ...at,
+      x: at.x + Math.sin(at.heading) * lead,
+      z: at.z - Math.cos(at.heading) * lead,
+    };
+    // Cube-rooted so the points fill the ball evenly rather than bunching at
+    // the middle of it: taking the radius straight from the random number puts
+    // half of them inside half the radius, which is an eighth of the volume.
+    const away = options.radius * Math.cbrt(rand());
+
+    // And a direction spread evenly over the sphere. Picking a polar angle
+    // straight from a random number crowds the poles, because the rings of
+    // latitude near them are short; picking its cosine instead does not.
+    const up = rand() * 2 - 1;
+    const ring = Math.sqrt(1 - up * up);
     const around = rand() * Math.PI * 2;
+
     return {
-      x: at.x + Math.cos(around) * away,
-      z: at.z + Math.sin(around) * away,
-      altitude: Math.max(
-        options.minAltitude,
-        at.y + (rand() * 2 - 1) * options.altitudeSpread,
-      ),
+      x: at.x + Math.cos(around) * ring * away,
+      z: at.z + Math.sin(around) * ring * away,
+      // Height comes from the same ball, so the flock is at the leader's own
+      // altitude give or take -- floored, because the ground is down there.
+      altitude: Math.max(options.minAltitude, at.y + up * away),
     };
   };
 
@@ -257,8 +318,16 @@ export function createFlock(
     pilots.push(pilot);
   }
 
+  // Rebuilt each tick because the cruise speed tracks the leader's. One
+  // object, reused, rather than one per bird per tick.
+  const flying: AutopilotParams = { ...options.autopilot };
+
   function update(dt: number, collider: Collider | undefined, wind: WindField) {
     const at = leader();
+    flying.cruiseSpeed = Math.min(
+      CRUISE_CEILING,
+      Math.max(CRUISE_FLOOR, at.speed + CRUISE_SURPLUS),
+    );
 
     for (const pilot of pilots) {
       const { member } = pilot;
@@ -292,7 +361,7 @@ export function createFlock(
         aim(pilot, at);
       }
 
-      steer(member.state, member.aiming, pilot.memory, pilot.controls, options.autopilot);
+      steer(member.state, member.aiming, pilot.memory, pilot.controls, flying);
       step(member.state, pilot.controls, flight, dt, collider, wind);
 
       if (member.state.ending) {
