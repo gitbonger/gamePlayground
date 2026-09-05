@@ -254,6 +254,20 @@ not about the mesh.
 
 ### Conversation mode
 
+**It is a third mode, not a variety of walking.** Flying and walking were
+always distinct enough to need separate models, and standing talking to
+somebody is a third — the thing that makes it one is that the player cannot
+move at all. You walked up to them on purpose; being able to shuffle a foot
+sideways and end the conversation by accident is not the behaviour of somebody
+having one.
+
+`stanceOf` says which of the three a bird is in and `asStance` lets the
+controls through accordingly. Talking takes the movement away and leaves the
+wing: a conversation you cannot walk out of but can *fly* out of is one you
+leave deliberately, and it is also the only way out, so there has to be one. A
+bird whose flight ended badly is in none of the three; it is not doing
+anything.
+
 Meeting somebody changes the shot. The chase camera comes off its boom and
 stands to one side of the pair, holding both of them, aiming between them.
 
@@ -1614,6 +1628,15 @@ npm test
   cannot tell the two apart -- turns a tick's worth in a tick rather than
   snapping round, stops once it is looking at them, and does nothing at all to
   a bird in the air.
+
+  And on the three stances: a bird in the air is flying whether or not there
+  is anybody about, one on its feet is walking or talking depending, and a
+  crashed one is doing none of the three. A walking bird gets every control; a
+  talking one gets none of the movement and keeps the wing; a flying or
+  crashed one gets nothing on foot at all. End to end through the walk model:
+  four seconds of holding forward and turn moves a bird in conversation
+  neither a millimetre nor a degree, and one press of the take-off key still
+  puts it in the air.
 - **`src/render/bird.test.ts`** also covers the walk cycle: the legs swing in
   opposite directions and only the forward one lifts, both return together at
   the top of the stride, and the head reaches furthest forward in the first

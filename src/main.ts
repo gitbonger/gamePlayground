@@ -57,7 +57,9 @@ import {
 } from './world/train';
 import { createSmoke } from './world/smoke';
 import {
+  asStance,
   meeting,
+  stanceOf,
   turnToFace,
   walk,
   type WalkControls,
@@ -472,6 +474,7 @@ function reachLevel(): void {
   if (!here || talkingTo?.completes !== here) return;
 
   reached = here;
+  reachedAt = clock;
   if (level + 1 < LEVELS.length) {
     level += 1;
     for (const marker of world.markers) marker.setActive(marker.name === LEVELS[level]);
@@ -484,8 +487,17 @@ function levelPerson(): Resident | null {
   return residents.find((resident) => resident.completes === here) ?? null;
 }
 
-/** The last level finished, for the HUD to say so. Null until one is. */
+/**
+ * The last level finished and when, for the HUD to say so.
+ *
+ * It says so for a few seconds and then stops. An announcement that never
+ * goes away is not an announcement, and this one sits in the slot everything
+ * else has to speak through -- including the line telling you how to leave
+ * the conversation you are in.
+ */
 let reached: string | null = null;
+let reachedAt = 0;
+const NOTE_SECONDS = 6;
 
 /**
  * The resident the hero is standing with, or null.
@@ -522,9 +534,16 @@ function frame(nowMs: number) {
     // on its feet and `step` ignores one whose flight has ended, so which of
     // the two does anything is decided by the bird's own state rather than by
     // a flag kept alongside it.
-    walkControls.forward = input.walk.forward;
-    walkControls.turn = input.walk.turn;
-    walkControls.launch = launchPending;
+    // Filtered by what the bird is doing. Talking takes the movement away and
+    // leaves the wing, so the only way out of a conversation is to fly out of
+    // it -- which is a thing you do on purpose.
+    const allowed = asStance(
+      { forward: input.walk.forward, turn: input.walk.turn, launch: launchPending },
+      stanceOf(bird, talkingTo !== null),
+    );
+    walkControls.forward = allowed.forward;
+    walkControls.turn = allowed.turn;
+    walkControls.launch = allowed.launch;
     onFoot = walk(bird, walkControls, flightParams, TICK, solid);
     telemetry = step(bird, input.controls, flightParams, TICK, solid, wind);
     flock.update(TICK, solid, wind);
@@ -583,14 +602,10 @@ function frame(nowMs: number) {
   // nothing left to look for.
   const person = levelPerson();
   const pulse = targetFlash(now, false);
+  const stance = stanceOf(bird, talkingTo !== null);
 
-  const showing: 'object' | 'person' | 'nobody' = talkingTo
-    ? 'nobody'
-    : isPerched(bird) && person
-      ? 'person'
-      : isPerched(bird)
-        ? 'nobody'
-        : 'object';
+  const showing: 'object' | 'person' | 'nobody' =
+    stance === 'flying' ? 'object' : stance === 'walking' && person ? 'person' : 'nobody';
 
   for (const resident of residents) {
     resident.glowing = showing === 'person' && resident === person ? pulse : 0;
@@ -686,11 +701,12 @@ function frame(nowMs: number) {
     distance(interpolatedState.position, objective(LEVELS[level])?.position ?? home),
     smoothedFps,
     onFoot,
-    reached === null
+    reached === null || clock - reachedAt > NOTE_SECONDS
       ? null
       : level > LEVELS.indexOf(reached as (typeof LEVELS)[number])
         ? `${reached} reached — now for ${LEVELS[level]}`
         : `${reached} reached — that is all of them`,
+    stance === 'talking',
   );
   renderer.render(scene, camera);
   // Then the arrows, on a fresh depth buffer so the world cannot cover them.

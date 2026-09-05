@@ -31,6 +31,33 @@ import {
   type Vec3,
 } from './math3';
 
+/**
+ * What a bird is doing, which is what the controls mean.
+ *
+ * Three of them and not two. Flying and walking were always distinct enough
+ * to be separate models; standing talking to somebody is a third, and the
+ * thing that makes it one rather than a variety of walking is that the player
+ * cannot move at all. You walked up to somebody deliberately -- being able to
+ * shuffle a foot sideways and end the conversation by accident is not the
+ * behaviour of somebody having one.
+ *
+ * A bird whose flight ended badly is in none of these. It is not doing
+ * anything.
+ */
+export type Stance = 'flying' | 'walking' | 'talking';
+
+/**
+ * Which of the three a bird is in.
+ *
+ * `met` rather than a search for who: whether there is anybody to talk to is
+ * a question about the world, and this only needs the answer.
+ */
+export function stanceOf(state: BirdState, met: boolean): Stance | null {
+  if (state.ending === null) return 'flying';
+  if (state.ending.kind !== 'landed') return null;
+  return met ? 'talking' : 'walking';
+}
+
 export interface WalkControls {
   /** -1 back .. +1 forward. Digital: a pigeon has one walking speed. */
   forward: number;
@@ -41,6 +68,17 @@ export interface WalkControls {
 }
 
 export const neutralWalk = (): WalkControls => ({ forward: 0, turn: 0, launch: false });
+
+/**
+ * The controls as the bird's stance lets them through.
+ *
+ * Talking takes the movement away and leaves the wing: a conversation you
+ * cannot walk out of but can fly out of is one you leave on purpose.
+ */
+export function asStance(controls: WalkControls, stance: Stance | null): WalkControls {
+  if (stance === 'walking') return controls;
+  return { forward: 0, turn: 0, launch: stance === 'talking' && controls.launch };
+}
 
 export interface WalkTelemetry {
   /** False when the bird has just left the ground, by edge or by wing. */

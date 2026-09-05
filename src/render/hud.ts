@@ -17,6 +17,8 @@ export interface Hud {
     onFoot: WalkTelemetry,
     /** Something that has just been achieved, or null. Outranks everything. */
     note: string | null,
+    /** Whether the bird is standing with somebody, and cannot walk off. */
+    talking: boolean,
   ): void;
   dispose(): void;
 }
@@ -80,6 +82,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     fps: number,
     onFoot: WalkTelemetry,
     note: string | null,
+    talking: boolean,
   ) {
     speedEl.textContent = speedText(telemetry.airspeed);
     altitudeEl.textContent = telemetry.altitude.toFixed(0);
@@ -105,7 +108,9 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
 
     const warning = note
       ? note
-      : isPerched(state)
+      : talking
+        ? 'meeting another pigeon — SPACE to fly on'
+        : isPerched(state)
       ? onFoot.blocked
         ? 'blocked — turn and walk round it'
         : onFoot.travelled > 0

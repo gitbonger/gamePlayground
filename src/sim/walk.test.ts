@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  asStance,
   MEET_RADIUS,
   meeting,
   neutralWalk,
+  stanceOf,
   turnToFace,
   walk,
   type WalkControls,
@@ -538,6 +540,76 @@ describe('meeting another pigeon', () => {
     const a = standing(vec(0, STANDING, 0), null);
     const b = standing(vec(1, STANDING, 0), null);
     expect(meeting(a, b)).toBe(true);
+  });
+});
+
+describe('the three stances', () => {
+  it('names what a bird is doing', () => {
+    const flying = createBird(vec(0, 50, 0), 14, 0);
+    expect(stanceOf(flying, false)).toBe('flying');
+    // Somebody to talk to is no help while you are in the air.
+    expect(stanceOf(flying, true)).toBe('flying');
+
+    const down = landed();
+    expect(stanceOf(down, false)).toBe('walking');
+    expect(stanceOf(down, true)).toBe('talking');
+  });
+
+  it('says a crashed bird is doing nothing at all', () => {
+    const dead = landed();
+    dead.ending = { ...dead.ending!, kind: 'crashed', cause: 'struck' };
+    expect(stanceOf(dead, false)).toBeNull();
+    expect(stanceOf(dead, true)).toBeNull();
+  });
+
+  it('lets a walking bird do everything', () => {
+    const held = { forward: 1, turn: -1, launch: true };
+    expect(asStance(held, 'walking')).toEqual(held);
+  });
+
+  it('takes the movement off somebody in conversation, and leaves the wing', () => {
+    // The point of it being a mode. You walked up to them deliberately, and
+    // shuffling a foot sideways should not end the conversation by accident.
+    // Flying out of it is a thing you do on purpose, so that stays.
+    const held = { forward: 1, turn: -1, launch: true };
+    expect(asStance(held, 'talking')).toEqual({ forward: 0, turn: 0, launch: true });
+    expect(asStance({ ...held, launch: false }, 'talking')).toEqual({
+      forward: 0,
+      turn: 0,
+      launch: false,
+    });
+  });
+
+  it('gives a flying or crashed bird nothing on foot at all', () => {
+    const held = { forward: 1, turn: -1, launch: true };
+    for (const stance of ['flying', null] as const) {
+      expect(asStance(held, stance), `${stance}`).toEqual({
+        forward: 0,
+        turn: 0,
+        launch: false,
+      });
+    }
+  });
+
+  it('does not move a bird that is in conversation', () => {
+    // End to end: the filtered controls through the walk model itself.
+    const bird = landed();
+    const before = { ...bird.position };
+    const wanting = { forward: 1, turn: 1, launch: false };
+    for (let i = 0; i < 240; i += 1) {
+      walk(bird, asStance(wanting, stanceOf(bird, true)), p, TICK);
+    }
+    expect(bird.position.x).toBeCloseTo(before.x, 9);
+    expect(bird.position.z).toBeCloseTo(before.z, 9);
+    expect(heading(bird)).toBeCloseTo(0, 9);
+    expect(isPerched(bird)).toBe(true);
+  });
+
+  it('but can still be flown out of', () => {
+    const bird = landed();
+    walk(bird, asStance({ forward: 0, turn: 0, launch: true }, stanceOf(bird, true)), p, TICK);
+    expect(bird.ending).toBeNull();
+    expect(bird.velocity.y).toBeGreaterThan(1);
   });
 });
 
