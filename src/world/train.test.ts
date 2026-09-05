@@ -11,6 +11,7 @@ import {
   onVehicle,
   pointAlong,
   trainBoxes,
+  tweenAlong,
   WAGON,
 } from './train';
 import { worldBounds } from '../sim/collision';
@@ -381,5 +382,87 @@ describe('riding on a wagon', () => {
     expect(bird.position.x - moved[bird.restingOn!]!.x).toBeCloseTo(onDeck.x, 6);
     expect(bird.position.z - moved[bird.restingOn!]!.z).toBeCloseTo(onDeck.z, 6);
     expect(bird.position.y).toBeCloseTo(WAGON.deck + defaultParams.bodyRadius, 2);
+  });
+});
+
+describe('drawing a train between two ticks', () => {
+  const LINE = 400;
+  const CONSIST = 100;
+  const TICK = 1 / 120;
+  const SPEED = 6;
+  // Deliberately not a multiple of the tick, so a frame swallows one tick
+  // sometimes and two others -- which is the case the tween exists for.
+  const FRAME = 1 / 70;
+  /** Short enough that a long run turns round many times. */
+  const SHORT = 160;
+
+  /** The main loop, cut down to the one number the renderer reads. */
+  function run(frames: number, tween: boolean): number[] {
+    let along = 150;
+    let previous = along;
+    let direction = 1;
+    let accumulator = 0;
+    const drawn: number[] = [];
+
+    for (let f = 0; f < frames; f += 1) {
+      accumulator += FRAME;
+      while (accumulator >= TICK) {
+        previous = along;
+        ({ along, direction } = shuttle(LINE, CONSIST, along, direction, SPEED * TICK));
+        accumulator -= TICK;
+      }
+      drawn.push(tween ? tweenAlong(previous, along, accumulator / TICK) : along);
+    }
+    return drawn;
+  }
+
+  const gaps = (positions: number[]) =>
+    positions.slice(1).map((at, i) => at - positions[i]!);
+
+  it('covers the same ground every frame, whenever the frame falls', () => {
+    for (const gap of gaps(run(120, true))) {
+      expect(gap).toBeCloseTo(SPEED * FRAME, 9);
+    }
+  });
+
+  it('is the tween doing that, and not the frame rate', () => {
+    // Without it the train stands where the last tick left it, so every frame
+    // shows a whole number of tick steps and none of them shows the distance
+    // the train actually covered. That alternation is the shimmer.
+    const quantum = SPEED * TICK;
+    const lumpy = gaps(run(120, false));
+    const ticksPerFrame = lumpy.map((gap) => gap / quantum);
+    for (const ticks of ticksPerFrame) {
+      expect(ticks).toBeCloseTo(Math.round(ticks), 6);
+    }
+    expect(new Set(ticksPerFrame.map(Math.round))).toEqual(new Set([1, 2]));
+    // A frame is a tick and five sevenths, so neither of those is the truth.
+    expect(Math.min(...lumpy)).toBeLessThan(SPEED * FRAME * 0.75);
+    expect(Math.max(...lumpy)).toBeGreaterThan(SPEED * FRAME * 1.1);
+  });
+
+  it('never draws the train anywhere the simulation has not put it', () => {
+    // Between the last two ticks, not past the newest one. Extrapolation is
+    // just as smooth while a train runs straight, and then invents a position
+    // beyond the buffers on the tick it turns round.
+    let along = 150;
+    let previous = along;
+    let direction = 1;
+    let accumulator = 0;
+
+    for (let f = 0; f < 4000; f += 1) {
+      accumulator += FRAME;
+      while (accumulator >= TICK) {
+        previous = along;
+        ({ along, direction } = shuttle(SHORT, CONSIST, along, direction, SPEED * TICK));
+        accumulator -= TICK;
+      }
+      const drawn = tweenAlong(previous, along, accumulator / TICK);
+      expect(drawn).toBeGreaterThanOrEqual(Math.min(previous, along) - 1e-9);
+      expect(drawn).toBeLessThanOrEqual(Math.max(previous, along) + 1e-9);
+      // Which is what keeps a drawn train on its own rails.
+      expect(drawn).toBeLessThanOrEqual(SHORT + 1e-9);
+      expect(drawn).toBeGreaterThanOrEqual(CONSIST - 1e-9);
+    }
   });
 });

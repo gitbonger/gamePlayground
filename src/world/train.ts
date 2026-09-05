@@ -121,6 +121,21 @@ export function shuttle(
   return { along: at, direction: way };
 }
 
+/**
+ * Where to draw a train between two ticks.
+ *
+ * The simulation steps a train in whole ticks; a frame falls wherever it falls
+ * between two of them. Drawn at the last tick's position a train stands still
+ * for some frames and jumps two ticks' worth on others, which next to a camera
+ * gliding along with an interpolated bird reads as the whole rake shivering.
+ *
+ * Reversals are safe to cross: the two ends of the step straddle the buffers
+ * rather than the reflection, so the drawn train slows into them and back out.
+ */
+export function tweenAlong(previous: number, current: number, alpha: number): number {
+  return previous + (current - previous) * alpha;
+}
+
 /** Total length of a polyline, in metres. */
 export function lineLength(points: readonly Point2[]): number {
   let total = 0;

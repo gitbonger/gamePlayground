@@ -51,6 +51,7 @@ import {
   stackTop,
   trainBoxes,
   turnedBetween,
+  tweenAlong,
   WAGON,
 } from './world/train';
 import { createSmoke } from './world/smoke';
@@ -266,6 +267,17 @@ const restCameraParams = { ...cameraParams };
  * That costs 0.012 ms for a rake of thirteen, which is nothing worth avoiding.
  */
 let clock = 0;
+/**
+ * Where each train stood at the previous tick, for drawing between them.
+ *
+ * The simulation moves a train in whole ticks, and a frame lands wherever it
+ * lands between two of them. Drawn at the raw tick position a train jumps five
+ * centimetres at a time, one or two or three jumps a frame depending on how
+ * the frame fell -- next to a camera gliding along with an interpolated bird,
+ * that reads as the whole rake shivering.
+ */
+const previousAlong = layout.trains.map((train) => train.along);
+
 /** Every vehicle on the map, flattened. The index is its carrier tag. */
 function allVehicles() {
   return layout.trains.flatMap((train) => train.vehicles);
@@ -277,7 +289,8 @@ function moveTrains(dt: number) {
   const before = allVehicles();
   let tagged = 0;
 
-  for (const train of layout.trains) {
+  layout.trains.forEach((train, index) => {
+    previousAlong[index] = train.along;
     const run = shuttle(
       lineLength(train.line.points),
       consistLength(train.vehicles.length - 1),
@@ -291,7 +304,7 @@ function moveTrains(dt: number) {
     const base = tagged;
     tagged += train.vehicles.length;
     fields.push(createColliderField(trainBoxes(train.vehicles, (vehicle) => base + vehicle)));
-  }
+  });
 
   // Anything standing on a wagon goes where the wagon goes. Without this a
   // bird that has just landed watches the train slide out from under it.
@@ -391,7 +404,19 @@ function frame(nowMs: number) {
       : input.controls.tuck
         ? 'tucked'
         : 'gliding';
-  world.updateTrains(layout.trains);
+  // Drawn between the last two ticks, exactly as the bird is. A train covers
+  // five centimetres a tick, which is small enough to be invisible and big
+  // enough to shimmer if you take it in steps.
+  world.updateTrains(
+    layout.trains.map((train, index) => ({
+      ...train,
+      vehicles: layOutTrain(
+        train.line,
+        tweenAlong(previousAlong[index]!, train.along, alpha),
+        train.vehicles.length - 1,
+      ),
+    })),
+  );
   world.updateSmoke(smoke.puffs, camera.quaternion);
   rig.update(interpolatedState, wings, frameTime);
 

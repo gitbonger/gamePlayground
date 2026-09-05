@@ -461,9 +461,25 @@ anchor it is released from is read at the moment of release rather than when it
 was built — so keeping one object up to date is all it takes for the birds to
 leave from wherever the train has got to. And the Level 1 marker rides the
 wagon it is on, or the arrow would hang over the patch of ballast the wagon
-left. Landing on a moving wagon is a different matter: the bird settles at a
-world position and the wagon goes on without it, which is a thing to fix when
-landing gets its turn.
+left.
+
+**And it had to be drawn between ticks, like everything else that moves.** The
+simulation steps a train in whole ticks; a frame lands wherever it lands
+between two of them. Drawn at the last tick's position, a train covers five
+centimetres at a stroke and then nothing, one jump on some frames and two on
+others -- next to a camera gliding along with an interpolated bird, that reads
+as the whole rake shivering, which is exactly what it was reported as. So the
+renderer keeps where each train stood at the previous tick and asks for the
+layout at `tweenAlong(previous, current, alpha)`, off the same `alpha` the bird
+uses.
+
+Between the last two ticks, not past the newest one. Extrapolation would be
+just as smooth while a train runs straight -- both draw a constant-speed train
+at a constant rate, and the smoothness test cannot tell them apart -- and then
+it invents a position beyond the buffers on the tick the train turns round.
+That is what the second test is for: over four thousand frames on a short line,
+the drawn position never leaves the interval the simulation bracketed, which is
+what keeps a drawn train on its own rails.
 
 **The locomotive is worth looking at, and it smokes.** Frame, fuel tank slung
 between the bogies, buffer beams and buffers, six wheels you can count, a hood
@@ -1108,7 +1124,13 @@ npm test
   between its bogies; a consist too long for its line produces nothing; the
   wagon deck sits below the stakes so what is between them is air; and the
   pigeon lands on that deck off a gentle approach while a fast one and a steep
-  one end the way they would anywhere else.
+  one end the way they would anywhere else. Drawn between ticks, a train covers
+  the same ground every frame at a frame rate that does not divide into the
+  tick rate — sixty per second over seventy — where the raw tick position moves
+  in whole tick steps and never in the distance actually covered; and the drawn
+  position always stays inside the interval the last two ticks bracket, which
+  is the one thing that separates interpolating from extrapolating and the only
+  test that catches it.
 - **`src/render/sun.test.ts`** — the sun is overhead at the equator at noon on
   the equinox, reaches 90 minus the latitude plus the tilt at midsummer noon
   and due south with it, is a full two tilts lower at midwinter, rises in the
