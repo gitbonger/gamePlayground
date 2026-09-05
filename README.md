@@ -444,6 +444,37 @@ left. Landing on a moving wagon is a different matter: the bird settles at a
 world position and the wagon goes on without it, which is a thing to fix when
 landing gets its turn.
 
+**The locomotive is worth looking at, and it smokes.** Frame, fuel tank slung
+between the bogies, buffer beams and buffers, six wheels you can count, a hood
+with radiator grilles down both flanks and a band of livery trim, a cab glazed
+front, back and both sides under an overhanging roof, a short nose, lamps at
+both ends, a radiator fan on the roof and the stack the exhaust comes out of.
+
+The smoke is a particle system in `src/world/smoke.ts`, and there is no
+Three.js in it. A puff is a position, a velocity and an age: it leaves the
+stack with the engine's own motion plus a kick upward, is dragged toward
+whatever the air is doing — so it lies down and drifts on the wind rather than
+standing over the chimney — keeps rising while it is hotter than that air, and
+spreads and thins as it goes. They live in a fixed ring, because something
+emitting a hundred and fifty times a second for as long as the game is open
+should not be allocating. The renderer's only job is to draw a smudge wherever
+the physics says there is one, as one instanced billboard mesh.
+
+**"A lot of smoke" is measurable, so it was measured.** Add up the area of
+every puff and compare it against the area of the plume they make between them.
+Below about one there are gaps and you can see the yard through it. The first
+attempt came out at **1.8** — a wisp. It now runs at **15**, which is fifteen
+hundred puffs over sixty-five metres and thoroughly opaque, for 0.013 ms a
+tick. That ratio is a test, and dropping the emission rate back fails it.
+
+Verifying the smoke on screen took four wrong answers first, all of them mine.
+Probe cameras placed to look at the plume from a convenient angle reported it
+invisible — billboards face the camera the *app* is rendering with, so from any
+other direction they are edge-on slivers, and 76 pixels of a 448,000-pixel
+frame changed. Photographed from the direction they actually face, the same
+plume covers 22,405. Two earlier readings blamed the material and the texture,
+and both were wrong for the same reason.
+
 **Windows and roof tiles are drawn in the shader, off world coordinates.**
 Both patterns face the same problem: the walls are one shared box scaled per
 instance, so anything keyed to the mesh UVs stretches, and a 26 m house would
@@ -1011,6 +1042,12 @@ npm test
   is caught even when its centre is clear; and the sample grid is never coarser
   than its step and always has a point on the centre, which is the hole a small
   park hides in.
+- **`src/world/smoke.test.ts`** — puffs are emitted at the rate asked for
+  whatever the tick length, the plume settles at as many as fit in one lifetime
+  and never outgrows its ring, it climbs and then stops climbing as it cools,
+  lies down and drifts on the wind without ever being blown faster than the
+  wind, trails behind something moving, thins away rather than switching off,
+  and is thick enough to see nothing through.
 - **`src/world/train.test.ts`** — a train runs on and keeps its direction,
   turns round at either end with the whole consist still on the rails, stays
   between them however long it runs, visits both rather than settling against

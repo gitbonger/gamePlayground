@@ -41,6 +41,7 @@ beforeAll(() => {
         lineWidth: 0,
         fillRect() {},
         strokeRect() {},
+        createRadialGradient: () => ({ addColorStop() {} }),
       }),
     }),
   };

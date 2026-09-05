@@ -26,7 +26,15 @@ export const ENGINE = {
   /** And of the cab, which does not. */
   cab: 4.3,
   cabLength: 5.2,
+  /** Where the exhaust stack stands, along the hood from the middle. */
+  stackAlong: -1.2,
+  stackHeight: 0.75,
 };
+
+/** Where the smoke comes out, in the engine's own frame. */
+export function stackTop(): { along: number; across: number; height: number } {
+  return { along: ENGINE.stackAlong, across: 0, height: ENGINE.body + ENGINE.stackHeight };
+}
 
 /**
  * A stake wagon, built for lumber and standing empty.

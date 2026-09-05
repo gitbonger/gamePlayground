@@ -15,6 +15,7 @@ import { createColliderField, type Box, type Collider } from '../sim/collision';
 import { generateCityLayout, type Building, type CityLayout } from './layout';
 import type { Rail, Road } from './streets';
 import { ENGINE, WAGON, type Train, type Vehicle } from './train';
+import { defaultSmokeOptions, puffOpacity, puffRadius, type Puff } from './smoke';
 import type { Area, AreaKind } from './areas';
 
 export { defaultWorldOptions, type WorldOptions } from './layout';
@@ -40,6 +41,8 @@ export interface TargetMarker {
 }
 
 export interface ObjectiveOptions {
+  /** How many puffs of smoke the renderer must be ready to draw. */
+  smoke?: number;
   /** What to call the marked building, if the layout has one. */
   landmark?: string;
   /**
@@ -61,6 +64,13 @@ export interface World {
   markers: TargetMarker[];
   /** Move the rolling stock to where the layout says the trains have got to. */
   updateTrains(trains: readonly Train[]): void;
+  /**
+   * Draw the smoke, facing the camera.
+   *
+   * Given the puffs rather than owning them: where the smoke *is* is physics,
+   * and physics does not belong in the renderer.
+   */
+  updateSmoke(puffs: readonly Puff[], viewer: THREE.Quaternion): void;
   /**
    * Marker arrows, to be drawn in a pass of their own after the world.
    *
@@ -368,6 +378,7 @@ export function buildWorld(
   const overlay = new THREE.Group();
   const disposables: { dispose(): void }[] = [];
   const markers: TargetMarker[] = [];
+  const smokeCapacity = options.smoke ?? 0;
 
   // --- Ground -------------------------------------------------------------
   const groundTexture = makeGridTexture();
@@ -538,6 +549,44 @@ export function buildWorld(
     });
   });
 
+  // --- Smoke ----------------------------------------------------------------
+  const plume = buildSmoke(smokeCapacity);
+  disposables.push(plume.geometry, plume.material, plume.texture);
+  group.add(plume.mesh);
+
+  const puffPlace = new THREE.Vector3();
+  const puffScale = new THREE.Vector3();
+  const puffMatrix = new THREE.Matrix4();
+  const puffTint = new THREE.Color();
+
+  const updateSmoke = (puffs: readonly Puff[], viewer: THREE.Quaternion) => {
+    let drawn = 0;
+    for (const puff of puffs) {
+      const alpha = puffOpacity(puff);
+      if (alpha <= 0.004 || drawn >= plume.mesh.count + puffs.length) continue;
+
+      const radius = puffRadius(puff, defaultSmokeOptions) * 2;
+      puffPlace.set(puff.x, puff.y, puff.z);
+      puffScale.set(radius, radius, radius);
+      // Turned to face the camera, and rolled by its own seed so a hundred
+      // copies of one texture do not read as a hundred copies of one texture.
+      puffMatrix.compose(puffPlace, viewer, puffScale);
+      plume.mesh.setMatrixAt(drawn, puffMatrix);
+
+      // Soot at the stack, thinning to a grey haze as it disperses. The
+      // material is black, so this is doing the work of the alpha as well:
+      // a paler instance is a thinner one.
+      const grey = 0.16 + 0.5 * Math.min(1, puff.age / Math.max(puff.life, 0.001));
+      puffTint.setRGB(grey, grey, grey * 1.02);
+      plume.mesh.setColorAt(drawn, puffTint);
+      drawn += 1;
+    }
+
+    plume.mesh.count = drawn;
+    plume.mesh.instanceMatrix.needsUpdate = true;
+    if (plume.mesh.instanceColor) plume.mesh.instanceColor.needsUpdate = true;
+  };
+
   /** Move every vehicle to where its train has got to. */
   const updateTrains = (trains: readonly Train[]) => {
     for (const { mesh, train, vehicle } of rolling) {
@@ -582,6 +631,7 @@ export function buildWorld(
     markers,
     overlay,
     updateTrains,
+    updateSmoke,
     dispose() {
       for (const d of disposables) d.dispose();
     },
@@ -780,20 +830,106 @@ function buildVehicle(vehicle: Vehicle): {
     box.dispose();
   };
 
+  /** A cylinder lying across the vehicle: a wheel, or an axle. */
+  const wheel = (colour: number, along: number, across: number, base: number, radius: number, width: number) => {
+    const disc = new THREE.CylinderGeometry(radius, radius, width, 12).toNonIndexed();
+    disc.rotateX(Math.PI / 2);
+    disc.translate(along, base + radius, across);
+    const point = disc.getAttribute('position');
+    const normal = disc.getAttribute('normal');
+    tint.setHex(colour);
+    for (let i = 0; i < point.count; i += 1) {
+      positions.push(point.getX(i), point.getY(i), point.getZ(i));
+      normals.push(normal.getX(i), normal.getY(i), normal.getZ(i));
+      colours.push(tint.r, tint.g, tint.b);
+    }
+    disc.dispose();
+  };
+
+  /** An upright cylinder: the exhaust stack. */
+  const pipe = (colour: number, along: number, across: number, base: number, radius: number, height: number) => {
+    const tube = new THREE.CylinderGeometry(radius, radius * 1.15, height, 10).toNonIndexed();
+    tube.translate(along, base + height / 2, across);
+    const point = tube.getAttribute('position');
+    const normal = tube.getAttribute('normal');
+    tint.setHex(colour);
+    for (let i = 0; i < point.count; i += 1) {
+      positions.push(point.getX(i), point.getY(i), point.getZ(i));
+      normals.push(normal.getX(i), normal.getY(i), normal.getZ(i));
+      colours.push(tint.r, tint.g, tint.b);
+    }
+    tube.dispose();
+  };
+
   const IRON = 0x2b2b2d;
   const RUST = 0x5c4a40;
   const bogie = vehicle.length * 0.33;
 
   if (vehicle.kind === 'engine') {
-    // Frame and running gear, then the hood, then the cab above it.
-    part(IRON, 0, 0, 0.55, vehicle.length, vehicle.width, 0.45);
-    for (const end of [bogie, -bogie]) {
-      part(IRON, end, 0, 0.15, 3.4, vehicle.width * 0.82, 0.75);
+    const LIVERY = 0x7d2f26;
+    const TRIM = 0xd9c37a;
+    const GLASS = 0x24313b;
+    const half = vehicle.length / 2;
+    const side = vehicle.width / 2;
+
+    // Underframe, fuel tank slung between the bogies, and the buffer beams.
+    part(IRON, 0, 0, 0.62, vehicle.length, vehicle.width, 0.34);
+    part(0x1f1f21, 0, 0, 0.3, 6.4, vehicle.width * 0.72, 0.62);
+    for (const end of [half - 0.15, -(half - 0.15)]) {
+      part(0x3a3a3c, end, 0, 0.72, 0.3, vehicle.width + 0.16, 0.5);
+      // Buffers either side of the coupling.
+      for (const at of [0.85, -0.85]) part(0x55565a, end, at, 0.86, 0.34, 0.34, 0.26);
     }
-    part(0x7d2f26, 0, 0, 1.0, vehicle.length - 0.6, vehicle.width, ENGINE.body - 1.0);
-    const cab = vehicle.length / 2 - ENGINE.cabLength / 2 - 0.3;
-    part(0x7d2f26, cab, 0, ENGINE.body, ENGINE.cabLength, vehicle.width, ENGINE.cab - ENGINE.body - 0.16);
-    part(0x3f4145, cab, 0, ENGINE.cab - 0.16, ENGINE.cabLength + 0.3, vehicle.width + 0.2, 0.16);
+
+    // Bogies: frames, and wheels you can count.
+    for (const end of [bogie, -bogie]) {
+      part(IRON, end, 0, 0.42, 3.6, vehicle.width * 0.74, 0.42);
+      for (const axle of [-1.15, 0, 1.15]) {
+        for (const at of [side * 0.72, -side * 0.72]) {
+          wheel(0x1a1a1c, end + axle, at, 0.0, 0.46, 0.22);
+        }
+      }
+    }
+
+    // The long hood, with a walkway either side of it and a running board.
+    part(LIVERY, -1.4, 0, 0.96, vehicle.length - 5.6, vehicle.width * 0.84, ENGINE.body - 0.96);
+    part(0x4a4b4f, 0, 0, 0.96, vehicle.length - 0.5, vehicle.width, 0.1);
+    // Radiator grilles down both flanks.
+    for (const at of [side * 0.85, -side * 0.85]) {
+      for (const along of [-4.2, -2.8, -1.4]) {
+        part(0x3c3d40, along, at, 1.9, 1.05, 0.06, 1.3);
+      }
+    }
+    // A band of livery trim along the flanks, which is what makes it read as
+    // a machine somebody painted rather than an extruded block.
+    for (const at of [side * 0.86, -side * 0.86]) {
+      part(TRIM, -1.4, at, 1.35, vehicle.length - 5.8, 0.05, 0.16);
+    }
+
+    // The cab: body, glass all round, and a roof overhanging it.
+    const cabAt = half - ENGINE.cabLength / 2 - 0.35;
+    part(LIVERY, cabAt, 0, ENGINE.body, ENGINE.cabLength, vehicle.width, ENGINE.cab - ENGINE.body - 0.18);
+    const glassBase = ENGINE.body + 0.42;
+    const glassHigh = ENGINE.cab - ENGINE.body - 0.18 - 0.62;
+    part(GLASS, cabAt + ENGINE.cabLength / 2 - 0.05, 0, glassBase, 0.08, vehicle.width * 0.86, glassHigh);
+    part(GLASS, cabAt - ENGINE.cabLength / 2 + 0.05, 0, glassBase, 0.08, vehicle.width * 0.86, glassHigh);
+    for (const at of [side - 0.04, -(side - 0.04)]) {
+      part(GLASS, cabAt, at, glassBase, ENGINE.cabLength * 0.62, 0.08, glassHigh);
+    }
+    part(0x3f4145, cabAt, 0, ENGINE.cab - 0.18, ENGINE.cabLength + 0.35, vehicle.width + 0.22, 0.18);
+
+    // The short nose ahead of the cab, and lamps at both ends.
+    part(LIVERY, half - 0.9, 0, 0.96, 1.1, vehicle.width * 0.8, 1.5);
+    for (const end of [half - 0.35, -(half - 0.35)]) {
+      part(0xf2e6b8, end, 0.55, 2.05, 0.12, 0.34, 0.3);
+      part(0xf2e6b8, end, -0.55, 2.05, 0.12, 0.34, 0.3);
+    }
+
+    // Roof furniture: the radiator fan housing, and the stack the smoke comes
+    // out of. Its top is where the plume is lit from -- see ENGINE.stack.
+    part(0x46474b, -4.6, 0, ENGINE.body, 2.2, vehicle.width * 0.7, 0.34);
+    wheel(0x2f3033, -4.6, 0, ENGINE.body + 0.34, 0.62, 0.12);
+    pipe(0x232427, ENGINE.stackAlong, 0, ENGINE.body, 0.3, ENGINE.stackHeight);
   } else {
     // Running gear, solebar, and the deck laid on top of it.
     for (const end of [bogie, -bogie]) {
@@ -988,6 +1124,64 @@ function buildRoads(roads: readonly Road[]): {
   });
 
   return { geometry, material };
+}
+
+/**
+ * A soft round smudge, drawn to a canvas.
+ *
+ * One puff of smoke. Dark in the middle and falling away to nothing at the
+ * rim, so that a few hundred of them overlapping read as one billowing mass
+ * rather than as a few hundred discs.
+ */
+function makePuffTexture(): THREE.Texture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+
+  const ctx = canvas.getContext('2d')!;
+  const middle = size / 2;
+  const gradient = ctx.createRadialGradient(middle, middle, 0, middle, middle, middle);
+  gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+  gradient.addColorStop(0.45, 'rgba(255, 255, 255, 0.72)');
+  gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+
+  return new THREE.CanvasTexture(canvas);
+}
+
+/**
+ * Every puff of smoke in the world, as one instanced billboard mesh.
+ *
+ * Drawn after the world and before the marker arrows, without writing depth --
+ * smoke does not occlude smoke, it accumulates. It is dark rather than bright,
+ * so the usual additive trick would wash it out; ordinary alpha over the top
+ * of the city is what makes it read as soot.
+ */
+function buildSmoke(capacity: number): {
+  mesh: THREE.InstancedMesh;
+  material: THREE.MeshBasicMaterial;
+  texture: THREE.Texture;
+  geometry: THREE.PlaneGeometry;
+} {
+  const geometry = new THREE.PlaneGeometry(1, 1);
+  const texture = makePuffTexture();
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false,
+    fog: true,
+    color: 0x000000,
+  });
+
+  const mesh = new THREE.InstancedMesh(geometry, material, capacity);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
+  mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+  mesh.frustumCulled = false;
+  mesh.count = 0;
+  return { mesh, material, texture, geometry };
 }
 
 /** A faint grid drawn to a canvas, tiled across the ground for motion cues. */

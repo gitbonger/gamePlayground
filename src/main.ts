@@ -37,10 +37,13 @@ import {
   consistLength,
   layOutTrain,
   lineLength,
+  onVehicle,
   shuttle,
+  stackTop,
   trainBoxes,
   WAGON,
 } from './world/train';
+import { createSmoke } from './world/smoke';
 import { bearing, distance, project } from './world/geo';
 import type { MapData } from './world/streets';
 import homeMap from './world/data/home.json';
@@ -124,9 +127,11 @@ const layout = buildLayoutFromMap(map, {
 const LEVELS = ['Level 1', 'Level 2'] as const;
 const middleCar = Math.floor((layout.trains[0]?.vehicles.length ?? 1) / 2);
 
+const smoke = createSmoke();
 const world = buildWorld(layout, {
   landmark: LEVELS[1],
   objectives: [{ name: LEVELS[0], train: 0, vehicle: middleCar }],
+  smoke: smoke.puffs.length,
 });
 
 /** The one being flown. How this advances is not decided yet. */
@@ -250,7 +255,9 @@ const restCameraParams = { ...cameraParams };
  * else every tick and carries its own field, rebuilt from scratch each time.
  * That costs 0.012 ms for a rake of thirteen, which is nothing worth avoiding.
  */
+let clock = 0;
 function moveTrains(dt: number) {
+  clock += dt;
   const fields: Collider[] = [world.collider];
 
   for (const train of layout.trains) {
@@ -265,6 +272,27 @@ function moveTrains(dt: number) {
     train.direction = run.direction;
     train.vehicles = layOutTrain(train.line, train.along, train.vehicles.length - 1);
     fields.push(createColliderField(trainBoxes(train.vehicles)));
+  }
+
+  // Smoke off the leading locomotive's stack, carried at the speed the train
+  // is doing so it trails behind rather than standing over the chimney.
+  const engine = layout.trains[0]?.vehicles[0];
+  if (engine) {
+    const stack = stackTop();
+    const at = onVehicle(engine, stack.along, stack.across);
+    const train = layout.trains[0]!;
+    const heading = onVehicle(engine, 1, 0);
+    const speed = train.speed * train.direction;
+    smoke.update(
+      dt,
+      { x: at.x, y: stack.height, z: at.z },
+      {
+        x: (heading.x - engine.x) * speed,
+        y: 0,
+        z: (heading.z - engine.z) * speed,
+      },
+      (x, y, z) => wind.at(vec(x, y, z), clock),
+    );
   }
 
   const carriage = layout.trains[0]?.vehicles[middleCar];
@@ -325,6 +353,7 @@ function frame(nowMs: number) {
         ? 'tucked'
         : 'gliding';
   world.updateTrains(layout.trains);
+  world.updateSmoke(smoke.puffs, camera.quaternion);
   rig.update(interpolatedState, wings, frameTime);
 
   // Flash the target and size its arrow. Both want the drawn position rather
