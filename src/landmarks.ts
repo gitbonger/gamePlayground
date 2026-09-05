@@ -27,29 +27,40 @@ export interface LandmarkSpec extends Omit<Landmark, 'x' | 'z'> {
 }
 
 /**
- * A large block of flats, standing on the corner of its block.
+ * A large block of flats, standing in its own ground.
  *
- * Taller than the sixteen-to-twenty-four metre houses it stands among so that
- * it can be picked out of a roofline from a kilometre, and thirty metres by
- * fourteen because that is what fits between the two streets it faces.
+ * Ninety metres by forty-two and thirty-one to the terrace, which makes it
+ * about three times the plan of the buildings around it without being taller
+ * than it already was -- a slab you can pick out of a roofline from a
+ * kilometre by its footprint rather than by its height.
  *
  * Half of it is one storey higher: a penthouse, whose windows look out over
- * the flat half, which is a terrace with bushes in two rows down it. The
+ * the flat half, which is a terrace planted with bushes in two long rows. The
  * terrace is what the level asks you to land on -- not the top of the
- * penthouse. Fifteen metres by fourteen with the planting to the edges, so
- * there is a clear strip eight metres wide down the middle of it to come down
- * on and to walk along.
+ * penthouse -- and the turn puts it on the near side, so the half you are
+ * aiming at is the half you meet first instead of being hidden behind the
+ * taller one on every approach.
+ *
+ * The coordinate is not quite the one the terrace was first pinned at. That
+ * point is thirteen metres from the kerb, which was room enough for a thirty
+ * metre building and is not room for a ninety metre one; this is the same
+ * block, moved far enough in that the walls stand clear of the streets rather
+ * than across them.
  */
 export const LOFT: LandmarkSpec = {
   name: 'The Loft',
-  at: [47.494953, 19.081954],
-  width: 30,
-  depth: 14,
+  at: [47.495294, 19.081901],
+  width: 90,
+  depth: 42,
   // The terrace. The penthouse stands three and a bit above this.
   height: 31,
+  // Turned to face the way the pigeon comes in, which is from the east.
+  yaw: Math.PI,
   margin: 9,
   penthouse: { cover: 0.5, rise: 3.2 },
-  planting: { rows: 2, perRow: 6, radius: 0.7 },
+  // Longer rows for a longer terrace: the spacing within a row is what makes
+  // it read as a hedge rather than as a line of separate shrubs.
+  planting: { rows: 2, perRow: 16, radius: 0.7 },
 };
 
 /**

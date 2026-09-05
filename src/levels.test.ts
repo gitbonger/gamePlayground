@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { LEVELS, targetName } from './levels';
 import { LANDMARKS, LOFT } from './landmarks';
-import { plantTerrace, terraceOf } from './world/layout';
+import { penthouseOf, plantTerrace, pointOn, terraceOf } from './world/layout';
+import { project } from './world/geo';
+import HOME_MAP from './world/data/home.json';
+import { indexStreets, type Road } from './world/streets';
+import { footprintSamples } from './world/areas';
 import { defaultMapWorldOptions } from './world/from-map';
 
 describe('what the levels aim at', () => {
@@ -40,25 +44,71 @@ describe('what the levels aim at', () => {
   it('stands the loft\'s pigeon on the terrace, clear of the planting', () => {
     // The level is won by walking up to it, so where it stands has to be
     // somewhere a bird can be. It is placed relative to the marker, which
-    // hangs over the middle of the terrace.
+    // hangs over the middle of the terrace, and along the building's own axes
+    // rather than the world's -- so this holds however the loft is turned.
     const level = LEVELS.find((l) => l.target.name === LOFT.name)!;
-    // The marker hangs over the middle of the terrace and the person's
-    // offsets are offsets from it, along the landmark's own axes. Which is
-    // the same as the world's while the loft is unturned, as it is.
-    expect(LOFT.yaw ?? 0).toBe(0);
     const here = { ...LOFT, x: 0, z: 0 };
     const terrace = terraceOf(here)!;
-    const person = { x: terrace.x + level.person.along, z: terrace.z + level.person.across };
+    const person = pointOn(terrace, level.person.along, level.person.across);
 
-    // On the terrace.
-    expect(Math.abs(person.x - terrace.x)).toBeLessThan(terrace.width / 2);
-    expect(Math.abs(person.z - terrace.z)).toBeLessThan(terrace.depth / 2);
+    // On the terrace: measured back in the terrace's own frame, because the
+    // terrace is turned too.
+    const dx = person.x - terrace.x;
+    const dz = person.z - terrace.z;
+    const along = dx * Math.cos(terrace.yaw) - dz * Math.sin(terrace.yaw);
+    const across = dx * Math.sin(terrace.yaw) + dz * Math.cos(terrace.yaw);
+    expect(Math.abs(along)).toBeLessThan(terrace.width / 2);
+    expect(Math.abs(across)).toBeLessThan(terrace.depth / 2);
 
     // And not inside a bush, with room to walk round it: a pigeon is about a
     // fifth of a metre across.
     for (const bush of plantTerrace(here)) {
       const gap = Math.hypot(person.x - bush.x, person.z - bush.z) - bush.radius;
       expect(gap, `${bush.x.toFixed(1)}, ${bush.z.toFixed(1)}`).toBeGreaterThan(0.5);
+    }
+  });
+
+  it('turns the loft to face the way the pigeon comes in', () => {
+    // The terrace is the target. Behind the penthouse it would be hidden on
+    // every approach until the last second.
+    const level = LEVELS.find((l) => l.target.name === LOFT.name)!;
+    const centre = HOME_MAP.centre as [number, number];
+    const loft = project(LOFT.at[0], LOFT.at[1], centre);
+    const start = project(level.start[0], level.start[1], centre);
+
+    const terrace = terraceOf({ ...LOFT, ...loft })!;
+    const penthouse = penthouseOf({ ...LOFT, ...loft })!;
+    const away = (at: { x: number; z: number }) => Math.hypot(at.x - start.x, at.z - start.z);
+    expect(away(terrace)).toBeLessThan(away(penthouse));
+  });
+
+  it('stands every described building clear of the streets', () => {
+    // The one that actually bites. A described thing is put down at a written
+    // coordinate and the generator gives way to it -- so nothing checks it
+    // against the map, and a building made three times bigger around a point
+    // thirteen metres from the kerb ends up standing across two roads with
+    // the carriageway disappearing under it.
+    const centre = HOME_MAP.centre as [number, number];
+    const streets = indexStreets(HOME_MAP.roads as Road[]);
+
+    for (const landmark of LANDMARKS) {
+      if (landmark.height <= 0) continue;
+      const at = project(landmark.at[0], landmark.at[1], centre);
+      const corners = footprintSamples(
+        at.x,
+        at.z,
+        landmark.width,
+        landmark.depth,
+        landmark.yaw ?? 0,
+        4,
+      );
+      for (const [x, z] of corners) {
+        const road = streets.nearest(x, z, 120);
+        if (!road) continue;
+        // Clear of the carriageway, and off the pavement beside it.
+        expect(road.distance, `${landmark.name} at ${x.toFixed(0)}, ${z.toFixed(0)}`)
+          .toBeGreaterThan(road.width / 2 + 2);
+      }
     }
   });
 

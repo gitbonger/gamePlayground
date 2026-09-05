@@ -158,22 +158,26 @@ export interface Tier {
 }
 
 /**
- * A point in a landmark's own frame, put back into the world.
+ * A point in a turned thing's own frame, put back into the world.
  *
  * `along` runs with its width and `across` with its depth. The convention is
  * the collider's, which is Three.js's rotation.y -- the same one
  * `footprintSamples` uses, and the inverse of the one `reserved` tests with.
+ *
+ * Everything that puts something on a landmark goes through here: the tiers,
+ * the planting, and whoever is standing on it. Turn the building and they all
+ * turn with it, because none of them works out its own place in the world.
  */
-function inFrame(
-  landmark: Landmark,
+export function pointOn(
+  place: { x: number; z: number; yaw?: number },
   along: number,
   across: number,
 ): { x: number; z: number } {
-  const cos = Math.cos(landmark.yaw ?? 0);
-  const sin = Math.sin(landmark.yaw ?? 0);
+  const cos = Math.cos(place.yaw ?? 0);
+  const sin = Math.sin(place.yaw ?? 0);
   return {
-    x: landmark.x + along * cos + across * sin,
-    z: landmark.z - along * sin + across * cos,
+    x: place.x + along * cos + across * sin,
+    z: place.z - along * sin + across * cos,
   };
 }
 
@@ -193,7 +197,7 @@ export function terraceOf(landmark: Landmark): Tier | null {
   // The penthouse takes the far end, so the terrace is what is left at the
   // near one, and its middle is half the taken length back from the middle of
   // the building.
-  const centre = inFrame(landmark, -(landmark.width * penthouse.cover) / 2, 0);
+  const centre = pointOn(landmark, -(landmark.width * penthouse.cover) / 2, 0);
   return {
     ...centre,
     width,
@@ -210,7 +214,7 @@ export function penthouseOf(landmark: Landmark): Tier | null {
 
   const width = landmark.width * penthouse.cover;
   if (width <= 0) return null;
-  const centre = inFrame(landmark, (landmark.width * (1 - penthouse.cover)) / 2, 0);
+  const centre = pointOn(landmark, (landmark.width * (1 - penthouse.cover)) / 2, 0);
   return {
     ...centre,
     width,
@@ -264,7 +268,7 @@ export function plantTerrace(landmark: Landmark): Bush[] {
     for (let i = 0; i < planting.perRow; i += 1) {
       const step = planting.perRow === 1 ? 0.5 : i / (planting.perRow - 1);
       const along = back + (step - 0.5) * span;
-      const at = inFrame(landmark, along, across);
+      const at = pointOn(landmark, along, across);
       bushes.push({ ...at, base: terrace.top, radius: planting.radius, height });
     }
   }

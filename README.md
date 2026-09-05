@@ -189,14 +189,30 @@ target means being recoloured several times a second. It is not in the
 building list at all, which is what keeps it out of the instanced crowd and
 off the roof pass without either of them having to remember to skip it.
 
-**The Loft has a shape rather than a size.** It is a thirty by fourteen metre
-block of flats, and half of it is one storey higher than the rest: a penthouse
-whose windows look out over the other half, which is a terrace. Two rows of
-bushes run down the terrace, out towards its edges, which is where planters go
-on a real roof and — the reason the arithmetic puts them there — what leaves a
-clear strip eight metres wide down the middle of it. That strip is where the
-arrow points, where the bird comes down and where the pigeon waiting for it
-stands; planting that closed it would be planting the landing off.
+**The Loft has a shape rather than a size.** It is a ninety by forty-two metre
+block of flats — about three times the plan of anything around it, at the same
+thirty-one metres to the top — and half of it is one storey higher than the
+rest: a penthouse whose windows look out over the other half, which is a
+terrace. Two rows of bushes run down the terrace, out towards its edges, which
+is where planters go on a real roof and — the reason the arithmetic puts them
+there — what leaves a clear strip down the middle of it. That strip is where
+the arrow points, where the bird comes down and where the pigeon waiting for
+it stands; planting that closed it would be planting the landing off.
+
+**It is turned to face the way you arrive.** The terrace is the target and the
+penthouse is the taller half, so with the building the other way round the
+half you are aiming at is hidden behind the half you are not, on every
+approach, until the last second.
+
+**And it had to move to get that big.** Its first coordinate was thirteen
+metres from a kerb, which is room for a thirty metre building and not for a
+ninety metre one: three times the plan around the same point puts a fifth of
+the footprint in the roadway, with two streets disappearing under it. It is
+now thirty-odd metres further into the same block. A test states the thing
+that went wrong rather than the fix — every described building stands clear of
+every carriageway, with a pavement's width to spare — and it fails on the
+original coordinate at the *original* size too, which is how the old thirty
+metre loft turned out to have been standing on the pavement all along.
 
 The bushes are solid, like the trees. A bush you can fly through is scenery.
 
@@ -247,7 +263,7 @@ ground at midday: nothing to fly round, nothing that moves, and the whole
 approach visible from the start. *The Loft* is a planted roof terrace
 thirty-one metres up on a block of flats standing seven metres clear of the
 16–24 m roofline around it, in late-afternoon light — still nothing moving,
-but you have to pick it out of a city of roofs and then put down on the strip
+but you have to pick out the right half of it and put down on the strip
 between the bushes. *The Yard* is a wagon of a running train under a low
 evening sun, which is the first target that will not wait for you.
 

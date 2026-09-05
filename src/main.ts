@@ -47,6 +47,7 @@ import { createHud } from './render/hud';
 import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
 import { buildWorld, targetFlash } from './world/city';
+import { pointOn } from './world/layout';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
 import {
   carriedBy,
@@ -451,13 +452,17 @@ function standingSpot(spec: Level): { at: Vec3; facing: number; on: number | nul
   const marker = objective(spec.target.name);
   if (!described || !marker) return null;
   const top = described.height > 0 ? described.height : defaultParams.groundHeight;
+  // Placed along and across the thing rather than along and across the world,
+  // so turning the building turns where its pigeon stands with it.
+  const yaw = described.yaw ?? 0;
+  const at = pointOn(
+    { x: marker.position.x, z: marker.position.z, yaw },
+    person.along,
+    person.across,
+  );
   return {
-    at: vec(
-      marker.position.x + person.along,
-      top + defaultParams.bodyRadius,
-      marker.position.z + person.across,
-    ),
-    facing: Math.PI / 2,
+    at: vec(at.x, top + defaultParams.bodyRadius, at.z),
+    facing: yaw + Math.PI / 2,
     on: null,
   };
 }
