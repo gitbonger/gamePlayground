@@ -407,6 +407,27 @@ to any other roof -- a gentle approach settles at 1.47 m, the deck plus the
 bird's own radius, while arriving at 12 m/s is `too-fast` and dropping onto it
 from 4 m up is `hard-impact`. All four of those are tests.
 
+**A bird that lands on something moving goes with it.** A `Box` can carry an
+opaque tag, a sweep reports the tag of whatever it hit, and `settle` records it
+on the bird as `restingOn`. That is the whole of the concept, and the point of
+the tag being a bare number is that the flight model has no idea what a wagon
+is: it can say *which* solid it came to rest on and nothing more. Whoever built
+the box knows what the number means.
+
+Every box a vehicle owns takes the same tag, so a bird that puts down on the
+deck, the solebar or a stake is aboard the same wagon either way. Each tick,
+anything with a `restingOn` is read into its vehicle's own frame and written
+back out of the new one — its place *on the deck* is what is preserved, not its
+place in the world, and on a curve it turns with the wagon too. Landed on the
+sixth wagon of a running rake, the pigeon holds its spot on the deck through
+356 metres and two reversals.
+
+That last part is why the carry is a frame transform rather than an offset, and
+the difference is invisible on a straight line: with the wagon's yaw at zero,
+"read into the vehicle's frame" and "shift by how far it moved" are the same
+arithmetic. The test for it runs on a line laid diagonally for exactly that
+reason — on an axis-aligned one it passes either way.
+
 **The train runs.** It shuttles along its line at 6 m/s and turns round when
 the line ends — reflected rather than clamped, so it comes back out at the
 speed it went in rather than stalling against the buffers for a tick. The
@@ -1070,7 +1091,12 @@ npm test
   its own opacity — the bug that made the plume a silhouette — thinning as it
   ages, going paler and larger as it goes, with dead ones left out of the draw
   entirely.
-- **`src/world/train.test.ts`** — a train runs on and keeps its direction,
+- **`src/world/train.test.ts`** — every box a vehicle owns is tagged with it
+  and untagged when nobody asked, a passenger keeps its place on the deck
+  rather than in the world and turns with the wagon round a bend, the turn is
+  measured the short way round, a bird is told which wagon it landed on and
+  told nothing when it lands on the ground, and it is still standing where it
+  was after the train has run on. A train runs on and keeps its direction,
   turns round at either end with the whole consist still on the rails, stays
   between them however long it runs, visits both rather than settling against
   one, survives a step longer than the line itself, stands still on a line too

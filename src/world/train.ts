@@ -241,23 +241,30 @@ export function onVehicle(
  * the collider having no notion of one that floats, which costs nothing here
  * because the space under a wagon is not somewhere to fly.
  */
-export function trainBoxes(vehicles: readonly Vehicle[]): Box[] {
+export function trainBoxes(
+  vehicles: readonly Vehicle[],
+  carrierOf?: (vehicle: number) => number,
+): Box[] {
   const boxes: Box[] = [];
+  // Every box a vehicle owns carries the same tag, so anything that comes to
+  // rest on a solebar, a stake or the deck knows which wagon it is aboard.
+  const tag = (box: Box, index: number): Box =>
+    carrierOf ? { ...box, carrier: carrierOf(index) } : box;
 
-  for (const vehicle of vehicles) {
+  for (const [index, vehicle] of vehicles.entries()) {
     if (vehicle.kind === 'engine') {
       boxes.push(
-        turnedBox(vehicle.x, vehicle.z, vehicle.length, ENGINE.body, vehicle.width, vehicle.yaw),
+        tag(turnedBox(vehicle.x, vehicle.z, vehicle.length, ENGINE.body, vehicle.width, vehicle.yaw), index),
       );
       const cab = onVehicle(vehicle, vehicle.length / 2 - ENGINE.cabLength / 2, 0);
       boxes.push(
-        turnedBox(cab.x, cab.z, ENGINE.cabLength, ENGINE.cab, vehicle.width, vehicle.yaw),
+        tag(turnedBox(cab.x, cab.z, ENGINE.cabLength, ENGINE.cab, vehicle.width, vehicle.yaw), index),
       );
       continue;
     }
 
     boxes.push(
-      turnedBox(vehicle.x, vehicle.z, vehicle.length, WAGON.deck, vehicle.width, vehicle.yaw),
+      tag(turnedBox(vehicle.x, vehicle.z, vehicle.length, WAGON.deck, vehicle.width, vehicle.yaw), index),
     );
 
     const across = vehicle.width / 2 - WAGON.stakeThickness / 2;
@@ -267,13 +274,16 @@ export function trainBoxes(vehicles: readonly Vehicle[]): Box[] {
       for (const side of [across, -across]) {
         const post = onVehicle(vehicle, along, side);
         boxes.push(
-          turnedBox(
-            post.x,
-            post.z,
-            WAGON.stakeThickness,
-            WAGON.deck + WAGON.stake,
-            WAGON.stakeThickness,
-            vehicle.yaw,
+          tag(
+            turnedBox(
+              post.x,
+              post.z,
+              WAGON.stakeThickness,
+              WAGON.deck + WAGON.stake,
+              WAGON.stakeThickness,
+              vehicle.yaw,
+            ),
+            index,
           ),
         );
       }
@@ -281,4 +291,38 @@ export function trainBoxes(vehicles: readonly Vehicle[]): Box[] {
   }
 
   return boxes;
+}
+
+/**
+ * Where a point standing on a vehicle ends up once the vehicle has moved.
+ *
+ * Read into the vehicle's own frame and written back out of the new one, so a
+ * passenger keeps its place on the deck rather than its place in the world --
+ * which is the whole of what it means to be standing on something that moves.
+ * On a curve that turns it as well, which is why this is not simply an offset.
+ */
+export function carriedBy(
+  point: { x: number; y: number; z: number },
+  from: Vehicle,
+  to: Vehicle,
+): { x: number; y: number; z: number } {
+  const cos = Math.cos(from.yaw);
+  const sin = Math.sin(from.yaw);
+  const dx = point.x - from.x;
+  const dz = point.z - from.z;
+  // The inverse of `onVehicle`: how far along the vehicle it stands, and how
+  // far across.
+  const along = dx * cos - dz * sin;
+  const across = dx * sin + dz * cos;
+
+  // Height is left alone: rails are level, so a vehicle only ever moves and
+  // turns in the ground plane.
+  const back = onVehicle(to, along, across);
+  return { x: back.x, y: point.y, z: back.z };
+}
+
+/** How far a vehicle has turned between two layouts, in radians. */
+export function turnedBetween(from: Vehicle, to: Vehicle): number {
+  const difference = (to.yaw - from.yaw + Math.PI) % (2 * Math.PI);
+  return (difference < 0 ? difference + 2 * Math.PI : difference) - Math.PI;
 }

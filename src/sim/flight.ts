@@ -314,6 +314,15 @@ export interface BirdState {
    * this is non-null; the caller decides when to launch a new one.
    */
   ending: Ending | null;
+  /**
+   * What it came to rest on, as whatever tag that solid was given, or null for
+   * the ground and for anything in the air.
+   *
+   * Meaningless here on purpose. A bird standing on a wagon has to go where
+   * the wagon goes, and this is how whoever is moving the wagon knows the bird
+   * is aboard -- without the flight model needing to know what a wagon is.
+   */
+  restingOn: number | null;
 }
 
 /** Read-only diagnostics from the last step, for the HUD and tuning. */
@@ -355,6 +364,7 @@ export function createBird(
     flapPhase: 0,
     age: 0,
     ending: null,
+    restingOn: null,
   };
 }
 
@@ -626,7 +636,7 @@ export function step(
       if (hit.normal.y >= ROOF_NORMAL) {
         // Something you could stand on. A roof is judged exactly as the ground
         // is -- come down slow, level and gently and you have landed on it.
-        settle(state, p, work, hit.point);
+        settle(state, p, work, hit.point, hit.carrier);
         return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work, airVelocity);
       }
 
@@ -702,8 +712,15 @@ function finish(
  * The caller has already booked the potential energy of moving the bird onto
  * the surface; this books the kinetic energy the surface absorbs.
  */
-function settle(state: BirdState, p: FlightParams, work: WorkLedger, at: Vec3): void {
+function settle(
+  state: BirdState,
+  p: FlightParams,
+  work: WorkLedger,
+  at: Vec3,
+  carrier: number | null = null,
+): void {
   state.position = at;
+  state.restingOn = carrier;
   state.ending = touchdown(state, p);
   work.collision -= kinetic(state.velocity, p);
   state.velocity = vec(0, 0, 0);

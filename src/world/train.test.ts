@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  carriedBy,
   chainageOf,
   shuttle,
+  turnedBetween,
   consistLength,
   ENGINE,
   layOutTrain,
@@ -270,5 +272,114 @@ describe('running along the line', () => {
     expect(after[0]!.kind).toBe('engine');
     // The engine leads the leading coupling whichever way it happens to run.
     expect(after[0]!.x).toBeGreaterThan(after[1]!.x);
+  });
+});
+
+describe('riding on a wagon', () => {
+  const line: Rail = { kind: 'rail', width: 8, points: [[0, 0], [500, 0]] };
+
+  it('tags every box a vehicle owns, so anything on it knows which', () => {
+    const vehicles = layOutTrain(line, 300, 3);
+    const boxes = trainBoxes(vehicles, (vehicle) => vehicle);
+    const tags = new Set(boxes.map((box) => box.carrier));
+    expect(tags.size).toBe(vehicles.length);
+    // A deck, a solebar and a stake all belong to the same wagon.
+    for (const box of boxes) expect(box.carrier).not.toBeUndefined();
+  });
+
+  it('leaves boxes untagged when nobody asked', () => {
+    for (const box of trainBoxes(layOutTrain(line, 300, 2))) {
+      expect(box.carrier).toBeUndefined();
+    }
+  });
+
+  it('keeps a passenger in its place on the deck, not its place in the world', () => {
+    const before = layOutTrain(line, 300, 3)[2]!;
+    const after = layOutTrain(line, 340, 3)[2]!;
+
+    // Standing a little off-centre, so this says more than "it moved".
+    const stood = { x: before.x + 3, y: 1.47, z: before.z - 0.8 };
+    const rode = carriedBy(stood, before, after);
+
+    expect(rode.x - after.x).toBeCloseTo(3, 6);
+    expect(rode.z - after.z).toBeCloseTo(-0.8, 6);
+    expect(rode.y).toBe(stood.y);
+    // Which on a straight line is the same as having been shifted along it.
+    expect(rode.x - stood.x).toBeCloseTo(40, 6);
+  });
+
+  it('turns a passenger with the wagon round a bend', () => {
+    // Deliberately diagonal. On a line that starts along an axis the wagon's
+    // first yaw is zero, and "read into the vehicle's frame" and "rotate the
+    // world offset" come to exactly the same arithmetic -- so a test built on
+    // one of those cannot tell a correct carry from a plain offset.
+    const bend: Rail = { kind: 'rail', width: 8, points: [[0, 0], [200, 200], [200, 400]] };
+    const before = layOutTrain(bend, 120, 1)[1]!;
+    const after = layOutTrain(bend, 330, 1)[1]!;
+    expect(Math.abs(before.yaw)).toBeGreaterThan(0.3);
+    expect(Math.abs(turnedBetween(before, after))).toBeGreaterThan(0.5);
+
+    // A passenger on the nose stays on the nose, which a plain offset would
+    // not manage: it would leave it hanging off the side.
+    const nose = onVehicle(before, before.length / 2 - 1, 0);
+    const rode = carriedBy({ x: nose.x, y: 1.47, z: nose.z }, before, after);
+    const shouldBe = onVehicle(after, after.length / 2 - 1, 0);
+    expect(rode.x).toBeCloseTo(shouldBe.x, 6);
+    expect(rode.z).toBeCloseTo(shouldBe.z, 6);
+  });
+
+  it('measures the turn the short way round', () => {
+    const a = { ...layOutTrain(line, 300, 1)[0]!, yaw: 3.1 };
+    const b = { ...a, yaw: -3.1 };
+    expect(Math.abs(turnedBetween(a, b))).toBeLessThan(0.2);
+  });
+
+  it('tells a bird which wagon it landed on', () => {
+    // The end of it: put down on a deck, and the bird knows what it is on.
+    const vehicles = layOutTrain(line, 400, 6);
+    const collider = createColliderField(trainBoxes(vehicles, (vehicle) => vehicle));
+    const wagon = vehicles[3]!;
+
+    const bird = createBird(vec(wagon.x - 12, WAGON.deck + 1.5, wagon.z), 7, Math.PI / 2);
+    for (let t = 0; t < 20; t += 1 / 120) {
+      step(bird, neutralControls(), defaultParams, 1 / 120, collider);
+      if (bird.ending) break;
+    }
+
+    expect(bird.ending?.kind).toBe('landed');
+    expect(bird.restingOn).toBe(3);
+  });
+
+  it('leaves a bird on the ground riding nothing', () => {
+    const bird = createBird(vec(0, 3, 0), 5);
+    for (let t = 0; t < 20; t += 1 / 120) {
+      step(bird, neutralControls(), defaultParams, 1 / 120);
+      if (bird.ending) break;
+    }
+    expect(bird.ending).not.toBeNull();
+    expect(bird.restingOn).toBeNull();
+  });
+
+  it('carries a landed bird along when the train runs on', () => {
+    const vehicles = layOutTrain(line, 400, 6);
+    const collider = createColliderField(trainBoxes(vehicles, (vehicle) => vehicle));
+    const wagon = vehicles[3]!;
+
+    const bird = createBird(vec(wagon.x - 12, WAGON.deck + 1.5, wagon.z), 7, Math.PI / 2);
+    for (let t = 0; t < 20; t += 1 / 120) {
+      step(bird, neutralControls(), defaultParams, 1 / 120, collider);
+      if (bird.ending) break;
+    }
+    expect(bird.restingOn).not.toBeNull();
+
+    const onDeck = { x: bird.position.x - wagon.x, z: bird.position.z - wagon.z };
+    const moved = layOutTrain(line, 340, 6);
+    bird.position = carriedBy(bird.position, vehicles[bird.restingOn!]!, moved[bird.restingOn!]!);
+
+    // Sixty metres down the line, and still standing exactly where it was on
+    // the wagon.
+    expect(bird.position.x - moved[bird.restingOn!]!.x).toBeCloseTo(onDeck.x, 6);
+    expect(bird.position.z - moved[bird.restingOn!]!.z).toBeCloseTo(onDeck.z, 6);
+    expect(bird.position.y).toBeCloseTo(WAGON.deck + defaultParams.bodyRadius, 2);
   });
 });

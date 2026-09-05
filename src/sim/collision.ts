@@ -27,6 +27,13 @@ export interface Aabb {
  * invisible walls while threading between them.
  */
 export interface Box extends Aabb {
+  /**
+   * A tag for whoever built the box, reported back on a hit.
+   *
+   * How a bird standing on something that moves finds out what it is standing
+   * on. Boxes that never move need none.
+   */
+  carrier?: number;
   /** Radians about Y. Absent or zero means the extents are the solid. */
   yaw?: number;
 }
@@ -38,6 +45,14 @@ export interface SweepHit {
   point: Vec3;
   /** Unit surface normal, pointing back toward the mover. */
   normal: Vec3;
+  /**
+   * Whatever the box that was hit was tagged with, or null.
+   *
+   * Opaque here on purpose. The simulation has no notion of trains; it only
+   * needs to be able to say *which* solid it came to rest on, and hand that
+   * back to whoever knows what the number means.
+   */
+  carrier: number | null;
 }
 
 export interface Collider {
@@ -167,8 +182,12 @@ export function createColliderField(boxes: readonly Box[]): Collider {
           if (seen[index] === id) continue;
           seen[index] = id;
 
-          const hit = sweepBox(from, delta, radius, boxes[index]!);
-          if (hit && (!best || hit.t < best.t)) best = hit;
+          const box = boxes[index]!;
+          const hit = sweepBox(from, delta, radius, box);
+          if (hit && (!best || hit.t < best.t)) {
+            hit.carrier = box.carrier ?? null;
+            best = hit;
+          }
         }
       }
     }
@@ -235,6 +254,7 @@ export function sweepBox(
       // rotate back, and is exact either way.
       point: vec(from.x + delta.x * hit.t, from.y + delta.y * hit.t, from.z + delta.z * hit.t),
       normal: vec(normalX, hit.normal.y, normalZ),
+      carrier: box.carrier ?? null,
     };
   }
 
@@ -292,6 +312,7 @@ export function sweepBox(
       from.z + delta.z * entry,
     ),
     normal,
+    carrier: box.carrier ?? null,
   };
 }
 

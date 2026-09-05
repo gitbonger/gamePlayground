@@ -15,7 +15,15 @@ import {
   type FlightTelemetry,
   type LandingReadiness,
 } from './sim/flight';
-import { quat, vec, type Quat, type Vec3 } from './sim/math3';
+import {
+  quat,
+  quatFromAxisAngle,
+  quatMultiply,
+  quatNormalize,
+  vec,
+  type Quat,
+  type Vec3,
+} from './sim/math3';
 import { createInput } from './input';
 import { createRunTracker } from './run';
 import { createDebugGui } from './debug-gui';
@@ -34,6 +42,7 @@ import { createOutcomePanel } from './render/outcome';
 import { buildWorld } from './world/city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
 import {
+  carriedBy,
   consistLength,
   layOutTrain,
   lineLength,
@@ -41,6 +50,7 @@ import {
   shuttle,
   stackTop,
   trainBoxes,
+  turnedBetween,
   WAGON,
 } from './world/train';
 import { createSmoke } from './world/smoke';
@@ -256,9 +266,16 @@ const restCameraParams = { ...cameraParams };
  * That costs 0.012 ms for a rake of thirteen, which is nothing worth avoiding.
  */
 let clock = 0;
+/** Every vehicle on the map, flattened. The index is its carrier tag. */
+function allVehicles() {
+  return layout.trains.flatMap((train) => train.vehicles);
+}
+
 function moveTrains(dt: number) {
   clock += dt;
   const fields: Collider[] = [world.collider];
+  const before = allVehicles();
+  let tagged = 0;
 
   for (const train of layout.trains) {
     const run = shuttle(
@@ -271,7 +288,29 @@ function moveTrains(dt: number) {
     train.along = run.along;
     train.direction = run.direction;
     train.vehicles = layOutTrain(train.line, train.along, train.vehicles.length - 1);
-    fields.push(createColliderField(trainBoxes(train.vehicles)));
+    const base = tagged;
+    tagged += train.vehicles.length;
+    fields.push(createColliderField(trainBoxes(train.vehicles, (vehicle) => base + vehicle)));
+  }
+
+  // Anything standing on a wagon goes where the wagon goes. Without this a
+  // bird that has just landed watches the train slide out from under it.
+  const after = allVehicles();
+  for (const passenger of [bird, ...flock.members.map((member) => member.state)]) {
+    const riding = passenger.restingOn;
+    if (riding === null) continue;
+    const was = before[riding];
+    const now = after[riding];
+    if (!was || !now) continue;
+
+    passenger.position = carriedBy(passenger.position, was, now);
+    const turned = turnedBetween(was, now);
+    if (turned !== 0) {
+      // Turned about the world's vertical, the way the wagon turns.
+      passenger.orientation = quatNormalize(
+        quatMultiply(quatFromAxisAngle(vec(0, 1, 0), -turned), passenger.orientation),
+      );
+    }
   }
 
   // Smoke off the leading locomotive's stack, carried at the speed the train
