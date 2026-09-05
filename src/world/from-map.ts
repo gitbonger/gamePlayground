@@ -25,6 +25,15 @@ import {
   type Point2,
 } from './polygon';
 import type { Building, CityLayout, Tree } from './layout';
+import {
+  chainageOf,
+  consistLength,
+  layOutTrain,
+  lineLength,
+  pointAlong,
+  trainBoxes,
+  type Train,
+} from './train';
 import { distance, type Point } from './geo';
 
 export interface MapWorldOptions {
@@ -92,6 +101,8 @@ export interface MapWorldOptions {
    * so the renderer can pick it out as a landmark to home in on.
    */
   target?: Point;
+  /** Trains to stand on the track. */
+  trains?: TrainSpec[];
 }
 
 export const defaultMapWorldOptions: MapWorldOptions = {
@@ -122,12 +133,21 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+export interface TrainSpec {
+  /** Somewhere near the line it should stand on; the nearest one is chosen. */
+  near: Point;
+  /** How many wagons behind the engine. */
+  wagons: number;
+}
+
 export interface MapWorld extends CityLayout {
   streets: StreetIndex;
   green: AreaIndex;
   target: Building | null;
   /** The railways, carried through for the renderer to draw. */
   rails: Rail[];
+  /** Trains standing on them, each knowing how far along its line it is. */
+  trains: Train[];
   /** The blocks the streets enclose, for anything that wants the shape of one. */
   blocks: Block[];
   /** Those of them with an open middle, rather than being built solid. */
@@ -423,6 +443,38 @@ export function buildLayoutFromMap(
     plant(area.points as Point2[], options.parkTrees);
   }
 
+  // Trains, on whichever line runs closest to where each was asked for.
+  const trains: Train[] = [];
+  for (const spec of options.trains ?? []) {
+    let line: Rail | null = null;
+    let best = Infinity;
+    for (const rail of map.rails ?? []) {
+      const at = chainageOf(rail.points, spec.near.x, spec.near.z);
+      const on = pointAlong(rail.points, at);
+      if (!on) continue;
+      const away = Math.hypot(on.x - spec.near.x, on.z - spec.near.z);
+      if (away < best) {
+        best = away;
+        line = rail;
+      }
+    }
+    if (!line) continue;
+
+    // Centred on where it was asked for, then shifted along until the whole
+    // train is on the line: half a consist hanging off the end of a siding
+    // looks far worse than one standing a little further up it.
+    const length = consistLength(spec.wagons);
+    const run = lineLength(line.points);
+    if (run < length) continue;
+    const wanted = chainageOf(line.points, spec.near.x, spec.near.z) + length / 2;
+    const along = Math.min(Math.max(wanted, length), run);
+
+    const vehicles = layOutTrain(line, along, spec.wagons);
+    if (!vehicles.length) continue;
+    trains.push({ line, along, vehicles });
+    boxes.push(...trainBoxes(vehicles));
+  }
+
   // Mark the building nearest the destination, so there is something to aim
   // at rather than a bare coordinate.
   let target: Building | null = null;
@@ -444,6 +496,7 @@ export function buildLayoutFromMap(
     boxes,
     roads: map.roads,
     rails: map.rails ?? [],
+    trains,
     areas: map.areas ?? [],
     streets,
     green,

@@ -85,7 +85,15 @@ const SUN_OFFSET = sunDirection.clone().multiplyScalar(SUN_RANGE);
 const release = project(RELEASE_POINT[0], RELEASE_POINT[1], map.centre);
 const home = project(HOME_POINT[0], HOME_POINT[1], map.centre);
 
-const layout = buildLayoutFromMap(map, { ...defaultMapWorldOptions, target: home });
+/** A rake of empty stake wagons, standing in the yard for the pigeon to use. */
+const TRAIN_POINT: [number, number] = [47.500052, 19.088174];
+const train = project(TRAIN_POINT[0], TRAIN_POINT[1], map.centre);
+
+const layout = buildLayoutFromMap(map, {
+  ...defaultMapWorldOptions,
+  target: home,
+  trains: [{ near: train, wagons: 12 }],
+});
 const world = buildWorld(layout);
 scene.add(world.group);
 

@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { createColliderField, type Box, type Collider } from '../sim/collision';
 import { generateCityLayout, type Building, type CityLayout } from './layout';
 import type { Rail, Road } from './streets';
+import { ENGINE, WAGON, onVehicle, type Train, type Vehicle } from './train';
 import type { Area, AreaKind } from './areas';
 
 export { defaultWorldOptions, type WorldOptions } from './layout';
@@ -388,6 +389,16 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
     group.add(track);
   }
 
+  // --- Trains ---------------------------------------------------------------
+  if (layout.trains?.length) {
+    const { geometry, material } = buildTrains(layout.trains);
+    disposables.push(geometry, material);
+    const stock = new THREE.Mesh(geometry, material);
+    stock.castShadow = true;
+    stock.receiveShadow = true;
+    group.add(stock);
+  }
+
   // --- Streets ------------------------------------------------------------
   if (layout.roads?.length) {
     const { geometry, material } = buildRoads(layout.roads);
@@ -491,6 +502,122 @@ function buildAreas(
  * road seen from the air the joints do not read, and one buffer of a few
  * thousand triangles costs a single draw call.
  */
+/**
+ * Every train as one mesh, in world coordinates.
+ *
+ * Merged for the same reason the roofs are: a vehicle's parts are boxes of
+ * a dozen different shapes, and instancing wants one shape many times. There
+ * are only ever a few hundred boxes in a rake, so baking them costs nothing
+ * and the whole train is one draw call.
+ */
+function buildTrains(trains: readonly Train[]): {
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material;
+} {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const colours: number[] = [];
+  const tint = new THREE.Color();
+
+  /** One box, in the vehicle's own frame: along it, across it, and up. */
+  const part = (
+    vehicle: Vehicle,
+    colour: number,
+    along: number,
+    across: number,
+    base: number,
+    length: number,
+    width: number,
+    height: number,
+  ) => {
+    const at = onVehicle(vehicle, along, across);
+    const box = new THREE.BoxGeometry(length, height, width).toNonIndexed();
+    box.rotateY(vehicle.yaw);
+    box.translate(at.x, base + height / 2, at.z);
+
+    const point = box.getAttribute('position');
+    const normal = box.getAttribute('normal');
+    tint.setHex(colour);
+    for (let i = 0; i < point.count; i += 1) {
+      positions.push(point.getX(i), point.getY(i), point.getZ(i));
+      normals.push(normal.getX(i), normal.getY(i), normal.getZ(i));
+      colours.push(tint.r, tint.g, tint.b);
+    }
+    box.dispose();
+  };
+
+  const IRON = 0x2b2b2d;
+  const RUST = 0x5c4a40;
+
+  for (const train of trains) {
+    for (const vehicle of train.vehicles) {
+      const bogie = vehicle.length * 0.33;
+
+      if (vehicle.kind === 'engine') {
+        // Frame and running gear, then the hood, then the cab above it.
+        part(vehicle, IRON, 0, 0, 0.55, vehicle.length, vehicle.width, 0.45);
+        for (const end of [bogie, -bogie]) {
+          part(vehicle, IRON, end, 0, 0.15, 3.4, vehicle.width * 0.82, 0.75);
+        }
+        part(vehicle, 0x7d2f26, 0, 0, 1.0, vehicle.length - 0.6, vehicle.width, ENGINE.body - 1.0);
+        part(
+          vehicle,
+          0x7d2f26,
+          vehicle.length / 2 - ENGINE.cabLength / 2 - 0.3,
+          0,
+          ENGINE.body,
+          ENGINE.cabLength,
+          vehicle.width,
+          ENGINE.cab - ENGINE.body - 0.16,
+        );
+        part(
+          vehicle,
+          0x3f4145,
+          vehicle.length / 2 - ENGINE.cabLength / 2 - 0.3,
+          0,
+          ENGINE.cab - 0.16,
+          ENGINE.cabLength + 0.3,
+          vehicle.width + 0.2,
+          0.16,
+        );
+        continue;
+      }
+
+      // Running gear, solebar, and the deck laid on top of it.
+      for (const end of [bogie, -bogie]) {
+        part(vehicle, IRON, end, 0, 0.15, 2.6, vehicle.width * 0.78, 0.6);
+      }
+      part(vehicle, RUST, 0, 0, WAGON.deck - 0.5, vehicle.length, vehicle.width * 0.9, 0.32);
+      part(vehicle, 0x6f5c45, 0, 0, WAGON.deck - 0.18, vehicle.length, vehicle.width, 0.18);
+
+      const across = vehicle.width / 2 - WAGON.stakeThickness / 2;
+      const spacing = (vehicle.length - WAGON.stakeThickness) / (WAGON.stakesPerSide - 1);
+      for (let i = 0; i < WAGON.stakesPerSide; i += 1) {
+        const along = -(vehicle.length - WAGON.stakeThickness) / 2 + i * spacing;
+        for (const side of [across, -across]) {
+          part(
+            vehicle,
+            0x7c6a51,
+            along,
+            side,
+            WAGON.deck,
+            WAGON.stakeThickness,
+            WAGON.stakeThickness,
+            WAGON.stake,
+          );
+        }
+      }
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
+
+  return { geometry, material: new THREE.MeshLambertMaterial({ vertexColors: true }) };
+}
+
 /** Standard gauge, in metres: the distance between the inside faces of a pair. */
 const GAUGE = 1.435;
 /** Sleeper spacing, in metres. */

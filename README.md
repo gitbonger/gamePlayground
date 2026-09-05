@@ -330,6 +330,29 @@ DoubleSide` that I did not copy across. Front-face culling then removed every
 railway on the map. Replacing the shader with flat magenta and finding *that*
 invisible too is what turned it from a shader problem into a two-word one.
 
+**There is a train on the track, and the pigeon can land on it.** A rake of
+twelve empty stake wagons behind a diesel, standing in the yard. It is laid out
+as a distance *along* a line rather than a position on the ground, which is the
+whole design: a train is where its leading coupling has got to, and everything
+else follows from that, so setting it moving later is a matter of advancing one
+number per train per tick and asking for the layout again. Several trains cost
+nothing more than several numbers.
+
+Each vehicle sits on its bogies, as a real one does -- the body is the chord
+between two points on the line rather than a tangent at its middle -- which is
+what keeps a 14 m wagon lying along the inside of a curve instead of hanging
+off the outside of it. A consist that will not fit on its line produces no
+train at all, half a rake over the end of a siding being worse than none.
+
+The wagon is a deck at 1.25 m with stakes carrying on to 2.4, and nothing
+between them: an open box a metre deep with a floor. That is what makes it
+landable. The collider has no notion of a box that floats, so every part
+stands on the ground, which costs nothing because under a wagon is not
+somewhere to fly. Landing on the deck is held to exactly the rules that apply
+to any other roof -- a gentle approach settles at 1.47 m, the deck plus the
+bird's own radius, while arriving at 12 m/s is `too-fast` and dropping onto it
+from 4 m up is `hard-impact`. All four of those are tests.
+
 **Windows and roof tiles are drawn in the shader, off world coordinates.**
 Both patterns face the same problem: the walls are one shared box scaled per
 instance, so anything keyed to the mesh UVs stretches, and a 26 m house would
@@ -851,6 +874,14 @@ npm test
   is caught even when its centre is clear; and the sample grid is never coarser
   than its step and always has a point on the centre, which is the hole a small
   park hides in.
+- **`src/world/train.test.ts`** — distances along a line run out at the end
+  rather than extrapolating past it; a train reaches back from its leading
+  coupling with real slack over the couplings, stated in metres rather than
+  against the constant that produced it; a vehicle over a bend takes the chord
+  between its bogies; a consist too long for its line produces nothing; the
+  wagon deck sits below the stakes so what is between them is air; and the
+  pigeon lands on that deck off a gentle approach while a fast one and a steep
+  one end the way they would anywhere else.
 - **`src/render/sun.test.ts`** — the sun is overhead at the equator at noon on
   the equinox, reaches 90 minus the latitude plus the tilt at midsummer noon
   and due south with it, is a full two tilts lower at midwinter, rises in the

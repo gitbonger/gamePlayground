@@ -3,6 +3,7 @@ import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
 import { indexStreets, type MapData, type Rail, type Road } from './streets';
 import { footprintSamples, type Area } from './areas';
 import { distanceToEdges, pointInPolygon } from './polygon';
+import { consistLength, lineLength, WAGON } from './train';
 import { createColliderField, worldBounds } from '../sim/collision';
 import { createBird, defaultParams, neutralControls, step } from '../sim/flight';
 import { vec } from '../sim/math3';
@@ -372,6 +373,43 @@ describe('leaving the railway alone', () => {
   it('carries the railways through for the renderer to draw', () => {
     expect(layout.rails).toEqual(THROUGH);
     expect(buildLayoutFromMap(mapOf(BLOCK)).rails).toEqual([]);
+  });
+});
+
+describe('standing a train on the track', () => {
+  const LINE: Rail[] = [{ kind: 'rail', width: 8, points: [[-300, 120], [300, 120]] }];
+  const layout = buildLayoutFromMap(mapOf(BLOCK, [], LINE), {
+    ...defaultMapWorldOptions,
+    trains: [{ near: { x: 40, z: 118 }, wagons: 4 }],
+  });
+
+  it('puts it on the line nearest where it was asked for', () => {
+    expect(layout.trains).toHaveLength(1);
+    const train = layout.trains[0]!;
+    expect(train.line).toBe(LINE[0]);
+    expect(train.vehicles).toHaveLength(5);
+    for (const vehicle of train.vehicles) expect(vehicle.z).toBeCloseTo(120, 6);
+  });
+
+  it('stands the whole train on the line, not half off the end', () => {
+    const train = layout.trains[0]!;
+    const along = lineLength(train.line.points);
+    expect(train.along).toBeLessThanOrEqual(along + 1e-9);
+    expect(train.along - consistLength(4)).toBeGreaterThanOrEqual(-1e-9);
+  });
+
+  it('adds it to the solids, so the pigeon can land on it', () => {
+    const collider = createColliderField(layout.boxes);
+    const wagon = layout.trains[0]!.vehicles[2]!;
+    expect(collider.heightAt(wagon.x, wagon.z)).toBeCloseTo(WAGON.deck, 6);
+  });
+
+  it('stands none when there is no railway to stand one on', () => {
+    const bare = buildLayoutFromMap(mapOf(BLOCK), {
+      ...defaultMapWorldOptions,
+      trains: [{ near: { x: 40, z: 118 }, wagons: 4 }],
+    });
+    expect(bare.trains).toEqual([]);
   });
 });
 

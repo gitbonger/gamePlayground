@@ -7,6 +7,7 @@
 
 import { aabb, type Box } from '../sim/collision';
 import type { Rail, Road } from './streets';
+import type { Train } from './train';
 import type { Area } from './areas';
 
 /** Small deterministic PRNG, so the same seed always builds the same city. */
@@ -63,6 +64,8 @@ export interface CityLayout {
   roads?: Road[];
   /** Surface railway to draw: heavy rail and tram. */
   rails?: Rail[];
+  /** Trains standing on it. */
+  trains?: Train[];
   /** Parks, woods and water to draw. */
   areas?: Area[];
 }
