@@ -208,7 +208,10 @@ a row knows the block is a closed shape. The block has to come first:
    what these blocks measure.
 2. **Pull the ring in to the kerb**, each edge by its own street's half-width
    plus a 2 m setback, because a block with a boulevard on one side and three
-   side streets is not a square anything.
+   side streets is not a square anything -- then again by as much, because the
+   true gap is startlingly tight to fly down. A residential street here is 8 m
+   of carriageway, which left 12 m between facing walls. Doubled, at 24 m, it
+   is a street a pigeon can use.
 3. **Lay a wing of building round the inside**, 16 m deep -- a staircase and two
    rooms either side of it -- split into houses of 14-28 m frontage, each with
    its own height from a flat 16-24 m band. Even is not identical: neighbours
@@ -267,7 +270,14 @@ The roofs are gabled, pitched about 27 degrees, in courses of clay tile 26 cm
 across, with the gable ends left as the party walls they are. The roof takes
 the top few metres *of* the building rather than being piled on top of it, so
 the ridge is still the height the layout says and the collision box, which
-stops there, keeps its meaning.
+stops there, keeps its meaning. The landmark is the exception and stays flat:
+it is the one building the pigeon is meant to put down on, and a ridge is
+nowhere for a bird to stand -- the collider would settle it on the ridge line
+with the tiles falling away underneath.
+
+Windows are never lit. It is six in the evening in June; a lit window at that
+hour reads as a mistake rather than as life. What varies between panes is how
+much sky each is reflecting.
 
 **Roofs are merged into one mesh; walls stay instanced.** The opposite of each
 other, on purpose. An instance carries its shape as a scale, and a normal does
@@ -278,6 +288,26 @@ A box does not care, because its normals are axis-aligned and stay that way
 under any scale. So the buildings keep the six instanced buckets that hold the
 whole skyline at a handful of draw calls, and every roof on the map is baked
 into one geometry in world coordinates, for one more.
+
+**The sun is where it actually was.** The light had been aimed by eye, which
+is fine until you notice that shadows in a game set at a real latitude are
+pointing somewhere that time of day never puts them. `src/render/sun.ts` is the
+standard NOAA solar position calculation: give it the map's own coordinates and
+a date and it returns the sun's altitude and bearing, and both the directional
+light and the disc in the sky go exactly there.
+
+The game is set at six in the evening on the longest day of 2025, which puts
+the sun 24 degrees up and a little north of due west. Early afternoon was the
+first choice and was wrong for a reason worth keeping: at 54 degrees the sun
+sits above the top of the frame in level flight, so the pigeon never sees it. A
+realistic sun you cannot look at is not worth the arithmetic.
+
+The disc is drawn in the sky shader rather than placed as geometry -- nothing
+to fly into, and it stays put however far the bird travels -- and its direction
+is measured from the camera rather than from the origin, or it would slide
+across the sky as the bird flew out from the middle of the dome. Measured off
+the framebuffer, the disc comes out **0.504 degrees** across against the real
+sun's 0.53.
 
 Which is also the answer to whether any of this needed optimising: it did not.
 Timed by rendering explicitly and waiting for the GPU, a frame costs **0.8 ms**
@@ -736,7 +766,8 @@ npm test
   per edge, and cuts a sharp corner off rather than flinging it into the
   distance; and shrinking refuses once the walls have met, with the 100 m
   square inset by 80 m as the worked example of a wrong answer that passes
-  every check but the edge directions.
+  every check but the edge directions; and a battery of awkward rings at every
+  distance either shrinks or gives up, never throwing and never escaping.
 - **`src/world/blocks.test.ts`** — four streets enclose one block and not two,
   the outside of the network is left out by which way it winds rather than by
   its size, a grid of three streets each way gives four blocks, dead ends are
@@ -747,16 +778,21 @@ npm test
   is caught even when its centre is clear; and the sample grid is never coarser
   than its step and always has a point on the centre, which is the hole a small
   park hides in.
+- **`src/render/sun.test.ts`** — the sun is overhead at the equator at noon on
+  the equinox, reaches 90 minus the latitude plus the tilt at midsummer noon
+  and due south with it, is a full two tilts lower at midwinter, rises in the
+  east and sets in the west, and is below the horizon at night.
 - **`src/world/city.test.ts`** — a roof comes out of the building's height
   rather than being added to it, is pitched to the depth of the wing it covers
-  up to a limit, and never swallows a building short enough for it to.
+  up to a limit, never swallows a building short enough for it to, and is left
+  off the landmark so there is somewhere flat to land.
 - **`src/world/from-map.test.ts`** — the ring closes, so leaving the courtyard
   in any of 24 directions meets building before it reaches the street, while
   the courtyard itself stays open to fly in; gardens are in courtyards and
   nowhere else; nothing overhangs a carriageway, drifts off its block, or sits
   deeper than the wing; every building is squared up to an edge of its own
-  block; a block too small for a courtyard is built solid, with no hole to fly
-  into; and exactly one building is marked as the target, the one actually
+  block; facing frontages are twice the carriageway and its setbacks apart; a
+  block too small for a courtyard is built solid, with no hole to fly into; and exactly one building is marked as the target, the one actually
   nearest it. Green space has its own group, including a control that the test
   park covers ground the generator *would* have built on — a park in the middle
   of a courtyard would prove nothing.

@@ -43,7 +43,8 @@ const WINDOW_TILE_HEIGHT = 3.4;
  * coordinates instead and every window is the same real size on every
  * building, for free, with nothing stored per instance.
  *
- * Roofs get none, and nor does the ground floor.
+ * Roofs get none, and nor does the ground floor. None of them are lit: the
+ * light in this world comes from a sun three hours past noon.
  */
 function withWindows(material: THREE.MeshLambertMaterial): THREE.MeshLambertMaterial {
   material.onBeforeCompile = (shader) => {
@@ -84,10 +85,13 @@ function withWindows(material: THREE.MeshLambertMaterial): THREE.MeshLambertMate
           // Nothing at street level, where the shopfronts would be.
           pane *= smoothstep(1.6, 3.2, vWallPos.y);
 
-          // A few windows lit, so a wall is not a perfect lattice.
+          // Never lit. It is the middle of a summer afternoon, and a lit
+          // window at three o'clock reads as a mistake rather than as life.
+          // The variation is in how much sky each pane happens to be
+          // reflecting, which is what stops a wall being a perfect lattice.
           vec2 which = floor(grid);
           float roll = fract(sin(dot(which, vec2(12.9898, 78.233))) * 43758.5453);
-          vec3 glass = mix(vec3(0.13, 0.16, 0.21), vec3(0.85, 0.72, 0.45), step(0.88, roll));
+          vec3 glass = mix(vec3(0.11, 0.14, 0.19), vec3(0.21, 0.26, 0.32), roll);
 
           diffuseColor.rgb = mix(diffuseColor.rgb, glass, pane * 0.8);
         }
@@ -150,10 +154,15 @@ function roofPrism(): [number, number, number][][] {
  * enough that every roof face tested as a gable end and the whole city came
  * out rendered in grey. Baking the vertices means the normals are simply
  * correct, and 2,249 roofs still cost one draw call.
+ *
+ * The landmark is left off. It is the one building the pigeon is meant to put
+ * down on, and a pitched roof is not somewhere a bird can stand -- the collider
+ * would settle it on the ridge line while the tiles fell away underneath.
  */
-function buildRoofs(buildings: readonly Building[]): THREE.BufferGeometry {
+export function buildRoofs(buildings: readonly Building[]): THREE.BufferGeometry {
+  const tiled = buildings.filter((building) => !building.isTarget);
   const prism = roofPrism();
-  const positions = new Float32Array(buildings.length * prism.length * 9);
+  const positions = new Float32Array(tiled.length * prism.length * 9);
   const matrix = new THREE.Matrix4();
   const place = new THREE.Vector3();
   const turn = new THREE.Quaternion();
@@ -162,7 +171,7 @@ function buildRoofs(buildings: readonly Building[]): THREE.BufferGeometry {
   const vertex = new THREE.Vector3();
 
   let at = 0;
-  for (const building of buildings) {
+  for (const building of tiled) {
     const rise = roofRise(building);
     turn.setFromAxisAngle(up, building.yaw ?? 0);
     place.set(building.x, building.height - rise, building.z);
@@ -301,11 +310,12 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
   if (landmark) {
     const material = withWindows(new THREE.MeshLambertMaterial({ color: TARGET_COLOR }));
     disposables.push(material);
-    const walls = landmark.height - roofRise(landmark);
+    // Full height, with no roof taken out of it: the flat top is exactly the
+    // top of the collision box, so the bird lands where it looks like it does.
     const mesh = new THREE.Mesh(boxGeometry, material);
-    mesh.position.set(landmark.x, walls / 2, landmark.z);
+    mesh.position.set(landmark.x, landmark.height / 2, landmark.z);
     mesh.rotation.y = landmark.yaw ?? 0;
-    mesh.scale.set(landmark.width, walls, landmark.depth);
+    mesh.scale.set(landmark.width, landmark.height, landmark.depth);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     group.add(mesh);

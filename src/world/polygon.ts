@@ -179,6 +179,11 @@ export function shrinkRing(
   // remaining ones re-fitted, which is what the shape actually does.
   for (let pass = 0; pass < 8 && ring.length >= 3; pass += 1) {
     const inset = insetPolygon(ring, gaps);
+    // The inset tidies as it goes, and dropping a corner can leave two of the
+    // remaining ones on the same spot. Without a ring to put edge for edge
+    // against there is nothing to judge, so give up rather than read past the
+    // end of it.
+    if (inset.length !== ring.length) return [];
 
     const turned = new Set<number>();
     for (let i = 0; i < ring.length; i += 1) {

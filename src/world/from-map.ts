@@ -32,6 +32,16 @@ import { distance, type Point } from './geo';
 export interface MapWorldOptions {
   /** Clear space kept between the carriageway and the wall, in metres. */
   setback: number;
+  /**
+   * How much room to leave between facing frontages, as a multiple of the
+   * carriageway and its two setbacks.
+   *
+   * 1 puts the walls right on the setback, which is what the street measures
+   * on the map and is startlingly tight to fly down -- a residential road here
+   * is 8 m of carriageway, so the gap between facades was 12 m and the wings
+   * nearly touched it. 2 leaves a street a pigeon can get down.
+   */
+  streetRoom: number;
   /** Frontage of one house along the block edge, in metres. */
   minFrontage: number;
   maxFrontage: number;
@@ -81,6 +91,7 @@ export interface MapWorldOptions {
 
 export const defaultMapWorldOptions: MapWorldOptions = {
   setback: 2,
+  streetRoom: 2,
   minFrontage: 14,
   maxFrontage: 28,
   wingDepth: 16,
@@ -142,7 +153,7 @@ export function buildLayoutFromMap(
     const kerbs = block.ring.map((point, i) => {
       const next = block.ring[(i + 1) % block.ring.length]!;
       const street = streets.nearest((point[0] + next[0]) / 2, (point[1] + next[1]) / 2, 60);
-      return (street ? street.width / 2 : 6) + options.setback;
+      return ((street ? street.width / 2 : 6) + options.setback) * options.streetRoom;
     });
 
     const face = shrinkRing(block.ring, kerbs);

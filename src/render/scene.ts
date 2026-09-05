@@ -7,13 +7,25 @@ export interface SceneBundle {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   sun: THREE.DirectionalLight;
+  /** Unit vector pointing at the sun, for anything that has to agree with it. */
+  sunDirection: THREE.Vector3;
   resize(): void;
+}
+
+export interface SceneOptions {
+  /**
+   * Which way the sun is, as a vector in world axes.
+   *
+   * Passed in rather than chosen here, because the answer depends on where on
+   * Earth the map is and what the time is there -- see `./sun`.
+   */
+  sun: { x: number; y: number; z: number };
 }
 
 const HORIZON = new THREE.Color(0xbcd3e8);
 const ZENITH = new THREE.Color(0x4a86c8);
 
-export function createScene(canvas: HTMLCanvasElement): SceneBundle {
+export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): SceneBundle {
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: true,
@@ -37,8 +49,10 @@ export function createScene(canvas: HTMLCanvasElement): SceneBundle {
 
   scene.add(new THREE.HemisphereLight(ZENITH.clone(), 0x6b7355, 1.5));
 
+  const sunDirection = new THREE.Vector3(options.sun.x, options.sun.y, options.sun.z).normalize();
+
   const sun = new THREE.DirectionalLight(0xfff2dd, 2.2);
-  sun.position.set(-160, 240, 120);
+  sun.position.copy(sunDirection).multiplyScalar(400);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   // The shadow camera follows the bird, so it only needs to cover what is
@@ -53,7 +67,7 @@ export function createScene(canvas: HTMLCanvasElement): SceneBundle {
   scene.add(sun);
   scene.add(sun.target);
 
-  scene.add(createSkyDome());
+  scene.add(createSkyDome(sunDirection));
 
   function resize() {
     const width = window.innerWidth;
@@ -65,11 +79,20 @@ export function createScene(canvas: HTMLCanvasElement): SceneBundle {
   resize();
   window.addEventListener('resize', resize);
 
-  return { renderer, scene, camera, sun, resize };
+  return { renderer, scene, camera, sun, sunDirection, resize };
 }
 
-/** Inverted sphere with a vertical gradient, drawn behind everything else. */
-function createSkyDome(): THREE.Mesh {
+/**
+ * Inverted sphere with a vertical gradient and the sun on it, drawn behind
+ * everything else.
+ *
+ * The sun belongs to the sky rather than to the world because that is what it
+ * is: no geometry to place, nothing to fly into, and it stays where it is
+ * however far the bird travels. Its direction is measured from the camera and
+ * not from the origin, or the disc would slide across the sky as the bird flew
+ * out from the middle of the dome.
+ */
+function createSkyDome(direction: THREE.Vector3): THREE.Mesh {
   const geometry = new THREE.SphereGeometry(9000, 32, 16);
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide,
@@ -78,21 +101,36 @@ function createSkyDome(): THREE.Mesh {
     uniforms: {
       horizon: { value: HORIZON.clone() },
       zenith: { value: ZENITH.clone() },
+      sunDirection: { value: direction.clone() },
     },
     vertexShader: /* glsl */ `
-      varying vec3 vWorld;
+      varying vec3 vLook;
       void main() {
-        vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
+        vLook = (modelMatrix * vec4(position, 1.0)).xyz - cameraPosition;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
     fragmentShader: /* glsl */ `
       uniform vec3 horizon;
       uniform vec3 zenith;
-      varying vec3 vWorld;
+      uniform vec3 sunDirection;
+      varying vec3 vLook;
       void main() {
-        float h = clamp(normalize(vWorld).y, 0.0, 1.0);
-        gl_FragColor = vec4(mix(horizon, zenith, pow(h, 0.6)), 1.0);
+        vec3 look = normalize(vLook);
+        vec3 sky = mix(horizon, zenith, pow(clamp(look.y, 0.0, 1.0), 0.6));
+
+        // How far this bit of sky is from the sun. As a chord rather than the
+        // angle: at half a degree, acos of a dot product has run out of float.
+        float away = length(look - sunDirection);
+
+        // The disc is half a degree across, which is all the sun ever is. The
+        // glare around it is what the eye actually reads as brightness.
+        float glare = exp(-away * 34.0) * 0.55 + exp(-away * 5.0) * 0.13;
+        float disc = 1.0 - smoothstep(0.0044, 0.0050, away);
+
+        sky = mix(sky, vec3(1.0, 0.96, 0.88), clamp(glare, 0.0, 1.0));
+        sky = mix(sky, vec3(1.0, 0.99, 0.94), disc);
+        gl_FragColor = vec4(sky, 1.0);
       }
     `,
   });

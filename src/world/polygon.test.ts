@@ -134,6 +134,38 @@ describe('shrinking a ring, safely', () => {
     expect(shrinkRing([...square].reverse(), 10)).toEqual([]);
   });
 
+  it('gives an answer, or nothing, for any ring at any distance', () => {
+    // Shrinking is iterative -- collapsed edges are dropped and the rest
+    // re-fitted -- and each pass can hand the next one a ring that has changed
+    // shape underneath it. Every awkward case has to end in a usable ring or
+    // an empty one, never a throw and never a ring that has escaped.
+    const awkward: Point2[][] = [
+      square,
+      ell,
+      // A sliver.
+      [[0, 0], [200, 1], [200, -1]],
+      // A wedge with a clipped corner, which is any real block corner.
+      [[0, 0], [60, 0], [80, 20], [80, 60], [0, 60]],
+      // Nearly collinear neighbours.
+      [[0, 0], [50, 0.01], [100, 0], [100, 40], [0, 40]],
+      // A deep notch.
+      [[0, 0], [100, 0], [100, 100], [55, 100], [55, 10], [45, 10], [45, 100], [0, 100]],
+    ];
+
+    for (const ring of awkward) {
+      for (let distance = 0.5; distance <= 60; distance += 0.5) {
+        const shrunk = shrinkRing(ring, distance);
+        if (shrunk.length === 0) continue;
+        expect(shrunk.length, `${distance}`).toBeGreaterThanOrEqual(3);
+        expect(polygonArea(shrunk)).toBeGreaterThan(0);
+        expect(polygonArea(shrunk)).toBeLessThan(polygonArea(ring));
+        for (const [x, z] of shrunk) {
+          expect(pointInPolygon(x, z, ring), `${distance} m: ${x},${z}`).toBe(true);
+        }
+      }
+    }
+  });
+
   it('never returns ground outside what it shrank', () => {
     for (const distance of [1, 5, 12, 19]) {
       for (const [x, z] of shrinkRing(ell, distance)) {

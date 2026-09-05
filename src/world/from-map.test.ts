@@ -128,19 +128,43 @@ describe('building a perimeter block', () => {
     }
   });
 
-  it('keeps every building in the perimeter, none adrift in the middle', () => {
-    // Stated against the block ring rather than the nearest street, because
-    // at a corner the nearest street is the one the building has its side to.
-    // Deepest anything can be is the far side of the wing, measured from the
-    // widest kerb on the block.
+  it('stands every near wall on a kerb, none adrift in the middle', () => {
+    // Stated against the block ring rather than the nearest street, because at
+    // a corner the nearest street is the one the building has its side to. The
+    // ring runs along the centrelines, so the near wall of every building sits
+    // exactly the kerb inset back from it -- at most the widest street on the
+    // block, and no deeper. This is what "adjacent to a road" means once the
+    // buildings are laid round the block rather than scattered along it.
     const ring = layout.blocks[0]!.ring;
-    const deepest = 16 / 2 + defaultMapWorldOptions.setback + defaultMapWorldOptions.wingDepth;
+    const widest =
+      (16 / 2 + defaultMapWorldOptions.setback) * defaultMapWorldOptions.streetRoom;
     for (const building of layout.buildings) {
       expect(
         distanceToEdges(building.x, building.z, ring) - building.depth / 2,
         `${building.x},${building.z}`,
-      ).toBeLessThanOrEqual(deepest);
+      ).toBeLessThanOrEqual(widest + 1e-6);
     }
+  });
+
+  it('leaves twice the carriageway and its setbacks between facing frontages', () => {
+    // Flying down an 8 m street between two walls 12 m apart is not flying, it
+    // is threading. Doubled, the gap is something a pigeon can use.
+    const facing = layout.buildings.map((building) => {
+      const street = layout.streets.nearest(building.x, building.z, 300)!;
+      return {
+        gap: 2 * (street.distance - building.depth / 2),
+        plain: street.width + 2 * defaultMapWorldOptions.setback,
+      };
+    });
+
+    for (const { gap, plain } of facing) {
+      expect(gap).toBeGreaterThanOrEqual(plain * defaultMapWorldOptions.streetRoom - 1e-6);
+    }
+
+    // And a narrow one gets exactly the doubling, not merely more than it.
+    const side = facing.filter((f) => f.plain === 8 + 2 * defaultMapWorldOptions.setback);
+    expect(side.length).toBeGreaterThan(0);
+    expect(Math.min(...side.map((f) => f.gap))).toBeCloseTo(24, 6);
   });
 
   it('turns each building to face the street it fronts', () => {

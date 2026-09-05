@@ -2,7 +2,6 @@
  * Entry point: fixed-timestep simulation, interpolated rendering, live tuning.
  */
 
-import * as THREE from 'three';
 
 import {
   createBird,
@@ -24,6 +23,7 @@ import { createBirdRig, PIGEON_MORPHS, type WingPose } from './render/bird';
 import { createFlock } from './flock';
 import { createChaseCamera, defaultCameraParams } from './render/camera';
 import { createHud } from './render/hud';
+import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
 import { buildWorld } from './world/city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
@@ -51,15 +51,32 @@ const SPAWN_CLEARANCE = 40;
 /** Altitude below which the HUD starts showing the approach cue, in metres. */
 const APPROACH_ALTITUDE = 45;
 
-const SUN_OFFSET = new THREE.Vector3(-160, 240, 120);
+/**
+ * When the game is set: six in the evening on the longest day, over the map's
+ * own coordinates.
+ *
+ * The sun is then where it really was rather than wherever looked all right --
+ * 24 degrees up and a little north of due west, which is the point of picking
+ * an hour rather than a direction. Early afternoon was the first choice and
+ * was wrong for a reason worth keeping: at 54 degrees the sun sits above the
+ * top of the frame in level flight, so a pigeon never sees it. This one hangs
+ * over the rooftops, and the shadows are long enough to read from the air.
+ */
+const WHEN = new Date('2025-06-21T16:00:00Z');
+/** How far up-sun the shadow camera sits from the bird, in metres. */
+const SUN_RANGE = 320;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#viewport')!;
 const overlay = document.querySelector<HTMLElement>('#overlay')!;
 
-const { renderer, scene, camera, sun } = createScene(canvas);
 // Real streets from OpenStreetMap, with the blocks between them filled in.
 // JSON widens the fixed-length tuples, so this crosses through unknown.
 const map = homeMap as unknown as MapData;
+
+const { renderer, scene, camera, sun, sunDirection } = createScene(canvas, {
+  sun: sunVector(map.centre[0], map.centre[1], WHEN),
+});
+const SUN_OFFSET = sunDirection.clone().multiplyScalar(SUN_RANGE);
 
 const release = project(RELEASE_POINT[0], RELEASE_POINT[1], map.centre);
 const home = project(HOME_POINT[0], HOME_POINT[1], map.centre);

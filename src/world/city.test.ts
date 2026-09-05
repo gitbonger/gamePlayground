@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { roofRise } from './city';
+import { buildRoofs, roofRise } from './city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
 import type { MapData, Road } from './streets';
 
@@ -34,6 +34,19 @@ describe('roofs', () => {
       // And the walls that carry it are still the bulk of the building.
       expect(building.height - rise).toBeGreaterThan(building.height * 0.6);
     }
+  });
+
+  it('leaves the landmark flat, so the pigeon has somewhere to land', () => {
+    // A pitched roof is nowhere for a bird to stand: the collider would settle
+    // it on the ridge line with the tiles falling away underneath.
+    const homing = buildLayoutFromMap(map, { ...defaultMapWorldOptions, target: { x: 40, z: 40 } });
+    const marked = homing.buildings.filter((b) => b.isTarget);
+    expect(marked).toHaveLength(1);
+
+    // Six triangles per roof, three vertices each, and one building without.
+    const vertices = buildRoofs(homing.buildings).getAttribute('position').count;
+    expect(vertices).toBe((homing.buildings.length - 1) * 6 * 3);
+    expect(buildRoofs([marked[0]!]).getAttribute('position').count).toBe(0);
   });
 
   it('pitches a roof to its own depth, up to a limit', () => {
