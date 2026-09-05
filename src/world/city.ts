@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { createColliderField, type Box, type Collider } from '../sim/collision';
 import { generateCityLayout, type Building, type CityLayout } from './layout';
 import type { Rail, Road } from './streets';
-import { ENGINE, WAGON, onVehicle, type Train, type Vehicle } from './train';
+import { ENGINE, WAGON, onVehicle, type Vehicle } from './train';
 import type { Area, AreaKind } from './areas';
 
 export { defaultWorldOptions, type WorldOptions } from './layout';
@@ -27,10 +27,26 @@ export { defaultWorldOptions, type WorldOptions } from './layout';
  * decision for whoever builds the world rather than a fact about buildings.
  */
 export interface TargetMarker {
+  /** What this objective is called: "Level 1", and so on. */
+  readonly name: string;
   /** Where the target stands, in world metres. */
   readonly position: THREE.Vector3;
-  /** Flash the target and size the arrow. Once a frame. */
+  /** Whether it is the one being flown to. Only one usually is. */
+  setActive(active: boolean): void;
+  /** Flash the target and size the arrow. Once a frame, when active. */
   update(elapsed: number, viewer: THREE.Vector3, bird: THREE.Vector3): void;
+}
+
+export interface ObjectiveOptions {
+  /** What to call the marked building, if the layout has one. */
+  landmark?: string;
+  /**
+   * Vehicles to pick out as objectives, by which train and where in the rake.
+   *
+   * Named here rather than flagged on the layout because which wagon is a
+   * level is a decision about the game, not a fact about the train.
+   */
+  objectives?: { name: string; train: number; vehicle: number }[];
 }
 
 export interface World {
@@ -39,8 +55,8 @@ export interface World {
   boxes: Box[];
   /** Broad-phase-accelerated view of `boxes`, ready to sweep against. */
   collider: Collider;
-  /** The landmark being homed on, if this world has one. */
-  marker: TargetMarker | null;
+  /** Everything the pigeon can be sent to, in the order it was named. */
+  markers: TargetMarker[];
   dispose(): void;
 }
 
@@ -330,9 +346,13 @@ function withTiles(material: THREE.MeshLambertMaterial): THREE.MeshLambertMateri
   return material;
 }
 
-export function buildWorld(layout: CityLayout = generateCityLayout()): World {
+export function buildWorld(
+  layout: CityLayout = generateCityLayout(),
+  options: ObjectiveOptions = {},
+): World {
   const group = new THREE.Group();
   const disposables: { dispose(): void }[] = [];
+  const markers: TargetMarker[] = [];
 
   // --- Ground -------------------------------------------------------------
   const groundTexture = makeGridTexture();
@@ -373,7 +393,6 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
   // The landmark is one building among thousands, so it gets its own mesh
   // rather than a seventh instanced bucket holding a single entry.
   const landmark = layout.buildings.find((building) => building.isTarget);
-  let marker: TargetMarker | null = null;
   if (landmark) {
     // An ordinary building between flashes, which is what it goes back to.
     const material = withWindows(new THREE.MeshLambertMaterial({ color: BUILDING_COLORS[0] }));
@@ -388,11 +407,14 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
     mesh.receiveShadow = true;
     group.add(mesh);
 
-    marker = createMarker(
-      material,
-      new THREE.Vector3(landmark.x, landmark.height, landmark.z),
-      disposables,
-      group,
+    markers.push(
+      createMarker(
+        options.landmark ?? 'target',
+        material,
+        new THREE.Vector3(landmark.x, landmark.height, landmark.z),
+        disposables,
+        group,
+      ),
     );
   }
 
@@ -464,13 +486,46 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
   }
 
   // --- Trains ---------------------------------------------------------------
+  // A wagon that is an objective is drawn on its own, for the same reason the
+  // landmark building is: being marked means being recoloured several times a
+  // second, and one wagon cannot be picked out of a merged rake.
+  const picked = new Map<string, { name: string; vehicle: Vehicle }>();
+  for (const objective of options.objectives ?? []) {
+    const vehicle = layout.trains?.[objective.train]?.vehicles[objective.vehicle];
+    if (vehicle) picked.set(`${objective.train}:${objective.vehicle}`, { name: objective.name, vehicle });
+  }
+
   if (layout.trains?.length) {
-    const { geometry, material } = buildTrains(layout.trains);
-    disposables.push(geometry, material);
-    const stock = new THREE.Mesh(geometry, material);
-    stock.castShadow = true;
-    stock.receiveShadow = true;
-    group.add(stock);
+    const rake = layout.trains.flatMap((train, t) =>
+      train.vehicles.filter((_, v) => !picked.has(`${t}:${v}`)),
+    );
+    if (rake.length) {
+      const { geometry, material } = buildTrains(rake);
+      disposables.push(geometry, material);
+      const stock = new THREE.Mesh(geometry, material);
+      stock.castShadow = true;
+      stock.receiveShadow = true;
+      group.add(stock);
+    }
+
+    for (const { name, vehicle } of picked.values()) {
+      const { geometry, material } = buildTrains([vehicle]);
+      disposables.push(geometry, material);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+
+      markers.push(
+        createMarker(
+          name,
+          material as THREE.MeshLambertMaterial,
+          new THREE.Vector3(vehicle.x, WAGON.deck + WAGON.stake, vehicle.z),
+          disposables,
+          group,
+        ),
+      );
+    }
   }
 
   // --- Streets ------------------------------------------------------------
@@ -487,7 +542,7 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
     group,
     boxes: layout.boxes,
     collider: createColliderField(layout.boxes),
-    marker,
+    markers,
     dispose() {
       for (const d of disposables) d.dispose();
     },
@@ -504,13 +559,18 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
  * which is exactly when a normal object is hardest to see.
  */
 function createMarker(
+  name: string,
   material: THREE.MeshLambertMaterial,
   top: THREE.Vector3,
   disposables: { dispose(): void }[],
   group: THREE.Group,
 ): TargetMarker {
+  // Flashed on the emissive rather than the diffuse, which is what lets the
+  // same marker work on a wagon. A wagon is one mesh of many vertex colours --
+  // timber, rust, iron -- and multiplying that lot by red gives a muddy brown,
+  // not a red wagon. Emissive is added rather than multiplied, so everything
+  // goes red together whatever it started as.
   const lit = new THREE.Color(TARGET_COLOR);
-  const base = material.color.clone();
 
   const head = new THREE.ConeGeometry(0.5, 1.1, 4);
   head.rotateX(Math.PI);
@@ -535,19 +595,28 @@ function createMarker(
   arrow.traverse((child) => {
     child.renderOrder = 999;
   });
+  arrow.visible = false;
   group.add(arrow);
 
   const position = top.clone();
+  let active = false;
 
   return {
+    name,
     position,
+    setActive(on) {
+      active = on;
+      arrow.visible = on;
+      if (!on) material.emissive.setScalar(0);
+    },
     update(elapsed, viewer, bird) {
-      const flash = targetFlash(elapsed, position.distanceTo(bird));
-      material.color.copy(base).lerp(lit, flash);
+      if (!active) return;
+
+      material.emissive.copy(lit).multiplyScalar(targetFlash(elapsed, position.distanceTo(bird)));
 
       const size = arrowScale(position.distanceTo(viewer));
       arrow.scale.setScalar(size);
-      // Sitting a little clear of the roof, and rocking gently, because a
+      // Sitting a little clear of the target, and rocking gently, because a
       // marker that moves is found a good deal faster than one that does not.
       const bob = Math.sin(elapsed * 2.2) * 0.12 + 1;
       arrow.position.set(position.x, position.y + size * 0.55 * bob + 1.5, position.z);
@@ -646,7 +715,7 @@ function buildAreas(
  * are only ever a few hundred boxes in a rake, so baking them costs nothing
  * and the whole train is one draw call.
  */
-function buildTrains(trains: readonly Train[]): {
+function buildTrains(vehicles: readonly Vehicle[]): {
   geometry: THREE.BufferGeometry;
   material: THREE.Material;
 } {
@@ -685,8 +754,8 @@ function buildTrains(trains: readonly Train[]): {
   const IRON = 0x2b2b2d;
   const RUST = 0x5c4a40;
 
-  for (const train of trains) {
-    for (const vehicle of train.vehicles) {
+  {
+    for (const vehicle of vehicles) {
       const bogie = vehicle.length * 0.33;
 
       if (vehicle.kind === 'engine') {

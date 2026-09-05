@@ -101,7 +101,26 @@ const layout = buildLayoutFromMap(map, {
   target: home,
   trains: [{ near: train, wagons: 12 }],
 });
-const world = buildWorld(layout);
+/**
+ * The levels, in order, and which one is being flown at the moment.
+ *
+ * Level 1 is the middle wagon of the rake the flock roosts on; Level 2 is the
+ * loft, which is where the homing pigeon was always headed. Only the level
+ * being flown is marked -- the others are built and sitting there dark, so
+ * moving the game on is a matter of switching which one is lit.
+ */
+const LEVELS = ['Level 1', 'Level 2'] as const;
+const middleCar = Math.floor((layout.trains[0]?.vehicles.length ?? 1) / 2);
+
+const world = buildWorld(layout, {
+  landmark: LEVELS[1],
+  objectives: [{ name: LEVELS[0], train: 0, vehicle: middleCar }],
+});
+
+/** The one being flown. How this advances is not decided yet. */
+let level = 0;
+const objective = (name: string) => world.markers.find((marker) => marker.name === name) ?? null;
+for (const marker of world.markers) marker.setActive(marker.name === LEVELS[level]);
 scene.add(world.group);
 
 const rig = createBirdRig();
@@ -117,9 +136,7 @@ scene.add(rig.object);
  * they leave cleanly rather than clipping the next wagon along on the way out.
  */
 const rake = layout.trains[0]?.vehicles ?? [];
-const roost = rake.length
-  ? rake[Math.floor(rake.length / 2)]!
-  : { x: home.x, z: home.z };
+const roost = rake.length ? rake[middleCar]! : { x: home.x, z: home.z };
 /**
  * And they leave along the line, not in every direction.
  *
@@ -247,7 +264,7 @@ function frame(nowMs: number) {
 
   // Flash the target and size its arrow. Both want the drawn position rather
   // than the tick position, or the arrow judders against everything else.
-  world.marker?.update(
+  objective(LEVELS[level])?.update(
     now,
     camera.position,
     new THREE.Vector3(
@@ -309,7 +326,7 @@ function frame(nowMs: number) {
     interpolatedState,
     telemetry,
     landing,
-    distance(interpolatedState.position, home),
+    distance(interpolatedState.position, objective(LEVELS[level])?.position ?? home),
     smoothedFps,
   );
   renderer.render(scene, camera);

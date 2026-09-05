@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { arrowScale, buildRoofs, roofRise, targetFlash } from './city';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { arrowScale, buildRoofs, buildWorld, roofRise, targetFlash } from './city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
-import type { MapData, Road } from './streets';
+import { WAGON } from './train';
+import type { MapData, Rail, Road } from './streets';
 
 const BLOCK: Road[] = [
   { kind: 'primary', width: 16, points: [[-40, 0], [0, 0], [200, 0], [240, 0]] },
@@ -10,12 +11,16 @@ const BLOCK: Road[] = [
   { kind: 'residential', width: 8, points: [[200, -40], [200, 0], [200, 200], [200, 240]] },
 ];
 
+/** Four hundred metres of siding, well clear of the block. */
+const SIDING: Rail[] = [{ kind: 'rail', width: 8, points: [[-200, 320], [200, 320]] }];
+
 const map: MapData = {
   name: 'test',
   centre: [0, 0],
   radius: 300,
   attribution: 'test',
   roads: BLOCK,
+  rails: SIDING,
   areas: [],
 };
 
@@ -131,3 +136,117 @@ describe('marking the target', () => {
     expect(arrowScale(1)).toBe(arrowScale(0));
   });
 });
+
+describe('levels', () => {
+  /**
+   * The ground is textured with a grid drawn to a canvas, which Node has no
+   * notion of. Everything under test here is geometry and materials, so the
+   * canvas only has to exist and absorb the handful of calls made to it.
+   */
+  const realDocument = (globalThis as { document?: unknown }).document;
+  beforeAll(() => {
+    (globalThis as { document?: unknown }).document = {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          fillStyle: '',
+          strokeStyle: '',
+          lineWidth: 0,
+          fillRect() {},
+          strokeRect() {},
+        }),
+      }),
+    };
+  });
+  afterAll(() => {
+    (globalThis as { document?: unknown }).document = realDocument;
+  });
+
+  const build = () =>
+    buildWorld(buildLayoutFromMap(map, {
+      ...defaultMapWorldOptions,
+      target: { x: 40, z: 40 },
+      trains: [{ near: { x: 0, z: 320 }, wagons: 4 }],
+    }), {
+      landmark: 'Level 2',
+      objectives: [{ name: 'Level 1', train: 0, vehicle: 2 }],
+    });
+
+  it('names both objectives and builds a marker for each', () => {
+    const world = build();
+    expect(world.markers.map((m) => m.name).sort()).toEqual(['Level 1', 'Level 2']);
+    world.dispose();
+  });
+
+  it('puts the level-one marker on the wagon it was told to', () => {
+    const layout = buildLayoutFromMap(map, {
+      ...defaultMapWorldOptions,
+      target: { x: 40, z: 40 },
+      trains: [{ near: { x: 0, z: 320 }, wagons: 4 }],
+    });
+    const world = buildWorld(layout, {
+      landmark: 'Level 2',
+      objectives: [{ name: 'Level 1', train: 0, vehicle: 2 }],
+    });
+
+    const wagon = layout.trains[0]!.vehicles[2]!;
+    const marker = world.markers.find((m) => m.name === 'Level 1')!;
+    expect(marker.position.x).toBeCloseTo(wagon.x, 6);
+    expect(marker.position.z).toBeCloseTo(wagon.z, 6);
+    // Hanging at the top of the stakes, not at the deck or on the ground.
+    expect(marker.position.y).toBeCloseTo(WAGON.deck + WAGON.stake, 6);
+    world.dispose();
+  });
+
+  it('marks nothing until a level is made active', () => {
+    // Everything is built and sitting there dark, so moving the game on is a
+    // matter of switching which one is lit.
+    const world = build();
+    const arrows = countArrows(world);
+    expect(arrows.total).toBe(2);
+    expect(arrows.visible).toBe(0);
+
+    world.markers.find((m) => m.name === 'Level 1')!.setActive(true);
+    expect(countArrows(world).visible).toBe(1);
+    world.dispose();
+  });
+
+  it('takes the marked wagon out of the rake, so it can be recoloured alone', () => {
+    // One wagon cannot be picked out of a merged mesh, which is why it gets
+    // its own -- exactly as the landmark building does.
+    const plain = buildWorld(buildLayoutFromMap(map, {
+      ...defaultMapWorldOptions,
+      trains: [{ near: { x: 0, z: 320 }, wagons: 4 }],
+    }));
+    const marked = build();
+
+    const trisOf = (world: ReturnType<typeof buildWorld>) => {
+      let total = 0;
+      world.group.traverse((child: any) => {
+        if (child.isMesh && child.material?.vertexColors) {
+          total += child.geometry.getAttribute('position').count;
+        }
+      });
+      return total;
+    };
+    // Same train either way: split into two meshes, not duplicated or dropped.
+    expect(trisOf(marked)).toBe(trisOf(plain));
+    plain.dispose();
+    marked.dispose();
+  });
+});
+
+/** How many target arrows exist in a world, and how many are showing. */
+function countArrows(world: ReturnType<typeof buildWorld>) {
+  let total = 0;
+  let visible = 0;
+  world.group.traverse((child: any) => {
+    if (child.isMesh && child.material?.depthTest === false && child.material?.fog === false) {
+      total += 1;
+      // Head and shaft share a parent group, which is what gets hidden.
+      if (child.parent?.visible) visible += 1;
+    }
+  });
+  return { total: total / 2, visible: visible / 2 };
+}

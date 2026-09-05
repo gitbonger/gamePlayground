@@ -30,7 +30,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
         <div class="readout"><span class="label">climb</span><span data-field="climb">0</span><span class="unit">m/s</span></div>
         <div class="readout secondary" title="Height you could reach by trading all your speed for climb"><span class="label">energy</span><span data-field="energy">0</span><span class="unit">m</span></div>
         <div class="readout secondary" title="Local wind, and how much of it is against you"><span class="label">wind</span><span data-field="wind">0</span><span class="unit">m/s</span><span class="aside" data-field="headwind"></span></div>
-        <div class="readout" title="Distance still to fly to the red building"><span class="label">home</span><span data-field="home">0</span><span class="unit">m</span></div>
+        <div class="readout" title="Distance still to fly to the marked target"><span class="label">home</span><span data-field="home">0</span><span class="unit">m</span></div>
       </div>
     </div>
     <div class="hud-warning" data-field="warning"></div>

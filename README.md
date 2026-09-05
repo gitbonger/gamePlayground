@@ -177,9 +177,25 @@ one is legible at 1,157. Both halves are arithmetic and tested as such: what
 the flash does across a second and across the fade band, and that the arrow's
 size stays proportional to range with a floor so it does not vanish underfoot.
 
-Nothing about either is specific to buildings. The marker takes a material to
-recolour and a height to hang the arrow over, so marking a wagon instead is a
-matter of handing it a different pair.
+**There are two levels, and only one is lit.** Level 1 is the middle wagon of
+the rake the flock roosts on; Level 2 is the loft, which is where the homing
+pigeon was always headed. Both are built, both have a marker, and the one being
+flown is the one switched on — so moving the game forward is a matter of
+lighting the next one. How that happens is not decided yet.
+
+Nothing about the marker is specific to buildings: it takes a material to
+recolour and a height to hang the arrow over. Marking a wagon needed two
+things. It gets its own mesh, pulled out of the merged rake, for the same
+reason the landmark building does — one wagon cannot be recoloured inside a
+mesh that holds thirteen. And the flash moved from the diffuse colour to the
+**emissive**, because a wagon is one mesh of many vertex colours — timber,
+rust, iron — and multiplying that lot by red gives a muddy brown rather than a
+red wagon. Emissive is added rather than multiplied, so everything goes red
+together whatever it started as. Measured off the framebuffer: 0 red pixels
+dark, 38,607 lit.
+
+The HUD's distance readout follows whichever level is lit, rather than always
+pointing at the loft.
 
 ## Flying over a real place
 
@@ -947,7 +963,10 @@ npm test
   the equinox, reaches 90 minus the latitude plus the tilt at midsummer noon
   and due south with it, is a full two tilts lower at midwinter, rises in the
   east and sets in the west, and is below the horizon at night.
-- **`src/world/city.test.ts`** — the target flashes once a second, is dark for
+- **`src/world/city.test.ts`** — both levels are named and get a marker, the
+  level-one marker sits on the wagon it was told to at the top of its stakes,
+  nothing is marked until a level is made active, and the marked wagon comes
+  out of the rake without being duplicated or dropped. The target flashes once a second, is dark for
   most of it, swells and fades rather than snapping, repeats whenever you look,
   stops when the bird is close and fades out across the band rather than
   switching off; the arrow keeps a constant apparent size at any range, with a
