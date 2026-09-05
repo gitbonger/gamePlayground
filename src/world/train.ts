@@ -233,6 +233,121 @@ export function chainageOf(points: readonly Point2[], x: number, z: number): num
   return at;
 }
 
+/**
+ * How straight a join has to be to be taken as the same road, as a cosine.
+ *
+ * A switch puts three or four track ends on one node and the map says nothing
+ * about which of them is the continuation -- it is a shared coordinate and
+ * that is all. So the route takes the straightest: at a facing point the
+ * through road leaves within a few degrees of the way you came in and the
+ * diverging one at a few more, and a line merely crossing at that node leaves
+ * at something near a right angle, which this rules out.
+ */
+const SAME_ROAD = 0.8;
+
+/**
+ * A rail end, as a coordinate rounded to the centimetre.
+ *
+ * Rounded and then written without a fixed number of places, because
+ * `toFixed` keeps the sign of a very small negative: a node that comes out at
+ * -5e-14 reads as "-0.00" and the one it is joined to at "0.00", and the two
+ * ends of one switch stop being the same place.
+ */
+const nodeAt = (point: Point2): string =>
+  `${Math.round(point[0] * 100) / 100},${Math.round(point[1] * 100) / 100}`;
+
+/** The unit vector from `a` to `b`. */
+function heading(a: Point2, b: Point2): Point2 {
+  const span = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  return span < 1e-9 ? [0, 0] : [(b[0] - a[0]) / span, (b[1] - a[1]) / span];
+}
+
+/** A run of track: the shape of it, and every way it is made of. */
+export interface Route {
+  points: Point2[];
+  /**
+   * The ways it runs over, the one it was traced from included.
+   *
+   * Reported because a route is not only a shape: a line something runs
+   * through at speed is a line nothing else may be parked on, and the caller
+   * cannot work out which those are without walking the network again.
+   */
+  over: Rail[];
+}
+
+/**
+ * The whole run of track a line is part of, as one polyline.
+ *
+ * A railway in the map is not a railway, it is a heap of ways: the line out
+ * of the yard is cut into a dozen pieces at every switch and every change of
+ * tagging, and a train given one of the pieces shuffles up and down two
+ * hundred metres of it with the rest of the route lying there unused. What
+ * makes them one line is that the pieces share their end coordinates, so this
+ * follows them: from each end, on through whichever unused way leaves that
+ * node closest to straight ahead, until nothing does. Where the track really
+ * ends, the route ends, and the train turns round there instead.
+ *
+ * Only ways of the same kind, so a train cannot find its way onto a tramway.
+ * Each way is used once, which is what stops a triangle or a loop coming back
+ * round and running for ever.
+ */
+export function traceRoute(rails: readonly Rail[], from: Rail): Route {
+  const points = from.points.map((point) => [...point] as Point2);
+  if (points.length < 2) return { points, over: [from] };
+
+  const ends = new Map<string, { rail: Rail; fromHead: boolean }[]>();
+  for (const rail of rails) {
+    if (rail.kind !== from.kind || rail.points.length < 2) continue;
+    for (const fromHead of [true, false]) {
+      const end = (fromHead ? rail.points[0] : rail.points[rail.points.length - 1]) as Point2;
+      const at = ends.get(nodeAt(end));
+      if (at) at.push({ rail, fromHead });
+      else ends.set(nodeAt(end), [{ rail, fromHead }]);
+    }
+  }
+
+  const used = new Set<Rail>([from]);
+  /** Grow the route off one end of itself until the track runs out. */
+  const follow = (forward: boolean): Point2[] => {
+    const run: Point2[] = [];
+    // The tip is the far end of whatever has been added so far, and the way
+    // the route is going there is the last piece of it laid down.
+    let tip = (forward ? points[points.length - 1] : points[0]) as Point2;
+    let back = (forward ? points[points.length - 2] : points[1]) as Point2;
+
+    for (let guard = 0; guard < rails.length; guard += 1) {
+      const going = heading(back, tip);
+      let best: { rail: Rail; fromHead: boolean; straightness: number } | null = null;
+
+      for (const join of ends.get(nodeAt(tip)) ?? []) {
+        if (used.has(join.rail)) continue;
+        const on = join.rail.points as readonly Point2[];
+        const leaving = join.fromHead
+          ? heading(on[0]!, on[1]!)
+          : heading(on[on.length - 1]!, on[on.length - 2]!);
+        const straightness = leaving[0] * going[0] + leaving[1] * going[1];
+        if (straightness < SAME_ROAD) continue;
+        if (!best || straightness > best.straightness) best = { ...join, straightness };
+      }
+      if (!best) break;
+
+      used.add(best.rail);
+      const on = (best.rail.points as readonly Point2[]).map((point) => [...point] as Point2);
+      // Laid the way the route is travelling, and without repeating the node
+      // it was joined at.
+      const laid = best.fromHead ? on.slice(1) : on.slice(0, -1).reverse();
+      run.push(...laid);
+      back = laid.length > 1 ? laid[laid.length - 2]! : tip;
+      tip = laid[laid.length - 1]!;
+    }
+    return run;
+  };
+
+  const ahead = follow(true);
+  const behind = follow(false);
+  return { points: [...behind.reverse(), ...points, ...ahead], over: [...used] };
+}
+
 /** How long a consist of this many vehicles is, over the couplings. */
 export function consistLength(cars: number, stock: Stock = 'wagon'): number {
   return ENGINE.length + cars * (COUPLING + stockSize(stock).length);

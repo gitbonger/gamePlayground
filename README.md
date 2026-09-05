@@ -735,18 +735,56 @@ the difference is invisible on a straight line: with the wagon's yaw at zero,
 arithmetic. The test for it runs on a line laid diagonally for exactly that
 reason — on an axis-aligned one it passes either way.
 
-**There are four of them.** A rake of stake wagons shuttling up and down, and
-three passenger trains standing in the platforms — the same engine each, of
-four, six and eight coaches, none of them going anywhere. Different lengths so
-the yard reads as a station with several trains in it rather than as one train
-drawn three times.
+**There are four of them.** A rake of stake wagons shuttling up and down the
+yard, a six-coach train that leaves it, and two more standing in the platforms
+— the same engine each, of four and eight coaches, neither going anywhere.
+Different lengths so the yard reads as a station with several trains in it
+rather than as one train drawn three times.
 
 All four are asked for at the same point, and a train takes the roomiest line
 near it *that nothing else has taken* — so each ends up on the next track
 over, which is what a station looks like. Without that rule they would all
 take the roomiest siding and stand in one another. Measured on the real map,
-the three passenger trains come out on adjacent tracks 19 to 44 m apart, which
+the passenger trains come out on adjacent tracks 19 to 44 m apart, which
 against a coach 2.95 m wide is a platform between each pair.
+
+**And one of them leaves.** A railway in the map is not a railway, it is a
+heap of ways: the line out of this yard is cut into pieces at every switch and
+every change of tagging, so a train handed one of the pieces shuffles up and
+down two hundred metres with the rest of the route lying there unused. What
+makes the pieces one line is that they share their end coordinates — a switch
+is a shared node and nothing else, with no word about which of the three or
+four roads meeting there is the continuation.
+
+So `traceRoute` follows them: from each end of the way it starts on, through
+whichever unused way leaves that node *closest to straight ahead*, until
+nothing does. At a facing point the through road leaves within a few degrees
+of the way you came in and the diverging one at a few more, while a line
+merely crossing leaves at something near a right angle — a cosine of 0.8 tells
+them apart. Same kind only, so a train cannot find its way onto a tramway, and
+each way once, or a triangle would send it round for ever. Where the track
+really ends, the route ends, and the train turns round there.
+
+On the real network that turns 255 m of siding into a **3,687 m** run, from
+one side of the map to the other and back, against the 389 m the goods train
+has. A train that leaves has to be told to (`runsOut`), because following the
+network changes which line is worth taking: the piece that starts the longest
+*run* is a short piece, so the choice is made on the route rather than on the
+way. And every way the route runs over is marked as spoken for, not just the
+one it was seeded from — otherwise the next train parks itself on a stretch of
+main line this one comes through at 58 km/h.
+
+What comes back is a polyline, so nothing else changed: `layOutTrain`,
+`shuttle` and the marker all work on a line and this is a longer one.
+
+Two things the mutation testing turned up here rather than the tests finding
+what they were written for. Rail ends are matched to the centimetre, and
+written with `toFixed` that fails across zero — a node at 4 mm reads as
+`"0.00"` and one at −4 mm as `"-0.00"`, so a switch quietly stops being one.
+And the fixtures, being four ways drawn by hand and all pointing the same way,
+never exercise a way appended back to front or the backwards half of the walk
+put back in the wrong order; only tracing the real network does, so that is a
+test too.
 
 The standing one is not a special case anywhere, which is the point of the
 speed being a number rather than a flag. It shuttles nowhere because its step

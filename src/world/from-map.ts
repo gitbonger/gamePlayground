@@ -44,6 +44,7 @@ import {
   layOutTrain,
   lineLength,
   pointAlong,
+  traceRoute,
   type Train,
   type Stock,
 } from './train';
@@ -168,6 +169,16 @@ export interface TrainSpec {
    * anywhere: it shuttles nowhere, and nothing it touches was moving.
    */
   speed?: number;
+  /**
+   * Whether it runs out of the yard, on through the switches at the end of
+   * the way it starts on, to wherever the track really stops.
+   *
+   * Off by default, which is what a shunter does: up and down one siding. A
+   * train that leaves has to be told to, because following the network is a
+   * different question from picking a siding -- the line worth taking is then
+   * the one whose *route* is longest, not the one whose own way is.
+   */
+  runsOut?: boolean;
 }
 
 export interface MapWorld extends CityLayout {
@@ -619,6 +630,7 @@ export function buildLayoutFromMap(
     const length = consistLength(spec.cars, stock);
 
     let line: Rail | null = null;
+    let over: readonly Rail[] = [];
     let best = -Infinity;
     for (const rail of map.rails ?? []) {
       if (taken.has(rail)) continue;
@@ -628,10 +640,18 @@ export function buildLayoutFromMap(
       const away = Math.hypot(on.x - spec.near.x, on.z - spec.near.z);
       if (away > options.trainReach) continue;
 
-      const run = lineLength(rail.points) - length;
+      // One that leaves is judged on where the whole route gets to, not on
+      // how long its own way happens to be: the way out of this yard is cut
+      // into pieces and the piece that starts the longest run is a short one.
+      const route = spec.runsOut ? traceRoute(map.rails ?? [], rail) : null;
+      const laid = route ? route.over : [rail];
+      if (laid.some((part) => taken.has(part))) continue;
+
+      const run = lineLength(route ? route.points : rail.points) - length;
       if (run > best) {
         best = run;
-        line = rail;
+        line = route ? { kind: rail.kind, width: rail.width, points: route.points } : rail;
+        over = laid;
       }
     }
     if (!line || best < 0) continue;
@@ -647,7 +667,10 @@ export function buildLayoutFromMap(
     if (!vehicles.length) continue;
     // Deliberately not added to `boxes`: a train moves, and the world's boxes
     // are built into a grid once and never touched again. It carries its own.
-    taken.add(line);
+    // Every way the route runs over, not just the one it was seeded from:
+    // otherwise the next train stands itself in a platform this one comes
+    // through at fifty kilometres an hour.
+    for (const part of over) taken.add(part);
     trains.push({ line, along, direction: 1, speed: spec.speed ?? 6, stock, vehicles });
   }
 

@@ -147,14 +147,19 @@ const layout = buildLayoutFromMap(map, {
     return { ...rest, x: at.x, z: at.z };
   }),
   trains: [
-    // The rake of stake wagons, shuttling up and down the yard.
+    // The rake of stake wagons, shuttling up and down the yard. First in the
+    // list because a level names it by its place in this one.
     { near: train, cars: 12 },
-    // And three passenger trains standing in the platforms: the same engine
-    // each, going nowhere. A roof four metres up to land on, and being
-    // stationary they are things to bump into rather than things that run you
-    // over. Different lengths so the yard reads as a station with several
-    // trains in it rather than as one train drawn three times.
-    { near: train, cars: 6, stock: 'carriage', speed: 0 },
+    // The one that leaves: six carriages out of the station and away down the
+    // main line, following the switches to wherever the track really stops --
+    // three and a half kilometres, against the two hundred metres of the way
+    // it starts on -- and then all the way back.
+    { near: train, cars: 6, stock: 'carriage', speed: 16, runsOut: true },
+    // And two more standing in the platforms: the same engine each, going
+    // nowhere. A roof four metres up to land on, and being stationary they
+    // are things to bump into rather than things that run you over. Different
+    // lengths so the yard reads as a station with several trains in it rather
+    // than as one train drawn twice.
     { near: train, cars: 4, stock: 'carriage', speed: 0 },
     { near: train, cars: 8, stock: 'carriage', speed: 0 },
   ],

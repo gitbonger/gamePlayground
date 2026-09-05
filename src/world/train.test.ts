@@ -11,6 +11,7 @@ import {
   onVehicle,
   pointAlong,
   trainBoxes,
+  traceRoute,
   tweenAlong,
   CARRIAGE,
   COUPLING,
@@ -20,7 +21,10 @@ import { worldBounds } from '../sim/collision';
 import { createColliderField } from '../sim/collision';
 import { createBird, defaultParams, neutralControls, step } from '../sim/flight';
 import { vec } from '../sim/math3';
-import type { Rail } from './streets';
+import type { MapData, Rail } from './streets';
+import type { Point2 } from './train';
+import HOME_MAP from './data/home.json';
+import { project } from './geo';
 
 /** 400 m of straight track running due east. */
 const STRAIGHT: Rail = { kind: 'rail', width: 8, points: [[0, 0], [400, 0]] };
@@ -537,5 +541,178 @@ describe('a passenger train', () => {
     const { along, direction } = shuttle(400, consistLength(6, 'carriage'), 200, 1, 0);
     expect(along).toBe(200);
     expect(direction).toBe(1);
+  });
+});
+
+/**
+ * Following the track through the switches.
+ *
+ * A railway in the map is a heap of ways that happen to share end
+ * coordinates, and a train handed one of them shuttles up and down a fragment
+ * with the rest of the line lying there unused.
+ */
+describe('tracing a route', () => {
+  /** A way, given as its points. */
+  const way = (...points: [number, number][]): Rail => ({ kind: 'rail', width: 8, points });
+
+  it('joins ways that share an end, in the order they run', () => {
+    const first = way([0, 0], [100, 0]);
+    const second = way([100, 0], [250, 0]);
+    const route = traceRoute([first, second], first);
+
+    expect(route.points).toEqual([[0, 0], [100, 0], [250, 0]]);
+    // The shared node once, not twice: a repeated point is a zero-length
+    // segment, and every chainage past it comes out short by nothing at all
+    // until something divides by it.
+    expect(lineLength(route.points)).toBeCloseTo(250, 9);
+    expect(route.over).toEqual([first, second]);
+  });
+
+  it('grows from both ends, not just the far one', () => {
+    const middle = way([100, 0], [250, 0]);
+    const before = way([0, 0], [100, 0]);
+    const after = way([250, 0], [400, 0]);
+    const route = traceRoute([before, middle, after], middle);
+
+    expect(route.points[0]).toEqual([0, 0]);
+    expect(route.points[route.points.length - 1]).toEqual([400, 0]);
+    expect(lineLength(route.points)).toBeCloseTo(400, 9);
+  });
+
+  it('takes the straight road through a switch, not the one that diverges', () => {
+    // The shape of a facing point: two roads leave the same node, one
+    // carrying straight on and one turning off. The map says which is which
+    // only by the angle.
+    const approach = way([0, 0], [100, 0]);
+    const through = way([100, 0], [300, 0]);
+    const diverging = way([100, 0], [260, 90]);
+    // The diverging road offered first, so taking the first thing on offer
+    // is the wrong answer rather than accidentally the right one.
+    const route = traceRoute([approach, diverging, through], approach);
+
+    expect(route.over).toContain(through);
+    expect(route.over).not.toContain(diverging);
+  });
+
+  it('stops where the track really stops', () => {
+    // Nothing leaves the far node in anything like the same direction, so
+    // this is the end of the line and the train turns round here.
+    const approach = way([0, 0], [100, 0]);
+    const crossing = way([100, 0], [100, 200]);
+    const route = traceRoute([approach, crossing], approach);
+
+    expect(route.points).toEqual(approach.points);
+    expect(route.over).toEqual([approach]);
+  });
+
+  it('will not find its way onto a tramway', () => {
+    const approach = way([0, 0], [100, 0]);
+    const tram: Rail = { kind: 'tram', width: 6, points: [[100, 0], [300, 0]] };
+    expect(traceRoute([approach, tram], approach).over).toEqual([approach]);
+  });
+
+  it('goes round a loop once rather than for ever', () => {
+    // A circle of track cut into three, drawn finely enough that every joint
+    // reads as straight on. Nothing about the shape can stop the walk, so the
+    // only thing that does is each way being used once.
+    const ring: [number, number][] = [];
+    for (let i = 0; i < 12; i += 1) {
+      const turn = (i / 12) * Math.PI * 2;
+      ring.push([Math.cos(turn) * 200, Math.sin(turn) * 200]);
+    }
+    // Closed on the point it started from rather than on another sine of the
+    // same angle, so what ends the walk is the rule and not the arithmetic.
+    ring.push(ring[0]!);
+    const a = way(...ring.slice(0, 5));
+    const b = way(...ring.slice(4, 9));
+    const c = way(...ring.slice(8, 13));
+    const route = traceRoute([a, b, c], a);
+
+    expect(route.over).toHaveLength(3);
+    // Once round and no more: twelve nodes and the one it started from
+    // again, and then nothing left to follow. Without each way being used
+    // once this is the walk that never ends.
+    expect(route.points).toHaveLength(13);
+    const first = route.points[0]!;
+    const last = route.points[12]!;
+    expect(Math.hypot(last[0] - first[0], last[1] - first[1])).toBeLessThan(1e-9);
+  });
+
+  it('carries the whole run over into one polyline that a train can run on', () => {
+    // The point of the exercise: what comes back is a line, so everything
+    // that already knew how to put a train on a line still does.
+    const pieces = [
+      way([0, 0], [100, 0]),
+      way([100, 0], [200, 0]),
+      way([200, 0], [300, 0]),
+      way([300, 0], [400, 0]),
+    ];
+    const route = traceRoute(pieces, pieces[1]!);
+    const line: Rail = { kind: 'rail', width: 8, points: route.points };
+
+    expect(lineLength(line.points)).toBeCloseTo(400, 9);
+    const train = layOutTrain(line, 400, 6, 'carriage');
+    expect(train).toHaveLength(7);
+    // And standing across a join rather than stopping short of one: the
+    // engine is past 300 and the back of the rake is not.
+    expect(Math.max(...train.map((v) => v.x))).toBeGreaterThan(300);
+    expect(Math.min(...train.map((v) => v.x))).toBeLessThan(300);
+  });
+
+  it('joins ends that round to the same place, either side of zero', () => {
+    // Ends are matched to the centimetre, so eight millimetres apart is the
+    // same node -- and has to stay the same node when the two of them fall
+    // either side of zero. Written with `toFixed` it does not: one reads as
+    // "-0.00" and the other as "0.00", and a switch quietly stops being one.
+    const first = way([-100, 0.004], [0, 0.004]);
+    const second = way([0, -0.004], [100, -0.004]);
+    expect(traceRoute([first, second], first).over).toHaveLength(2);
+  });
+
+  it('comes out continuous on the real railway, not in jumps', () => {
+    // The fixtures above are four ways long and drawn by hand. This is the
+    // network the game actually runs on -- two hundred and forty ways, cut
+    // where the tagging changes and joined at switches -- and the failure it
+    // is here to catch is a way appended back to front, which reads as the
+    // train jumping its own length sideways at a join.
+    const map = HOME_MAP as unknown as MapData;
+    const rails = (map.rails ?? []) as Rail[];
+    const yard = project(47.500052, 19.088174, map.centre);
+
+    const near = rails.filter((rail) => {
+      if (rail.kind !== 'rail') return false;
+      const on = pointAlong(rail.points, chainageOf(rail.points, yard.x, yard.z));
+      return !!on && Math.hypot(on.x - yard.x, on.z - yard.z) < 40;
+    });
+    expect(near.length).toBeGreaterThan(4);
+
+    const routes = near.map((rail) => traceRoute(rails, rail));
+    const longest = routes.reduce((best, route) =>
+      lineLength(route.points) > lineLength(best.points) ? route : best,
+    );
+
+    // It is worth having: many times the way it was traced from, and out of
+    // more than a couple of pieces.
+    expect(longest.over.length).toBeGreaterThan(5);
+    expect(lineLength(longest.points)).toBeGreaterThan(3000);
+
+    // And continuous. No step in it is longer than the longest step in the
+    // ways it is made of, which it would be by a whole way if one of them
+    // went in back to front.
+    const step = (points: readonly Point2[]) =>
+      points.slice(1).reduce(
+        (most, point, i) => Math.max(most, Math.hypot(point[0] - points[i]![0], point[1] - points[i]![1])),
+        0,
+      );
+    const widest = Math.max(...longest.over.map((rail) => step(rail.points as Point2[])));
+    expect(step(longest.points)).toBeCloseTo(widest, 6);
+  });
+
+  it('leaves a way it was given alone', () => {
+    const first = way([0, 0], [100, 0]);
+    const second = way([100, 0], [250, 0]);
+    traceRoute([first, second], first);
+    expect(first.points).toEqual([[0, 0], [100, 0]]);
+    expect(second.points).toEqual([[100, 0], [250, 0]]);
   });
 });

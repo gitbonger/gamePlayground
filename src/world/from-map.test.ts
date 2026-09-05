@@ -734,6 +734,59 @@ describe('two trains in one yard', () => {
     expect(passenger.vehicles.slice(1).every((v) => v.kind === 'carriage')).toBe(true);
   });
 
+  /**
+   * A yard whose short platform road carries on out of the station.
+   *
+   * Two roads: a long siding that goes nowhere, and a short platform whose
+   * end is the start of a main line cut, as the map cuts them, into pieces.
+   * A train that only knows about the way it stands on takes the siding and
+   * shuffles; one that follows the switches takes the platform and leaves.
+   */
+  const STATION: Rail[] = [
+    { kind: 'rail', width: 8, points: [[-300, 112], [300, 112]] },
+    { kind: 'rail', width: 8, points: [[-100, 120], [60, 120]] },
+    { kind: 'rail', width: 8, points: [[60, 120], [700, 120]] },
+    { kind: 'rail', width: 8, points: [[700, 120], [1500, 120]] },
+  ];
+
+  it('runs one out of the station, on past the end of its own road', () => {
+    const out = buildLayoutFromMap(mapOf(BLOCK, [], STATION), {
+      ...defaultMapWorldOptions,
+      trains: [{ near: { x: 40, z: 118 }, cars: 3, stock: 'carriage', runsOut: true }],
+    });
+    const shunter = buildLayoutFromMap(mapOf(BLOCK, [], STATION), {
+      ...defaultMapWorldOptions,
+      trains: [{ near: { x: 40, z: 118 }, cars: 3, stock: 'carriage' }],
+    });
+
+    // The one that stays takes the longest *way* it can reach. The one that
+    // leaves takes whichever way starts the longest *run*, and ends up with
+    // the whole main line instead of a piece of it.
+    expect(lineLength(shunter.trains[0]!.line.points)).toBeCloseTo(640, 6);
+    expect(lineLength(out.trains[0]!.line.points)).toBeCloseTo(1600, 6);
+  });
+
+  it('keeps everything else off the road it runs over', () => {
+    // A standing train parked on a piece of the main line would be a train
+    // this one comes through at speed. The pieces are not the road it was
+    // seeded from, so nothing but the route knows they are spoken for.
+    const world = buildLayoutFromMap(mapOf(BLOCK, [], STATION), {
+      ...defaultMapWorldOptions,
+      trains: [
+        { near: { x: 40, z: 118 }, cars: 3, stock: 'carriage', runsOut: true },
+        { near: { x: 40, z: 118 }, cars: 3, stock: 'carriage', speed: 0 },
+        { near: { x: 40, z: 118 }, cars: 3, stock: 'carriage', speed: 0 },
+      ],
+    });
+
+    // Four roads, but the route runs over three of them: the one place left
+    // to stand is the siding, and only one of the two standing trains gets
+    // it. Without the pieces being spoken for, the second train would take
+    // the 640 m one the express comes through at speed.
+    expect(world.trains).toHaveLength(2);
+    expect(lineLength(world.trains[1]!.line.points)).toBeCloseTo(600, 6);
+  });
+
   it('asks for only as many as there are tracks', () => {
     // A third train with nowhere to go is left out rather than stacked on
     // top of one of the others.
