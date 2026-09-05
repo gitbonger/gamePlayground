@@ -9,9 +9,11 @@ import {
   targetFlash,
 } from './city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
+import { penthouseOf, terraceOf, type Landmark } from './layout';
 import { consistLength, layOutTrain, lineLength, shuttle, WAGON } from './train';
 import type { Puff } from './smoke';
 import * as THREE from 'three';
+import { createColliderField } from '../sim/collision';
 import type { MapData, Rail, Road } from './streets';
 
 const BLOCK: Road[] = [
@@ -24,8 +26,22 @@ const BLOCK: Road[] = [
 /** Four hundred metres of siding, well clear of the block. */
 const SIDING: Rail[] = [{ kind: 'rail', width: 8, points: [[-200, 320], [200, 320]] }];
 
-/** A described building, standing in the middle of the block. */
-const TOWER = { name: 'Level 2', x: 40, z: 40, width: 16, depth: 12, height: 31 };
+/**
+ * A described building, standing in the middle of the block.
+ *
+ * Half of it a storey higher, the other half a planted terrace, because that
+ * is the shape the loft has and the one every piece of this has to handle.
+ */
+const TOWER: Landmark = {
+  name: 'Level 2',
+  x: 40,
+  z: 40,
+  width: 30,
+  depth: 14,
+  height: 31,
+  penthouse: { cover: 0.5, rise: 3.2 },
+  planting: { rows: 2, perRow: 6, radius: 0.7 },
+};
 
 const map: MapData = {
   name: 'test',
@@ -80,18 +96,15 @@ describe('roofs', () => {
     }
   });
 
-  it('leaves a named building flat, so the pigeon has somewhere to land', () => {
-    // A pitched roof is nowhere for a bird to stand: the collider would settle
-    // it on the ridge line with the tiles falling away underneath.
-    const homing = buildLayoutFromMap(map, { ...defaultMapWorldOptions, landmarks: [TOWER] });
-    const at = homing.buildings.findIndex((b) => b.height === TOWER.height);
-    expect(at).toBeGreaterThanOrEqual(0);
+  it('leaves described things out of the crowd entirely', () => {
+    // Which is what makes them flat. They are drawn on their own and they are
+    // not in the building list, so nothing has to remember to skip them: the
+    // roof pass never sees one.
+    const described = buildLayoutFromMap(map, { ...defaultMapWorldOptions, landmarks: [TOWER] });
+    expect(described.buildings.some((b) => b.height === TOWER.height)).toBe(false);
 
-    // Six triangles per roof, three vertices each, and one building left bare.
-    const all = buildRoofs(homing.buildings).getAttribute('position').count;
-    expect(all).toBe(homing.buildings.length * 6 * 3);
-    const bare = buildRoofs(homing.buildings, new Set([at])).getAttribute('position').count;
-    expect(bare).toBe(all - 6 * 3);
+    const vertices = buildRoofs(described.buildings).getAttribute('position').count;
+    expect(vertices).toBe(described.buildings.length * 6 * 3);
   });
 
   it('pitches a roof to its own depth, up to a limit', () => {
@@ -230,6 +243,103 @@ describe('levels', () => {
     expect(marker.position.z).toBeCloseTo(wagon.z, 6);
     // Hanging at the top of the stakes, not at the deck or on the ground.
     expect(marker.position.y).toBeCloseTo(WAGON.deck + WAGON.stake, 6);
+    world.dispose();
+  });
+
+  it('hangs the arrow over the terrace, not over the highest point', () => {
+    // The terrace is what the level asks you to land on. Pointing at the top
+    // of the penthouse would be pointing three metres above and half a
+    // building along from the place you are going.
+    const world = build();
+    const marker = world.markers.find((m) => m.name === 'Level 2')!;
+    const terrace = terraceOf(TOWER)!;
+
+    expect(marker.position.x).toBeCloseTo(terrace.x, 6);
+    expect(marker.position.z).toBeCloseTo(terrace.z, 6);
+    expect(marker.position.y).toBeCloseTo(TOWER.height, 6);
+    // Which is somewhere else: the middle of the building and the top of it
+    // are both wrong, and by enough to see.
+    expect(Math.abs(marker.position.x - TOWER.x)).toBeGreaterThan(5);
+    expect(marker.position.y).toBeLessThan(penthouseOf(TOWER)!.top);
+    world.dispose();
+  });
+
+  it('draws both halves, each at the height the collider gives it', () => {
+    // What you see has to be what you hit. The terrace is the top of one box
+    // and the penthouse the top of another, and a landing bird settles on
+    // whichever the collider says -- so a drawn half at any other height is a
+    // roof you fall through or a floor you stop above.
+    const layout = buildLayoutFromMap(map, { ...defaultMapWorldOptions, landmarks: [TOWER] });
+    const world = buildWorld(layout, {});
+    const terrace = terraceOf(TOWER)!;
+    const penthouse = penthouseOf(TOWER)!;
+
+    /** The top of whatever solid is drawn over a point, or null for none. */
+    const drawnTop = (x: number, z: number) => {
+      let top: number | null = null;
+      world.group.traverse((child) => {
+        if (!(child instanceof THREE.Mesh) || child instanceof THREE.InstancedMesh) return;
+        if (Math.abs(child.position.x - x) > child.scale.x / 2) return;
+        if (Math.abs(child.position.z - z) > child.scale.z / 2) return;
+        const reach = child.position.y + child.scale.y / 2;
+        if (top === null || reach > top) top = reach;
+      });
+      return top;
+    };
+
+    expect(drawnTop(terrace.x, terrace.z)).toBeCloseTo(TOWER.height, 6);
+    expect(drawnTop(penthouse.x, penthouse.z)).toBeCloseTo(penthouse.top, 6);
+
+    const field = createColliderField(layout.boxes);
+    expect(drawnTop(terrace.x, terrace.z)).toBeCloseTo(field.heightAt(terrace.x, terrace.z), 6);
+    expect(drawnTop(penthouse.x, penthouse.z)).toBeCloseTo(
+      field.heightAt(penthouse.x, penthouse.z),
+      6,
+    );
+    world.dispose();
+  });
+
+  it('flashes the whole building, paving and all', () => {
+    // The terrace is paved rather than walled, so it is a second material.
+    // Half a building going red reads as a rendering fault, not a signal.
+    const world = build();
+    const marker = world.markers.find((m) => m.name === 'Level 2')!;
+    // By identity: one material can be on several meshes, and the block's
+    // walls are five faces of one box.
+    const lit = () => {
+      const found = new Set<THREE.Material>();
+      world.group.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        for (const material of [child.material].flat()) {
+          if (material instanceof THREE.MeshLambertMaterial && material.emissive.r > 0) {
+            found.add(material);
+          }
+        }
+      });
+      return found;
+    };
+
+    expect(lit().size).toBe(0);
+    marker.setActive(true);
+    marker.update(0, new THREE.Vector3(40, 60, 40), 1, new THREE.Vector3(40, 31, 40));
+    // Walls and paving, and each only once however many meshes share it.
+    expect(lit().size).toBe(2);
+
+    marker.setActive(false);
+    expect(lit().size).toBe(0);
+    world.dispose();
+  });
+
+  it('draws every bush the terrace was planted with', () => {
+    const layout = buildLayoutFromMap(map, { ...defaultMapWorldOptions, landmarks: [TOWER] });
+    const world = buildWorld(layout, {});
+
+    let drawn = 0;
+    world.group.traverse((child) => {
+      if (child instanceof THREE.InstancedMesh && child.name === 'bushes') drawn += child.count;
+    });
+    expect(layout.bushes.length).toBe(12);
+    expect(drawn).toBe(layout.bushes.length);
     world.dispose();
   });
 

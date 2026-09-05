@@ -14,7 +14,7 @@
  * middle, which is also where the gardens go.
  */
 
-import { turnedBox, type Box } from '../sim/collision';
+import { aabb, turnedBox, type Box } from '../sim/collision';
 import { indexStreets, type MapData, type Rail, type StreetIndex } from './streets';
 import { footprintSamples, indexAreas, type AreaIndex } from './areas';
 import { extractBlocks, type Block } from './blocks';
@@ -24,7 +24,16 @@ import {
   polygonCentroid,
   type Point2,
 } from './polygon';
-import { SPECIES, type Building, type CityLayout, type Landmark, type Tree } from './layout';
+import {
+  penthouseOf,
+  plantTerrace,
+  SPECIES,
+  type Building,
+  type Bush,
+  type CityLayout,
+  type Landmark,
+  type Tree,
+} from './layout';
 import {
   chainageOf,
   consistLength,
@@ -212,20 +221,15 @@ export function buildLayoutFromMap(
   // First, before anything is worked out from the map, because everything
   // that follows has to give way to them rather than the other way round.
   const landmarks: Landmark[] = (options.landmarks ?? []).map((landmark) => ({ ...landmark }));
+  const bushes: Bush[] = [];
   for (const landmark of landmarks) {
     if (landmark.height <= 0) continue;
-    // A described building is a building: it stands in the collider and in
-    // the list, so that everything already written to keep clear of buildings
-    // keeps clear of this one too.
-    const building: Building = {
-      x: landmark.x,
-      z: landmark.z,
-      width: landmark.width,
-      depth: landmark.depth,
-      height: landmark.height,
-      ...(landmark.yaw === undefined ? {} : { yaw: landmark.yaw }),
-    };
-    buildings.push(building);
+
+    // Deliberately not pushed into `buildings`. A described thing is not one
+    // of the generated crowd: it is not drawn with them, it gets no pitched
+    // roof, and the ground it takes is kept clear by `reserved` below, which
+    // is a wider rule than overlapping a footprint. Leaving it out is what
+    // stops the renderer having to find it again by matching coordinates.
     boxes.push(
       turnedBox(
         landmark.x,
@@ -236,6 +240,40 @@ export function buildLayoutFromMap(
         landmark.yaw ?? 0,
       ),
     );
+
+    // The penthouse is boxed from the ground rather than from the terrace it
+    // stands on. The union is the same solid either way, and a box that
+    // starts where every other box starts needs no new idea of a box.
+    const penthouse = penthouseOf(landmark);
+    if (penthouse) {
+      boxes.push(
+        turnedBox(
+          penthouse.x,
+          penthouse.z,
+          penthouse.width,
+          penthouse.top,
+          penthouse.depth,
+          penthouse.yaw,
+        ),
+      );
+    }
+
+    for (const bush of plantTerrace(landmark)) {
+      bushes.push(bush);
+      // Solid, like a tree. A bush you can fly through is scenery, and the
+      // rows are laid to leave the middle of the terrace open precisely so
+      // that being solid costs the landing nothing.
+      boxes.push(
+        aabb(
+          bush.x - bush.radius,
+          bush.base,
+          bush.z - bush.radius,
+          bush.x + bush.radius,
+          bush.base + bush.height,
+          bush.z + bush.radius,
+        ),
+      );
+    }
   }
 
   /**
@@ -595,6 +633,7 @@ export function buildLayoutFromMap(
     buildings,
     trees,
     landmarks,
+    bushes,
     boxes,
     roads: map.roads,
     rails: map.rails ?? [],

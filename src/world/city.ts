@@ -13,7 +13,13 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { createColliderField, type Box, type Collider } from '../sim/collision';
-import { generateCityLayout, type Building, type CityLayout } from './layout';
+import {
+  generateCityLayout,
+  penthouseOf,
+  terraceOf,
+  type Building,
+  type CityLayout,
+} from './layout';
 import type { Rail, Road } from './streets';
 import { CARRIAGE, ENGINE, WAGON, type Train, type Vehicle } from './train';
 import { defaultSmokeOptions, puffOpacity, puffRadius, type Puff } from './smoke';
@@ -299,22 +305,13 @@ function roofPrism(): [number, number, number][][] {
  * out rendered in grey. Baking the vertices means the normals are simply
  * correct, and 2,249 roofs still cost one draw call.
  *
- * The landmark is left off. It is the one building the pigeon is meant to put
- * down on, and a pitched roof is not somewhere a bird can stand -- the collider
- * would settle it on the ridge line while the tiles fell away underneath.
+ * Described things are not in this list at all, and that is why they are flat.
+ * A landmark's top is exactly the top of its collision box, so the bird lands
+ * where it looks like it does; a pitched roof over that would be a roof you
+ * fall through.
  */
-export function buildRoofs(
-  buildings: readonly Building[],
-  /**
-   * Buildings to leave bare, by index.
-   *
-   * A landmark's flat top is exactly the top of its collision box, so the
-   * bird lands where it looks like it does. A pitched roof over that would
-   * be a roof you fall through.
-   */
-  bare: ReadonlySet<number> = new Set(),
-): THREE.BufferGeometry {
-  const tiled = buildings.filter((_, i) => !bare.has(i));
+export function buildRoofs(buildings: readonly Building[]): THREE.BufferGeometry {
+  const tiled = buildings;
   const prism = roofPrism();
   const positions = new Float32Array(tiled.length * prism.length * 9);
   const matrix = new THREE.Matrix4();
@@ -469,40 +466,67 @@ export function buildWorld(
    *
    * A landmark is one building among thousands, so it gets its own mesh
    * rather than a seventh instanced bucket holding a single entry -- and it
-   * has to be its own mesh anyway, because it is the thing that flashes.
-   *
-   * Which buildings these are is recorded so the instanced crowd and the
-   * roofs both leave them out: a landmark's flat top is exactly the top of
-   * its collision box, and a pitched roof over that is a roof you fall
-   * through.
+   * has to be its own mesh anyway, because it is the thing that flashes. It
+   * is not in `layout.buildings` at all, which is what keeps it out of the
+   * instanced crowd and off the roof pass without anything having to look for
+   * it there.
    */
-  const described = new Set<number>();
   for (const landmark of layout.landmarks) {
     if (landmark.height > 0) {
-      const at = layout.buildings.findIndex(
-        (building) =>
-          building.x === landmark.x &&
-          building.z === landmark.z &&
-          building.height === landmark.height,
-      );
-      if (at >= 0) described.add(at);
-
       // An ordinary building between flashes, which is what it goes back to.
+      // Both tiers share the one material, so both go red together: it is one
+      // building with a shape, not two standing next to each other.
       const material = withWindows(new THREE.MeshLambertMaterial({ color: LANDMARK_COLOR }));
       disposables.push(material);
-      const mesh = new THREE.Mesh(boxGeometry, material);
-      mesh.position.set(landmark.x, landmark.height / 2, landmark.z);
-      mesh.rotation.y = landmark.yaw ?? 0;
-      mesh.scale.set(landmark.width, landmark.height, landmark.depth);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      group.add(mesh);
 
+      const terrace = terraceOf(landmark);
+      const penthouse = penthouseOf(landmark);
+
+      // Paving where the terrace is, so the open half reads as somewhere to
+      // stand rather than as a roof that happens to be lower. It is the box's
+      // own top face rather than a slab laid over it -- a slab would be a
+      // step, and a step is what the bird's feet would sink into.
+      const deck = terrace
+        ? new THREE.MeshLambertMaterial({ color: TERRACE_COLOR })
+        : null;
+      if (deck) disposables.push(deck);
+      const faces = deck ? [material, material, deck, material, material, material] : material;
+
+      const block = new THREE.Mesh(boxGeometry, faces);
+      block.position.set(landmark.x, landmark.height / 2, landmark.z);
+      block.rotation.y = landmark.yaw ?? 0;
+      block.scale.set(landmark.width, landmark.height, landmark.depth);
+      block.castShadow = true;
+      block.receiveShadow = true;
+      group.add(block);
+
+      if (penthouse) {
+        // Sitting on the terrace rather than starting from the ground, so its
+        // outer walls stop where the block's begin instead of sharing the
+        // same plane over the same stretch and fighting for the pixels. Its
+        // wall over the terrace is a wall like any other, which is where the
+        // windows looking out over it come from -- the shader puts them on
+        // anything that is not facing up.
+        const rise = penthouse.top - landmark.height;
+        const upper = new THREE.Mesh(boxGeometry, material);
+        upper.position.set(penthouse.x, landmark.height + rise / 2, penthouse.z);
+        upper.rotation.y = penthouse.yaw;
+        upper.scale.set(penthouse.width, rise, penthouse.depth);
+        upper.castShadow = true;
+        upper.receiveShadow = true;
+        group.add(upper);
+      }
+
+      // The arrow hangs over the terrace, not over the highest point. The
+      // terrace is what the level asks you to land on; pointing at the roof
+      // of the penthouse would be pointing three metres above and half a
+      // building along from the place you are going.
+      const aim = terrace ?? { x: landmark.x, z: landmark.z, top: landmark.height };
       markers.push(
         createMarker(
           landmark.name,
-          material,
-          new THREE.Vector3(landmark.x, landmark.height, landmark.z),
+          deck ? [material, deck] : material,
+          new THREE.Vector3(aim.x, aim.top, aim.z),
           disposables,
           overlay,
         ),
@@ -540,7 +564,7 @@ export function buildWorld(
     );
   }
 
-  const roofGeometry = buildRoofs(layout.buildings, described);
+  const roofGeometry = buildRoofs(layout.buildings);
   const roofMaterial = withTiles(new THREE.MeshLambertMaterial({ color: 0xffffff }));
   disposables.push(roofGeometry, roofMaterial);
 
@@ -550,7 +574,6 @@ export function buildWorld(
   group.add(roofs);
 
   layout.buildings.forEach((building, i) => {
-    if (described.has(i)) return;
     const walls = building.height - roofRise(building);
     rotation.setFromAxisAngle(up, building.yaw ?? 0);
     position.set(building.x, walls / 2, building.z);
@@ -604,6 +627,34 @@ export function buildWorld(
     stand.setMatrixAt(stand.count++, matrix);
   }
   for (const stand of stands) stand.instanceMatrix.needsUpdate = true;
+
+  // --- Terrace planting -----------------------------------------------------
+  // Bushes, which are trees that stand on something. One instanced mesh for
+  // the lot, drawn even when there are none, because a landmark with a
+  // terrace is a thing the world may or may not have been given.
+  if (layout.bushes.length) {
+    const shrub = bushShape();
+    const bushMaterial = new THREE.MeshLambertMaterial({
+      color: shrub.color,
+      flatShading: true,
+    });
+    disposables.push(shrub.geometry, bushMaterial);
+
+    const hedge = new THREE.InstancedMesh(shrub.geometry, bushMaterial, layout.bushes.length);
+    hedge.castShadow = true;
+    hedge.receiveShadow = true;
+    // Named for the same reason the stands of trees are: so a test counting
+    // them can tell them from every other instanced thing in the world.
+    hedge.name = 'bushes';
+    group.add(hedge);
+
+    layout.bushes.forEach((bush, i) => {
+      matrix.makeScale(bush.radius, bush.height, bush.radius);
+      matrix.setPosition(bush.x, bush.base, bush.z);
+      hedge.setMatrixAt(i, matrix);
+    });
+    hedge.instanceMatrix.needsUpdate = true;
+  }
 
   // --- Parks, woods and water ----------------------------------------------
   // Drawn under the roads, so a path through a park still reads as a path.
@@ -759,7 +810,14 @@ export function buildWorld(
  */
 function createMarker(
   name: string,
-  material: THREE.MeshLambertMaterial,
+  /**
+   * What to recolour, which is everything the target is made of.
+   *
+   * More than one when the target has more than one material -- a block of
+   * flats with a paved terrace is walls and paving, and half of it going red
+   * would read as a rendering fault rather than as a signal.
+   */
+  paint: THREE.MeshLambertMaterial | readonly THREE.MeshLambertMaterial[],
   top: THREE.Vector3,
   disposables: { dispose(): void }[],
   group: THREE.Group,
@@ -771,6 +829,7 @@ function createMarker(
   // not a red wagon. Emissive is added rather than multiplied, so everything
   // goes red together whatever it started as.
   const lit = new THREE.Color(TARGET_COLOR);
+  const materials = Array.isArray(paint) ? paint : [paint as THREE.MeshLambertMaterial];
 
   const head = new THREE.ConeGeometry(0.5, 1.1, 4);
   head.rotateX(Math.PI);
@@ -804,12 +863,12 @@ function createMarker(
     setActive(on) {
       active = on;
       arrow.visible = on;
-      if (!on) material.emissive.setScalar(0);
+      if (!on) for (const material of materials) material.emissive.setScalar(0);
     },
     update(elapsed, viewer, flash, over) {
       if (!active) return;
 
-      material.emissive.copy(lit).multiplyScalar(flash);
+      for (const material of materials) material.emissive.copy(lit).multiplyScalar(flash);
 
       arrow.visible = over !== null;
       if (!over) return;
@@ -831,6 +890,57 @@ function createMarker(
 }
 
 /**
+ * One geometry out of several.
+ *
+ * Everything is flattened to non-indexed first: a cylinder comes indexed and
+ * an icosahedron does not, and merging refuses to mix the two. Nothing here is
+ * big enough for the indices to have been saving anything.
+ */
+function merged(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const flat = parts.map((part) => part.toNonIndexed());
+  const one = mergeGeometries(flat);
+  for (const part of flat) part.dispose();
+  for (const part of parts) part.dispose();
+  return one;
+}
+
+/**
+ * A clipped shrub in a planter, for a terrace.
+ *
+ * Modelled the way the trees are: one unit tall, standing on the origin, and
+ * as wide as it wants to be for a radius of one, so the same scale that puts
+ * a tree on the ground puts one of these on a roof. Three lobes rather than
+ * one sphere -- a single ball reads as a ball, and a row of balls reads as a
+ * mistake.
+ */
+function bushShape(): { geometry: THREE.BufferGeometry; color: number } {
+  const lobe = (radius: number, x: number, y: number, z: number) => {
+    const part = new THREE.IcosahedronGeometry(radius, 0);
+    part.scale(1, 0.8, 1);
+    part.translate(x, y, z);
+    return part;
+  };
+
+  // A planter under it, so it is standing in something rather than growing
+  // out of the paving.
+  const planter = new THREE.BoxGeometry(1.5, 0.22, 1.5);
+  planter.translate(0, 0.11, 0);
+
+  const shrub = merged([
+    lobe(0.6, 0, 0.52, 0),
+    lobe(0.42, 0.42, 0.42, 0.22),
+    lobe(0.38, -0.4, 0.4, -0.26),
+    planter,
+  ]);
+  // Spread until the foliage overhangs its own collision box a little, the
+  // same bargain the trees strike: clipping a leafy edge should not read as
+  // hitting a wall, and the planter under it stays well inside.
+  shrub.scale(1.3, 1, 1.3);
+
+  return { geometry: shrub, color: 0x46703a };
+}
+
+/**
  * The sorts of tree, as geometry and colour.
  *
  * Each is built one unit tall standing on the origin, and as wide as that
@@ -849,21 +959,6 @@ function treeShapes(): { geometry: THREE.BufferGeometry; color: number }[] {
   const footed = <T extends THREE.BufferGeometry>(geometry: T, centre = 0.5): T => {
     geometry.translate(0, centre, 0);
     return geometry;
-  };
-
-  /**
-   * One geometry out of several.
-   *
-   * Everything is flattened to non-indexed first: a cylinder comes indexed
-   * and an icosahedron does not, and merging refuses to mix the two. Nothing
-   * here is big enough for the indices to have been saving anything.
-   */
-  const merged = (parts: THREE.BufferGeometry[]): THREE.BufferGeometry => {
-    const flat = parts.map((part) => part.toNonIndexed());
-    const one = mergeGeometries(flat);
-    for (const part of flat) part.dispose();
-    for (const part of parts) part.dispose();
-    return one;
   };
 
   // A spruce: the narrow dark cone this started as.
@@ -932,6 +1027,8 @@ const PATCH_LIFT = 0.07;
 const PATCH_COLOR = 0x9a9a94;
 /** A landmark building, a shade off the crowd it stands in. */
 const LANDMARK_COLOR = 0x8d8477;
+/** The paving of a roof terrace: pale, and plainly not roof tiles. */
+const TERRACE_COLOR = 0xb0aaa0;
 
 /**
  * Height of whatever is drawn flat on the ground at a point, in metres.

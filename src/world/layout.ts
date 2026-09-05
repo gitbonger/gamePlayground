@@ -47,6 +47,42 @@ export interface Building {
 }
 
 /**
+ * A taller part over one end of a landmark, leaving the rest as a terrace.
+ *
+ * This is the whole of what makes a block of flats a place rather than a box:
+ * the flat top is at two levels, the lower one is open, and the upper one
+ * looks out over it. Both halves are the same building and flash together --
+ * it is one thing with a shape, not two things standing next to each other.
+ */
+export interface Penthouse {
+  /**
+   * How much of the length it takes, as a fraction, measured from the far
+   * end. A half is a half.
+   */
+  cover: number;
+  /** How much higher than the terrace it stands, in metres. */
+  rise: number;
+}
+
+/**
+ * Bushes standing in rows on a terrace.
+ *
+ * Rows run the length of the terrace and are spaced symmetrically about its
+ * centre line, outermost first, which leaves the middle of it clear. That is
+ * not decoration of the arithmetic: the middle is where the arrow points,
+ * where a bird comes down and where the pigeon waiting for it stands, so it
+ * is the one part of a terrace that must stay walkable.
+ */
+export interface Planting {
+  /** How many rows. */
+  rows: number;
+  /** How many bushes in each. */
+  perRow: number;
+  /** How wide each one is. */
+  radius: number;
+}
+
+/**
  * A described thing, placed before the city is generated around it.
  *
  * Everything else in the world is worked out from the map: where the streets
@@ -69,10 +105,20 @@ export interface Landmark {
   /** Its footprint: along it and across it. */
   width: number;
   depth: number;
-  /** How tall. Zero for something flat. */
+  /**
+   * How high its flat top is. Zero for something lying on the ground.
+   *
+   * With a penthouse this is the *terrace* -- the lower of the two levels,
+   * and the one that is walked on. What stands above it is described by the
+   * penthouse rather than by this.
+   */
   height: number;
   /** Which way it faces, in the collider's yaw convention. */
   yaw?: number;
+  /** A taller part over one end, if it has one. */
+  penthouse?: Penthouse;
+  /** What is planted on the terrace, if anything. */
+  planting?: Planting;
   /**
    * Clear ground kept around it, in metres.
    *
@@ -81,6 +127,157 @@ export interface Landmark {
    * through a wood.
    */
   margin?: number;
+}
+
+/**
+ * A shrub standing on something, rather than a tree standing in the ground.
+ *
+ * The base is the only real difference and it is the whole point: a tree can
+ * be drawn wherever the terrain is, a bush is on a terrace thirty metres up
+ * and has to be told so.
+ */
+/**
+ * One flat-topped rectangular tier of a landmark.
+ *
+ * A landmark with a penthouse is two of these -- the terrace and the part
+ * standing over it -- and everything that has to point at one of them (the
+ * marker, the collider, the planting) asks for it here rather than working it
+ * out again with its own arithmetic and its own idea of which end is which.
+ *
+ * Not called a level. A level is a thing the game has three of.
+ */
+export interface Tier {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  /** How high its flat top is. */
+  top: number;
+  /** Which way it faces, in the collider's yaw convention. */
+  yaw: number;
+}
+
+/**
+ * A point in a landmark's own frame, put back into the world.
+ *
+ * `along` runs with its width and `across` with its depth. The convention is
+ * the collider's, which is Three.js's rotation.y -- the same one
+ * `footprintSamples` uses, and the inverse of the one `reserved` tests with.
+ */
+function inFrame(
+  landmark: Landmark,
+  along: number,
+  across: number,
+): { x: number; z: number } {
+  const cos = Math.cos(landmark.yaw ?? 0);
+  const sin = Math.sin(landmark.yaw ?? 0);
+  return {
+    x: landmark.x + along * cos + across * sin,
+    z: landmark.z - along * sin + across * cos,
+  };
+}
+
+/**
+ * The open part of a landmark's flat top: everything the penthouse leaves.
+ *
+ * Null when there is no penthouse, because then the flat top is all one thing
+ * and calling any of it a terrace would be inventing a distinction the
+ * description does not make.
+ */
+export function terraceOf(landmark: Landmark): Tier | null {
+  const penthouse = landmark.penthouse;
+  if (!penthouse || landmark.height <= 0) return null;
+
+  const width = landmark.width * (1 - penthouse.cover);
+  if (width <= 0) return null;
+  // The penthouse takes the far end, so the terrace is what is left at the
+  // near one, and its middle is half the taken length back from the middle of
+  // the building.
+  const centre = inFrame(landmark, -(landmark.width * penthouse.cover) / 2, 0);
+  return {
+    ...centre,
+    width,
+    depth: landmark.depth,
+    top: landmark.height,
+    yaw: landmark.yaw ?? 0,
+  };
+}
+
+/** The taller part, standing over the far end. */
+export function penthouseOf(landmark: Landmark): Tier | null {
+  const penthouse = landmark.penthouse;
+  if (!penthouse || landmark.height <= 0) return null;
+
+  const width = landmark.width * penthouse.cover;
+  if (width <= 0) return null;
+  const centre = inFrame(landmark, (landmark.width * (1 - penthouse.cover)) / 2, 0);
+  return {
+    ...centre,
+    width,
+    depth: landmark.depth,
+    top: landmark.height + penthouse.rise,
+    yaw: landmark.yaw ?? 0,
+  };
+}
+
+/** How much taller than wide a bush is drawn, and boxed. */
+const BUSH_RISE = 1.25;
+
+/**
+ * How far out the outermost row sits, as a fraction of the terrace's depth.
+ *
+ * Rows go near the edges, which is where planters are put on a real terrace
+ * and, more usefully, is what keeps the middle open. A third and a bit out
+ * leaves a clear strip down the centre wider than the planted margins either
+ * side of it.
+ */
+const ROW_SPREAD = 0.35;
+
+/** How far a bush is kept back from the ends of its row. */
+const ROW_INSET = 0.8;
+
+/**
+ * The bushes on a landmark's terrace, in rows.
+ *
+ * Rows run the length of the terrace, spaced symmetrically about its centre
+ * line. With two of them the middle is left open, which is where the arrow
+ * points and where the pigeon waiting there stands -- planting that closed it
+ * would be planting the landing off.
+ */
+export function plantTerrace(landmark: Landmark): Bush[] {
+  const planting = landmark.planting;
+  const terrace = terraceOf(landmark);
+  if (!planting || !terrace || planting.rows < 1 || planting.perRow < 1) return [];
+
+  const bushes: Bush[] = [];
+  const height = planting.radius * BUSH_RISE;
+  const span = terrace.width - 2 * (ROW_INSET + planting.radius);
+  // Where the terrace's own middle is, in the landmark's frame: the rows are
+  // laid there and turned with everything else.
+  const back = -(landmark.width - terrace.width) / 2;
+
+  for (let row = 0; row < planting.rows; row += 1) {
+    // -1 .. 1 across the rows, and 0 when there is only one of them.
+    const side = planting.rows === 1 ? 0 : (row / (planting.rows - 1)) * 2 - 1;
+    const across = side * ROW_SPREAD * terrace.depth;
+
+    for (let i = 0; i < planting.perRow; i += 1) {
+      const step = planting.perRow === 1 ? 0.5 : i / (planting.perRow - 1);
+      const along = back + (step - 0.5) * span;
+      const at = inFrame(landmark, along, across);
+      bushes.push({ ...at, base: terrace.top, radius: planting.radius, height });
+    }
+  }
+  return bushes;
+}
+
+export interface Bush {
+  x: number;
+  z: number;
+  /** The height of the surface it stands on. */
+  base: number;
+  radius: number;
+  height: number;
 }
 
 export interface Tree {
@@ -112,6 +309,8 @@ export interface CityLayout {
   trees: Tree[];
   /** Described things, placed before the rest and avoided by it. */
   landmarks: Landmark[];
+  /** Bushes on the terraces of those, if any of them has one. */
+  bushes: Bush[];
   /** Solid volumes for every object above, in simulation coordinates. */
   boxes: Box[];
   /** Streets to draw, when the world was built from a real map. */
@@ -166,6 +365,7 @@ export function generateCityLayout(options: WorldOptions = defaultWorldOptions):
     boxes.push(aabb(x - trunk, 0, z - trunk, x + trunk, height, z + trunk));
   }
 
-  // No landmarks: this layout describes nothing, it only generates.
-  return { buildings, trees, landmarks: [], boxes };
+  // No landmarks: this layout describes nothing, it only generates. And so
+  // nothing to plant a terrace on either.
+  return { buildings, trees, landmarks: [], bushes: [], boxes };
 }

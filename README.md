@@ -185,7 +185,35 @@ marker at run time.
 
 Each described thing gets its own mesh rather than a seventh instanced bucket,
 because it is one building among a couple of thousand — and because being the
-target means being recoloured several times a second.
+target means being recoloured several times a second. It is not in the
+building list at all, which is what keeps it out of the instanced crowd and
+off the roof pass without either of them having to remember to skip it.
+
+**The Loft has a shape rather than a size.** It is a thirty by fourteen metre
+block of flats, and half of it is one storey higher than the rest: a penthouse
+whose windows look out over the other half, which is a terrace. Two rows of
+bushes run down the terrace, out towards its edges, which is where planters go
+on a real roof and — the reason the arithmetic puts them there — what leaves a
+clear strip eight metres wide down the middle of it. That strip is where the
+arrow points, where the bird comes down and where the pigeon waiting for it
+stands; planting that closed it would be planting the landing off.
+
+The bushes are solid, like the trees. A bush you can fly through is scenery.
+
+**And the terrace is the target, not the roof.** The arrow hangs over the
+middle of the lower half, not over the highest point, because the highest
+point is three metres above and half a building along from the place you are
+actually going. Both halves and the paving between them are one material each
+and flash together — half a building going red reads as a rendering fault
+rather than as a signal, so the marker takes a list of materials rather than
+one.
+
+The two halves are worked out from the description by `terraceOf` and
+`penthouseOf`, in the landmark's own frame, and everything that needs to point
+at one of them asks there: the collider boxes the pair, the renderer draws the
+pair, the planting is laid on what the first of them returns, and the marker
+hangs over it. Nothing re-derives which end is which, which is the failure
+this shape would otherwise invite.
 
 **It flashes, and it wears an arrow.** The target sits in an ordinary colour
 and goes red once a second, on a raised cosine so it swells and fades rather
@@ -216,12 +244,12 @@ proportional to range with a floor so it does not vanish underfoot.
 
 **Three of them, getting harder.** *The Park* is a patch of concrete on open
 ground at midday: nothing to fly round, nothing that moves, and the whole
-approach visible from the start. *The Loft* is thirty-one metres up on a
-flat-topped block standing seven metres clear of the 16–24 m roofline around
-it, in late-afternoon light — still nothing moving, but you have to pick it
-out of a city of roofs and then stop on sixteen metres by twelve. *The Yard*
-is a wagon of a running train under a low evening sun, which is the first
-target that will not wait for you.
+approach visible from the start. *The Loft* is a planted roof terrace
+thirty-one metres up on a block of flats standing seven metres clear of the
+16–24 m roofline around it, in late-afternoon light — still nothing moving,
+but you have to pick it out of a city of roofs and then put down on the strip
+between the bushes. *The Yard* is a wagon of a running train under a low
+evening sun, which is the first target that will not wait for you.
 
 **Every target is a thing, never a place.** Open ground was the awkward case:
 a wagon and a building are objects with a material each to flash and a top to
@@ -816,9 +844,8 @@ the ridge is still the height the layout says and the collision box, which
 stops there, keeps its meaning. Described buildings are the exception and stay
 flat: they are the ones the pigeon is meant to put down on, and a ridge is
 nowhere for a bird to stand -- the collider would settle it on the ridge line
-with the tiles falling away underneath. `buildRoofs` takes the set to leave
-bare, and the instanced crowd skips the same set, so a landmark is left out of
-both by one decision rather than two.
+with the tiles falling away underneath. They are simply not in the list this
+pass reads, so nothing here has to know about them.
 
 Windows are never lit. It is six in the evening in June; a lit window at that
 hour reads as a mistake rather than as life. What varies between panes is how

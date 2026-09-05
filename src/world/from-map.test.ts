@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
-import type { Landmark } from './layout';
+import { penthouseOf, terraceOf, type Landmark } from './layout';
 import { indexStreets, type MapData, type Rail, type Road } from './streets';
 import { footprintSamples, type Area } from './areas';
 import { distanceToEdges, pointInPolygon } from './polygon';
@@ -314,10 +314,12 @@ describe('describing a thing into the world', () => {
     name: 'The Loft',
     x: 40,
     z: 40,
-    width: 16,
-    depth: 12,
+    width: 30,
+    depth: 14,
     height: 31,
     margin: 9,
+    penthouse: { cover: 0.5, rise: 3.2 },
+    planting: { rows: 2, perRow: 6, radius: 0.7 },
   };
   // In the park, which is where a patch of concrete belongs and, more to the
   // point here, where the trees are.
@@ -352,12 +354,48 @@ describe('describing a thing into the world', () => {
 
   it('stands exactly where it was described, at its own size', () => {
     const described = withLandmark(TOWER);
-    const it_ = described.buildings.filter((b) => b.height === TOWER.height);
-    expect(it_).toHaveLength(1);
-    expect(it_[0]).toMatchObject({ x: 40, z: 40, width: 16, depth: 12, height: 31 });
-    // And it is listed as described, so the renderer knows to draw it apart
-    // from the crowd and the levels know it is there to be aimed at.
-    expect(described.landmarks.map((l) => l.name)).toEqual(['The Loft']);
+    expect(described.landmarks).toEqual([TOWER]);
+
+    // Solid where it says it is: a bird flying through the middle of it, at a
+    // height only the building reaches, hits something.
+    const field = createColliderField(described.boxes);
+    expect(
+      field.sweep(vec(TOWER.x - 40, TOWER.height - 2, TOWER.z), vec(TOWER.x + 40, TOWER.height - 2, TOWER.z), 0.22),
+    ).not.toBeNull();
+    // And nothing of it hangs over the ground beyond its own footprint.
+    const clear = TOWER.x + TOWER.width / 2 + 1;
+    expect(field.heightAt(clear, TOWER.z)).toBeLessThan(TOWER.height);
+  });
+
+  it('leaves the terrace open and stands the penthouse over the rest', () => {
+    // The shape is the point of the building: half of it one storey higher,
+    // the other half a flat top you can put down on.
+    const terrace = terraceOf(TOWER)!;
+    const penthouse = penthouseOf(TOWER)!;
+    expect(terrace.width).toBeCloseTo(15, 9);
+    expect(penthouse.width).toBeCloseTo(15, 9);
+    // Halves of the same building, so they meet and do not overlap.
+    expect(terrace.x + terrace.width / 2).toBeCloseTo(penthouse.x - penthouse.width / 2, 9);
+    expect(penthouse.top - terrace.top).toBeCloseTo(3.2, 9);
+
+    const field = createColliderField(withLandmark(TOWER).boxes);
+    // A metre above the terrace is air over the terrace and wall over the
+    // penthouse, which is the whole difference between the two halves.
+    expect(field.heightAt(terrace.x, terrace.z)).toBeCloseTo(TOWER.height, 6);
+    expect(field.heightAt(penthouse.x, penthouse.z)).toBeCloseTo(penthouse.top, 6);
+  });
+
+  it('turns the terrace with the building', () => {
+    // The halves are worked out in the landmark's own frame, so a turned one
+    // has its terrace on the turned end rather than to the west of it.
+    const turned: Landmark = { ...TOWER, yaw: Math.PI / 2 };
+    const flat = terraceOf(TOWER)!;
+    const spun = terraceOf(turned)!;
+    // A quarter turn takes the offset from -x to +z, in the collider's
+    // convention, and leaves the distance from the middle alone.
+    expect(spun.x).toBeCloseTo(TOWER.x, 9);
+    expect(spun.z).toBeCloseTo(TOWER.z + (TOWER.x - flat.x), 9);
+    expect(spun.top).toBe(flat.top);
   });
 
   it('has no house built through it, nor inside its margin', () => {
@@ -407,6 +445,46 @@ describe('describing a thing into the world', () => {
     // The same description given a height is a wall, so the sweep above is an
     // observation about the slab rather than one about that stretch of park.
     expect(across(withLandmark({ ...SLAB, height: 20 }))).not.toBeNull();
+  });
+
+  it('plants the terrace in rows, and leaves the middle of it open', () => {
+    const terrace = terraceOf(TOWER)!;
+    const bushes = withLandmark(TOWER).bushes;
+    expect(bushes).toHaveLength(2 * 6);
+
+    for (const bush of bushes) {
+      // Standing on the terrace, not on the ground and not on the penthouse.
+      expect(bush.base).toBe(TOWER.height);
+      // And on the terrace rather than off the edge of it.
+      expect(Math.abs(bush.x - terrace.x)).toBeLessThanOrEqual(terrace.width / 2 - bush.radius);
+      expect(Math.abs(bush.z - terrace.z)).toBeLessThanOrEqual(terrace.depth / 2 - bush.radius);
+    }
+
+    // Two rows, one either side, and a clear strip between them: the middle
+    // is where the arrow points and where the bird comes down.
+    const sides = new Set(bushes.map((bush) => Math.sign(bush.z - terrace.z)));
+    expect(sides).toEqual(new Set([-1, 1]));
+    const clear = Math.min(...bushes.map((b) => Math.abs(b.z - terrace.z) - b.radius));
+    expect(clear).toBeGreaterThan(3);
+  });
+
+  it('makes the bushes solid, like everything else growing out of the world', () => {
+    const terrace = terraceOf(TOWER)!;
+    const field = createColliderField(withLandmark(TOWER).boxes);
+    const bush = withLandmark(TOWER).bushes[0]!;
+
+    // Standing on one is standing higher than standing beside it.
+    expect(field.heightAt(bush.x, bush.z)).toBeCloseTo(bush.base + bush.height, 6);
+    // But the strip down the middle is the terrace and nothing else.
+    expect(field.heightAt(terrace.x, terrace.z)).toBeCloseTo(TOWER.height, 6);
+  });
+
+  it('plants nothing where there is no terrace to plant', () => {
+    // A landmark with no penthouse has a roof, not a terrace, and a bed of
+    // bushes on the thing you are meant to land on would be a trap.
+    const { penthouse: _, ...plain } = TOWER;
+    expect(withLandmark(plain).bushes).toEqual([]);
+    expect(terraceOf(plain)).toBeNull();
   });
 
   it('describes nothing when no landmarks are given', () => {

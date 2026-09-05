@@ -443,10 +443,10 @@ function standingSpot(spec: Level): { at: Vec3; facing: number; on: number | nul
   }
 
   // Otherwise it is one of the described things, which stands still and whose
-  // shape is written down. Where its top is comes from the description rather
-  // than from the marker: a building's marker sits on its roof, but a flat
-  // one's sits on the marking, and what a bird stands on there is the ground
-  // the marking is painted on.
+  // shape is written down. The marker gives the place -- over the terrace of
+  // a block of flats, over the middle of a patch of concrete -- and the
+  // description gives the height, because a flat one's marker sits a hair
+  // above the marking while what stands there stands on the ground.
   const described = LANDMARKS.find((landmark) => landmark.name === spec.target.name);
   const marker = objective(spec.target.name);
   if (!described || !marker) return null;
