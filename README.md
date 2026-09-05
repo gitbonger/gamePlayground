@@ -464,8 +464,26 @@ the physics says there is one, as one instanced billboard mesh.
 every puff and compare it against the area of the plume they make between them.
 Below about one there are gaps and you can see the yard through it. The first
 attempt came out at **1.8** — a wisp. It now runs at **15**, which is fifteen
-hundred puffs over sixty-five metres and thoroughly opaque, for 0.013 ms a
-tick. That ratio is a test, and dropping the emission rate back fails it.
+hundred puffs over sixty-five metres, for 0.013 ms a tick. That ratio is a
+test, and dropping the emission rate back fails it.
+
+**Density is not opacity, and getting the two mixed up produced a speech
+bubble.** The first version drew a plume you could not see into at all: a flat
+black shape with an outline. Two mistakes, both in the renderer rather than the
+physics. The per-puff opacity was worked out and then thrown away — used only
+to skip puffs that had nearly died, never applied to what was drawn — so every
+puff painted at full strength however old it was, and several hundred of them
+stacked into a silhouette. And the material was pure *black*, which multiplied
+the per-puff grey away to nothing, so the plume read as a hole in the sky
+rather than as soot.
+
+Three has no per-instance opacity, so each puff now carries a float of its own,
+multiplied into the alpha in a patched shader. One bubble is about a fifth
+opaque at its thickest and dark grey rather than black; it is the hundreds of
+them overlapping that make the plume solid, which is what lets you see *into*
+it — dense in the middle, thinning at the edges, individual bubbles legible
+against each other. The regression test is that the opacity actually reaches
+the draw, and it fails the moment that value is dropped again.
 
 Verifying the smoke on screen took four wrong answers first, all of them mine.
 Probe cameras placed to look at the plume from a convenient angle reported it
@@ -1048,6 +1066,10 @@ npm test
   lies down and drifts on the wind without ever being blown faster than the
   wind, trails behind something moving, thins away rather than switching off,
   and is thick enough to see nothing through.
+- **`src/world/city.test.ts`** also covers the drawing of it: every puff gets
+  its own opacity — the bug that made the plume a silhouette — thinning as it
+  ages, going paler and larger as it goes, with dead ones left out of the draw
+  entirely.
 - **`src/world/train.test.ts`** — a train runs on and keeps its direction,
   turns round at either end with the whole consist still on the rails, stays
   between them however long it runs, visits both rather than settling against

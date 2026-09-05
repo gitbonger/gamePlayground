@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { arrowScale, buildRoofs, buildWorld, roofRise, targetFlash } from './city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
 import { consistLength, layOutTrain, lineLength, shuttle, WAGON } from './train';
+import type { Puff } from './smoke';
+import * as THREE from 'three';
 import type { MapData, Rail, Road } from './streets';
 
 const BLOCK: Road[] = [
@@ -354,5 +356,72 @@ describe('a train that moves', () => {
     runOn(layout, 40);
     world.updateTrains(layout.trains);
     expect(marker.position.equals(started)).toBe(true);
+  });
+});
+
+describe('drawing the smoke', () => {
+  const build = () =>
+    buildWorld(
+      buildLayoutFromMap(map, { ...defaultMapWorldOptions, target: { x: 40, z: 40 } }),
+      { smoke: 64 },
+    );
+
+  /** Puffs of a given age, all at the same spot. */
+  const aged = (ages: number[]): Puff[] =>
+    ages.map((age) => ({ x: 0, y: 20, z: 0, vx: 0, vy: 0, vz: 0, age, life: 10, seed: 0.5 }));
+
+  const smokeMesh = (world: ReturnType<typeof buildWorld>) => {
+    let found: any = null;
+    world.group.traverse((child: any) => {
+      if (child.isInstancedMesh && child.material?.map && child.material?.transparent) found = child;
+    });
+    return found;
+  };
+
+  it('gives every puff its own opacity, which is what makes it smoke', () => {
+    // The bug this is here for: the opacity was worked out and then thrown
+    // away, so every puff drew at full strength however old it was. Hundreds
+    // of them piled up into one solid silhouette -- a hole in the sky rather
+    // than a plume.
+    const world = build();
+    const mesh = smokeMesh(world);
+    const quiet = new THREE.Quaternion();
+
+    world.updateSmoke(aged([0.5, 3, 6, 9]), quiet);
+
+    const fade = mesh.geometry.getAttribute('puffFade');
+    const values = [0, 1, 2, 3].map((i) => fade.getX(i));
+    expect(values.every((v) => v > 0 && v < 1)).toBe(true);
+    // Thinning as it ages, every step of the way.
+    for (let i = 1; i < values.length; i += 1) {
+      expect(values[i]!, `puff ${i}`).toBeLessThan(values[i - 1]!);
+    }
+    world.dispose();
+  });
+
+  it('draws them paler and larger as they go', () => {
+    const world = build();
+    const mesh = smokeMesh(world);
+    world.updateSmoke(aged([0.5, 8]), new THREE.Quaternion());
+
+    const colour = mesh.instanceColor;
+    // Soot at the stack, a grey haze by the end.
+    expect(colour.getX(1)).toBeGreaterThan(colour.getX(0));
+
+    const young = new THREE.Matrix4();
+    const old = new THREE.Matrix4();
+    mesh.getMatrixAt(0, young);
+    mesh.getMatrixAt(1, old);
+    const size = (m: THREE.Matrix4) => new THREE.Vector3().setFromMatrixScale(m).x;
+    expect(size(old)).toBeGreaterThan(size(young) * 2);
+    world.dispose();
+  });
+
+  it('leaves the dead ones out of the draw entirely', () => {
+    const world = build();
+    const mesh = smokeMesh(world);
+    world.updateSmoke(aged([1, 2, 3]).concat(aged([-1, -1])), new THREE.Quaternion());
+    expect(mesh.count).toBe(3);
+    world.dispose();
   });
 });

@@ -568,22 +568,25 @@ export function buildWorld(
       const radius = puffRadius(puff, defaultSmokeOptions) * 2;
       puffPlace.set(puff.x, puff.y, puff.z);
       puffScale.set(radius, radius, radius);
-      // Turned to face the camera, and rolled by its own seed so a hundred
-      // copies of one texture do not read as a hundred copies of one texture.
       puffMatrix.compose(puffPlace, viewer, puffScale);
       plume.mesh.setMatrixAt(drawn, puffMatrix);
 
-      // Soot at the stack, thinning to a grey haze as it disperses. The
-      // material is black, so this is doing the work of the alpha as well:
-      // a paler instance is a thinner one.
-      const grey = 0.16 + 0.5 * Math.min(1, puff.age / Math.max(puff.life, 0.001));
-      puffTint.setRGB(grey, grey, grey * 1.02);
+      // Soot at the stack, thinning to a grey haze as it disperses -- and
+      // never black, which reads as a hole in the sky rather than as smoke.
+      const through = Math.min(1, puff.age / Math.max(puff.life, 0.001));
+      const grey = 0.09 + 0.34 * through;
+      puffTint.setRGB(grey, grey, grey * 1.06);
       plume.mesh.setColorAt(drawn, puffTint);
+
+      // Each bubble faint on its own; it is the hundreds of them overlapping
+      // that make the plume thick, which is what lets you see into it.
+      plume.fade.setX(drawn, alpha * PUFF_ALPHA);
       drawn += 1;
     }
 
     plume.mesh.count = drawn;
     plume.mesh.instanceMatrix.needsUpdate = true;
+    plume.fade.needsUpdate = true;
     if (plume.mesh.instanceColor) plume.mesh.instanceColor.needsUpdate = true;
   };
 
@@ -1127,6 +1130,15 @@ function buildRoads(roads: readonly Road[]): {
 }
 
 /**
+ * How solid one bubble is at its thickest.
+ *
+ * Low on purpose. A plume is not one object, it is several hundred faint ones
+ * on top of each other, and that is the difference between smoke you can see
+ * into and a silhouette.
+ */
+const PUFF_ALPHA = 0.2;
+
+/**
  * A soft round smudge, drawn to a canvas.
  *
  * One puff of smoke. Dark in the middle and falling away to nothing at the
@@ -1142,8 +1154,12 @@ function makePuffTexture(): THREE.Texture {
   const ctx = canvas.getContext('2d')!;
   const middle = size / 2;
   const gradient = ctx.createRadialGradient(middle, middle, 0, middle, middle, middle);
-  gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-  gradient.addColorStop(0.45, 'rgba(255, 255, 255, 0.72)');
+  // Soft all the way out. A hard rim makes a disc, and a few hundred discs
+  // make a blob with an outline; what is wanted is a bubble whose edge you
+  // cannot find.
+  gradient.addColorStop(0, 'rgba(255, 255, 255, 0.85)');
+  gradient.addColorStop(0.35, 'rgba(255, 255, 255, 0.55)');
+  gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.16)');
   gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, size, size);
@@ -1164,16 +1180,40 @@ function buildSmoke(capacity: number): {
   material: THREE.MeshBasicMaterial;
   texture: THREE.Texture;
   geometry: THREE.PlaneGeometry;
+  fade: THREE.InstancedBufferAttribute;
 } {
   const geometry = new THREE.PlaneGeometry(1, 1);
   const texture = makePuffTexture();
+
+  // White, so the instance colour is the colour. Black here multiplies the
+  // per-puff grey away to nothing, which is how the plume came out as one
+  // solid hole in the sky rather than as smoke.
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
     depthWrite: false,
     fog: true,
-    color: 0x000000,
+    color: 0xffffff,
   });
+
+  // Three has no per-instance opacity, and without one every puff draws at
+  // full strength however old it is: they cannot fade, so they pile up into a
+  // silhouette. One float an instance, multiplied into the alpha.
+  const fade = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
+  fade.setUsage(THREE.DynamicDrawUsage);
+  geometry.setAttribute('puffFade', fade);
+
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = `attribute float puffFade;\nvarying float vPuffFade;\n${shader.vertexShader}`.replace(
+      '#include <begin_vertex>',
+      '#include <begin_vertex>\n        vPuffFade = puffFade;',
+    );
+    shader.fragmentShader = `varying float vPuffFade;\n${shader.fragmentShader}`.replace(
+      '#include <color_fragment>',
+      '#include <color_fragment>\n      diffuseColor.a *= vPuffFade;',
+    );
+  };
+  material.customProgramCacheKey = () => 'smoke-puff';
 
   const mesh = new THREE.InstancedMesh(geometry, material, capacity);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -1181,7 +1221,7 @@ function buildSmoke(capacity: number): {
   mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
   mesh.frustumCulled = false;
   mesh.count = 0;
-  return { mesh, material, texture, geometry };
+  return { mesh, material, texture, geometry, fade };
 }
 
 /** A faint grid drawn to a canvas, tiled across the ground for motion cues. */
