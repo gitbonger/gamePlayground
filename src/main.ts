@@ -36,11 +36,11 @@ import {
   createColliderField,
   type Collider,
 } from './sim/collision';
-import { createChaseCamera, defaultCameraParams } from './render/camera';
+import { createChaseCamera, defaultCameraParams, defaultWatchParams } from './render/camera';
 import { createHud } from './render/hud';
 import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
-import { buildWorld } from './world/city';
+import { buildWorld, targetFlash } from './world/city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
 import {
   carriedBy,
@@ -175,6 +175,7 @@ const input = createInput();
 
 const flightParams = { ...defaultParams };
 const cameraParams = { ...defaultCameraParams };
+const watchParams = { ...defaultWatchParams };
 const windParams = { ...defaultWindParams };
 
 // Rebuilt whenever the panel changes the air, since the field closes over its
@@ -251,7 +252,17 @@ interface Resident {
   rig: ReturnType<typeof createBirdRig>;
   /** The level walking up to it completes. */
   completes: string;
+  /** How red it is being washed this frame, 0 to 1. */
+  glowing: number;
 }
+
+/** Where an arrow hangs over a resident: its own head, near enough. */
+const personTop = (resident: Resident) =>
+  new THREE.Vector3(
+    resident.state.position.x,
+    resident.state.position.y + 0.3,
+    resident.state.position.z,
+  );
 
 /**
  * Which tag a vehicle's collision boxes are given.
@@ -291,7 +302,7 @@ const residents: Resident[] = [];
     };
     const rig = createBirdRig(PIGEON_MORPHS[3]);
     scene.add(rig.object);
-    residents.push({ state, rig, completes: LEVELS[0] });
+    residents.push({ state, rig, completes: LEVELS[0], glowing: 0 });
   }
 }
 
@@ -447,12 +458,12 @@ function surfaceUnder(state: BirdState): number {
  * happens next.
  */
 function reachLevel(): void {
+  // Anyone at all, not just the one this level is about: standing with a
+  // pigeon is standing with a pigeon, and the camera should say so.
+  talkingTo = residents.find((resident) => meeting(bird, resident.state)) ?? null;
+
   const here = LEVELS[level];
-  if (!here) return;
-  const met = residents.some(
-    (resident) => resident.completes === here && meeting(bird, resident.state),
-  );
-  if (!met) return;
+  if (!here || talkingTo?.completes !== here) return;
 
   reached = here;
   if (level + 1 < LEVELS.length) {
@@ -461,8 +472,23 @@ function reachLevel(): void {
   }
 }
 
+/** The resident this level is about, if it has one. */
+function levelPerson(): Resident | null {
+  const here = LEVELS[level];
+  return residents.find((resident) => resident.completes === here) ?? null;
+}
+
 /** The last level finished, for the HUD to say so. Null until one is. */
 let reached: string | null = null;
+
+/**
+ * The resident the hero is standing with, or null.
+ *
+ * Held rather than recomputed from the level, because the level moves on the
+ * moment they meet and the conversation does not: they go on standing there
+ * until one of them walks away or takes off.
+ */
+let talkingTo: Resident | null = null;
 
 function frame(nowMs: number) {
   const now = nowMs / 1000;
@@ -542,17 +568,36 @@ function frame(nowMs: number) {
   world.updateSmoke(smoke.puffs, camera.quaternion);
   rig.update(interpolatedState, wings, frameTime, surfaceUnder(interpolatedState));
 
-  // Flash the target and size its arrow. Both want the drawn position rather
-  // than the tick position, or the arrow judders against everything else.
-  objective(LEVELS[level])?.update(
+  // --- What is being pointed at -------------------------------------------
+  // Three states, and the marker is told the answer rather than working it
+  // out: in the air you are looking for the place, on foot you are looking
+  // for the pigeon standing on it, and once you have found them there is
+  // nothing left to look for.
+  const person = levelPerson();
+  const pulse = targetFlash(now, false);
+
+  const showing: 'object' | 'person' | 'nobody' = talkingTo
+    ? 'nobody'
+    : isPerched(bird) && person
+      ? 'person'
+      : isPerched(bird)
+        ? 'nobody'
+        : 'object';
+
+  for (const resident of residents) {
+    resident.glowing = showing === 'person' && resident === person ? pulse : 0;
+  }
+
+  const marker = objective(LEVELS[level]);
+  marker?.update(
     now,
     camera.position,
-    new THREE.Vector3(
-      interpolatedState.position.x,
-      interpolatedState.position.y,
-      interpolatedState.position.z,
-    ),
-    isPerched(bird),
+    showing === 'object' ? pulse : 0,
+    showing === 'object'
+      ? marker.position
+      : showing === 'person' && person
+        ? personTop(person)
+        : null,
   );
 
   // The flock is far enough away that the raw tick pose is smooth enough.
@@ -570,6 +615,7 @@ function frame(nowMs: number) {
 
   for (const resident of residents) {
     resident.rig.update(resident.state, 'perched', frameTime, surfaceUnder(resident.state));
+    resident.rig.glow(resident.glowing);
   }
 
   // Once the bird is down the camera settles: further back and levelled off
@@ -601,7 +647,14 @@ function frame(nowMs: number) {
           },
     );
   }
-  chase.update(interpolatedState, activeCamera, frameTime);
+  // Standing with somebody is a different shot: off the boom and to one
+  // side, holding both of them. It eases from wherever the chase camera had
+  // got to and back again, because it is the same camera.
+  if (talkingTo) {
+    chase.watch(interpolatedState.position, talkingTo.state.position, watchParams, frameTime);
+  } else {
+    chase.update(interpolatedState, activeCamera, frameTime);
+  }
 
   // Keep the shadow frustum centred on the bird rather than on the origin.
   sun.target.position.set(

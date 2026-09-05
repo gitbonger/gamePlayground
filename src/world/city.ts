@@ -37,12 +37,20 @@ export interface TargetMarker {
   /** Whether it is the one being flown to. Only one usually is. */
   setActive(active: boolean): void;
   /**
-   * Flash the target and size the arrow. Once a frame, when active.
+   * Draw the marker this frame: how red to glow, and where to hang the arrow.
    *
-   * `down` stops the flashing: the bird is on its feet and no longer looking
-   * for the place to put them.
+   * Told rather than deciding. Whether the thing being pointed at is this
+   * building, a pigeon standing on it, or nothing at all because the two of
+   * them are talking, is a question about the game and not about the mesh --
+   * so it is answered by whoever knows, and this only does as it is asked.
+   * `over` of null hides the arrow.
    */
-  update(elapsed: number, viewer: THREE.Vector3, bird: THREE.Vector3, down: boolean): void;
+  update(
+    elapsed: number,
+    viewer: THREE.Vector3,
+    flash: number,
+    over: THREE.Vector3 | null,
+  ): void;
 }
 
 export interface ObjectiveOptions {
@@ -700,17 +708,21 @@ function createMarker(
       arrow.visible = on;
       if (!on) material.emissive.setScalar(0);
     },
-    update(elapsed, viewer, _bird, down) {
+    update(elapsed, viewer, flash, over) {
       if (!active) return;
 
-      material.emissive.copy(lit).multiplyScalar(targetFlash(elapsed, down));
+      material.emissive.copy(lit).multiplyScalar(flash);
 
-      const size = arrowScale(position.distanceTo(viewer));
+      arrow.visible = over !== null;
+      if (!over) return;
+
+      const size = arrowScale(over.distanceTo(viewer));
       arrow.scale.setScalar(size);
-      // Sitting a little clear of the target, and rocking gently, because a
-      // marker that moves is found a good deal faster than one that does not.
+      // Sitting a little clear of what it points at, and rocking gently,
+      // because a marker that moves is found a good deal faster than one
+      // that does not.
       const bob = Math.sin(elapsed * 2.2) * 0.12 + 1;
-      arrow.position.set(position.x, position.y + size * 0.55 * bob + 1.5, position.z);
+      arrow.position.set(over.x, over.y + size * 0.55 * bob + 1.5, over.z);
     },
   };
 }

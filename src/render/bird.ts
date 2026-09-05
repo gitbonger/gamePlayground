@@ -168,8 +168,21 @@ const LEG_LIFT = 0.012;
 /** What the wings are doing, which is most of what the bird reads as. */
 export type WingPose = 'tucked' | 'gliding' | 'braking' | 'perched';
 
+/** The red a marked bird is washed with when it is the one to go and see. */
+const MARKED = new THREE.Color(0xd0281c);
+
 export interface BirdRig {
   object: THREE.Object3D;
+  /**
+   * Wash the whole bird toward marker red, 0 to 1.
+   *
+   * The same signal the target buildings use, on a bird instead: once you are
+   * on foot the thing you are looking for is a pigeon, and a pigeon is far
+   * too small to find by looking. Applied to the emissive rather than the
+   * colour, because these are many materials of many colours and multiplying
+   * that lot by red gives a muddy brown rather than a red pigeon.
+   */
+  glow(amount: number): void;
   /**
    * `surfaceY` is the height of the drawn ground beneath the bird, if it is
    * near enough to matter. The simulation stops a bird on a plane that the
@@ -184,6 +197,9 @@ const mix = (from: number, to: number, t: number): number => from + (to - from) 
 
 export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
   const disposables: { dispose(): void }[] = [];
+  /** Every material the bird is made of, with the emissive it rests at. */
+  const skin: { material: THREE.MeshLambertMaterial; rest: THREE.Color }[] = [];
+
   const material = (color: number, glow = GLOW) => {
     const m = new THREE.MeshLambertMaterial({
       color,
@@ -192,8 +208,18 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
       emissive: new THREE.Color(color).multiplyScalar(glow),
     });
     disposables.push(m);
+    skin.push({ material: m, rest: m.emissive.clone() });
     return m;
   };
+
+  let washed = -1;
+  function glow(amount: number) {
+    // Every material of the bird, every frame, is a few dozen colour writes.
+    // Skipped when nothing has changed, which is almost always.
+    if (amount === washed) return;
+    washed = amount;
+    for (const { material: m, rest } of skin) m.emissive.copy(rest).lerp(MARKED, amount);
+  }
   const geometry = <T extends THREE.BufferGeometry>(g: T): T => {
     disposables.push(g);
     return g;
@@ -454,6 +480,7 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
   return {
     object,
     update,
+    glow,
     dispose() {
       for (const d of disposables) d.dispose();
     },

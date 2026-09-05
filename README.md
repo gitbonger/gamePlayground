@@ -226,12 +226,52 @@ the wagon it is standing on through the same `carriedBy` pass the flock and
 the player use, it is drawn perched by the same rig, and it is met by the same
 rule that would let two players meet.
 
-**The target flashes right up to touchdown.** It used to fade out inside
-130 m, on the reasoning that a building blinking in your face while you are
-trying to put down on it is a distraction. That is backwards: the last stretch
-of an approach is exactly when you want to be certain you are lining up on the
-right roof. Distance is no longer a reason to stop, and being down is the only
-one.
+### What is being pointed at
+
+There are two different things a level can be about, and which of them the
+marker points at depends on what you are doing:
+
+- **In the air, the target is a place** — the wagon or the building. It flashes
+  red and the arrow hangs over it, right up to touchdown. This used to fade out
+  inside 130 m, on the reasoning that a building blinking in your face while
+  you are trying to put down on it is a distraction. That is backwards: the
+  last stretch of an approach is exactly when you want to be certain you are
+  lining up on the right roof.
+- **On foot, the target is a pigeon.** The place has served its purpose, so it
+  goes dark and the *bird* starts flashing instead, with the arrow moved over
+  its head. A pigeon standing on a wagon among a dozen stakes is far too small
+  to find by looking, and the same red pulse works on a bird as on a building —
+  applied to the emissive rather than the colour, because a pigeon is a dozen
+  materials of a dozen colours and multiplying that lot by red gives a muddy
+  brown rather than a red pigeon.
+- **Standing with them, there is nothing left to point at.** Both go dark and
+  the arrow is hidden.
+
+The marker is *told* which of those to do rather than working it out. Whether
+the thing being pointed at is a building, a pigeon standing on it, or nothing
+at all because the two of them are talking, is a question about the game and
+not about the mesh.
+
+### Conversation mode
+
+Meeting somebody changes the shot. The chase camera comes off its boom and
+stands to one side of the pair, holding both of them, aiming between them.
+
+Side on rather than over either shoulder, because a two-shot taken from behind
+one of them is a shot of the back of a pigeon. The stand-off comes from the
+angle the pair subtends — `(span / 2 + margin) / tan(fov / 2)` — so they fill
+the same part of the frame whether they are touching or a wing apart, and the
+margin is also what stops the camera crowding two birds standing on top of each
+other. There is no separate minimum distance; there was one, and it was never
+once reached, because the margin alone already holds the camera three metres
+off.
+
+Of the two sides it could stand on it takes the one it is already nearer, so
+walking round somebody does not send the camera sweeping through them.
+
+It is the same camera, easing with the same smoothing, sharing the same boom
+position and aim — so going into the shot and coming out of it need no cut and
+nothing to blend between.
 
 Nothing about the marker is specific to buildings: it takes a material to
 recolour and a height to hang the arrow over. Marking a wagon needed two
@@ -1579,6 +1619,16 @@ npm test
   off; rounded off at a ribbon's ends rather than running on down the line;
   and the rail, not the road, at a level crossing where the same point is on
   both.
+- **`src/render/camera.test.ts`** — a two-shot holds both birds inside the
+  frame with air to spare, at every separation from touching to a dozen metres
+  apart; stated as the angle each subtends from the camera's own aim, which is
+  what "in shot" means. Without the margin every one of them sits at precisely
+  the edge. It aims between them rather than at either, stands across the line
+  between them rather than behind one, takes the side it is already on so
+  walking round somebody does not sweep the camera through them, backs off
+  further the further apart they are, never crowds two birds in the same place,
+  stands a little above them, and produces finite numbers when the pair and the
+  camera are all at the same point.
 - **`src/render/sun.test.ts`** — the sun is overhead at the equator at noon on
   the equinox, reaches 90 minus the latitude plus the tilt at midsummer noon
   and due south with it, is a full two tilts lower at midwinter, rises in the

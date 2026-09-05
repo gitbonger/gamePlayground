@@ -8,6 +8,7 @@
 
 import * as THREE from 'three';
 import type { BirdState } from '../sim/flight';
+import type { Vec3 } from '../sim/math3';
 
 export interface CameraParams {
   /** Distance behind the bird, in metres. */
@@ -42,10 +43,106 @@ export const defaultCameraParams: CameraParams = {
   fovRefSpeed: 45,
 };
 
+/**
+ * How to frame two birds that have met.
+ *
+ * A different shot from the chase entirely: the subject is not one bird going
+ * somewhere, it is two of them standing together, so the camera comes off the
+ * boom and stands to one side of them both.
+ */
+export interface WatchParams {
+  /**
+   * Clear air to leave beyond the pair, in metres.
+   *
+   * Also what stops the camera crowding two birds standing on top of each
+   * other: the stand-off never falls below `margin / tan(fov / 2)`, which at
+   * the defaults is three metres, so no separate minimum is needed and the
+   * one that used to be here was never once reached.
+   */
+  margin: number;
+  /** How high above them it stands, in metres. */
+  height: number;
+  /** Half-life for easing into and out of the shot, in seconds. */
+  halfLife: number;
+  /** Field of view for the two-shot, in degrees. */
+  fov: number;
+}
+
+export const defaultWatchParams: WatchParams = {
+  margin: 1.4,
+  height: 0.9,
+  halfLife: 0.35,
+  fov: 50,
+};
+
 export interface ChaseCamera {
   update(state: BirdState, params: CameraParams, dt: number): void;
+  /**
+   * Frame two birds together, easing from wherever the camera is.
+   *
+   * Shares the boom's own position and aim, so going into the shot and coming
+   * back out of it are the same easing that follows the bird -- there is no
+   * cut, and nothing to blend between two cameras.
+   */
+  watch(a: Vec3, b: Vec3, params: WatchParams, dt: number): void;
   /** Jump straight to the ideal pose, with no easing. */
   snap(state: BirdState, params: CameraParams): void;
+}
+
+/**
+ * Where a camera should stand to hold two points in frame, and what to aim at.
+ *
+ * Side on rather than over either shoulder: a two-shot taken from behind one
+ * of them is a shot of the back of a pigeon. The stand-off comes from the
+ * angle the pair subtends, so they fill the same part of the frame whether
+ * they are touching or a wing apart.
+ *
+ * Of the two sides it could stand on, it takes the one it is already nearer,
+ * so walking round somebody does not send the camera swinging through them.
+ */
+export function twoShot(
+  a: Vec3,
+  b: Vec3,
+  from: Vec3,
+  params: WatchParams,
+): { position: Vec3; target: Vec3 } {
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
+
+  const alongX = b.x - a.x;
+  const alongZ = b.z - a.z;
+  const span = Math.hypot(alongX, alongZ, b.y - a.y);
+
+  // Far enough back that the pair plus its margin fits the frame.
+  const half = (params.fov / 2) * (Math.PI / 180);
+  const back = (span / 2 + params.margin) / Math.tan(half);
+
+  // Across the line between them, in the ground plane.
+  let outX = -alongZ;
+  let outZ = alongX;
+  const length = Math.hypot(outX, outZ);
+  if (length < 1e-6) {
+    // Standing on top of each other: any side will do, so keep the one the
+    // camera is on rather than picking north every time.
+    outX = from.x - mid.x;
+    outZ = from.z - mid.z;
+    const away = Math.hypot(outX, outZ);
+    if (away < 1e-6) return { position: { x: mid.x, y: mid.y + back, z: mid.z }, target: mid };
+    outX /= away;
+    outZ /= away;
+  } else {
+    outX /= length;
+    outZ /= length;
+    // The near side of the two.
+    if ((from.x - mid.x) * outX + (from.z - mid.z) * outZ < 0) {
+      outX = -outX;
+      outZ = -outZ;
+    }
+  }
+
+  return {
+    position: { x: mid.x + outX * back, y: mid.y + params.height, z: mid.z + outZ * back },
+    target: mid,
+  };
 }
 
 /** Frame-rate independent smoothing factor for a given half-life. */
@@ -130,5 +227,25 @@ export function createChaseCamera(camera: THREE.PerspectiveCamera): ChaseCamera 
     }
   }
 
-  return { update, snap };
+  function watch(a: Vec3, b: Vec3, params: WatchParams, dt: number) {
+    const ideal = twoShot(a, b, position, params);
+
+    desiredPos.set(ideal.position.x, ideal.position.y, ideal.position.z);
+    desiredTarget.set(ideal.target.x, ideal.target.y, ideal.target.z);
+
+    const ease = smoothing(params.halfLife, dt);
+    position.lerp(desiredPos, ease);
+    target.lerp(desiredTarget, ease);
+    camera.up.lerp(up, ease).normalize();
+
+    camera.position.copy(position);
+    camera.lookAt(target);
+
+    if (Math.abs(camera.fov - params.fov) > 0.01) {
+      camera.fov += (params.fov - camera.fov) * ease;
+      camera.updateProjectionMatrix();
+    }
+  }
+
+  return { update, watch, snap };
 }
