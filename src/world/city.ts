@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { createColliderField, type Box, type Collider } from '../sim/collision';
 import { generateCityLayout, type Building, type CityLayout } from './layout';
 import type { Rail, Road } from './streets';
-import { ENGINE, WAGON, onVehicle, type Vehicle } from './train';
+import { ENGINE, WAGON, type Train, type Vehicle } from './train';
 import type { Area, AreaKind } from './areas';
 
 export { defaultWorldOptions, type WorldOptions } from './layout';
@@ -29,8 +29,10 @@ export { defaultWorldOptions, type WorldOptions } from './layout';
 export interface TargetMarker {
   /** What this objective is called: "Level 1", and so on. */
   readonly name: string;
-  /** Where the target stands, in world metres. */
+  /** Where the target stands, in world metres. Follows it if it moves. */
   readonly position: THREE.Vector3;
+  /** The vehicle it is carried by, or null if it stands on the ground. */
+  readonly rides: { train: number; vehicle: number } | null;
   /** Whether it is the one being flown to. Only one usually is. */
   setActive(active: boolean): void;
   /** Flash the target and size the arrow. Once a frame, when active. */
@@ -57,6 +59,8 @@ export interface World {
   collider: Collider;
   /** Everything the pigeon can be sent to, in the order it was named. */
   markers: TargetMarker[];
+  /** Move the rolling stock to where the layout says the trains have got to. */
+  updateTrains(trains: readonly Train[]): void;
   /**
    * Marker arrows, to be drawn in a pass of their own after the world.
    *
@@ -497,46 +501,68 @@ export function buildWorld(
   }
 
   // --- Trains ---------------------------------------------------------------
-  // A wagon that is an objective is drawn on its own, for the same reason the
-  // landmark building is: being marked means being recoloured several times a
-  // second, and one wagon cannot be picked out of a merged rake.
-  const picked = new Map<string, { name: string; vehicle: Vehicle }>();
+  // A mesh per vehicle, positioned from the layout every frame. A train moves,
+  // so its position cannot live in its vertices; and a wagon that is an
+  // objective has to be recolourable on its own anyway.
+  const rolling: { mesh: THREE.Mesh; train: number; vehicle: number }[] = [];
+
+  const picked = new Map<string, string>();
   for (const objective of options.objectives ?? []) {
-    const vehicle = layout.trains?.[objective.train]?.vehicles[objective.vehicle];
-    if (vehicle) picked.set(`${objective.train}:${objective.vehicle}`, { name: objective.name, vehicle });
+    picked.set(`${objective.train}:${objective.vehicle}`, objective.name);
   }
 
-  if (layout.trains?.length) {
-    const rake = layout.trains.flatMap((train, t) =>
-      train.vehicles.filter((_, v) => !picked.has(`${t}:${v}`)),
-    );
-    if (rake.length) {
-      const { geometry, material } = buildTrains(rake);
+  layout.trains?.forEach((train, t) => {
+    train.vehicles.forEach((vehicle, v) => {
+      const { geometry, material } = buildVehicle(vehicle);
       disposables.push(geometry, material);
-      const stock = new THREE.Mesh(geometry, material);
-      stock.castShadow = true;
-      stock.receiveShadow = true;
-      group.add(stock);
-    }
 
-    for (const { name, vehicle } of picked.values()) {
-      const { geometry, material } = buildTrains([vehicle]);
-      disposables.push(geometry, material);
       const mesh = new THREE.Mesh(geometry, material);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       group.add(mesh);
+      rolling.push({ mesh, train: t, vehicle: v });
 
-      markers.push(
-        createMarker(
-          name,
-          material as THREE.MeshLambertMaterial,
-          new THREE.Vector3(vehicle.x, WAGON.deck + WAGON.stake, vehicle.z),
-          disposables,
-          overlay,
-        ),
-      );
+      const name = picked.get(`${t}:${v}`);
+      if (name) {
+        markers.push(
+          createMarker(
+            name,
+            material as THREE.MeshLambertMaterial,
+            new THREE.Vector3(vehicle.x, WAGON.deck + WAGON.stake, vehicle.z),
+            disposables,
+            overlay,
+            { train: t, vehicle: v },
+          ),
+        );
+      }
+    });
+  });
+
+  /** Move every vehicle to where its train has got to. */
+  const updateTrains = (trains: readonly Train[]) => {
+    for (const { mesh, train, vehicle } of rolling) {
+      const at = trains[train]?.vehicles[vehicle];
+      if (!at) continue;
+      mesh.position.set(at.x, 0, at.z);
+      mesh.rotation.y = at.yaw;
     }
+    for (const marker of markers) {
+      const carried = marker.rides;
+      if (!carried) continue;
+      const at = trains[carried.train]?.vehicles[carried.vehicle];
+      if (at) marker.position.set(at.x, WAGON.deck + WAGON.stake, at.z);
+    }
+  };
+
+  // --- Railways -------------------------------------------------------------
+  // Over the road surface, because a tramway is laid in the carriageway.
+  if (layout.rails?.length) {
+    const { geometry, material } = buildRails(layout.rails);
+    disposables.push(geometry, material);
+    const track = new THREE.Mesh(geometry, asDecal(material, RAIL_ORDER));
+    track.receiveShadow = true;
+    track.renderOrder = RAIL_ORDER;
+    group.add(track);
   }
 
   // --- Streets ------------------------------------------------------------
@@ -555,6 +581,7 @@ export function buildWorld(
     collider: createColliderField(layout.boxes),
     markers,
     overlay,
+    updateTrains,
     dispose() {
       for (const d of disposables) d.dispose();
     },
@@ -576,6 +603,7 @@ function createMarker(
   top: THREE.Vector3,
   disposables: { dispose(): void }[],
   group: THREE.Group,
+  rides: { train: number; vehicle: number } | null = null,
 ): TargetMarker {
   // Flashed on the emissive rather than the diffuse, which is what lets the
   // same marker work on a wagon. A wagon is one mesh of many vertex colours --
@@ -608,6 +636,7 @@ function createMarker(
   return {
     name,
     position,
+    rides,
     setActive(on) {
       active = on;
       arrow.visible = on;
@@ -712,14 +741,14 @@ function buildAreas(
  * thousand triangles costs a single draw call.
  */
 /**
- * Every train as one mesh, in world coordinates.
+ * One vehicle's parts, in its own frame: along it, across it, and up.
  *
- * Merged for the same reason the roofs are: a vehicle's parts are boxes of
- * a dozen different shapes, and instancing wants one shape many times. There
- * are only ever a few hundred boxes in a rake, so baking them costs nothing
- * and the whole train is one draw call.
+ * Built in local coordinates rather than baked into the world, because a train
+ * that moves cannot have its position in its vertices. Each vehicle gets a
+ * mesh and a transform, which is thirteen draw calls for a rake and the only
+ * arrangement where moving one is free.
  */
-function buildTrains(vehicles: readonly Vehicle[]): {
+function buildVehicle(vehicle: Vehicle): {
   geometry: THREE.BufferGeometry;
   material: THREE.Material;
 } {
@@ -728,9 +757,7 @@ function buildTrains(vehicles: readonly Vehicle[]): {
   const colours: number[] = [];
   const tint = new THREE.Color();
 
-  /** One box, in the vehicle's own frame: along it, across it, and up. */
   const part = (
-    vehicle: Vehicle,
     colour: number,
     along: number,
     across: number,
@@ -739,10 +766,8 @@ function buildTrains(vehicles: readonly Vehicle[]): {
     width: number,
     height: number,
   ) => {
-    const at = onVehicle(vehicle, along, across);
     const box = new THREE.BoxGeometry(length, height, width).toNonIndexed();
-    box.rotateY(vehicle.yaw);
-    box.translate(at.x, base + height / 2, at.z);
+    box.translate(along, base + height / 2, across);
 
     const point = box.getAttribute('position');
     const normal = box.getAttribute('normal');
@@ -757,64 +782,32 @@ function buildTrains(vehicles: readonly Vehicle[]): {
 
   const IRON = 0x2b2b2d;
   const RUST = 0x5c4a40;
+  const bogie = vehicle.length * 0.33;
 
-  {
-    for (const vehicle of vehicles) {
-      const bogie = vehicle.length * 0.33;
+  if (vehicle.kind === 'engine') {
+    // Frame and running gear, then the hood, then the cab above it.
+    part(IRON, 0, 0, 0.55, vehicle.length, vehicle.width, 0.45);
+    for (const end of [bogie, -bogie]) {
+      part(IRON, end, 0, 0.15, 3.4, vehicle.width * 0.82, 0.75);
+    }
+    part(0x7d2f26, 0, 0, 1.0, vehicle.length - 0.6, vehicle.width, ENGINE.body - 1.0);
+    const cab = vehicle.length / 2 - ENGINE.cabLength / 2 - 0.3;
+    part(0x7d2f26, cab, 0, ENGINE.body, ENGINE.cabLength, vehicle.width, ENGINE.cab - ENGINE.body - 0.16);
+    part(0x3f4145, cab, 0, ENGINE.cab - 0.16, ENGINE.cabLength + 0.3, vehicle.width + 0.2, 0.16);
+  } else {
+    // Running gear, solebar, and the deck laid on top of it.
+    for (const end of [bogie, -bogie]) {
+      part(IRON, end, 0, 0.15, 2.6, vehicle.width * 0.78, 0.6);
+    }
+    part(RUST, 0, 0, WAGON.deck - 0.5, vehicle.length, vehicle.width * 0.9, 0.32);
+    part(0x6f5c45, 0, 0, WAGON.deck - 0.18, vehicle.length, vehicle.width, 0.18);
 
-      if (vehicle.kind === 'engine') {
-        // Frame and running gear, then the hood, then the cab above it.
-        part(vehicle, IRON, 0, 0, 0.55, vehicle.length, vehicle.width, 0.45);
-        for (const end of [bogie, -bogie]) {
-          part(vehicle, IRON, end, 0, 0.15, 3.4, vehicle.width * 0.82, 0.75);
-        }
-        part(vehicle, 0x7d2f26, 0, 0, 1.0, vehicle.length - 0.6, vehicle.width, ENGINE.body - 1.0);
-        part(
-          vehicle,
-          0x7d2f26,
-          vehicle.length / 2 - ENGINE.cabLength / 2 - 0.3,
-          0,
-          ENGINE.body,
-          ENGINE.cabLength,
-          vehicle.width,
-          ENGINE.cab - ENGINE.body - 0.16,
-        );
-        part(
-          vehicle,
-          0x3f4145,
-          vehicle.length / 2 - ENGINE.cabLength / 2 - 0.3,
-          0,
-          ENGINE.cab - 0.16,
-          ENGINE.cabLength + 0.3,
-          vehicle.width + 0.2,
-          0.16,
-        );
-        continue;
-      }
-
-      // Running gear, solebar, and the deck laid on top of it.
-      for (const end of [bogie, -bogie]) {
-        part(vehicle, IRON, end, 0, 0.15, 2.6, vehicle.width * 0.78, 0.6);
-      }
-      part(vehicle, RUST, 0, 0, WAGON.deck - 0.5, vehicle.length, vehicle.width * 0.9, 0.32);
-      part(vehicle, 0x6f5c45, 0, 0, WAGON.deck - 0.18, vehicle.length, vehicle.width, 0.18);
-
-      const across = vehicle.width / 2 - WAGON.stakeThickness / 2;
-      const spacing = (vehicle.length - WAGON.stakeThickness) / (WAGON.stakesPerSide - 1);
-      for (let i = 0; i < WAGON.stakesPerSide; i += 1) {
-        const along = -(vehicle.length - WAGON.stakeThickness) / 2 + i * spacing;
-        for (const side of [across, -across]) {
-          part(
-            vehicle,
-            0x7c6a51,
-            along,
-            side,
-            WAGON.deck,
-            WAGON.stakeThickness,
-            WAGON.stakeThickness,
-            WAGON.stake,
-          );
-        }
+    const across = vehicle.width / 2 - WAGON.stakeThickness / 2;
+    const spacing = (vehicle.length - WAGON.stakeThickness) / (WAGON.stakesPerSide - 1);
+    for (let i = 0; i < WAGON.stakesPerSide; i += 1) {
+      const along = -(vehicle.length - WAGON.stakeThickness) / 2 + i * spacing;
+      for (const side of [across, -across]) {
+        part(0x7c6a51, along, side, WAGON.deck, WAGON.stakeThickness, WAGON.stakeThickness, WAGON.stake);
       }
     }
   }

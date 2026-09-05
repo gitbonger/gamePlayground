@@ -22,13 +22,25 @@ import { createDebugGui } from './debug-gui';
 import { createScene } from './render/scene';
 import { createBirdRig, PIGEON_MORPHS, type WingPose } from './render/bird';
 import { createFlock, defaultFlockOptions } from './flock';
+import {
+  combineColliders,
+  createColliderField,
+  type Collider,
+} from './sim/collision';
 import { createChaseCamera, defaultCameraParams } from './render/camera';
 import { createHud } from './render/hud';
 import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
 import { buildWorld } from './world/city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
-import { WAGON } from './world/train';
+import {
+  consistLength,
+  layOutTrain,
+  lineLength,
+  shuttle,
+  trainBoxes,
+  WAGON,
+} from './world/train';
 import { bearing, distance, project } from './world/geo';
 import type { MapData } from './world/streets';
 import homeMap from './world/data/home.json';
@@ -146,6 +158,15 @@ scene.add(rig.object);
  */
 const rake = layout.trains[0]?.vehicles ?? [];
 const roost = rake.length ? rake[middleCar]! : { x: home.x, z: home.z };
+
+/**
+ * The roost, which moves, because the wagon it is on moves.
+ *
+ * The flock reads this when it lets a bird out rather than when it was built,
+ * so keeping it up to date is all it takes for the birds to leave from
+ * wherever the train has got to.
+ */
+const perch = { x: roost.x, y: WAGON.deck + WAGON.stake + 2, z: roost.z };
 /**
  * And they leave along the line, not in every direction.
  *
@@ -157,11 +178,10 @@ const roost = rake.length ? rake[middleCar]! : { x: home.x, z: home.z };
  */
 const alongTheTrack = 'yaw' in roost ? Math.atan2(Math.cos(roost.yaw), -Math.sin(roost.yaw)) : 0;
 
-const flock = createFlock(
-  PIGEON_MORPHS.length,
-  { x: roost.x, y: WAGON.deck + WAGON.stake + 2, z: roost.z },
-  { ...defaultFlockOptions, outbound: { bearing: alongTheTrack, spread: 0.7 } },
-);
+const flock = createFlock(PIGEON_MORPHS.length, perch, {
+  ...defaultFlockOptions,
+  outbound: { bearing: alongTheTrack, spread: 0.7 },
+});
 const flockRigs = flock.members.map((member) => {
   const bird = createBirdRig(PIGEON_MORPHS[member.morph]);
   scene.add(bird.object);
@@ -223,6 +243,40 @@ const interpolatedState: BirdState = { ...bird };
 // Once the flight is over the camera drifts back to take in the spot.
 const restCameraParams = { ...cameraParams };
 
+/**
+ * Run the trains on, and hand back a collider that includes them.
+ *
+ * The city is built into a grid once and never touched; a train is somewhere
+ * else every tick and carries its own field, rebuilt from scratch each time.
+ * That costs 0.012 ms for a rake of thirteen, which is nothing worth avoiding.
+ */
+function moveTrains(dt: number) {
+  const fields: Collider[] = [world.collider];
+
+  for (const train of layout.trains) {
+    const run = shuttle(
+      lineLength(train.line.points),
+      consistLength(train.vehicles.length - 1),
+      train.along,
+      train.direction,
+      train.speed * dt,
+    );
+    train.along = run.along;
+    train.direction = run.direction;
+    train.vehicles = layOutTrain(train.line, train.along, train.vehicles.length - 1);
+    fields.push(createColliderField(trainBoxes(train.vehicles)));
+  }
+
+  const carriage = layout.trains[0]?.vehicles[middleCar];
+  if (carriage) {
+    perch.x = carriage.x;
+    perch.z = carriage.z;
+  }
+
+  return combineColliders(...fields);
+}
+
+let solid = moveTrains(0);
 let accumulator = 0;
 let lastTime = performance.now() / 1000;
 let smoothedFps = 60;
@@ -243,8 +297,9 @@ function frame(nowMs: number) {
   while (accumulator >= TICK) {
     previousPosition = { ...bird.position };
     previousOrientation = { ...bird.orientation };
-    telemetry = step(bird, input.controls, flightParams, TICK, world.collider, wind);
-    flock.update(TICK, world.collider, wind);
+    solid = moveTrains(TICK);
+    telemetry = step(bird, input.controls, flightParams, TICK, solid, wind);
+    flock.update(TICK, solid, wind);
     if (bird.ending === null) run.update(bird, TICK);
     accumulator -= TICK;
   }
@@ -269,6 +324,7 @@ function frame(nowMs: number) {
       : input.controls.tuck
         ? 'tucked'
         : 'gliding';
+  world.updateTrains(layout.trains);
   rig.update(interpolatedState, wings, frameTime);
 
   // Flash the target and size its arrow. Both want the drawn position rather

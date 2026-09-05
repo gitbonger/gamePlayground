@@ -297,3 +297,32 @@ export function sweepBox(
 
 /** Speed at which a mover is closing on a surface, in m/s. Negative if moving away. */
 export const closingSpeed = (velocity: Vec3, normal: Vec3): number => -dot(velocity, normal);
+
+/**
+ * One collider over several, nearest hit wins.
+ *
+ * Which is how anything that moves gets to be solid. The city is built into a
+ * grid once and never touched again; a train is somewhere else every tick, and
+ * rebuilding four thousand buildings to move thirteen wagons would be absurd.
+ * Two fields, asked in turn, and the sim cannot tell the difference.
+ */
+export function combineColliders(...fields: readonly Collider[]): Collider {
+  return {
+    sweep(from, to, radius) {
+      let nearest: SweepHit | null = null;
+      for (const field of fields) {
+        const hit = field.sweep(from, to, radius);
+        if (hit && (!nearest || hit.t < nearest.t)) nearest = hit;
+      }
+      return nearest;
+    },
+    heightAt(x, z) {
+      let tallest = -Infinity;
+      for (const field of fields) tallest = Math.max(tallest, field.heightAt(x, z));
+      return tallest;
+    },
+    get boxCount() {
+      return fields.reduce((total, field) => total + field.boxCount, 0);
+    },
+  };
+}

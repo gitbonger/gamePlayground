@@ -31,7 +31,6 @@ import {
   layOutTrain,
   lineLength,
   pointAlong,
-  trainBoxes,
   type Train,
 } from './train';
 import { distance, type Point } from './geo';
@@ -101,8 +100,10 @@ export interface MapWorldOptions {
    * so the renderer can pick it out as a landmark to home in on.
    */
   target?: Point;
-  /** Trains to stand on the track. */
+  /** Trains to run on the track. */
   trains?: TrainSpec[];
+  /** How far from where a train was asked for a line may be, in metres. */
+  trainReach: number;
 }
 
 export const defaultMapWorldOptions: MapWorldOptions = {
@@ -119,6 +120,7 @@ export const defaultMapWorldOptions: MapWorldOptions = {
   spacing: 9,
   parkTrees: 19,
   gardenTrees: 60,
+  trainReach: 40,
   seed: 11,
 };
 
@@ -134,10 +136,12 @@ function mulberry32(seed: number): () => number {
 }
 
 export interface TrainSpec {
-  /** Somewhere near the line it should stand on; the nearest one is chosen. */
+  /** Somewhere near the line it should run on; the nearest one is chosen. */
   near: Point;
   /** How many wagons behind the engine. */
   wagons: number;
+  /** How fast it runs, in metres per second. Yard speed by default. */
+  speed?: number;
 }
 
 export interface MapWorld extends CityLayout {
@@ -443,36 +447,46 @@ export function buildLayoutFromMap(
     plant(area.points as Point2[], options.parkTrees);
   }
 
-  // Trains, on whichever line runs closest to where each was asked for.
+  // Trains, on whichever line near the asked-for point gives the longest run.
+  //
+  // Nearest used to be enough, when a train stood still. A train that moves
+  // wants room: the nearest siding to this yard is 282 m, and a rake of twelve
+  // is 198 m of that, leaving it shuffling back and forth over eighty. Among
+  // the lines close enough to be the one meant, the roomiest is the one to
+  // stand it on.
   const trains: Train[] = [];
   for (const spec of options.trains ?? []) {
+    const length = consistLength(spec.wagons);
+
     let line: Rail | null = null;
-    let best = Infinity;
+    let best = -Infinity;
     for (const rail of map.rails ?? []) {
       const at = chainageOf(rail.points, spec.near.x, spec.near.z);
       const on = pointAlong(rail.points, at);
       if (!on) continue;
       const away = Math.hypot(on.x - spec.near.x, on.z - spec.near.z);
-      if (away < best) {
-        best = away;
+      if (away > options.trainReach) continue;
+
+      const run = lineLength(rail.points) - length;
+      if (run > best) {
+        best = run;
         line = rail;
       }
     }
-    if (!line) continue;
+    if (!line || best < 0) continue;
 
     // Centred on where it was asked for, then shifted along until the whole
     // train is on the line: half a consist hanging off the end of a siding
     // looks far worse than one standing a little further up it.
-    const length = consistLength(spec.wagons);
     const run = lineLength(line.points);
-    if (run < length) continue;
     const wanted = chainageOf(line.points, spec.near.x, spec.near.z) + length / 2;
     const along = Math.min(Math.max(wanted, length), run);
 
     const vehicles = layOutTrain(line, along, spec.wagons);
     if (!vehicles.length) continue;
-    trains.push({ line, along, vehicles });
-    boxes.push(...trainBoxes(vehicles));
+    // Deliberately not added to `boxes`: a train moves, and the world's boxes
+    // are built into a grid once and never touched again. It carries its own.
+    trains.push({ line, along, direction: 1, speed: spec.speed ?? 6, vehicles });
   }
 
   // Mark the building nearest the destination, so there is something to aim

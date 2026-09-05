@@ -407,6 +407,43 @@ to any other roof -- a gentle approach settles at 1.47 m, the deck plus the
 bird's own radius, while arriving at 12 m/s is `too-fast` and dropping onto it
 from 4 m up is `hard-impact`. All four of those are tests.
 
+**The train runs.** It shuttles along its line at 6 m/s and turns round when
+the line ends — reflected rather than clamped, so it comes back out at the
+speed it went in rather than stalling against the buffers for a tick. The
+consist is *not* turned round with it: a locomotive that finds itself at the
+back is a train being propelled, which is what shunting is, and the alternative
+is a rake flipping end for end in a single frame.
+
+Making it move changed three things that had been baked in.
+
+**Its geometry was in world coordinates**, merged into one mesh. A train that
+moves cannot have its position in its vertices, so each vehicle is now built in
+its own frame and given a transform — thirteen draw calls for a rake, and
+moving one is free. That also removed the special case where a marked wagon had
+to be pulled out of a merged mesh: every vehicle is already its own.
+
+**Its collision boxes were in the world's grid**, which is built once and never
+touched again. Rebuilding four thousand buildings to move thirteen wagons would
+be absurd, so a train carries its own field, rebuilt from scratch every tick,
+and `combineColliders` asks each in turn and takes the nearer hit. That costs
+**0.015 ms a tick** — 0.19% of real time — which is nothing worth avoiding.
+
+**And the line is now chosen for room rather than proximity.** Nearest was fine
+when a train stood still. The nearest siding to this yard is 282 m and a rake
+of twelve is 198 m of it, which left the train shuffling back and forth over
+eighty metres and reversing every fourteen seconds. Picking the roomiest line
+within 40 m of the asked-for point gives it 191 m to run and a reversal every
+half minute.
+
+Two consequences worth knowing. The flock roosts on the middle wagon, and the
+anchor it is released from is read at the moment of release rather than when it
+was built — so keeping one object up to date is all it takes for the birds to
+leave from wherever the train has got to. And the Level 1 marker rides the
+wagon it is on, or the arrow would hang over the patch of ballast the wagon
+left. Landing on a moving wagon is a different matter: the bird settles at a
+world position and the wagon goes on without it, which is a thing to fix when
+landing gets its turn.
+
 **Windows and roof tiles are drawn in the shader, off world coordinates.**
 Both patterns face the same problem: the walls are one shared box scaled per
 instance, so anything keyed to the mesh UVs stretches, and a 26 m house would
@@ -923,7 +960,9 @@ npm test
   less lift than a spread one despite covering more area.
 - **`src/sim/collision.test.ts`** — entry faces and normals, radius expansion,
   nearest-hit ordering, boxes spanning several grid cells, and a fast segment
-  that a point test would tunnel through.
+  that a point test would tunnel through. Several fields at once count
+  everything, find what either would have found, take the nearer hit, stand on
+  the taller, and are an empty world when given nothing.
 - **`src/world/layout.test.ts`** — flies a bird through the *actual* generated
   city and asserts it crashes into the skyline, never ends up inside a solid
   box, passes clean overhead when high enough, and that the broad phase stays
@@ -972,7 +1011,12 @@ npm test
   is caught even when its centre is clear; and the sample grid is never coarser
   than its step and always has a point on the centre, which is the hole a small
   park hides in.
-- **`src/world/train.test.ts`** — distances along a line run out at the end
+- **`src/world/train.test.ts`** — a train runs on and keeps its direction,
+  turns round at either end with the whole consist still on the rails, stays
+  between them however long it runs, visits both rather than settling against
+  one, survives a step longer than the line itself, stands still on a line too
+  short to hold it, and does not turn the rake round when it turns round.
+  Distances along a line run out at the end
   rather than extrapolating past it; a train reaches back from its leading
   coupling with real slack over the couplings, stated in metres rather than
   against the constant that produced it; a vehicle over a bend takes the chord

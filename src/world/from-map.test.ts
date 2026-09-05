@@ -3,8 +3,8 @@ import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
 import { indexStreets, type MapData, type Rail, type Road } from './streets';
 import { footprintSamples, type Area } from './areas';
 import { distanceToEdges, pointInPolygon } from './polygon';
-import { consistLength, lineLength, WAGON } from './train';
-import { createColliderField, worldBounds } from '../sim/collision';
+import { consistLength, lineLength, trainBoxes, WAGON } from './train';
+import { combineColliders, createColliderField, worldBounds } from '../sim/collision';
 import { createBird, defaultParams, neutralControls, step } from '../sim/flight';
 import { vec } from '../sim/math3';
 
@@ -398,10 +398,21 @@ describe('standing a train on the track', () => {
     expect(train.along - consistLength(4)).toBeGreaterThanOrEqual(-1e-9);
   });
 
-  it('adds it to the solids, so the pigeon can land on it', () => {
-    const collider = createColliderField(layout.boxes);
+  it('keeps its solids out of the world, and carries them itself', () => {
+    // The city is built into a grid once and never touched again. A train is
+    // somewhere else every tick, so it cannot be in there -- it brings its own
+    // field, and the two are asked in turn.
     const wagon = layout.trains[0]!.vehicles[2]!;
-    expect(collider.heightAt(wagon.x, wagon.z)).toBeCloseTo(WAGON.deck, 6);
+    const city = createColliderField(layout.boxes);
+    expect(city.heightAt(wagon.x, wagon.z)).toBe(-Infinity);
+
+    const rolling = createColliderField(trainBoxes(layout.trains[0]!.vehicles));
+    expect(rolling.heightAt(wagon.x, wagon.z)).toBeCloseTo(WAGON.deck, 6);
+
+    // And together they are one solid world, which is what the sim is handed.
+    const both = combineColliders(city, rolling);
+    expect(both.heightAt(wagon.x, wagon.z)).toBeCloseTo(WAGON.deck, 6);
+    expect(both.boxCount).toBe(city.boxCount + rolling.boxCount);
   });
 
   it('stands none when there is no railway to stand one on', () => {

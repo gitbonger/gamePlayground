@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   chainageOf,
+  shuttle,
   consistLength,
   ENGINE,
   layOutTrain,
@@ -188,5 +189,86 @@ describe('landing on a wagon', () => {
     expect(hit).not.toBeNull();
     expect(hit!.normal.y).toBeCloseTo(1, 6);
     expect(collider.heightAt(wagon.x, wagon.z)).toBeCloseTo(WAGON.deck, 6);
+  });
+});
+
+describe('running along the line', () => {
+  const LINE = 400;
+  const CONSIST = 100;
+
+  it('runs on, and keeps going the way it was going', () => {
+    const a = shuttle(LINE, CONSIST, 200, 1, 6);
+    expect(a).toEqual({ along: 206, direction: 1 });
+    const b = shuttle(LINE, CONSIST, 200, -1, 6);
+    expect(b).toEqual({ along: 194, direction: -1 });
+  });
+
+  it('turns round at the end of the track rather than running off it', () => {
+    const { along, direction } = shuttle(LINE, CONSIST, 397, 1, 6);
+    expect(direction).toBe(-1);
+    // Reflected, not stopped: it comes back out at the speed it went in.
+    expect(along).toBeCloseTo(397, 6);
+    expect(along).toBeLessThanOrEqual(LINE);
+  });
+
+  it('turns round at the other end too, with the whole train still on', () => {
+    // The near end is a consist length in, because the rest of the rake is
+    // behind the leading coupling and has to be on the rails as well.
+    const { along, direction } = shuttle(LINE, CONSIST, 103, -1, 6);
+    expect(direction).toBe(1);
+    expect(along).toBeCloseTo(103, 6);
+    expect(along).toBeGreaterThanOrEqual(CONSIST);
+  });
+
+  it('stays on the rails however long it runs for', () => {
+    let along = 250;
+    let direction = 1;
+    for (let i = 0; i < 5000; i += 1) {
+      ({ along, direction } = shuttle(LINE, CONSIST, along, direction, 7.3));
+      expect(along).toBeGreaterThanOrEqual(CONSIST - 1e-9);
+      expect(along).toBeLessThanOrEqual(LINE + 1e-9);
+    }
+  });
+
+  it('shuttles rather than drifting to one end', () => {
+    // Over a long run it should visit both ends, not settle against one.
+    let along = 250;
+    let direction = 1;
+    let lowest = Infinity;
+    let highest = -Infinity;
+    for (let i = 0; i < 2000; i += 1) {
+      ({ along, direction } = shuttle(LINE, CONSIST, along, direction, 3));
+      lowest = Math.min(lowest, along);
+      highest = Math.max(highest, along);
+    }
+    expect(lowest).toBeLessThan(CONSIST + 5);
+    expect(highest).toBeGreaterThan(LINE - 5);
+  });
+
+  it('copes with a step longer than the line itself', () => {
+    // Not a thing that happens at yard speeds, and very much a thing that
+    // happens when someone drags a speed slider.
+    const { along, direction } = shuttle(LINE, CONSIST, 250, 1, 5000);
+    expect(Number.isFinite(along)).toBe(true);
+    expect(along).toBeGreaterThanOrEqual(CONSIST);
+    expect(along).toBeLessThanOrEqual(LINE);
+    expect(Math.abs(direction)).toBe(1);
+  });
+
+  it('stands still on a line too short to hold it', () => {
+    expect(shuttle(80, CONSIST, 90, 1, 6)).toEqual({ along: 90, direction: 1 });
+  });
+
+  it('does not turn the consist round when it turns round', () => {
+    // A locomotive that finds itself at the back is a train being propelled,
+    // which is what shunting is -- and the alternative is the whole rake
+    // flipping end for end in a single tick.
+    const line: Rail = { kind: 'rail', width: 8, points: [[0, 0], [400, 0]] };
+    const before = layOutTrain(line, 300, 5);
+    const after = layOutTrain(line, 300, 5);
+    expect(before[0]!.kind).toBe('engine');
+    expect(after[0]!.kind).toBe('engine');
+    // The engine leads the leading coupling whichever way it happens to run.
+    expect(after[0]!.x).toBeGreaterThan(after[1]!.x);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   aabb,
+  combineColliders,
   createColliderField,
   sweepBox,
   turnedBox,
@@ -166,5 +167,45 @@ describe('turned boxes', () => {
     const field = createColliderField([turnedBox(0, 0, 10, 25, 10, 0.4)]);
     expect(field.heightAt(0, 0)).toBe(25);
     expect(field.heightAt(80, 80)).toBe(-Infinity);
+  });
+});
+
+describe('several fields at once', () => {
+  // How anything that moves gets to be solid: the city is gridded once and
+  // never touched, while a train is somewhere else every tick and brings its
+  // own field along.
+  const near = createColliderField([turnedBox(0, 10, 8, 20, 8, 0)]);
+  const far = createColliderField([turnedBox(0, 40, 8, 20, 8, 0)]);
+  const both = combineColliders(near, far);
+
+  it('counts everything it was given', () => {
+    expect(both.boxCount).toBe(near.boxCount + far.boxCount);
+  });
+
+  it('finds what either one would have found', () => {
+    expect(both.sweep(vec(0, 5, -10), vec(0, 5, 20), 0.2)).not.toBeNull();
+    expect(both.sweep(vec(0, 5, 25), vec(0, 5, 50), 0.2)).not.toBeNull();
+  });
+
+  it('takes the nearer hit when both are in the way', () => {
+    const along = both.sweep(vec(0, 5, -10), vec(0, 5, 60), 0.2)!;
+    const alone = near.sweep(vec(0, 5, -10), vec(0, 5, 60), 0.2)!;
+    expect(along.t).toBeCloseTo(alone.t, 9);
+    // Which is the near box, not the far one.
+    expect(along.t).toBeLessThan(far.sweep(vec(0, 5, -10), vec(0, 5, 60), 0.2)!.t);
+  });
+
+  it('stands on the taller of them', () => {
+    expect(both.heightAt(0, 10)).toBe(near.heightAt(0, 10));
+    expect(both.heightAt(0, 40)).toBe(far.heightAt(0, 40));
+    // Nothing anywhere near, from either.
+    expect(both.heightAt(500, 500)).toBe(-Infinity);
+  });
+
+  it('is an empty world when given nothing', () => {
+    const none = combineColliders();
+    expect(none.boxCount).toBe(0);
+    expect(none.sweep(vec(0, 5, -10), vec(0, 5, 60), 0.2)).toBeNull();
+    expect(none.heightAt(0, 0)).toBe(-Infinity);
   });
 });

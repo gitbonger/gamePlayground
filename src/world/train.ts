@@ -64,11 +64,53 @@ export interface Vehicle {
 }
 
 export interface Train {
-  /** The line it stands on, so it can be moved along it later. */
+  /** The line it runs on. */
   line: Rail;
   /** How far along that line the leading coupling has got, in metres. */
   along: number;
+  /** Which way it is going: +1 up the line as drawn, -1 back down it. */
+  direction: number;
+  /** How fast, in metres per second. */
+  speed: number;
   vehicles: Vehicle[];
+}
+
+/**
+ * Where a train has got to after running `step` metres, given that the line
+ * ends.
+ *
+ * It reverses rather than stopping, and the whole consist has to stay on the
+ * rails, so it turns round at `consist` metres from one end and at the far end
+ * itself. Reflected rather than clamped: a train that ran into the buffers
+ * should come back out at the speed it went in, not stall against them for a
+ * tick. The loop is for a step longer than the line, which is not a thing that
+ * happens at yard speeds but is a thing that happens when someone drags the
+ * speed slider.
+ *
+ * The consist is not turned round with it. A locomotive at one end that finds
+ * itself at the back is a train being propelled, which is what shunting is.
+ */
+export function shuttle(
+  lineLength: number,
+  consist: number,
+  along: number,
+  direction: number,
+  step: number,
+): { along: number; direction: number } {
+  if (lineLength <= consist) return { along, direction };
+
+  let at = along + direction * step;
+  let way = direction;
+  for (let guard = 0; guard < 64; guard += 1) {
+    if (at > lineLength) {
+      at = 2 * lineLength - at;
+      way = -way;
+    } else if (at < consist) {
+      at = 2 * consist - at;
+      way = -way;
+    } else break;
+  }
+  return { along: at, direction: way };
 }
 
 /** Total length of a polyline, in metres. */

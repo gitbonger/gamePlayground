@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { arrowScale, buildRoofs, buildWorld, roofRise, targetFlash } from './city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
-import { WAGON } from './train';
+import { consistLength, layOutTrain, lineLength, shuttle, WAGON } from './train';
 import type { MapData, Rail, Road } from './streets';
 
 const BLOCK: Road[] = [
@@ -23,6 +23,31 @@ const map: MapData = {
   rails: SIDING,
   areas: [],
 };
+
+/**
+ * The ground is textured with a grid drawn to a canvas, which Node has no
+ * notion of. Everything under test here is geometry and materials, so the
+ * canvas only has to exist and absorb the handful of calls made to it.
+ */
+const realDocument = (globalThis as { document?: unknown }).document;
+beforeAll(() => {
+  (globalThis as { document?: unknown }).document = {
+    createElement: () => ({
+      width: 0,
+      height: 0,
+      getContext: () => ({
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 0,
+        fillRect() {},
+        strokeRect() {},
+      }),
+    }),
+  };
+});
+afterAll(() => {
+  (globalThis as { document?: unknown }).document = realDocument;
+});
 
 describe('roofs', () => {
   it('takes the roof out of the building rather than piling it on top', () => {
@@ -138,30 +163,6 @@ describe('marking the target', () => {
 });
 
 describe('levels', () => {
-  /**
-   * The ground is textured with a grid drawn to a canvas, which Node has no
-   * notion of. Everything under test here is geometry and materials, so the
-   * canvas only has to exist and absorb the handful of calls made to it.
-   */
-  const realDocument = (globalThis as { document?: unknown }).document;
-  beforeAll(() => {
-    (globalThis as { document?: unknown }).document = {
-      createElement: () => ({
-        width: 0,
-        height: 0,
-        getContext: () => ({
-          fillStyle: '',
-          strokeStyle: '',
-          lineWidth: 0,
-          fillRect() {},
-          strokeRect() {},
-        }),
-      }),
-    };
-  });
-  afterAll(() => {
-    (globalThis as { document?: unknown }).document = realDocument;
-  });
 
   const build = () =>
     buildWorld(buildLayoutFromMap(map, {
@@ -272,3 +273,85 @@ function countArrows(world: ReturnType<typeof buildWorld>) {
   });
   return { total: total / 2, visible: visible / 2 };
 }
+
+describe('a train that moves', () => {
+  const make = () => {
+    const layout = buildLayoutFromMap(map, {
+      ...defaultMapWorldOptions,
+      target: { x: 40, z: 40 },
+      trains: [{ near: { x: 0, z: 320 }, wagons: 4 }],
+    });
+    const world = buildWorld(layout, {
+      landmark: 'Level 2',
+      objectives: [{ name: 'Level 1', train: 0, vehicle: 2 }],
+    });
+    return { layout, world };
+  };
+
+  /** Run a train on down its line, the way the frame loop does. */
+  const runOn = (layout: ReturnType<typeof make>['layout'], metres: number) => {
+    const train = layout.trains[0]!;
+    const wagons = train.vehicles.length - 1;
+    const moved = shuttle(
+      lineLength(train.line.points),
+      consistLength(wagons),
+      train.along,
+      train.direction,
+      metres,
+    );
+    train.along = moved.along;
+    train.direction = moved.direction;
+    train.vehicles = layOutTrain(train.line, train.along, wagons);
+  };
+
+  it('carries the rolling stock along with it, and nothing else', () => {
+    // Tracked per mesh rather than as a sorted list of positions: the roads
+    // and the railway are vertex-coloured too, and sit perfectly still.
+    const { layout, world } = make();
+    const where = () => {
+      const at = new Map<string, number>();
+      world.group.traverse((child: { isMesh?: boolean; uuid?: string; position?: { x: number } }) => {
+        if (child.isMesh) at.set(child.uuid!, child.position!.x);
+      });
+      return at;
+    };
+
+    world.updateTrains(layout.trains);
+    const before = where();
+    runOn(layout, 40);
+    world.updateTrains(layout.trains);
+    const after = where();
+
+    const moved = [...after].filter(([id, x]) => Math.abs(x - before.get(id)!) > 1e-6);
+    // Every vehicle in the rake, and not one thing more.
+    expect(moved).toHaveLength(layout.trains[0]!.vehicles.length);
+    for (const [id, x] of moved) {
+      expect(x - before.get(id)!).toBeCloseTo(40, 6);
+    }
+  });
+
+  it('carries the marker with the wagon it is on', () => {
+    // Otherwise the arrow hangs over the patch of ballast the wagon left.
+    const { layout, world } = make();
+    world.updateTrains(layout.trains);
+    const marker = world.markers.find((m) => m.name === 'Level 1')!;
+    const started = marker.position.clone();
+
+    runOn(layout, 40);
+    world.updateTrains(layout.trains);
+
+    const wagon = layout.trains[0]!.vehicles[2]!;
+    expect(marker.position.x).toBeCloseTo(wagon.x, 6);
+    expect(marker.position.z).toBeCloseTo(wagon.z, 6);
+    expect(marker.position.distanceTo(started)).toBeCloseTo(40, 6);
+  });
+
+  it('leaves the marker on the building where it stands', () => {
+    const { layout, world } = make();
+    const marker = world.markers.find((m) => m.name === 'Level 2')!;
+    const started = marker.position.clone();
+    runOn(layout, 40);
+    world.updateTrains(layout.trains);
+    expect(marker.position.equals(started)).toBe(true);
+  });
+});
