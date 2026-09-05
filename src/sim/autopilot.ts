@@ -62,6 +62,20 @@ export interface AutopilotParams {
   /** Within this distance the waypoint counts as reached, in metres. */
   arrival: number;
   /**
+   * How far above the wanted height it will drift before diving, in metres.
+   *
+   * "The wings fly the height" only ever described climbing. Losing height had
+   * no control at all: a bird above its waypoint simply stopped beating, and
+   * the vertical damping below then actively resisted the sink it needed. It
+   * could go up and it could not really come down, so a flock escorting a
+   * gliding pigeon ended up a mean of 23 m above it and never once below.
+   *
+   * Tucking is what a bird does about that, and it is the same control the
+   * player has. The gap is so there is still a gliding state between beating
+   * and diving, rather than the bird always doing one or the other.
+   */
+  descendSlack: number;
+  /**
    * Below this height the bird stops wandering and concentrates on getting
    * back up. Without it a pigeon that runs its stamina down simply sinks into
    * the rooftops, and a flock spends its life respawning.
@@ -92,6 +106,7 @@ export const defaultAutopilotParams: AutopilotParams = {
   flapAbove: 0.85,
   flapBelow: 0.4,
   arrival: 45,
+  descendSlack: 1,
   floor: 38,
   recover: 70,
   minSpeed: 10,
@@ -173,7 +188,9 @@ export function steer(
   }
 
   controls.yaw = 0;
-  controls.tuck = false;
+  // Beat to climb, glide in the band above that, tuck to come down. The last
+  // of those is what the height control was missing.
+  controls.tuck = state.position.y > wantedHeight + p.descendSlack;
   controls.brake = false;
   return controls;
 }

@@ -691,6 +691,42 @@ and a mean distance of 63 m, against zero recycles and 32 m with one.
 **Nothing is aimed at the ground.** The leader can be on foot, and a target at
 the leader's own height is then a target in the dirt.
 
+### Coming down
+
+Getting them to the player's height took fixing something older. The autopilot
+had one height control -- `flap while below the waypoint` -- which is a way of
+climbing and not a way of descending: above its waypoint a bird merely stopped
+beating, and the vertical damping in the pitch trim then fought the sink it
+needed. It could go up and it could not really come down.
+
+Nothing had noticed, because until now the flock chose its own heights and
+nothing was waiting for it at a particular one. Escorting a pigeon gliding down
+from 120 m it sat a mean of **23 m above** and, over two minutes, was never
+once below it. A flock that can only climb is a ceiling, not company.
+
+Two fixes, and it takes both:
+
+**A bird that is too high tucks.** The same control the player uses, and what a
+bird actually does about height it does not want. There is a metre of slack so
+there is still a gliding state between beating and diving rather than the bird
+always doing one or the other.
+
+**And the target height leads the leader's sink**, the way the target position
+already leads their track. Without it the flock is 8 m high at a gentle glide
+and 18 m high at 5 m/s, because the height it was aiming at is where the leader
+*was*.
+
+| Leader's sink | Before | Tuck only | Both |
+| --- | --- | --- | --- |
+| 1 m/s | +23 m | +1.6 m | −1.7 m |
+| 3 m/s | — | +7.8 m | +1.4 m |
+| 5 m/s | — | +17.6 m | +3.4 m |
+
+The cost is worth naming: a bird that dives is a bird going faster, and a bird
+going faster turns wider. Around a leader who stays put the flock's mean
+distance went from 28 m to 37, and its worst from 70 to 97. Altitude was the
+thing being complained about, and it is worth that.
+
 They fly the same model the player does, on the same collider and in the same
 wind, and nothing about them is special-cased: they stall, they get blown off
 course, and when they hit a building they die exactly as the player does. They
@@ -713,9 +749,10 @@ releases its first bird immediately, which read the player's bird before it was
 declared and threw on load. Neither is the sort of thing a unit test sees,
 because a test passes its own leader.
 
-`src/sim/autopilot.ts` flies them, and getting it to work taught three things
-the hard way. All three are the same mistake in different clothes: commanding
-an *outcome* directly instead of the thing that produces it.
+`src/sim/autopilot.ts` flies them, and getting it to work taught four things
+the hard way. The first three are the same mistake in different clothes:
+commanding an *outcome* directly instead of the thing that produces it. The
+fourth is a different one — only building half a controller.
 
 - **Roll is a rate, not an attitude.** Commanding roll straight from heading
   error never stops rolling. The first version flew the whole flock inverted —
@@ -731,9 +768,19 @@ an *outcome* directly instead of the thing that produces it.
   flap band sits high and narrow, which works out at about two thirds of the
   time on the wing: exactly what draining at 0.07/s and recovering at 0.14/s
   can sustain.
+- **Half a controller reads as a working one until something needs the other
+  half.** "The wings fly the height" only ever described climbing: above its
+  waypoint a bird stopped beating, and the vertical damping in the pitch trim
+  then fought the sink. It could go up and it could not really come down.
+  Nothing noticed for as long as the flock picked its own heights and nothing
+  was waiting for it at one — and then a flock asked to escort a gliding
+  pigeon sat 23 m over it and never once dropped below. Tucking is what a bird
+  does about height it does not want, and it is the same control the player
+  has.
 
-Together those took the flock from 333 crashes in five minutes to 18, and from
-70% of the time airborne to 98%. Ten birds cost about 0.013 ms a tick.
+Together the first three took the flock from 333 crashes in five minutes to 18,
+and from 70% of the time airborne to 98%. Ten birds cost about 0.013 ms a
+tick.
 
 ## Wind
 
@@ -1294,6 +1341,14 @@ npm test
   inside the chase camera's cone for most of a two-minute cruise — which is
   zero if you aim at the leader instead of ahead of them, and zero again if
   you match their speed instead of bettering it.
+
+  And on height: escorting a leader gliding down, the flock stays within five
+  metres of them and a fair share of it is *below* — swept across sink rates,
+  because the two faults behind this showed at different ones. A flock that
+  cannot descend is already 8 m high at a gentle glide; a target height that
+  does not follow the leader down is 18 m high in a real descent, and hidden
+  at 1 m/s by a bird that can dive. Either one alone passes a test written at
+  a single sink rate.
 - **`src/world/polygon.test.ts`** — the sign of an area says which way a ring
   winds; insetting moves every edge by the distance asked for, takes a distance
   per edge, and cuts a sharp corner off rather than flinging it into the

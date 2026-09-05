@@ -9,7 +9,7 @@ import { vec } from './sim/math3';
 const DT = 1 / 120;
 
 /** A leader that stays put, so what the flock does is the only thing moving. */
-const still = (x = 0, y = 60, z = 0, heading = 0) => () => ({ x, y, z, heading, speed: 0 });
+const still = (x = 0, y = 60, z = 0, heading = 0) => () => ({ x, y, z, heading, speed: 0, climb: 0 });
 
 describe('heading error', () => {
   it('takes the short way round', () => {
@@ -240,7 +240,7 @@ describe('keeping the player company', () => {
     // A leader crossing the map: every bird let out is put behind wherever
     // the leader is by then, not behind where it started.
     let along = 0;
-    const flock = createFlock(4, () => ({ x: along, y: 60, z: 0, heading: Math.PI / 2, speed: 5 }));
+    const flock = createFlock(4, () => ({ x: along, y: 60, z: 0, heading: Math.PI / 2, speed: 5, climb: 0 }));
     const wind = createWind();
 
     for (let t = 0; t < 12; t += DT) {
@@ -272,10 +272,15 @@ describe('keeping the player company', () => {
       }
     }
 
+    // Looser than it was, deliberately. Letting them tuck to lose height is
+    // what fixed the flock sitting 23 m above a gliding player, and a bird
+    // that dives is a bird going faster, which turns wider: the mean went
+    // from 28 m to 37 and the worst from 70 to 97. Altitude was the thing
+    // being complained about, and it is worth this.
     const furthest = distances.reduce((a, b) => Math.max(a, b), 0);
-    expect(furthest).toBeLessThan(85);
+    expect(furthest).toBeLessThan(110);
     const mean = distances.reduce((a, b) => a + b, 0) / distances.length;
-    expect(mean).toBeLessThan(40);
+    expect(mean).toBeLessThan(45);
     // And well short of the stray rule, or that would be doing the work.
     expect(furthest).toBeLessThan(defaultFlockOptions.strayDistance * 0.7);
   });
@@ -428,7 +433,7 @@ describe('where they are aiming', () => {
     // bird chases the memory until the stray rule hauls it back, which is a
     // teleport rather than flying.
     let along = 0;
-    const flock = createFlock(6, () => ({ x: along, y: 60, z: 0, heading: Math.PI / 2, speed: 5 }));
+    const flock = createFlock(6, () => ({ x: along, y: 60, z: 0, heading: Math.PI / 2, speed: 5, climb: 0 }));
     const wind = createWind();
     let recycles = 0;
     const was = flock.members.map(() => 0);
@@ -453,7 +458,7 @@ describe('flying with a leader who is going somewhere', () => {
   /** A leader crossing the map due east at a steady speed. */
   function crossing(speed: number) {
     let along = 0;
-    const leader = () => ({ x: along, y: 60, z: 0, heading: Math.PI / 2, speed });
+    const leader = () => ({ x: along, y: 60, z: 0, heading: Math.PI / 2, speed, climb: 0 });
     return { leader, advance: (dt: number) => { along += speed * dt; }, at: () => along };
   }
 
@@ -552,6 +557,72 @@ describe('flying with a leader who is going somewhere', () => {
     }
 
     expect(seen / frames).toBeGreaterThan(0.6);
+  });
+});
+
+describe('flying at the leader’s height', () => {
+  /** A leader losing height steadily, which is what gliding is. */
+  function sinking(rate: number, from = 120) {
+    const at = { x: 0, y: from, z: 0, heading: Math.PI / 2, speed: 17, climb: -rate };
+    return {
+      leader: () => ({ ...at }),
+      advance: (dt: number) => {
+        at.x += at.speed * dt;
+        at.y -= rate * dt;
+      },
+      y: () => at.y,
+    };
+  }
+
+  it('comes down with a gliding leader instead of hanging above them', () => {
+    // The bug this guards: escorting a pigeon gliding down from 120 m, the
+    // flock sat a mean of 23 m over it and was never once below it. Two
+    // things were wrong. The autopilot could climb and could not descend --
+    // above its waypoint it merely stopped beating, and the vertical damping
+    // then fought the sink. And the target height did not lead the leader's
+    // own sink the way the target position leads their track.
+    // Swept across sink rates, because the two faults show at different ones:
+    // a flock that cannot descend is already 8 m high at a gentle glide, and
+    // a target height that does not follow the leader down is 18 m high in a
+    // proper descent while a bird that can dive hides it at 1 m/s.
+    for (const rate of [1, 3, 5]) {
+      const { leader, advance, y } = sinking(rate, 300);
+      const flock = createFlock(8, leader);
+      const wind = createWind();
+      const offsets: number[] = [];
+
+      for (let t = 0; t < 50; t += DT) {
+        advance(DT);
+        flock.update(DT, undefined, wind);
+        if (t < 20 || Math.abs(t % 0.5) > DT) continue;
+        for (const member of flock.members) {
+          if (member.down <= 0) offsets.push(member.state.position.y - y());
+        }
+      }
+
+      const mean = offsets.reduce((a, b) => a + b, 0) / offsets.length;
+      expect(Math.abs(mean), `${rate} m/s sink`).toBeLessThan(5);
+      // And a fair share of them below the leader, which is the part that was
+      // never true: a flock that can only climb is a ceiling, not company.
+      const below = offsets.filter((d) => d < 0).length / offsets.length;
+      expect(below, `${rate} m/s sink`).toBeGreaterThan(0.25);
+    }
+  });
+
+  it('holds height either side of a leader who is not moving', () => {
+    const flock = createFlock(8, still(0, 100, 0));
+    const wind = createWind();
+    const offsets: number[] = [];
+    for (let t = 0; t < 90; t += DT) {
+      flock.update(DT, undefined, wind);
+      if (t < 20 || Math.abs(t % 0.5) > DT) continue;
+      for (const member of flock.members) {
+        if (member.down <= 0) offsets.push(member.state.position.y - 100);
+      }
+    }
+    const mean = offsets.reduce((a, b) => a + b, 0) / offsets.length;
+    expect(Math.abs(mean)).toBeLessThan(5);
+    expect(offsets.filter((d) => d < 0).length / offsets.length).toBeGreaterThan(0.3);
   });
 });
 

@@ -193,6 +193,8 @@ export interface Leader {
   heading: number;
   /** How fast it is going, in m/s. The flock flies at the same pace. */
   speed: number;
+  /** How fast it is climbing, in m/s; negative descending. */
+  climb: number;
 }
 
 export interface FlockMember {
@@ -223,7 +225,7 @@ function mulberry32(seed: number): () => number {
 
 export function createFlock(
   morphCount: number,
-  leader: () => Leader = () => ({ x: 0, y: 60, z: 0, heading: 0, speed: 0 }),
+  leader: () => Leader = () => ({ x: 0, y: 60, z: 0, heading: 0, speed: 0, climb: 0 }),
   options: FlockOptions = defaultFlockOptions,
   flight: FlightParams = defaultParams,
 ): Flock {
@@ -248,6 +250,7 @@ export function createFlock(
     at = {
       ...at,
       x: at.x + Math.sin(at.heading) * lead,
+      y: at.y + at.climb * LOOKAHEAD,
       z: at.z - Math.cos(at.heading) * lead,
     };
     // Cube-rooted so the points fill the ball evenly rather than bunching at

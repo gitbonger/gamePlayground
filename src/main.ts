@@ -219,6 +219,7 @@ const flock = createFlock(PIGEON_MORPHS.length, () => ({
   z: bird.position.z,
   heading: heading(bird),
   speed: Math.hypot(bird.velocity.x, bird.velocity.y, bird.velocity.z),
+  climb: bird.velocity.y,
 }));
 const flockRigs = flock.members.map((member) => {
   const rig = createBirdRig(PIGEON_MORPHS[member.morph]);
