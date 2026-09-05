@@ -606,32 +606,59 @@ the attribution and the HUD keeps it on screen.
 
 ## The other pigeons
 
-Ten of them, roosting on the middle wagon of the train. Each leaves from the
-deck, climbs as it goes, and is released again once it has flown a few hundred
-metres out or flown into something. The effect is a slow scatter outward, which
-doubles as a way of spotting the train from a distance.
+Ten of them, and they keep the player company rather than living anywhere. A
+bird appears ten metres behind the player, picks somewhere at random within
+twenty metres of them to fly to, and picks somewhere else near them when it
+gets there. The effect is a loose escort that keeps breaking up and re-forming,
+which is what a flock does and, more to the point, means there is another
+pigeon in shot.
 
-**They come out one at a time**, three seconds apart, so the loft reads as
-waking up rather than as ten birds spawning at once. That was what the code
-already claimed to do — there was a comment about staggering the start — sitting
-directly above a line that set every bird's timer back to zero. And a bird that
-hits something is back in the air on the same tick now, which is worth knowing
-if you go looking for a dead one: an ending is no longer visible from outside
-at all, and a test that counted them by polling for it silently stopped
+**They come out one at a time**, three seconds apart, so it reads as a flock
+gathering rather than as ten birds spawning at once. That was what the code
+already claimed to do — there was a comment about staggering the start —
+sitting directly above a line that set every bird's timer back to zero. And a
+bird that hits something is back in the air on the same tick, which is worth
+knowing if you go looking for a dead one: an ending is no longer visible from
+outside at all, and a test that counted them by polling for it silently stopped
 counting anything.
 
-**They leave along the line, not in every direction.** A loft on a roof has
-open sky all round it; a roost in a rail yard does not. Released on random
-bearings from a wagon they met the blocks ringing the yard about eighty metres
-out and thirteen metres up, well before they had climbed over the roofs — 38 of
-them in three minutes, none of which hit the train itself. Sent out along the
-track, where the ground is open for half a kilometre, not one of them hits
-anything: 100% airborne over the same three minutes.
+**This was tried once before and abandoned**, and the reason it works now is
+worth writing down. The note that used to be here read: *"Chasing that with a
+flock anchored to the player never really worked either."* It did not, because
+the flock was flying the autopilot that crosses a city — 14 m/s, banking to 28
+degrees, which is a turn of 37 m radius. A bird on those numbers physically
+cannot stay inside a twenty-metre circle. Left on them it wheels out to 137 m
+and is only ever brought back by the stray rule, which is a teleport rather
+than flying, and at that range it is three pixels of nothing.
 
-Moving them there also turned up a latent bug. The release used a fixed
-altitude and ignored the loft's own height, which nothing had noticed because
-the only caller passed the same number — and which would have put them 30 m
-above the wagon rather than on it.
+So escorting has its own way of flying: 11 m/s and banking to 0.9 rad, which
+turns inside about ten metres. Same wings, same flight model, different intent.
+Measured over three minutes beside a leader who stays put, the flock sits at a
+mean of 28 m and never gets past 70 — against 137 m and hard against the stray
+limit before. The floor came down with it, from 38 m to 8: the player can be
+standing on the ground now, and a flock that climbs away from a walking pigeon
+is not keeping it company.
+
+Three rules keep it honest:
+
+**A target is picked evenly over the disc**, taking the radius as
+`radius · √random` rather than `radius · random` — the second bunches half of
+them inside half the radius, which is a quarter of the area.
+
+**Targets go stale.** A target is chosen against where the leader was at the
+time, and a leader doing 19 m/s is 76 m away four seconds later. Without a
+timeout a bird chases the memory until the stray rule hauls it back: beside a
+leader moving at 5 m/s, that is twelve recycles in two minutes and a mean
+distance of 63 m, against zero recycles and 32 m with one.
+
+**Nothing is aimed at the ground.** The leader can be on foot, and a target at
+the leader's own height is then a target in the dirt.
+
+One thing the player will notice: at full cruise, about 19 m/s, you outrun
+them. The flock does 11 and cannot keep up, so they fall behind and are put
+back behind you; beside a leader at 5 or 11 m/s they hold station without ever
+being recycled. That is a consequence of picking a speed that can turn tightly,
+and it is the trade the feature is built on.
 
 They fly the same model the player does, on the same collider and in the same
 wind, and nothing about them is special-cased: they stall, they get blown off
@@ -643,9 +670,17 @@ every run.
 An earlier version had them wandering the map at large, which was a mistake
 worth recording: they were *there*, but the nearest one was typically 274 m
 away and three pixels across, and more than half the time none was inside the
-camera's cone at all. Chasing that with a flock anchored to the player never
-really worked either. Living at the loft does, because it is a place the player
-is flying towards and looking at.
+camera's cone at all. A version after that had them roosting on the middle
+wagon and scattering outward along the track, which solved being visible by
+putting them somewhere the player was flying towards.
+
+Moving them to the wagon turned up a latent bug worth keeping in mind: the
+release used a fixed altitude and ignored the roost's own height, which nothing
+had noticed because the only caller passed the same number. Anchoring them to
+the player turned up its sibling — the flock is built at module scope and
+releases its first bird immediately, which read the player's bird before it was
+declared and threw on load. Neither is the sort of thing a unit test sees,
+because a test passes its own leader.
 
 `src/sim/autopilot.ts` flies them, and getting it to work taught three things
 the hard way. All three are the same mistake in different clothes: commanding
@@ -1188,16 +1223,30 @@ npm test
   work on the bird.
 
 - **`src/flock.test.ts`** — birds come out one at a time rather than all at
-  once, the ones still waiting are not in the air, and a dead one is back at
-  the roost on the tick it died — counted by watching them come home, since an
-  ending no longer survives to be polled for. Heading error takes the short way round, the
-  autopilot holds a sane bank instead of rolling over, stays airborne when left
-  to itself, flies speed with the nose and height with the wings, and rests
-  before it is spent; the flock launches in a spread of colours, keeps most of
-  itself in the air over a city, and puts birds back after they die. They
-  scatter in every direction from a rooftop but leave along the line when given
-  one, and are released from the height the roost is actually at rather than a
-  fixed one.
+  once, the ones still waiting are not in the air, and a dead one is back on
+  the wing on the tick it died — counted by watching them reappear, since an
+  ending no longer survives to be polled for. Heading error takes the short way
+  round, the autopilot holds a sane bank instead of rolling over, stays
+  airborne when left to itself, flies speed with the nose and height with the
+  wings, and rests before it is spent; the flock launches in a spread of
+  colours, keeps most of itself in the air over a city, and puts birds back
+  after they die.
+
+  On the escort itself: a bird appears the spawn distance behind the leader,
+  behind meaning behind whichever way the leader is facing, and sets off the
+  same way rather than turning to face them. It follows the leader about rather
+  than a spot on the map — a leader crossing the map leaves its flock strung
+  out over hundreds of metres, because each was released behind wherever the
+  leader was by then. Beside a leader who stays put it holds a mean of under
+  40 m and never passes 85, and well short of the stray limit, which is what
+  was really bounding this before the flock had its own way of flying. Over a
+  leader on the ground it wheels below the default autopilot's floor instead of
+  climbing away, and never gets nearer than four metres. Targets are always
+  inside the radius, spread evenly over the disc rather than bunched in the
+  middle — a quarter of them inside half the radius, which is the quarter of
+  the area that is; and beside a leader it can match, the flock keeps up by
+  re-aiming rather than being recycled by the stray rule, which is the one
+  thing the attention span is for.
 - **`src/world/polygon.test.ts`** — the sign of an area says which way a ring
   winds; insetting moves every edge by the distance asked for, takes a distance
   per edge, and cuts a sharp corner off rather than flinging it into the

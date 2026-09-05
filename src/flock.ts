@@ -4,8 +4,13 @@
  * They fly the same model the player does, on the same collider and in the
  * same wind, steered by `sim/autopilot`. Nothing about them is special-cased:
  * they stall, they get blown off course, and when they fly into a building
- * they die exactly as the player does, wait a moment, and are released again
- * somewhere else.
+ * they die exactly as the player does and are released again.
+ *
+ * They keep the player company rather than living anywhere. A bird appears
+ * behind the player, picks somewhere near them to fly to, and picks somewhere
+ * else near them when it gets there. The effect is a loose escort that keeps
+ * breaking up and re-forming, which is what a flock does and, more to the
+ * point, means there is always another pigeon in shot.
  */
 
 import {
@@ -21,6 +26,7 @@ import {
   defaultAutopilotParams,
   distanceTo,
   steer,
+  type AutopilotParams,
   type AutopilotState,
   type Waypoint,
 } from './sim/autopilot';
@@ -30,22 +36,51 @@ import { vec } from './sim/math3';
 
 export interface FlockOptions {
   count: number;
-  /** How far out they fly before turning up again, in metres. */
-  range: number;
+  /** How far behind the leader a bird is released, in metres. */
+  spawnBehind: number;
+  /** Radius around the leader that targets are picked inside, in metres. */
+  radius: number;
+  /** How far above or below the leader a target may be, in metres. */
+  altitudeSpread: number;
   /**
-   * Which way out of the roost they head, in radians clockwise from north,
-   * and how far either side of it they spread.
+   * The lowest a target is ever put, in metres.
    *
-   * A full circle by default, which is right for a loft on a roof with open
-   * sky all round. It is wrong for a roost in a cutting: released in every
-   * direction from a rail yard, most of them fly straight into the blocks
-   * ringing it before they have climbed over the roofs. Given the line to
-   * follow, they leave along it, which is what the open ground is for.
+   * Because the leader can be standing on the ground. Aiming at the leader's
+   * own height then means aiming at the dirt, and the flock would spend its
+   * time ploughing into it instead of wheeling about overhead.
    */
-  outbound?: { bearing: number; spread: number };
-  /** Heights they climb to on the way out, in metres. */
   minAltitude: number;
-  maxAltitude: number;
+  /**
+   * How near a target counts as reaching it, in metres.
+   *
+   * The autopilot's own arrival radius is 45 m, which is wider than the whole
+   * area targets are picked in: every bird would count as arrived before it
+   * had set off, and re-aim every tick. Escorting somebody is close work and
+   * needs its own number.
+   */
+  arrivalRadius: number;
+  /**
+   * Seconds before a bird picks somewhere else regardless.
+   *
+   * Two reasons, and the second is the important one. A pigeon at 14 m/s
+   * cannot turn inside about 34 m, so a target 20 m away is one it may simply
+   * never hit, and without a timeout it would chase that point for ever. And
+   * a target is chosen against where the leader was at the time: a leader
+   * doing 19 m/s is 76 m away four seconds later, so the target has to go
+   * stale or the flock is escorting a memory.
+   */
+  attentionSpan: number;
+  /**
+   * How far a bird may get from the leader before it is brought back, in
+   * metres.
+   *
+   * A pigeon at cruise does about 19 m/s and the flock does about 14, so a
+   * player who simply flies away cannot be caught. Rather than leave a trail
+   * of stragglers strung out behind for the rest of the run, a bird that has
+   * lost touch is released again -- which happens far enough back to be off
+   * the end of the camera.
+   */
+  strayDistance: number;
   /**
    * Seconds a dead bird stays down before another is released.
    *
@@ -61,30 +96,59 @@ export interface FlockOptions {
    */
   emitInterval: number;
   seed: number;
+  /** How they fly. Their own, because escorting is not crossing a city. */
+  autopilot: AutopilotParams;
 }
+
+/**
+ * How a bird flies when it is escorting somebody rather than crossing a city.
+ *
+ * The default autopilot cruises at 14 m/s and banks to 28 degrees, which is a
+ * turn of 37 m radius -- it physically cannot stay inside a 20 m circle, and
+ * left on those numbers the flock wheels out to 137 m and is only ever pulled
+ * back by the stray rule. Slower and steeper turns inside ten metres, which is
+ * both what the feature needs and what a pigeon milling about actually does.
+ *
+ * The floor comes down with it. At the default 38 m a flock over a pigeon
+ * walking on the ground would spend the whole time climbing away from it.
+ */
+export const escortAutopilot: AutopilotParams = {
+  ...defaultAutopilotParams,
+  cruiseSpeed: 11,
+  maxBank: 0.9,
+  floor: 8,
+  recover: 20,
+  minSpeed: 8,
+};
 
 export const defaultFlockOptions: FlockOptions = {
   count: 10,
-  range: 340,
-  minAltitude: 45,
-  maxAltitude: 105,
+  spawnBehind: 10,
+  radius: 20,
+  altitudeSpread: 8,
+  minAltitude: 12,
+  arrivalRadius: 8,
+  attentionSpan: 4,
+  strayDistance: 140,
   respawnDelay: 0,
   emitInterval: 3,
   seed: 1234,
+  autopilot: escortAutopilot,
 };
 
 /**
- * The point the flock lives at, and leaves from.
+ * The bird they are keeping company, as it is right now.
  *
- * The height is part of it. It used to be ignored in favour of a fixed release
- * altitude, which nothing noticed because the only caller passed the same
- * number -- and which would have been wrong the moment the loft stopped being
- * a rooftop and became, say, the deck of a wagon.
+ * Read through a function rather than held as an object, because the player's
+ * bird is replaced outright when the run restarts: anything holding the old
+ * one keeps flying escort to a pigeon nobody can see any more.
  */
-export interface Anchor {
+export interface Leader {
   x: number;
   y: number;
   z: number;
+  /** Heading in radians clockwise from north. */
+  heading: number;
 }
 
 export interface FlockMember {
@@ -93,6 +157,8 @@ export interface FlockMember {
   morph: number;
   /** Seconds until it is released again; zero while it is flying. */
   down: number;
+  /** Where it is making for at the moment. */
+  aiming: Waypoint;
 }
 
 export interface Flock {
@@ -111,18 +177,9 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-/**
- * Pigeons living at the loft, which is wherever the player is trying to get
- * back to.
- *
- * Each leaves low and heads off in its own direction, climbing as it goes, and
- * is released again once it has gone far enough or flown into something. The
- * effect is a slow scatter outward from home, which doubles as a way of seeing
- * where home is from some distance off.
- */
 export function createFlock(
   morphCount: number,
-  loft: Anchor = { x: 0, y: 30, z: 0 },
+  leader: () => Leader = () => ({ x: 0, y: 60, z: 0, heading: 0 }),
   options: FlockOptions = defaultFlockOptions,
   flight: FlightParams = defaultParams,
 ): Flock {
@@ -132,35 +189,66 @@ export function createFlock(
     member: FlockMember;
     controls: Controls;
     memory: AutopilotState;
-    waypoint: Waypoint;
+    /** Seconds spent on the current target. */
+    chasing: number;
   }
 
-  /** Leave the loft on a fresh bearing, climbing out to somewhere distant. */
+  /** Somewhere near the leader to make for, chosen fresh each time. */
+  const target = (at: Leader): Waypoint => {
+    // Square-rooted so the points are spread evenly over the disc rather than
+    // bunched at the middle of it, which is what taking the radius straight
+    // from the random number would do.
+    const away = options.radius * Math.sqrt(rand());
+    const around = rand() * Math.PI * 2;
+    return {
+      x: at.x + Math.cos(around) * away,
+      z: at.z + Math.sin(around) * away,
+      altitude: Math.max(
+        options.minAltitude,
+        at.y + (rand() * 2 - 1) * options.altitudeSpread,
+      ),
+    };
+  };
+
+  /** Appear behind the leader, going the same way, and pick somewhere to go. */
   const release = (pilot: Pilot) => {
-    const bearing = options.outbound
-      ? options.outbound.bearing + (rand() * 2 - 1) * options.outbound.spread
-      : rand() * Math.PI * 2;
+    const at = leader();
+    // Behind is the leader's heading reversed. Facing the same way as the
+    // leader rather than at it, because a bird released nose-on would spend
+    // its first seconds turning round in front of the camera.
+    const behind = at.heading + Math.PI;
     pilot.member.state = createBird(
-      vec(loft.x, loft.y, loft.z),
+      vec(
+        at.x + Math.sin(behind) * options.spawnBehind,
+        Math.max(at.y, options.minAltitude),
+        at.z - Math.cos(behind) * options.spawnBehind,
+      ),
       12 + rand() * 4,
-      bearing,
+      at.heading,
     );
     pilot.member.down = 0;
     pilot.memory.beating = true;
-    pilot.waypoint = {
-      x: loft.x + Math.sin(bearing) * options.range,
-      z: loft.z - Math.cos(bearing) * options.range,
-      altitude: options.minAltitude + rand() * (options.maxAltitude - options.minAltitude),
-    };
+    aim(pilot, at);
+  };
+
+  /** Pick somewhere new and start the clock on it. */
+  const aim = (pilot: Pilot, at: Leader) => {
+    pilot.member.aiming = target(at);
+    pilot.chasing = 0;
   };
 
   const pilots: Pilot[] = [];
   for (let i = 0; i < options.count; i += 1) {
     const pilot: Pilot = {
-      member: { state: createBird(), morph: Math.floor(rand() * morphCount), down: 0 },
+      member: {
+        state: createBird(),
+        morph: Math.floor(rand() * morphCount),
+        down: 0,
+        aiming: { x: 0, z: 0, altitude: options.minAltitude },
+      },
       controls: neutralControls(),
       memory: { beating: true },
-      waypoint: { x: loft.x, z: loft.z, altitude: options.minAltitude },
+      chasing: 0,
     };
     // Released so it has a real position to sit at, then held back: one comes
     // out every `emitInterval` seconds rather than all of them at once.
@@ -170,6 +258,8 @@ export function createFlock(
   }
 
   function update(dt: number, collider: Collider | undefined, wind: WindField) {
+    const at = leader();
+
     for (const pilot of pilots) {
       const { member } = pilot;
 
@@ -182,13 +272,27 @@ export function createFlock(
         release(pilot);
       }
 
-      // Once it has flown its leg, it goes back to the loft and out again.
-      if (distanceTo(member.state, pilot.waypoint) < defaultAutopilotParams.arrival) {
+      // Left behind for good: brought back rather than strung out for ever.
+      const adrift = Math.hypot(
+        member.state.position.x - at.x,
+        member.state.position.z - at.z,
+      );
+      if (adrift > options.strayDistance) {
         release(pilot);
         continue;
       }
 
-      steer(member.state, pilot.waypoint, pilot.memory, pilot.controls);
+      // Arrived, or given up on it: somewhere else near the leader, who has
+      // moved on since.
+      pilot.chasing += dt;
+      if (
+        distanceTo(member.state, member.aiming) < options.arrivalRadius ||
+        pilot.chasing > options.attentionSpan
+      ) {
+        aim(pilot, at);
+      }
+
+      steer(member.state, member.aiming, pilot.memory, pilot.controls, options.autopilot);
       step(member.state, pilot.controls, flight, dt, collider, wind);
 
       if (member.state.ending) {

@@ -8,6 +8,7 @@ import {
   createBird,
   defaultParams,
   hasCrashed,
+  heading,
   isPerched,
   landingReadiness,
   step,
@@ -29,7 +30,7 @@ import { createRunTracker } from './run';
 import { createDebugGui } from './debug-gui';
 import { createScene } from './render/scene';
 import { createBirdRig, PIGEON_MORPHS, type WingPose } from './render/bird';
-import { createFlock, defaultFlockOptions } from './flock';
+import { createFlock } from './flock';
 import {
   combineColliders,
   createColliderField,
@@ -52,7 +53,6 @@ import {
   trainBoxes,
   turnedBetween,
   tweenAlong,
-  WAGON,
 } from './world/train';
 import { createSmoke } from './world/smoke';
 import { walk, type WalkTelemetry } from './sim/walk';
@@ -166,44 +166,6 @@ scene.add(rig.object);
 
 // The other pigeons: same flight model, same collider, same wind, steered by
 // an autopilot that is not especially good at it.
-// The flock lives at the loft, which is where the pigeon is trying to get to.
-/**
- * The flock lives on the train now, not at the loft.
- *
- * The middle wagon of the rake, and a couple of metres above its stakes so
- * they leave cleanly rather than clipping the next wagon along on the way out.
- */
-const rake = layout.trains[0]?.vehicles ?? [];
-const roost = rake.length ? rake[middleCar]! : { x: home.x, z: home.z };
-
-/**
- * The roost, which moves, because the wagon it is on moves.
- *
- * The flock reads this when it lets a bird out rather than when it was built,
- * so keeping it up to date is all it takes for the birds to leave from
- * wherever the train has got to.
- */
-const perch = { x: roost.x, y: WAGON.deck + WAGON.stake + 2, z: roost.z };
-/**
- * And they leave along the line, not in every direction.
- *
- * The yard is ringed with blocks of flats. Released on a random bearing from
- * a wagon roof they meet one about eighty metres out, thirteen metres up, well
- * before they have climbed over the roofs -- thirty-eight of them in three
- * minutes. Sent out along the track instead, where the ground is open for half
- * a kilometre, not one of them hits anything.
- */
-const alongTheTrack = 'yaw' in roost ? Math.atan2(Math.cos(roost.yaw), -Math.sin(roost.yaw)) : 0;
-
-const flock = createFlock(PIGEON_MORPHS.length, perch, {
-  ...defaultFlockOptions,
-  outbound: { bearing: alongTheTrack, spread: 0.7 },
-});
-const flockRigs = flock.members.map((member) => {
-  const bird = createBirdRig(PIGEON_MORPHS[member.morph]);
-  scene.add(bird.object);
-  return bird;
-});
 
 const chase = createChaseCamera(camera);
 const hud = createHud(overlay, map.attribution);
@@ -238,6 +200,30 @@ let bird: BirdState = createBird(spawn, SPAWN_SPEED, spawnHeading);
 let telemetry: FlightTelemetry = step(bird, input.controls, flightParams, TICK);
 /** What the bird did on its feet this tick, when it was on them. */
 let onFoot: WalkTelemetry = { grounded: false, travelled: 0, blocked: false };
+
+/**
+ * They keep the player company rather than living anywhere.
+ *
+ * Read as a function rather than handed the bird, because `bird` is replaced
+ * outright on a respawn: a flock holding the old one would fly escort to a
+ * pigeon that no longer exists -- which is a mistake this file has already
+ * made once, in a debug probe, and is worth not making again in the game.
+ *
+ * Built after the bird rather than beside the rest of the world, because the
+ * first pigeon is released the moment the flock exists, and it is released
+ * behind whoever it is escorting: reading `bird` in its dead zone throws.
+ */
+const flock = createFlock(PIGEON_MORPHS.length, () => ({
+  x: bird.position.x,
+  y: bird.position.y,
+  z: bird.position.z,
+  heading: heading(bird),
+}));
+const flockRigs = flock.members.map((member) => {
+  const rig = createBirdRig(PIGEON_MORPHS[member.morph]);
+  scene.add(rig.object);
+  return rig;
+});
 
 const run = createRunTracker(bird);
 
@@ -348,12 +334,6 @@ function moveTrains(dt: number) {
       },
       (x, y, z) => wind.at(vec(x, y, z), clock),
     );
-  }
-
-  const carriage = layout.trains[0]?.vehicles[middleCar];
-  if (carriage) {
-    perch.x = carriage.x;
-    perch.z = carriage.z;
   }
 
   return combineColliders(...fields);

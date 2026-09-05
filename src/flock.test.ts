@@ -8,6 +8,9 @@ import { vec } from './sim/math3';
 
 const DT = 1 / 120;
 
+/** A leader that stays put, so what the flock does is the only thing moving. */
+const still = (x = 0, y = 60, z = 0, heading = 0) => () => ({ x, y, z, heading });
+
 describe('heading error', () => {
   it('takes the short way round', () => {
     expect(headingError(0, 1)).toBeCloseTo(1, 9);
@@ -162,30 +165,39 @@ describe('the flock', () => {
     // more. A closed wall they cannot out-climb kills every one of them
     // through the same code path a real collision uses.
     //
-    // Counted by watching them come home rather than by watching them die.
-    // A bird now goes back in the air on the tick it hits something, so an
-    // ending is never visible from outside -- polling for one, which is what
-    // this did, sees nothing at all. The wall is inside the range they fly to,
-    // so they never reach a waypoint: every return to the middle is a death.
-    const flock = createFlock(8);
-    const ring = Array.from({ length: 48 }, (_, i) => {
-      const around = (i / 48) * Math.PI * 2;
-      return turnedBox(Math.cos(around) * 150, Math.sin(around) * 150, 40, 400, 40, around);
+    // The wall has come in to 45 m, because the flock has. Escorting a leader
+    // it wheels out to about seventy and no further, so a ring at the old 150
+    // is one it would never reach -- which is exactly the way this test has
+    // gone quiet once before.
+    //
+    // Counted by watching them reappear rather than by watching them die. A
+    // bird goes back in the air on the tick it hits something, so an ending is
+    // never visible from outside: polling for one sees nothing at all.
+    const flock = createFlock(8, still(0, 60, 0));
+    const ring = Array.from({ length: 64 }, (_, i) => {
+      const around = (i / 64) * Math.PI * 2;
+      // Thin, so its inner face really is at 45 m: a 40 m deep box centred
+      // there reaches in to 25, and the flock would die before it had flown
+      // far enough out for a respawn to be distinguishable from ordinary
+      // flying.
+      return turnedBox(Math.cos(around) * 45, Math.sin(around) * 45, 40, 400, 6, around);
     });
     const wall = createColliderField(ring);
     const wind = createWind();
 
     let returns = 0;
-    const away = flock.members.map(() => false);
+    const out = flock.members.map(() => 0);
     for (let t = 0; t < 300; t += DT) {
       flock.update(DT, wall, wind);
       flock.members.forEach((member, i) => {
-        const out = Math.hypot(member.state.position.x, member.state.position.z);
-        if (out > 100) away[i] = true;
-        else if (away[i] && out < 5) {
-          away[i] = false;
+        if (member.down > 0) return;
+        const away = Math.hypot(member.state.position.x, member.state.position.z);
+        // A jump from well out to exactly the release point is a respawn:
+        // nothing flies thirty metres in a hundred and twentieth of a second.
+        if (out[i]! > 30 && Math.abs(away - defaultFlockOptions.spawnBehind) < 0.01) {
           returns += 1;
         }
+        out[i] = away;
       });
     }
 
@@ -196,46 +208,216 @@ describe('the flock', () => {
   });
 });
 
-describe('leaving the roost', () => {
-  it('scatters in every direction by default', () => {
-    // A loft on a roof has open sky all round it.
-    const flock = createFlock(4, { x: 0, y: 30, z: 0 });
-    const bearings = flock.members.map((m) =>
-      Math.atan2(m.state.velocity.x, -m.state.velocity.z),
-    );
-    const spread = Math.max(...bearings) - Math.min(...bearings);
-    expect(spread).toBeGreaterThan(Math.PI);
-  });
-
-  it('leaves along the line when it is given one', () => {
-    // A roost in a rail yard is ringed with blocks of flats, and the open
-    // ground is the corridor. Released every which way they fly into the
-    // buildings before they have climbed over them.
-    const bearing = Math.PI / 2;
-    const spread = 0.7;
-    const flock = createFlock(4, { x: 0, y: 4, z: 0 }, {
-      ...defaultFlockOptions,
-      outbound: { bearing, spread },
-    });
-
+describe('keeping the player company', () => {
+  it('appears behind the leader, not on top of them', () => {
+    const flock = createFlock(4, still(0, 60, 0, 0));
     for (const member of flock.members) {
-      const went = Math.atan2(member.state.velocity.x, -member.state.velocity.z);
-      const off = Math.abs(((went - bearing + Math.PI) % (2 * Math.PI)) - Math.PI);
-      expect(off).toBeLessThanOrEqual(spread + 1e-6);
+      const back = Math.hypot(member.state.position.x, member.state.position.z);
+      expect(back).toBeCloseTo(defaultFlockOptions.spawnBehind, 6);
     }
   });
 
-  it('releases them from the height the roost is at', () => {
-    // Not from a fixed altitude, which is what it used to do -- and which was
-    // invisible only because the one caller passed the same number.
-    for (const height of [4.4, 30, 90]) {
-      const flock = createFlock(3, { x: 12, y: height, z: -8 });
+  it('behind means behind whichever way the leader is facing', () => {
+    // Facing north, "behind" is south, which is +Z. Facing east it is west.
+    const north = createFlock(2, still(0, 60, 0, 0)).members[0]!;
+    expect(north.state.position.z).toBeCloseTo(defaultFlockOptions.spawnBehind, 6);
+    expect(north.state.position.x).toBeCloseTo(0, 6);
+
+    const east = createFlock(2, still(0, 60, 0, Math.PI / 2)).members[0]!;
+    expect(east.state.position.x).toBeCloseTo(-defaultFlockOptions.spawnBehind, 6);
+    expect(east.state.position.z).toBeCloseTo(0, 6);
+  });
+
+  it('sets off the same way the leader is going, not turning to face them', () => {
+    for (const bearing of [0, 1.2, -2.5]) {
+      const member = createFlock(2, still(0, 60, 0, bearing)).members[0]!;
+      const went = Math.atan2(member.state.velocity.x, -member.state.velocity.z);
+      expect(went).toBeCloseTo(bearing, 6);
+    }
+  });
+
+  it('follows the leader about rather than a spot on the map', () => {
+    // A leader crossing the map: every bird let out is put behind wherever
+    // the leader is by then, not behind where it started.
+    let along = 0;
+    const flock = createFlock(4, () => ({ x: along, y: 60, z: 0, heading: Math.PI / 2 }));
+    const wind = createWind();
+
+    for (let t = 0; t < 12; t += DT) {
+      along += 19 * DT;
+      flock.update(DT, undefined, wind);
+    }
+
+    // The last one out came from a point hundreds of metres from the first.
+    const spread = Math.max(...flock.members.map((m) => m.state.position.x));
+    expect(spread).toBeGreaterThan(100);
+  });
+
+  it('stays with a leader who stays put', () => {
+    // The real claim: a stationary player is not left alone. Not inside the
+    // 20 m targets are picked in -- a bird cruising at 11 m/s and banking to
+    // 0.9 rad turns in about ten metres, so it overshoots and comes back
+    // round -- but near enough to be company, and never at the stray limit,
+    // which is what was really bounding this before the flock was given its
+    // own way of flying.
+    const flock = createFlock(6, still(0, 60, 0));
+    const wind = createWind();
+    const distances: number[] = [];
+
+    for (let t = 0; t < 120; t += DT) {
+      flock.update(DT, undefined, wind);
       for (const member of flock.members) {
-        expect(member.state.position.y).toBe(height);
-        expect(member.state.position.x).toBe(12);
-        expect(member.state.position.z).toBe(-8);
+        if (member.down > 0) continue;
+        distances.push(Math.hypot(member.state.position.x, member.state.position.z));
       }
     }
+
+    const furthest = distances.reduce((a, b) => Math.max(a, b), 0);
+    expect(furthest).toBeLessThan(85);
+    const mean = distances.reduce((a, b) => a + b, 0) / distances.length;
+    expect(mean).toBeLessThan(40);
+    // And well short of the stray rule, or that would be doing the work.
+    expect(furthest).toBeLessThan(defaultFlockOptions.strayDistance * 0.7);
+  });
+
+  it('wheels over a leader on the ground instead of climbing away', () => {
+    // The default autopilot's floor is 38 m: a flock escorting a pigeon that
+    // has landed would spend the whole time getting away from it.
+    const flock = createFlock(6, still(0, defaultParams.bodyRadius, 0));
+    const wind = createWind();
+    const heights: number[] = [];
+
+    for (let t = 0; t < 90; t += DT) {
+      flock.update(DT, undefined, wind);
+      for (const member of flock.members) {
+        if (member.down <= 0) heights.push(member.state.position.y);
+      }
+    }
+
+    const mean = heights.reduce((a, b) => a + b, 0) / heights.length;
+    expect(mean).toBeLessThan(defaultAutopilotParams.floor);
+    // Overhead, not on top of them.
+    expect(heights.reduce((a, b) => Math.min(a, b), Infinity)).toBeGreaterThan(4);
+  });
+
+  it('brings back one that has lost touch, rather than trailing it for ever', () => {
+    const flock = createFlock(2, still(0, 60, 0));
+    const wind = createWind();
+    flock.update(DT, undefined, wind);
+
+    const stray = flock.members[0]!;
+    stray.state.position = { x: 400, y: 60, z: 0 };
+    flock.update(DT, undefined, wind);
+
+    expect(Math.hypot(stray.state.position.x, stray.state.position.z)).toBeCloseTo(
+      defaultFlockOptions.spawnBehind,
+      6,
+    );
+  });
+});
+
+describe('where they are aiming', () => {
+  /**
+   * Targets are private, so they are read from where the birds go: with a
+   * stationary leader and no collider, the nearest each bird gets over a long
+   * flight bounds where it was aiming.
+   */
+  function closestApproaches(leaderY: number, seconds = 120) {
+    const flock = createFlock(6, still(0, leaderY, 0));
+    const wind = createWind();
+    const nearest = flock.members.map(() => Infinity);
+    const lowest = flock.members.map(() => Infinity);
+
+    for (let t = 0; t < seconds; t += DT) {
+      flock.update(DT, undefined, wind);
+      flock.members.forEach((member, i) => {
+        if (member.down > 0) return;
+        const out = Math.hypot(member.state.position.x, member.state.position.z);
+        nearest[i] = Math.min(nearest[i]!, out);
+        lowest[i] = Math.min(lowest[i]!, member.state.position.y);
+      });
+    }
+    return { nearest, lowest };
+  }
+
+  it('gets in among the leader, rather than orbiting at a fixed stand-off', () => {
+    // Every bird passes close at some point, which is what aiming inside a
+    // 20 m circle round somebody looks like once a wing is involved.
+    const { nearest } = closestApproaches(60);
+    for (const near of nearest) expect(near).toBeLessThan(defaultFlockOptions.radius);
+  });
+
+  it('does not aim at the dirt when the leader is standing on it', () => {
+    // The leader can be on foot now. Targets at the leader's own height would
+    // be targets in the ground, and the flock would spend the run in it.
+    const { lowest } = closestApproaches(defaultParams.bodyRadius, 60);
+    for (const low of lowest) {
+      expect(low).toBeGreaterThan(defaultFlockOptions.minAltitude * 0.5);
+    }
+  });
+
+  it('picks its targets inside the radius, and never outside it', () => {
+    const flock = createFlock(6, still(0, 60, 0));
+    const wind = createWind();
+    for (let t = 0; t < 120; t += DT) {
+      flock.update(DT, undefined, wind);
+      for (const member of flock.members) {
+        const away = Math.hypot(member.aiming.x, member.aiming.z);
+        expect(away).toBeLessThanOrEqual(defaultFlockOptions.radius + 1e-9);
+      }
+    }
+  });
+
+  it('spreads its targets over the circle instead of favouring the middle', () => {
+    // Taking the radius straight from a random number bunches points at the
+    // centre: half of them would land inside half the radius, which is a
+    // quarter of the area. Evenly covered, it should be a quarter of them.
+    const flock = createFlock(8, still(0, 60, 0));
+    const wind = createWind();
+    const radii: number[] = [];
+    let was = flock.members.map((m) => `${m.aiming.x},${m.aiming.z}`);
+
+    for (let t = 0; t < 240; t += DT) {
+      flock.update(DT, undefined, wind);
+      flock.members.forEach((member, i) => {
+        const key = `${member.aiming.x},${member.aiming.z}`;
+        if (key !== was[i]) {
+          radii.push(Math.hypot(member.aiming.x, member.aiming.z));
+          was[i] = key;
+        }
+      });
+    }
+
+    expect(radii.length).toBeGreaterThan(200);
+    const inner = radii.filter((r) => r < defaultFlockOptions.radius / 2).length / radii.length;
+    expect(inner).toBeGreaterThan(0.15);
+    expect(inner).toBeLessThan(0.35);
+  });
+
+  it('keeps up with a leader it can match, rather than being recycled', () => {
+    // A target is chosen against where the leader was at the time, so it goes
+    // stale; the attention span is what makes a bird look again. Without it a
+    // bird chases the memory until the stray rule hauls it back, which is a
+    // teleport rather than flying.
+    let along = 0;
+    const flock = createFlock(6, () => ({ x: along, y: 60, z: 0, heading: Math.PI / 2 }));
+    const wind = createWind();
+    let recycles = 0;
+    const was = flock.members.map(() => 0);
+
+    for (let t = 0; t < 120; t += DT) {
+      // Half the flock's own cruise, so keeping up is possible.
+      along += 5 * DT;
+      flock.update(DT, undefined, wind);
+      flock.members.forEach((member, i) => {
+        if (member.down > 0) return;
+        const away = Math.hypot(member.state.position.x - along, member.state.position.z);
+        if (was[i]! > 30 && Math.abs(away - defaultFlockOptions.spawnBehind) < 0.01) recycles += 1;
+        was[i] = away;
+      });
+    }
+
+    expect(recycles).toBe(0);
   });
 });
 
@@ -245,7 +427,7 @@ describe('letting them out', () => {
   it('emits one at a time rather than all at once', () => {
     // A loft waking up, not a spawn: the first is out immediately and the
     // rest follow at the emission interval.
-    const flock = createFlock(4, { x: 0, y: 6, z: 0 });
+    const flock = createFlock(4, still(0, 6, 0));
     const wind = createWind();
     const inTheAir = () => flock.members.filter((m) => m.down <= 0).length;
 
@@ -258,12 +440,12 @@ describe('letting them out', () => {
 
   it('keeps the ones still waiting out of the air entirely', () => {
     // They have a position -- the roost -- but nothing should draw them there.
-    const flock = createFlock(4, { x: 0, y: 6, z: 0 });
+    const flock = createFlock(4, still(0, 6, 0));
     expect(flock.members.filter((m) => m.down > 0).length).toBe(flock.members.length - 1);
   });
 
   it('puts a dead one straight back', () => {
-    const flock = createFlock(4, { x: 0, y: 40, z: 0 });
+    const flock = createFlock(4, still(0, 40, 0));
     const wind = createWind();
     for (let t = 0; t < 30; t += DT) flock.update(DT, open, wind);
 
@@ -281,7 +463,10 @@ describe('letting them out', () => {
     flock.update(DT, open, wind);
     expect(victim.state.ending).toBeNull();
     expect(victim.down).toBe(0);
-    // Back at the roost, not left where it fell.
-    expect(Math.hypot(victim.state.position.x, victim.state.position.z)).toBeLessThan(1);
+    // Back behind the leader, not left where it fell.
+    expect(Math.hypot(victim.state.position.x, victim.state.position.z)).toBeCloseTo(
+      defaultFlockOptions.spawnBehind,
+      6,
+    );
   });
 });
