@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { MEET_RADIUS, meeting, neutralWalk, walk, type WalkControls } from './walk';
+import {
+  MEET_RADIUS,
+  meeting,
+  neutralWalk,
+  turnToFace,
+  walk,
+  type WalkControls,
+} from './walk';
 import {
   createBird,
   defaultParams,
@@ -531,6 +538,74 @@ describe('meeting another pigeon', () => {
     const a = standing(vec(0, STANDING, 0), null);
     const b = standing(vec(1, STANDING, 0), null);
     expect(meeting(a, b)).toBe(true);
+  });
+});
+
+describe('turning to face somebody', () => {
+  const facing = (state: ReturnType<typeof landed>) => heading(state);
+  /** Turn for `seconds`, toward a point. */
+  const turned = (state: ReturnType<typeof landed>, at: ReturnType<typeof vec>, seconds: number) => {
+    const ticks = Math.round(seconds / TICK);
+    for (let i = 0; i < ticks; i += 1) turnToFace(state, at, p, TICK);
+    return state;
+  };
+
+  it('comes round to look at them', () => {
+    // Standing facing north with somebody due east.
+    const bird = landed(vec(0, STANDING, 0), 0);
+    turned(bird, vec(10, STANDING, 0), 3);
+    expect(facing(bird)).toBeCloseTo(Math.PI / 2, 3);
+  });
+
+  it('looks the right way from wherever it started', () => {
+    for (const start of [0, 1.2, -2.4, Math.PI]) {
+      for (const [x, z, want] of [
+        [10, 0, Math.PI / 2],
+        [-10, 0, -Math.PI / 2],
+        [0, -10, 0],
+      ] as const) {
+        const bird = landed(vec(0, STANDING, 0), start);
+        turned(bird, vec(x, STANDING, z), 4);
+        expect(facing(bird), `from ${start} to ${x},${z}`).toBeCloseTo(want, 3);
+      }
+    }
+  });
+
+  it('takes the short way round', () => {
+    // Across the back, where a heading of +3 rad and one of -3 are a sixth of
+    // a radian apart and look like six. Measured as how long it takes: the
+    // short way is a tenth of a second, the long way the better part of
+    // three. An angle that does not cross the wrap cannot tell them apart,
+    // which is how the first version of this test passed either way.
+    const bird = landed(vec(0, STANDING, 0), 3);
+    // A point due -3 rad from the origin.
+    const at = vec(Math.sin(-3) * 10, STANDING, -Math.cos(-3) * 10);
+
+    turned(bird, at, 0.3);
+    expect(facing(bird)).toBeCloseTo(-3, 2);
+  });
+
+  it('turns at the pace it walks, rather than snapping round', () => {
+    // One tick of turning is one tick's worth, which is what makes it read as
+    // a bird noticing you rather than as one being teleported.
+    const bird = landed(vec(0, STANDING, 0), 0);
+    turnToFace(bird, vec(10, STANDING, 0), p, TICK);
+    expect(facing(bird)).toBeCloseTo(p.walkTurnRate * TICK, 6);
+  });
+
+  it('stops once it is looking at them', () => {
+    const bird = landed(vec(0, STANDING, 0), 0);
+    turned(bird, vec(10, STANDING, 0), 3);
+    const settled = facing(bird);
+    turned(bird, vec(10, STANDING, 0), 3);
+    expect(facing(bird)).toBeCloseTo(settled, 9);
+  });
+
+  it('leaves a bird that is not on its feet alone', () => {
+    const flying = createBird(vec(0, 50, 0), 14, 0);
+    const before = { ...flying.orientation };
+    turnToFace(flying, vec(10, 50, 0), p, TICK);
+    expect(flying.orientation).toEqual(before);
   });
 });
 

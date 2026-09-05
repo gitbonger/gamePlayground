@@ -164,6 +164,9 @@ export function createChaseCamera(camera: THREE.PerspectiveCamera): ChaseCamera 
   const desiredUp = new THREE.Vector3();
 
   let initialised = false;
+  /** Where the pair was last frame, so the shot can be carried along with it. */
+  const carried = new THREE.Vector3();
+  let carrying = false;
 
   function computeIdeal(state: BirdState, params: CameraParams) {
     birdPos.set(state.position.x, state.position.y, state.position.z);
@@ -204,6 +207,7 @@ export function createChaseCamera(camera: THREE.PerspectiveCamera): ChaseCamera 
   }
 
   function update(state: BirdState, params: CameraParams, dt: number) {
+    carrying = false;
     if (!initialised) {
       snap(state, params);
       return;
@@ -229,6 +233,25 @@ export function createChaseCamera(camera: THREE.PerspectiveCamera): ChaseCamera 
 
   function watch(a: Vec3, b: Vec3, params: WatchParams, dt: number) {
     const ideal = twoShot(a, b, position, params);
+
+    // Carried along with the pair before any easing.
+    //
+    // Without this the shot lags whatever the two of them are standing on. An
+    // eased aim trails a moving subject by about `speed x halfLife / ln 2` --
+    // on a wagon at 6 m/s that is three metres, and from a stand-off of four
+    // it puts both birds hard against the edge of the frame and keeps them
+    // there. Moving the camera by however far the pair moved leaves the
+    // easing only the gap it is actually for, so a pair travelling at a
+    // steady rate is framed exactly, standing still or doing sixty.
+    if (carrying) {
+      const shiftX = ideal.target.x - carried.x;
+      const shiftY = ideal.target.y - carried.y;
+      const shiftZ = ideal.target.z - carried.z;
+      position.set(position.x + shiftX, position.y + shiftY, position.z + shiftZ);
+      target.set(target.x + shiftX, target.y + shiftY, target.z + shiftZ);
+    }
+    carried.set(ideal.target.x, ideal.target.y, ideal.target.z);
+    carrying = true;
 
     desiredPos.set(ideal.position.x, ideal.position.y, ideal.position.z);
     desiredTarget.set(ideal.target.x, ideal.target.y, ideal.target.z);

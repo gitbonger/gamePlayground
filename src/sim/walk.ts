@@ -318,3 +318,31 @@ export function meeting(a: BirdState, b: BirdState, within = MEET_RADIUS): boole
     ) <= within
   );
 }
+
+/**
+ * Turn a standing bird to face a point, at the pace it turns while walking.
+ *
+ * Eased rather than snapped, and at the same rate as `walk` turns on the
+ * spot, because it is the same action: a pigeon noticing somebody and coming
+ * round to look at them. Snapping would read as the bird being teleported
+ * rather than as it turning.
+ *
+ * Does nothing to a bird that is not on its feet, and nothing to one already
+ * looking the right way.
+ */
+export function turnToFace(state: BirdState, at: Vec3, p: FlightParams, dt: number): void {
+  if (!isPerched(state)) return;
+
+  const want = Math.atan2(at.x - state.position.x, -(at.z - state.position.z));
+  const facing = heading(state);
+
+  // The short way round. Turning 350 degrees to the left to look 10 to the
+  // right is the sort of thing that happens without this.
+  let off = (want - facing + Math.PI) % (Math.PI * 2);
+  if (off < 0) off += Math.PI * 2;
+  off -= Math.PI;
+
+  const most = p.walkTurnRate * dt;
+  const step = off > most ? most : off < -most ? -most : off;
+  state.orientation = quatFromAxisAngle(vec(0, 1, 0), -(facing + step));
+}

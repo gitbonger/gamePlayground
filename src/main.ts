@@ -56,7 +56,13 @@ import {
   WAGON,
 } from './world/train';
 import { createSmoke } from './world/smoke';
-import { meeting, walk, type WalkControls, type WalkTelemetry } from './sim/walk';
+import {
+  meeting,
+  turnToFace,
+  walk,
+  type WalkControls,
+  type WalkTelemetry,
+} from './sim/walk';
 import { bearing, distance, project } from './world/geo';
 import type { MapData } from './world/streets';
 import homeMap from './world/data/home.json';
@@ -524,6 +530,8 @@ function frame(nowMs: number) {
     flock.update(TICK, solid, wind);
     if (bird.ending === null) run.update(bird, TICK);
     reachLevel();
+    // Somebody you have walked up to looks at you.
+    if (talkingTo) turnToFace(talkingTo.state, bird.position, flightParams, TICK);
     accumulator -= TICK;
   }
   if (ticked) launchPending = false;

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { defaultWatchParams, twoShot, type WatchParams } from './camera';
+import * as THREE from 'three';
+import {
+  createChaseCamera,
+  defaultCameraParams,
+  defaultWatchParams,
+  twoShot,
+  type WatchParams,
+} from './camera';
+import { createBird } from '../sim/flight';
 import { vec } from '../sim/math3';
 
 const p: WatchParams = defaultWatchParams;
@@ -120,6 +128,99 @@ describe('framing two birds together', () => {
     const shot = twoShot(same, same, same, p);
     for (const value of [shot.position.x, shot.position.y, shot.position.z]) {
       expect(Number.isFinite(value)).toBe(true);
+    }
+  });
+});
+
+
+describe('holding the two-shot on a pair that is moving', () => {
+  const DT = 1 / 60;
+
+  /**
+   * Run the shot on two birds a metre apart travelling at `speed`, and report
+   * where each lands across the frame, -1 to 1.
+   *
+   * They stand side by side *along* the way they are going, which is how two
+   * pigeons stand on a wagon and, more to the point, is the arrangement that
+   * puts their travel across the picture rather than into it. Set up the
+   * other way round -- separated across the direction of travel -- a lagging
+   * aim shows up as the wrong stand-off and not as bad framing at all, which
+   * is how the first version of this test managed to pass while the shot was
+   * visibly broken.
+   */
+  function framed(speed: number, seconds = 6) {
+    const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.35, 12000);
+    const chase = createChaseCamera(camera);
+
+    let along = 0;
+    let a = vec(0, 1.5, 0);
+    let b = vec(1, 1.5, 0);
+    for (let t = 0; t < seconds; t += DT) {
+      along += speed * DT;
+      a = vec(along, 1.5, 0);
+      b = vec(along + 1, 1.5, 0);
+      chase.watch(a, b, defaultWatchParams, DT);
+    }
+
+    camera.updateMatrixWorld(true);
+    const across = (at: typeof a) =>
+      new THREE.Vector3(at.x, at.y, at.z).project(camera).x;
+    return { a: across(a), b: across(b), camera, along };
+  }
+
+  it('aims at the middle of them, whatever they are riding', () => {
+    // A wagon does 6 m/s. An eased aim trails a subject moving that fast by
+    // about three metres, which from a stand-off of four puts both birds hard
+    // against one edge of the picture and leaves them there -- which is what
+    // this looked like on the train.
+    for (const speed of [0, 3, 6, 12]) {
+      const shot = framed(speed);
+      const middle = (shot.a + shot.b) / 2;
+      expect(Math.abs(middle), `${speed} m/s`).toBeLessThan(0.06);
+    }
+  });
+
+  it('keeps both of them well inside the frame while they travel', () => {
+    for (const speed of [0, 6, 12]) {
+      const shot = framed(speed);
+      expect(Math.abs(shot.a), `${speed} m/s, first`).toBeLessThan(0.6);
+      expect(Math.abs(shot.b), `${speed} m/s, second`).toBeLessThan(0.6);
+    }
+  });
+
+  it('does not fling the camera when the shot is re-entered somewhere else', () => {
+    // Walk away, fly half a kilometre, land and meet somebody else. The
+    // distance the pair moved between the two conversations is not a distance
+    // the camera should be carried by, so leaving the shot has to forget it.
+    const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.35, 12000);
+    const chase = createChaseCamera(camera);
+
+    const here = [vec(0, 1.5, 0), vec(1, 1.5, 0)] as const;
+    for (let t = 0; t < 3; t += DT) chase.watch(here[0], here[1], defaultWatchParams, DT);
+
+    // Away, on the boom, and flown over to the far pair -- so by the time the
+    // second conversation starts the camera is already right beside it. That
+    // is the arrangement that matters: carrying it by how far the *pair*
+    // moved between conversations then throws it the same distance again.
+    const flying = createBird(vec(500, 3, 500), 14, 0);
+    for (let t = 0; t < 2; t += DT) chase.update(flying, defaultCameraParams, DT);
+    expect(Math.hypot(camera.position.x - 500, camera.position.z - 500)).toBeLessThan(10);
+
+    const there = [vec(500, 1.5, 500), vec(501, 1.5, 500)] as const;
+    chase.watch(there[0], there[1], defaultWatchParams, DT);
+
+    // Still beside them, rather than five hundred metres past.
+    const away = Math.hypot(camera.position.x - 500.5, camera.position.z - 500);
+    expect(away).toBeLessThan(20);
+  });
+
+  it('settles at the stand-off it asked for, moving or not', () => {
+    const ideal = (1 / 2 + defaultWatchParams.margin) / Math.tan(halfFov(defaultWatchParams));
+    for (const speed of [0, 6]) {
+      const { camera, along } = framed(speed);
+      // The pair is at x = along and along + 1, both at z = 0.
+      const back = Math.hypot(camera.position.x - (along + 0.5), camera.position.z);
+      expect(back, `${speed} m/s`).toBeCloseTo(ideal, 0);
     }
   });
 });

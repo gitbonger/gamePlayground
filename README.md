@@ -273,6 +273,23 @@ It is the same camera, easing with the same smoothing, sharing the same boom
 position and aim — so going into the shot and coming out of it need no cut and
 nothing to blend between.
 
+**But it has to be carried along with them.** An eased aim trails a moving
+subject by about `speed × halfLife / ln 2`. On a wagon doing 6 m/s that is
+three metres, and from a stand-off of four it pins both birds against one edge
+of the frame and leaves them there — which is what a conversation on a running
+train looked like. So the camera is moved by however far the pair moved before
+any easing happens, leaving the ease only the gap it is actually for. A pair
+travelling at a steady rate is then framed exactly, standing still or doing
+sixty. Leaving the shot forgets where they were, or meeting somebody half a
+kilometre later would fling the camera the same distance again.
+
+**And they look at you.** Walking up to somebody turns them to face you, at
+the same rate a walking pigeon turns on the spot, because it is the same
+action: a bird noticing you and coming round to look. The short way round,
+which matters more than it sounds — a heading of +3 radians and one of -3 are
+a sixth of a radian apart and look like six, and without the wrap a bird asked
+to turn a little to the right goes almost all the way round to the left.
+
 Nothing about the marker is specific to buildings: it takes a material to
 recolour and a height to hang the arrow over. Marking a wagon needed two
 things. It gets its own mesh, pulled out of the merged rake, for the same
@@ -1589,6 +1606,14 @@ npm test
   straight up is somewhere you can stand on a wagon. Two birds on open ground
   do meet, because both standing on nothing is both standing on the same
   ground.
+
+  And on turning to face somebody: a bird comes round to look at them from
+  whatever heading it started on, takes the short way round -- tested across
+  the back of the compass, where +3 radians and -3 are a sixth of a radian
+  apart and look like six, because an angle that does not cross the wrap
+  cannot tell the two apart -- turns a tick's worth in a tick rather than
+  snapping round, stops once it is looking at them, and does nothing at all to
+  a bird in the air.
 - **`src/render/bird.test.ts`** also covers the walk cycle: the legs swing in
   opposite directions and only the forward one lifts, both return together at
   the top of the stride, and the head reaches furthest forward in the first
@@ -1629,6 +1654,16 @@ npm test
   further the further apart they are, never crowds two birds in the same place,
   stands a little above them, and produces finite numbers when the pair and the
   camera are all at the same point.
+
+  And on holding the shot: the pair's midpoint stays at the centre of the
+  frame at a standstill and at 3, 6 and 12 m/s, and both birds stay well
+  inside it. The two of them stand side by side *along* the way they are
+  going, which is how pigeons stand on a wagon and, more to the point, is the
+  arrangement that puts their travel across the picture rather than into it —
+  set up the other way round, a lagging aim shows as the wrong stand-off and
+  not as bad framing at all, which is how the first version of this test
+  passed while the shot was visibly broken. Re-entering the shot somewhere
+  else does not fling the camera the distance between the two conversations.
 - **`src/render/sun.test.ts`** — the sun is overhead at the equator at noon on
   the equinox, reaches 90 minus the latitude plus the tilt at midsummer noon
   and due south with it, is a full two tilts lower at midwinter, rises in the
