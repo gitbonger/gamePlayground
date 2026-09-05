@@ -416,3 +416,66 @@ body {
   font-size: 12px;
   color: var(--dim);
 }
+
+/* --- Dialogue ------------------------------------------------------------ */
+
+.talk {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 7%;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.talk-card {
+  min-width: 380px;
+  max-width: 560px;
+  padding: 20px 26px 18px;
+  border: 1px solid rgba(242, 245, 248, 0.14);
+  border-radius: 10px;
+  background: rgba(12, 18, 26, 0.86);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+
+/* Theirs and yours read differently, so a glance says who is speaking. */
+.talk-them {
+  margin: 0 0 4px;
+  font-size: 16px;
+  color: #f2f5f8;
+}
+
+.talk-you {
+  margin: 0 0 4px;
+  padding-left: 18px;
+  font-size: 15px;
+  color: #7fe0a8;
+}
+
+.talk-reply {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(127, 224, 168, 0.08);
+  font-size: 15px;
+  color: #7fe0a8;
+}
+
+.talk-reply b {
+  min-width: 16px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.talk-hint {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+}

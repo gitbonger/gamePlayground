@@ -109,7 +109,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     const warning = note
       ? note
       : talking
-        ? 'meeting another pigeon — SPACE to fly on'
+        ? 'meeting another pigeon'
         : isPerched(state)
       ? onFoot.blocked
         ? 'blocked — turn and walk round it'

@@ -33,6 +33,7 @@ Once you are down, the same keys mean something else:
 | `W` / `S` or `↑` / `↓` | Walk forward / back |
 | `A` / `D` or `←` / `→` | Turn on the spot |
 | `Space` | Take off |
+| `1` … `9` | Answer, when a pigeon has said something |
 | `R` | Release again |
 
 Turning is done by banking, not by yawing. Roll into the turn and the tilted
@@ -255,11 +256,36 @@ taken before the flight model can have it: from a finished conversation it is
 a transition to somewhere else rather than a launch from where you are. On the
 last level there is nowhere to go, so it stays an ordinary take-off.
 
-That split is what the story will hang on — a dialogue has to happen
-*somewhere*, and standing with somebody having just arrived is the somewhere.
 It is also less to build than a continuous world, and a fresh start each time
 is rather more of an occasion than gliding on from wherever you happened to
 put down.
+
+### What they say
+
+`src/dialogue.ts` is a tree, because a conversation is one: they say
+something, you pick from what you might say back, and what they say next
+depends on which you chose. One reply or several; a branch ends when there is
+nothing left to say. The script is a placeholder and the same at the end of
+every level — written as data, so that replacing it is writing different data,
+and carried on the level itself so that giving one its own conversation is
+changing one line.
+
+An exchange keeps everything said, not only where it has got to. A
+conversation you can see one line of is one you have to remember rather than
+read, and the panel shows the whole of it: their line, your answer, their
+reply.
+
+Three keys do three things while you are standing there, and each of them
+does nothing rather than something wrong:
+
+- **A number** says the thing it is against. A number that is not on offer
+  says nothing at all — being asked to choose between two things and pressing
+  a third is not an answer, and putting words in the player's mouth would be
+  worse.
+- **`Space` mid-sentence is swallowed.** It is taken out of the input before
+  the flight model can see it, so answering a question by flying off is not
+  available either.
+- **`Space` once the conversation is done** is what starts the next level.
 
 **Which level you are on is remembered**, in local storage, and anything else
 found there is treated as the beginning — a number from a build with more
@@ -1775,6 +1801,17 @@ npm test
   out of range, negative, fractional, empty, a word. Also that the levels
   themselves are well formed: named, named differently from each other,
   starting somewhere over Budapest, and at an hour a `Date` can be made of.
+- **`src/dialogue.test.ts`** — a conversation opens on their line with yours
+  to choose from, answers what you actually said rather than the same thing
+  either way, keeps everything said rather than only the last of it, and is
+  over when there is nothing left. A key that is not on offer leaves it
+  exactly where it was, and so does a key pressed after it has ended. Every
+  step returns a new exchange, so nothing already on screen can change under
+  the panel drawing it. It goes deeper than one exchange when a branch does —
+  the placeholder is two lines deep and nothing in the traversal should know
+  that — and it ends on your word when a reply has no answer. And every
+  level's conversation opens with something and ends whichever way you take
+  it, because a branch that never runs out is a level you can never leave.
 - **`src/render/menu.test.ts`** — which level a number key picks: counting
   from one, nothing at all while the menu is closed, nothing for a number that
   is not a level, and exactly as many working numbers as there are levels. The

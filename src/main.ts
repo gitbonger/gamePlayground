@@ -32,6 +32,8 @@ import { createScene } from './render/scene';
 import { createBirdRig, PIGEON_MORPHS, type WingPose } from './render/bird';
 import { createFlock } from './flock';
 import { LEVELS, type Level, type LevelTarget } from './levels';
+import { begin, isOver, reply, type Exchange } from './dialogue';
+import { createDialoguePanel } from './render/dialogue';
 import { loadProgress, saveProgress } from './progress';
 import { createLevelMenu } from './render/menu';
 import {
@@ -205,6 +207,14 @@ let clock = 0;
  * more of an occasion.
  */
 let finished = false;
+
+/**
+ * The conversation with the pigeon at the target, once there is one.
+ *
+ * Null until the level is finished, and the reason the take-off key does not
+ * simply move you on: you say your piece first.
+ */
+let talk: Exchange | null = null;
 
 /**
  * The level just started, named on screen for a few seconds.
@@ -477,6 +487,7 @@ function playLevel(at: number): void {
   sunOffset.copy(sunDirection).multiplyScalar(SUN_RANGE);
 
   finished = false;
+  talk = null;
   started = spec.name;
   startedAt = clock;
   talkingTo = null;
@@ -487,6 +498,7 @@ function playLevel(at: number): void {
 createDebugGui(flightParams, cameraParams, windParams, { respawn, rebuildWind });
 
 const menu = createLevelMenu(overlay, LEVELS);
+const talkPanel = createDialoguePanel(overlay);
 // The level being flown is the one remembered, applied through the same path
 // everything else uses rather than by having been set up that way.
 playLevel(level);
@@ -630,8 +642,12 @@ function reachLevel(): void {
 
   const here = LEVELS[level];
   // Meeting them finishes the level and nothing else. What happens next is
-  // the player's move, not the game's: they are standing with somebody.
-  if (here && talkingTo?.completes === here.name) finished = true;
+  // the player's move, not the game's: they are standing with somebody, and
+  // the somebody says hello.
+  if (here && talkingTo?.completes === here.name && !finished) {
+    finished = true;
+    talk = begin(here.dialogue);
+  }
 }
 
 /**
@@ -649,6 +665,11 @@ function reachLevel(): void {
  * to be told about, and it says what the key in their hand will do next.
  */
 function banner(): string | null {
+  // Nothing while there is still something to say. The conversation has the
+  // screen and its own line about which key does what; two of them
+  // contradicting each other is worse than one.
+  if (talk && talkingTo && !isOver(talk)) return null;
+
   const here = LEVELS[level]?.name;
   if (finished && talkingTo) {
     const next = LEVELS[level + 1]?.name;
@@ -658,8 +679,12 @@ function banner(): string | null {
   return null;
 }
 
+/** Whether the conversation still wants something said before you go. */
+const midSentence = (): boolean => talkingTo !== null && talk !== null && !isOver(talk);
+
 function flyOn(): boolean {
-  if (!finished || !talkingTo || level + 1 >= LEVELS.length) return false;
+  if (!finished || !talkingTo || midSentence()) return false;
+  if (level + 1 >= LEVELS.length) return false;
   playLevel(level + 1);
   return true;
 }
@@ -681,17 +706,20 @@ function frame(nowMs: number) {
 
   input.update(frameTime);
   if (input.consumeMenu()) menu.toggle(level);
-  // Digits are only ever a level while the menu is up, so they are offered to
-  // it and it says whether it wanted one.
+  // A digit is a level while the menu is up and a thing to say while a
+  // conversation is waiting on one. Offered to the menu first, because the
+  // menu is the thing the player has just deliberately opened.
   for (let digit = input.consumeDigit(); digit !== null; digit = input.consumeDigit()) {
     const picked = menu.choose(digit);
     if (picked !== null) playLevel(picked);
+    else if (talk && !isOver(talk)) talk = reply(talk, digit);
   }
   if (input.consumeReset()) respawn();
   // Leaving a finished conversation starts the next level rather than taking
   // off from this one, so the key is taken here before the flight model can
-  // have it.
-  if (input.consumeLaunch()) launchPending = !flyOn();
+  // have it -- and while there is still something to say it is taken and
+  // dropped, because flying off mid-sentence is not an answer either.
+  if (input.consumeLaunch() && !midSentence()) launchPending = !flyOn();
 
   // Alive rather than flying: a walking bird is not flying, and being run
   // over while on foot is still a death that has to raise the panel.
@@ -766,6 +794,7 @@ function frame(nowMs: number) {
       ),
     })),
   );
+  talkPanel.show(talkingTo ? talk : null);
   world.updateSmoke(smoke.puffs, camera.quaternion);
   rig.update(interpolatedState, wings, frameTime, surfaceUnder(interpolatedState));
 

@@ -6,10 +6,12 @@
  * something you have to build: a point to be released at, an hour to fly it
  * at, a thing to land on and somebody standing on it.
  *
- * No story yet, and no mechanism for one. These are landing problems in
- * increasing order of difficulty, and whatever eventually joins them up can
- * be another field on the same objects.
+ * No story yet. These are landing problems in increasing order of difficulty,
+ * each ending in the same placeholder conversation, and whatever eventually
+ * joins them up can be different data in the same shape.
  */
+
+import { GREETING, type Turn } from './dialogue';
 
 /**
  * What a level asks you to land on. Always a thing, never a place.
@@ -48,6 +50,13 @@ export interface LevelPerson {
 export interface Level {
   /** What it is called, on the marker and in the menu. */
   name: string;
+  /**
+   * What is said when you reach the pigeon waiting there.
+   *
+   * The same placeholder on every level for now. Each carries its own so
+   * that giving one a different conversation is changing one line here.
+   */
+  dialogue: Turn;
   /** Where the pigeon is released, in degrees. */
   start: [number, number];
   /**
@@ -73,6 +82,7 @@ export const LEVELS: readonly Level[] = [
     when: '2025-06-21T10:00:00Z',
     target: { kind: 'patch', at: [47.494297, 19.090454], size: 9 },
     person: { morph: 6, along: 2.4, across: 0 },
+    dialogue: GREETING,
   },
   {
     // Twenty-four metres up, on a roof among other roofs. Still nothing
@@ -85,6 +95,7 @@ export const LEVELS: readonly Level[] = [
     when: '2025-06-21T16:00:00Z',
     target: { kind: 'building', near: [47.494953, 19.081954] },
     person: { morph: 1, along: 2.6, across: 0 },
+    dialogue: GREETING,
   },
   {
     // A wagon of a running train, which is the first target that will not
@@ -95,5 +106,6 @@ export const LEVELS: readonly Level[] = [
     when: '2025-06-21T17:30:00Z',
     target: { kind: 'wagon', train: 0, car: 'middle' },
     person: { morph: 3, along: 2.5, across: 0 },
+    dialogue: GREETING,
   },
 ];
