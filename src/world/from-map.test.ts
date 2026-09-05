@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
 import { indexStreets, type MapData, type Road } from './streets';
 import { footprintSamples, type Area } from './areas';
-import { distanceToEdges, pointInPolygon, polygonArea } from './polygon';
+import { distanceToEdges, pointInPolygon } from './polygon';
 import { createColliderField, worldBounds } from '../sim/collision';
 import { createBird, defaultParams, neutralControls, step } from '../sim/flight';
 import { vec } from '../sim/math3';
@@ -92,8 +92,7 @@ describe('building a perimeter block', () => {
 
   it('leaves the courtyard itself open', () => {
     // Walled in, not filled in. There is somewhere in there to fly.
-    expect(layout.courtyards).toHaveLength(1);
-    expect(polygonArea(layout.courtyards[0]!)).toBeGreaterThan(100 * 100);
+    expect(layout.gardens).toHaveLength(1);
 
     for (let i = 0; i < 24; i += 1) {
       const bearing = (i / 24) * Math.PI * 2;
@@ -102,14 +101,52 @@ describe('building a perimeter block', () => {
     }
   });
 
-  it('puts the gardens in the courtyard and nowhere else', () => {
+  it('puts the gardens inside the block, clear of the houses', () => {
     expect(layout.trees.length).toBeGreaterThan(10);
+    const ring = layout.blocks[0]!.ring;
+
     for (const tree of layout.trees) {
-      expect(
-        layout.courtyards.some((yard) => pointInPolygon(tree.x, tree.z, yard)),
-        `${tree.x},${tree.z}`,
-      ).toBe(true);
+      expect(pointInPolygon(tree.x, tree.z, ring), `${tree.x},${tree.z}`).toBe(true);
+
+      // Not standing in anybody's front room. Checked in each building's own
+      // frame, so a turned house is the rectangle it is rather than the larger
+      // square its world bounds describe.
+      for (const b of layout.buildings) {
+        const turn = -(b.yaw ?? 0);
+        const dx = tree.x - b.x;
+        const dz = tree.z - b.z;
+        const along = dx * Math.cos(turn) + dz * Math.sin(turn);
+        const back = -dx * Math.sin(turn) + dz * Math.cos(turn);
+        const inside = Math.abs(along) < b.width / 2 && Math.abs(back) < b.depth / 2;
+        expect(inside, `tree ${tree.x},${tree.z} in house ${b.x},${b.z}`).toBe(false);
+      }
     }
+  });
+
+  it('leaves no block of the city empty', () => {
+    // Every polygon the streets enclose is either built on or planted. Bare
+    // grass between four roads is the one thing a city block is never.
+    for (const block of layout.blocks) {
+      const built = layout.buildings.some((b) => pointInPolygon(b.x, b.z, block.ring));
+      const planted = layout.trees.some((t) => pointInPolygon(t.x, t.z, block.ring));
+      expect(built || planted, `${block.area} m2`).toBe(true);
+    }
+  });
+
+  it('plants a block too small to build on rather than leaving it bare', () => {
+    // 26 m across, with 12 m of street room on every side: there is no room
+    // here for a house, and in a real city this plot is a garden square.
+    const pocket: Road[] = [
+      { kind: 'residential', width: 8, points: [[-20, 0], [0, 0], [26, 0], [46, 0]] },
+      { kind: 'residential', width: 8, points: [[-20, 26], [0, 26], [26, 26], [46, 26]] },
+      { kind: 'residential', width: 8, points: [[0, -20], [0, 0], [0, 26], [0, 46]] },
+      { kind: 'residential', width: 8, points: [[26, -20], [26, 0], [26, 26], [26, 46]] },
+    ];
+    const square = buildLayoutFromMap(mapOf(pocket));
+    expect(square.blocks).toHaveLength(1);
+    expect(square.buildings).toHaveLength(0);
+    expect(square.bare).toHaveLength(1);
+    expect(square.trees.length).toBeGreaterThan(0);
   });
 
   it('never lets a building overhang the carriageway it fronts', () => {
@@ -219,7 +256,7 @@ describe('building a perimeter block', () => {
     ];
     const dense = buildLayoutFromMap(mapOf(small));
     expect(dense.blocks).toHaveLength(1);
-    expect(dense.courtyards).toHaveLength(0);
+    expect(dense.gardens).toHaveLength(0);
     expect(dense.buildings.length).toBeGreaterThan(0);
 
     // Solid all the way through: no hole to fly into.

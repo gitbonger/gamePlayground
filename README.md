@@ -218,8 +218,16 @@ a row knows the block is a closed shape. The block has to come first:
    differ by a storey, which is what stops a block reading as one extruded
    shape.
 4. **What is left in the middle is the courtyard**, and where the gardens go.
-   69 of the 144 blocks have room for one. The rest are built solid, which
-   small blocks here really are.
+   56 of the 150 blocks have room for one; the rest are built solid, which
+   small blocks here really are, and the ones with no room for even a single
+   house are planted instead. Nothing is left as bare grass between four roads.
+
+Each frontage is laid out from its own edge and its two neighbours, not by
+insetting the block as a ring. That was the first approach and it was too
+brittle by half: one corner the offset could not resolve lost the whole block,
+and once the streets were widened that came to 42 blocks and 32 hectares of
+the map left as nothing at all. A corner that will not resolve should cost a
+corner.
 
 This was the part I expected to be too fragile to attempt, and the fear was
 misplaced -- not because real map data is clean, but because every way it is
@@ -241,6 +249,31 @@ rejected every non-convex block on the map -- 55 of 144 at the kerb, and 39 of
 the 56 blocks big enough for a courtyard, leaving 17 gardens where there should
 have been 69. An edge that vanishes as a ring shrinks is not a failure; it is
 what the shape does. Dropping it and re-fitting the rest is the fix.
+
+**Filling every block took three fixes and one measurement.** The complaint was
+that the city had holes in it -- polygons ringed by streets with neither houses
+nor trees. Counted rather than eyeballed, it was 115 hectares: 83 of them six
+genuine superblocks thrown out by a size cap set at 9 hectares, and 32 of them
+blocks whose ring inset had collapsed. Lifting the cap, laying frontages per
+edge, and planting whatever still would not build brought it to **0.13
+hectares** of visible bare ground across the whole map.
+
+The measurement that mattered was the last one. 14 blocks still come out empty,
+which sounds like the job is half done -- until you check what is actually
+there: they are slivers 4 to 14 m wide between a road and its service road,
+and **93% of that ground is under the road surface already**. What is left is
+about a tenth of a hectare in scraps of a few dozen square metres. Dropping the
+minimum block size to catch even those was tried, measured, and reverted: it
+changed the visible total from 0.16 to 0.18 hectares, which is to say it did
+nothing.
+
+That work also turned up a sign error worth recording. The frontage lines are
+mitred against their neighbours by intersecting two offset lines, and the cross
+product in the denominator was formed the wrong way round -- `a x b` where the
+derivation gives `b x a`. Negating it mirrors every corner back to the middle
+of its own frontage, so each edge built exactly half its length and stopped.
+The city looked plausible the whole time. Fixing it took the map from 2,286
+buildings to 3,858, and one test block from 17 to 37.
 
 Corners are also why the tests state their claims against the block ring rather
 than the nearest street. A house on the boulevard has its *side* to the side
@@ -316,9 +349,9 @@ the worry that went with it, was the browser throttling a hidden tab rather
 than anything the renderer was doing -- a frame rate read from a page that is
 not on screen measures the page not being on screen.
 
-From 1,428 real street segments and 243 green areas: 144 blocks, 2,249
-buildings, 69 courtyards and 5,304 trees, built in 27 ms, with 20,000 collision
-sweeps in 10 ms.
+From 1,428 real street segments and 243 green areas: 150 blocks, 3,858
+buildings, 56 courtyards and 5,159 trees, built in well under a tenth of a
+second, with 20,000 collision sweeps in 10 ms.
 
 OpenStreetMap data is ODbL. The baked file is a derived database, so it carries
 the attribution and the HUD keeps it on screen.
@@ -791,8 +824,11 @@ npm test
   the courtyard itself stays open to fly in; gardens are in courtyards and
   nowhere else; nothing overhangs a carriageway, drifts off its block, or sits
   deeper than the wing; every building is squared up to an edge of its own
-  block; facing frontages are twice the carriageway and its setbacks apart; a
-  block too small for a courtyard is built solid, with no hole to fly into; and exactly one building is marked as the target, the one actually
+  block; facing frontages are twice the carriageway and its setbacks apart; no
+  block is left empty, and one too small for even a single house is planted
+  rather than left bare; gardens stay inside their block and out of everyone's
+  front room; a block too small for a courtyard is built solid, with no hole to
+  fly into; and exactly one building is marked as the target, the one actually
   nearest it. Green space has its own group, including a control that the test
   park covers ground the generator *would* have built on — a park in the middle
   of a courtyard would prove nothing.

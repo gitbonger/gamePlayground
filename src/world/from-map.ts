@@ -21,9 +21,7 @@ import { extractBlocks, type Block } from './blocks';
 import {
   distanceToEdges,
   pointInPolygon,
-  polygonArea,
   polygonCentroid,
-  shrinkRing,
   type Point2,
 } from './polygon';
 import type { Building, CityLayout, Tree } from './layout';
@@ -58,7 +56,14 @@ export interface MapWorldOptions {
    * is built solid instead. Small blocks in this district really are solid.
    */
   minCourtyard: number;
-  /** Ignore faces outside this range of ground area, in square metres. */
+  /**
+   * Ignore faces outside this range of ground area, in square metres.
+   *
+   * Below the minimum they are not blocks but the triangles left at skew
+   * junctions: around 90% of each one is under the carriageway, and dropping
+   * the threshold to pick up the rest was measured and changed nothing, since
+   * what is left of one is a few dozen square metres.
+   */
   minBlockArea: number;
   maxBlockArea: number;
   /**
@@ -97,7 +102,7 @@ export const defaultMapWorldOptions: MapWorldOptions = {
   wingDepth: 16,
   minCourtyard: 14,
   minBlockArea: 500,
-  maxBlockArea: 90000,
+  maxBlockArea: 250000,
   minHeight: 16,
   maxHeight: 24,
   spacing: 9,
@@ -123,8 +128,10 @@ export interface MapWorld extends CityLayout {
   target: Building | null;
   /** The blocks the streets enclose, for anything that wants the shape of one. */
   blocks: Block[];
-  /** The open middle of each block, once its wing of building is subtracted. */
-  courtyards: Point2[][];
+  /** Those of them with an open middle, rather than being built solid. */
+  gardens: Block[];
+  /** And those with no room to build on at all, which are planted instead. */
+  bare: Block[];
 }
 
 export function buildLayoutFromMap(
@@ -138,7 +145,8 @@ export function buildLayoutFromMap(
   const buildings: Building[] = [];
   const trees: Tree[] = [];
   const boxes: Box[] = [];
-  const courtyards: Point2[][] = [];
+  const gardens: Block[] = [];
+  const bare: Block[] = [];
 
   const blocks = extractBlocks(map.roads, {
     minArea: options.minBlockArea,
@@ -146,67 +154,101 @@ export function buildLayoutFromMap(
   });
 
   for (const block of blocks) {
+    const ring = block.ring;
+    const sides = ring.length;
+
     // The ring runs along the centrelines, so pulling it in by half the
     // carriageway plus the setback puts it exactly on the kerb -- and each
     // edge by its own street's width, because a block bounded by a boulevard
     // and three side streets is not a square anything.
-    const kerbs = block.ring.map((point, i) => {
-      const next = block.ring[(i + 1) % block.ring.length]!;
+    const kerbs = ring.map((point, i) => {
+      const next = ring[(i + 1) % sides]!;
       const street = streets.nearest((point[0] + next[0]) / 2, (point[1] + next[1]) / 2, 60);
       return ((street ? street.width / 2 : 6) + options.setback) * options.streetRoom;
     });
+    const widest = Math.max(...kerbs);
 
-    const face = shrinkRing(block.ring, kerbs);
-    // Pulled in past its own middle: a sliver between two wide roads, which
-    // has no room to build on at all.
-    if (face.length < 3 || polygonArea(face) < options.minBlockArea / 4) continue;
+    // Where each frontage runs, as a line rather than a ring.
+    //
+    // Insetting the whole ring in one go and building along the result is the
+    // obvious way to do this and it is too brittle: one corner the offset
+    // cannot resolve loses the entire block, and at these kerb distances that
+    // was 42 blocks and 32 hectares of the map left as bare grass. An edge and
+    // its two neighbours are all a frontage needs to know about, and a corner
+    // that will not resolve now costs a corner.
+    const lines = ring.map((point, i) => {
+      const next = ring[(i + 1) % sides]!;
+      const run = Math.hypot(next[0] - point[0], next[1] - point[1]);
+      const ux = run > 1e-9 ? (next[0] - point[0]) / run : 1;
+      const uz = run > 1e-9 ? (next[1] - point[1]) / run : 0;
+      // Into the block, which for a counter-clockwise ring is to the left.
+      return { x: point[0] - uz * kerbs[i]!, z: point[1] + ux * kerbs[i]!, ux, uz, run };
+    });
 
-    const [cx, cz] = polygonCentroid(face);
-    const reach = distanceToEdges(cx, cz, face);
+    /** How far along `b` it meets `a`, or null if they never usefully do. */
+    const meeting = (a: (typeof lines)[number], b: (typeof lines)[number]) => {
+      // b's direction crossed into a's, in that order: the other way round is
+      // the same number negated, which silently mirrors every corner back to
+      // the middle of its own frontage and builds half of each one.
+      const cross = b.ux * a.uz - b.uz * a.ux;
+      if (Math.abs(cross) < 1e-6) return null;
+      const t = ((a.x - b.x) * a.uz - (a.z - b.z) * a.ux) / cross;
+      return Number.isFinite(t) ? t : null;
+    };
+
+    const before = buildings.length;
+    const centre = polygonCentroid(ring);
+    const reach = distanceToEdges(centre[0], centre[1], ring) - widest;
 
     // Deep enough for a wing and a courtyard, or too small for both, in which
-    // case the wings meet in the middle and the block is solid.
+    // case the wings meet in the middle and the block is built solid.
     const roomy = reach > options.wingDepth + options.minCourtyard / 2;
-    const depth = roomy ? options.wingDepth : Math.max(reach, 4);
+    const depth = roomy ? options.wingDepth : Math.max(Math.min(reach, options.wingDepth), 4);
 
-    for (let i = 0; i < face.length; i += 1) {
-      const [x0, z0] = face[i]!;
-      const [x1, z1] = face[(i + 1) % face.length]!;
-      const run = Math.hypot(x1 - x0, z1 - z0);
+    for (let i = 0; i < sides; i += 1) {
+      const line = lines[i]!;
+      if (line.run < 6) continue;
+
+      // Mitred against its neighbours where they will resolve, and left as the
+      // plain offset where they will not. Clamped either way: a corner that
+      // wants to reach half a block along this frontage is not a corner.
+      const back = meeting(lines[(i + sides - 1) % sides]!, line);
+      const on = meeting(lines[(i + 1) % sides]!, line);
+      const limit = widest * 2;
+      const from = Math.min(Math.max(back ?? 0, -limit), line.run / 2);
+      const to = Math.max(Math.min(on ?? line.run, line.run + limit), line.run / 2);
+
+      const frontage = to - from;
       // Shorter than a single house: a clipped corner, not a frontage.
-      if (run < 6) continue;
+      if (frontage < 6) continue;
 
-      const ux = (x1 - x0) / run;
-      const uz = (z1 - z0) / run;
-      // Into the block, which for a counter-clockwise ring is to the left.
-      const nx = -uz;
-      const nz = ux;
+      const nx = -line.uz;
+      const nz = line.ux;
       // The building's own X axis runs along the street, so `width` is its
       // frontage and `depth` is how far back into the block it reaches.
-      const yaw = Math.atan2(-uz, ux);
+      const yaw = Math.atan2(-line.uz, line.ux);
 
-      // Rounded up, never down: rounding to the nearest whole number of
-      // houses lets a run a little over the limit become one house wider than
-      // any house is allowed to be.
+      // Rounded up, never down: rounding to the nearest whole number of houses
+      // lets a run a little over the limit become one house wider than any
+      // house is allowed to be.
       const wanted = options.minFrontage + rand() * (options.maxFrontage - options.minFrontage);
-      const houses = Math.max(1, Math.ceil(run / wanted));
-      const width = run / houses;
+      const houses = Math.max(1, Math.ceil(frontage / wanted));
+      const width = frontage / houses;
 
       for (let h = 0; h < houses; h += 1) {
-        const along = (h + 0.5) * width;
-        const bx = x0 + ux * along + nx * (depth / 2);
-        const bz = z0 + uz * along + nz * (depth / 2);
+        const along = from + (h + 0.5) * width;
+        const bx = line.x + line.ux * along + nx * (depth / 2);
+        const bz = line.z + line.uz * along + nz * (depth / 2);
         const height = options.minHeight + rand() * (options.maxHeight - options.minHeight);
 
-        // Inside the block it belongs to. Shrinking a ring is delicate around
-        // a sharp corner, and this is the plain statement of the thing that
-        // actually matters: a building of this block stands on this block.
-        if (!pointInPolygon(bx, bz, block.ring)) continue;
+        // Inside the block it belongs to. This is the plain statement of the
+        // thing that actually matters: a building of this block stands on it.
+        if (!pointInPolygon(bx, bz, ring)) continue;
 
         // And never out in the carriageway -- of its own street or of one
         // cutting through the block. Measured to the near wall, not the
         // centre: a deep building set back only by its centre still overhangs.
-        const front = streets.nearest(bx, bz, depth + 40);
+        const front = streets.nearest(bx, bz, depth + widest + 40);
         if (front && front.distance - depth / 2 < front.width / 2) continue;
 
         // Ground the map already accounts for. Nobody builds a house in a
@@ -220,16 +262,63 @@ export function buildLayoutFromMap(
       }
     }
 
-    if (!roomy) continue;
-    const courtyard = shrinkRing(face, depth);
-    if (courtyard.length < 3 || polygonArea(courtyard) < 40) continue;
-    courtyards.push(courtyard);
-    plant(courtyard, options.gardenTrees);
+    // A block too small to take a single house once the streets have had
+    // their room is not left as bare grass between four roads. In a real city
+    // that plot is a garden square, a yard or a stand of trees -- something,
+    // rather than nothing.
+    if (buildings.length === before) bare.push(block);
+    else if (roomy) gardens.push(block);
   }
 
-  /** Scatter trees on a grid, wherever the grid falls inside `ring`. */
-  function plant(ring: Point2[], perHectare: number) {
-    const chance = Math.min(1, (perHectare / 10000) * options.spacing * options.spacing);
+  /**
+   * Is there a house standing on this spot?
+   *
+   * Gridded, because it is asked once per candidate tree against every
+   * building on the map. The footprint test is done in the building's own
+   * frame, so a turned house is tested as the rectangle it is rather than as
+   * the larger square its world bounds describe.
+   */
+  const built = (() => {
+    const cell = 48;
+    const grid = new Map<number, number[]>();
+    const key = (cx: number, cz: number) => cx * 100003 + cz;
+    buildings.forEach((building, i) => {
+      const span = Math.hypot(building.width, building.depth) / 2;
+      for (let cx = Math.floor((building.x - span) / cell); cx <= Math.floor((building.x + span) / cell); cx += 1) {
+        for (let cz = Math.floor((building.z - span) / cell); cz <= Math.floor((building.z + span) / cell); cz += 1) {
+          const bucket = grid.get(key(cx, cz));
+          if (bucket) bucket.push(i);
+          else grid.set(key(cx, cz), [i]);
+        }
+      }
+    });
+
+    return (x: number, z: number) => {
+      const bucket = grid.get(key(Math.floor(x / cell), Math.floor(z / cell)));
+      if (!bucket) return false;
+      return bucket.some((i) => {
+        const building = buildings[i]!;
+        const turn = -(building.yaw ?? 0);
+        const dx = x - building.x;
+        const dz = z - building.z;
+        const along = dx * Math.cos(turn) + dz * Math.sin(turn);
+        const back = -dx * Math.sin(turn) + dz * Math.cos(turn);
+        return Math.abs(along) < building.width / 2 && Math.abs(back) < building.depth / 2;
+      });
+    };
+  })();
+
+  /**
+   * Scatter trees on a grid, wherever the grid falls inside `ring` and
+   * wherever `clear` will have them.
+   */
+  function plant(
+    ring: Point2[],
+    perHectare: number,
+    clear?: (x: number, z: number) => boolean,
+    step = options.spacing,
+  ) {
+    const chance = Math.min(1, (perHectare / 10000) * step * step);
     let minX = Infinity;
     let maxX = -Infinity;
     let minZ = Infinity;
@@ -240,18 +329,51 @@ export function buildLayoutFromMap(
       minZ = Math.min(minZ, z);
       maxZ = Math.max(maxZ, z);
     }
-    for (let x = minX; x <= maxX; x += options.spacing) {
-      for (let z = minZ; z <= maxZ; z += options.spacing) {
-        const px = x + (rand() - 0.5) * options.spacing * 0.85;
-        const pz = z + (rand() - 0.5) * options.spacing * 0.85;
+    for (let x = minX; x <= maxX; x += step) {
+      for (let z = minZ; z <= maxZ; z += step) {
+        const px = x + (rand() - 0.5) * step * 0.85;
+        const pz = z + (rand() - 0.5) * step * 0.85;
         if (rand() >= chance) continue;
         if (!pointInPolygon(px, pz, ring)) continue;
+        if (clear && !clear(px, pz)) continue;
+        // Never in the middle of somebody's front room. Being far enough from
+        // the street is right for the shape of a block, but says nothing about
+        // a wing fronting some other street that cuts through it.
+        if (built(px, pz)) continue;
         // Not on the water, and not in the middle of a five-a-side pitch.
         const ground = green.at(px, pz);
         if (ground && ground.kind !== 'park' && ground.kind !== 'wood') continue;
         trees.push({ x: px, z: pz, radius: 2.5 + rand() * 2, height: 6 + rand() * 9 });
       }
     }
+  }
+
+  // The gardens, in the middle of every block with room for one.
+  //
+  // Found by distance from the street rather than by insetting the block a
+  // second time: a courtyard is exactly the ground that no wing of building
+  // reaches, and asking how far the nearest carriageway is answers that
+  // directly, for any shape of block, without a polygon to go wrong.
+  const indoors = (x: number, z: number) => {
+    const street = streets.nearest(x, z, 400);
+    if (!street) return true;
+    const kerb = (street.width / 2 + options.setback) * options.streetRoom;
+    return street.distance > kerb + options.wingDepth;
+  };
+  for (const block of gardens) plant(block.ring, options.gardenTrees, indoors);
+
+  // And the ones nothing would fit on, planted right up to the kerb, since
+  // there is no frontage here for them to stand behind.
+  const offTheRoad = (x: number, z: number) => {
+    const street = streets.nearest(x, z, 400);
+    return !street || street.distance > street.width / 2;
+  };
+  for (const block of bare) {
+    // On a grid that fits the plot. These are the blocks that were too small
+    // to build on, and a scatter coarser than the block itself simply steps
+    // over it: at 9 m, twenty-one of them came out bare a second time.
+    const step = Math.max(2, Math.min(options.spacing, Math.sqrt(block.area) / 3));
+    plant(block.ring, options.gardenTrees, offTheRoad, step);
   }
 
   // Parks and woods, which are their own rings and owe nothing to the blocks.
@@ -284,7 +406,8 @@ export function buildLayoutFromMap(
     streets,
     green,
     blocks,
-    courtyards,
+    gardens,
+    bare,
     target,
   };
 }
