@@ -156,7 +156,7 @@ with no way to let go of it. Pressing one now releases everything instead.
 
 Whichever generated building lands nearest the home point is marked, and drawn
 in red. It gets its own mesh rather than a seventh instanced bucket, because it
-is one building among five thousand.
+is one building among a couple of thousand.
 
 ## Flying over a real place
 
@@ -180,52 +180,83 @@ complete worldwide while its building *heights* are patchy — in most cities
 you would get footprints with no height and have to invent them anyway. Seen
 from the air, what makes a place recognisable is the street pattern.
 
-**Parks are left alone.** The baker also fetches green space and water —
+**Parks are left alone.** The baker also fetches green space and water --
 `leisure=park`, `landuse=grass|forest|cemetery`, `natural=wood|water` and
-friends — mapped to four coarse kinds. 243 areas here, 97% of them closed ways;
-the handful of multipolygon relations are taken as their outer rings, which
-ignores holes and at worst costs a few houses that were never there.
+friends -- mapped to four coarse kinds. 243 areas here, 97% of them closed
+ways; the handful of multipolygon relations are taken as their outer rings,
+which ignores holes and at worst costs a few houses that were never there.
 
-Nothing is built on that ground, and the check is on all four corners of the
-turned footprint rather than the centre, because a building set back from a
-road can still reach across a boundary it is not centred on. Parks and woods
-get planted instead. Excluding them removed 599 buildings and nearly tripled
-the trees, from 299 to 847.
+Nothing is built on that ground, and the check samples a grid across the whole
+turned footprint rather than its centre or its corners. Corners alone catch a
+building reaching *into* a park; they miss one large enough to stand right over
+a small park, with all four corners out on the pavement.
 
 This is most of what stops a generated city looking generated: real cities have
 holes in them, and the holes are not random.
 
-**How the buildings get placed.** Not by extracting true city blocks: that
-means finding the faces of a planar graph, which is fragile against real map
-data — bridges cross tunnels without meeting, ways dangle, and one bad node
-swallows a whole block. Instead, candidates are scattered on a jittered grid
-and rejected if they fall in a road, which is robust against all of it:
+**The block, not the house, is the unit.** This district is built in perimeter
+blocks -- one continuous building running right round the block, six or seven
+floors of it, with a courtyard in the middle. Rows of separate houses along a
+road cannot produce that however carefully they are placed, because nothing in
+a row knows the block is a closed shape. The block has to come first:
 
-- Each candidate asks the street index for its nearest road.
-- It has to sit **behind the kerb by half its own depth**, so the near wall
-  clears the carriageway rather than just the centre — a deep building set back
-  only by its centre still overhangs the street it fronts.
-- It has to be inside a **frontage band**, so buildings line the streets and
-  block interiors stay open instead of filling solid. Interiors get trees.
-- Height comes from a flat 16–24 m band rather than from road importance. This
-  neighbourhood is uniformly about seven floors, and that evenness *is* what
-  its skyline looks like.
+1. **Trace the faces of the street network.** Every junction becomes a node,
+   every stretch of road an edge; arrive at a node and always leave by the next
+   way round clockwise, and the walk closes on the block it set out around.
+   Faces that come back wound the other way are the outside of the network.
+   1,428 segments give 144 blocks, median 10,880 m2 -- a 104 m square, which is
+   what these blocks measure.
+2. **Pull the ring in to the kerb**, each edge by its own street's half-width
+   plus a 2 m setback, because a block with a boulevard on one side and three
+   side streets is not a square anything.
+3. **Lay a wing of building round the inside**, 16 m deep -- a staircase and two
+   rooms either side of it -- split into houses of 14-28 m frontage, each with
+   its own height from a flat 16-24 m band. Even is not identical: neighbours
+   differ by a storey, which is what stops a block reading as one extruded
+   shape.
+4. **What is left in the middle is the courtyard**, and where the gardens go.
+   69 of the 144 blocks have room for one. The rest are built solid, which
+   small blocks here really are.
 
-Then the detail that does most of the work: **every building is turned to face
-its street**. That is the difference between boxes near lines and a city. From
-central Budapest it produces 126 distinct building orientations; a grid city
-would have about two.
+This was the part I expected to be too fragile to attempt, and the fear was
+misplaced -- not because real map data is clean, but because every way it is
+dirty fails gracefully. A dangling way is walked down and back and contributes
+nothing. A crossing recorded without a shared node merges two blocks into one
+larger one, which is a far better outcome than losing both. Both are tested.
+
+**Shrinking a ring is where the real difficulty was.** Offsetting a polygon
+inward is only well defined until its walls meet, and past that it fails
+*quietly*. Inset a 100 m square by 80 m and what comes back is a tidy 60 m
+square, wound the right way, comfortably inside the original -- and describing
+ground the inset has no business claiming. Its area is plausible. Its corners
+are all inside. Nothing about the result says it is wrong except that every
+edge now runs backwards, which is exactly what "pushed the ring through
+itself" means, and is the only check that catches it.
+
+The opposite mistake was just as costly. Treating any reversed edge as failure
+rejected every non-convex block on the map -- 55 of 144 at the kerb, and 39 of
+the 56 blocks big enough for a courtyard, leaving 17 gardens where there should
+have been 69. An edge that vanishes as a ring shrinks is not a failure; it is
+what the shape does. Dropping it and re-fitting the rest is the fix.
+
+Corners are also why the tests state their claims against the block ring rather
+than the nearest street. A house on the boulevard has its *side* to the side
+street around the corner, and the nearest road to it is that one -- so "faces
+the street it fronts" and "sits at the setback" are both false of it, measured
+that way, while being perfectly true of the building.
 
 **Turning them meant the collider had to stop being axis-aligned.** The world
-bounds of a 12 m building turned 45° are 40% wider than the building, which
-would be felt as invisible walls while threading between them. A `Box` now
-carries an optional `yaw`, and the sweep rotates the ray into the box's own
-frame, runs *the identical slab test*, and rotates the answer back — exact
+bounds of a 12 m building turned 45 degrees are 40% wider than the building,
+which would be felt as invisible walls while threading between them. A `Box`
+now carries an optional `yaw`, and the sweep rotates the ray into the box's own
+frame, runs *the identical slab test*, and rotates the answer back -- exact
 oriented-box collision that reuses the tested path rather than adding a second
-one. The uniform grid still indexes world bounds for broad phase.
+one. The uniform grid still indexes world bounds for broad phase. 141 distinct
+building orientations here; a grid city would have about two.
 
-From 1,428 real street segments and 243 green areas: 5,008 buildings and 847
-trees, built in 24 ms, with 20,000 collision sweeps in under 20 ms.
+From 1,428 real street segments and 243 green areas: 144 blocks, 2,249
+buildings, 69 courtyards and 5,304 trees, built in 27 ms, with 20,000 collision
+sweeps in 10 ms.
 
 OpenStreetMap data is ODbL. The baked file is a derived database, so it carries
 the attribution and the HUD keeps it on screen.
@@ -668,18 +699,32 @@ npm test
   to itself, flies speed with the nose and height with the wings, and rests
   before it is spent; the flock launches in a spread of colours, keeps most of
   itself in the air over a city, and puts birds back after they die.
+- **`src/world/polygon.test.ts`** — the sign of an area says which way a ring
+  winds; insetting moves every edge by the distance asked for, takes a distance
+  per edge, and cuts a sharp corner off rather than flinging it into the
+  distance; and shrinking refuses once the walls have met, with the 100 m
+  square inset by 80 m as the worked example of a wrong answer that passes
+  every check but the edge directions.
+- **`src/world/blocks.test.ts`** — four streets enclose one block and not two,
+  the outside of the network is left out by which way it winds rather than by
+  its size, a grid of three streets each way gives four blocks, dead ends are
+  ignored whether they hang off a block or reach into one, and a crossing the
+  map never noded merges two blocks rather than losing them.
 - **`src/world/areas.test.ts`** — point-in-polygon follows a concave boundary
-  rather than its bounding box, and a footprint that reaches into a park by one
-  corner is caught even when its centre is clear.
-- **`src/world/from-map.test.ts`** — the street index measures to the ends of
-  roads rather than infinite lines; buildings never overhang the carriageway
-  they front, stay inside the frontage band, face their street, and grow taller
-  on more important roads; the street itself is flyable end to end while
-  crossing it nearly always meets something; heights stay in their band
-  whatever road a building is on; and exactly one building is marked as the
-  target, the one actually nearest it. Green space has its own group, including
-  a control that the test park covers ground the generator *would* have built
-  on — a park in a block interior would prove nothing.
+  rather than its bounding box; a footprint reaching into a park by one corner
+  is caught even when its centre is clear; and the sample grid is never coarser
+  than its step and always has a point on the centre, which is the hole a small
+  park hides in.
+- **`src/world/from-map.test.ts`** — the ring closes, so leaving the courtyard
+  in any of 24 directions meets building before it reaches the street, while
+  the courtyard itself stays open to fly in; gardens are in courtyards and
+  nowhere else; nothing overhangs a carriageway, drifts off its block, or sits
+  deeper than the wing; every building is squared up to an edge of its own
+  block; a block too small for a courtyard is built solid, with no hole to fly
+  into; and exactly one building is marked as the target, the one actually
+  nearest it. Green space has its own group, including a control that the test
+  park covers ground the generator *would* have built on — a park in the middle
+  of a courtyard would prove nothing.
 
 Because the city layout is plain data with no Three.js in it, the layout file
 tests the real world the player flies through, in Node, with no WebGL.

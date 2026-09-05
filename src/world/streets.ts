@@ -32,6 +32,9 @@ export interface MapData {
 export interface NearestStreet {
   /** Distance from the query point to the road's centreline, in metres. */
   distance: number;
+  /** The closest point on the centreline, so callers can measure out from it. */
+  nearX: number;
+  nearZ: number;
   /** Direction the road runs at the closest point, as a unit vector. */
   dirX: number;
   dirZ: number;
@@ -128,6 +131,8 @@ export function indexStreets(roads: readonly Road[]): StreetIndex {
           bestDistance = distance;
           best = {
             distance,
+            nearX: s.x0 + t * dx,
+            nearZ: s.z0 + t * dz,
             dirX: dx / length,
             dirZ: dz / length,
             width: s.width,

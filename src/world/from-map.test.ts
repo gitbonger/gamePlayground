@@ -1,15 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
 import { indexStreets, type MapData, type Road } from './streets';
-import { footprintCorners, type Area } from './areas';
+import { footprintSamples, type Area } from './areas';
+import { distanceToEdges, pointInPolygon, polygonArea } from './polygon';
 import { createColliderField, worldBounds } from '../sim/collision';
 import { createBird, defaultParams, neutralControls, step } from '../sim/flight';
 import { vec } from '../sim/math3';
 
-/** A crossroads: one road north-south, one east-west, meeting at the origin. */
-const CROSSROADS: Road[] = [
-  { kind: 'primary', width: 16, points: [[0, -300], [0, 300]] },
-  { kind: 'residential', width: 8, points: [[-300, 0], [300, 0]] },
+/**
+ * Four streets round one 200 m block, overshooting the corners.
+ *
+ * Junctions appear as points on both streets, because that is how a crossing
+ * is recorded in the data this is built from: ways that meet share the node.
+ */
+const BLOCK: Road[] = [
+  { kind: 'primary', width: 16, points: [[-40, 0], [0, 0], [200, 0], [240, 0]] },
+  { kind: 'primary', width: 16, points: [[-40, 200], [0, 200], [200, 200], [240, 200]] },
+  { kind: 'residential', width: 8, points: [[0, -40], [0, 0], [0, 200], [0, 240]] },
+  { kind: 'residential', width: 8, points: [[200, -40], [200, 0], [200, 200], [200, 240]] },
 ];
 
 const mapOf = (roads: Road[], areas: Area[] = []): MapData => ({
@@ -22,47 +30,37 @@ const mapOf = (roads: Road[], areas: Area[] = []): MapData => ({
 });
 
 /**
- * A park along the east side of the north-south road, deliberately covering
- * ground the generator would otherwise build on: a park in a block interior
+ * A park over the north-east corner of the block, deliberately covering ground
+ * the generator would otherwise build on: a park in the middle of a courtyard
  * would prove nothing, because nothing goes there anyway.
  */
 const PARK: Area = {
   kind: 'park',
   points: [
-    [10, -200],
-    [70, -200],
-    [70, -60],
-    [10, -60],
+    [120, 0],
+    [200, 0],
+    [200, 80],
+    [120, 80],
   ],
 };
 
 describe('street index', () => {
-  const streets = indexStreets(CROSSROADS);
-
-  it('splits polylines into segments and bounds them', () => {
-    expect(streets.segmentCount).toBe(2);
-    expect(streets.bounds.minX).toBe(-300);
-    expect(streets.bounds.maxZ).toBe(300);
-  });
+  const streets = indexStreets(BLOCK);
 
   it('finds the nearest road and which way it runs', () => {
-    // Just east of the north-south road.
-    const near = streets.nearest(9, -100, 60)!;
+    const near = streets.nearest(9, 100, 60)!;
     expect(near.distance).toBeCloseTo(9, 6);
-    expect(near.kind).toBe('primary');
+    expect(near.kind).toBe('residential');
     expect(Math.abs(near.dirZ)).toBeCloseTo(1, 6);
 
-    // Just north of the east-west one.
-    const other = streets.nearest(120, -5, 60)!;
+    const other = streets.nearest(100, 5, 60)!;
     expect(other.distance).toBeCloseTo(5, 6);
-    expect(other.kind).toBe('residential');
+    expect(other.kind).toBe('primary');
     expect(Math.abs(other.dirX)).toBeCloseTo(1, 6);
   });
 
   it('measures to the ends of a road, not past them', () => {
-    // Beyond the north end of the north-south road, the nearest point is its
-    // endpoint rather than an infinite line.
-    expect(streets.nearest(0, -340, 100)!.distance).toBeCloseTo(40, 6);
+    expect(streets.nearest(0, -80, 100)!.distance).toBeCloseTo(40, 6);
   });
 
   it('gives up beyond the limit rather than searching the whole map', () => {
@@ -70,46 +68,109 @@ describe('street index', () => {
   });
 });
 
-describe('building a world on real streets', () => {
-  const layout = buildLayoutFromMap(mapOf(CROSSROADS));
+describe('building a perimeter block', () => {
+  const layout = buildLayoutFromMap(mapOf(BLOCK));
+  const collider = createColliderField(layout.boxes);
+  const MIDDLE = vec(100, 6, 100);
 
-  it('puts buildings along the streets', () => {
+  it('builds all the way round the block it found', () => {
+    expect(layout.blocks).toHaveLength(1);
     expect(layout.buildings.length).toBeGreaterThan(20);
     expect(layout.boxes).toHaveLength(layout.buildings.length);
+  });
+
+  it('closes the ring, so the courtyard is walled in on every side', () => {
+    // The whole point of a perimeter block, and the thing a row of separate
+    // houses can never do: leave the middle in any direction at all and you
+    // meet building before you reach the street.
+    for (let i = 0; i < 24; i += 1) {
+      const bearing = (i / 24) * Math.PI * 2;
+      const out = vec(100 + Math.sin(bearing) * 200, 6, 100 + Math.cos(bearing) * 200);
+      expect(collider.sweep(MIDDLE, out, 0.22), `bearing ${Math.round((bearing * 180) / Math.PI)}`).not.toBeNull();
+    }
+  });
+
+  it('leaves the courtyard itself open', () => {
+    // Walled in, not filled in. There is somewhere in there to fly.
+    expect(layout.courtyards).toHaveLength(1);
+    expect(polygonArea(layout.courtyards[0]!)).toBeGreaterThan(100 * 100);
+
+    for (let i = 0; i < 24; i += 1) {
+      const bearing = (i / 24) * Math.PI * 2;
+      const out = vec(100 + Math.sin(bearing) * 60, 6, 100 + Math.cos(bearing) * 60);
+      expect(collider.sweep(MIDDLE, out, 0.22), `bearing ${i}`).toBeNull();
+    }
+  });
+
+  it('puts the gardens in the courtyard and nowhere else', () => {
+    expect(layout.trees.length).toBeGreaterThan(10);
+    for (const tree of layout.trees) {
+      expect(
+        layout.courtyards.some((yard) => pointInPolygon(tree.x, tree.z, yard)),
+        `${tree.x},${tree.z}`,
+      ).toBe(true);
+    }
   });
 
   it('never lets a building overhang the carriageway it fronts', () => {
     // Measured to the near wall, not the centre: a deep building set back only
     // by its centre still sticks out into the road.
     for (const building of layout.buildings) {
-      const street = layout.streets.nearest(building.x, building.z, 200)!;
-      const nearWall = street.distance - building.depth / 2;
-      expect(nearWall).toBeGreaterThanOrEqual(street.width / 2);
+      const street = layout.streets.nearest(building.x, building.z, 300)!;
+      expect(street.distance - building.depth / 2).toBeGreaterThanOrEqual(street.width / 2);
     }
   });
 
-  it('keeps the middle of a block clear', () => {
-    // Everything sits within the frontage band, so blocks have open interiors
-    // rather than being filled solid.
+  it('stands every building on the block it belongs to', () => {
+    const ring = layout.blocks[0]!.ring;
     for (const building of layout.buildings) {
-      const street = layout.streets.nearest(building.x, building.z, 500)!;
-      const behindTheKerb =
-        street.distance - (street.width / 2 + defaultMapWorldOptions.setback + building.depth / 2);
-      expect(behindTheKerb).toBeLessThanOrEqual(defaultMapWorldOptions.frontage + 1e-9);
+      expect(pointInPolygon(building.x, building.z, ring), `${building.x},${building.z}`).toBe(true);
+    }
+  });
+
+  it('keeps every building in the perimeter, none adrift in the middle', () => {
+    // Stated against the block ring rather than the nearest street, because
+    // at a corner the nearest street is the one the building has its side to.
+    // Deepest anything can be is the far side of the wing, measured from the
+    // widest kerb on the block.
+    const ring = layout.blocks[0]!.ring;
+    const deepest = 16 / 2 + defaultMapWorldOptions.setback + defaultMapWorldOptions.wingDepth;
+    for (const building of layout.buildings) {
+      expect(
+        distanceToEdges(building.x, building.z, ring) - building.depth / 2,
+        `${building.x},${building.z}`,
+      ).toBeLessThanOrEqual(deepest);
     }
   });
 
   it('turns each building to face the street it fronts', () => {
-    for (const building of layout.buildings.slice(0, 200)) {
-      const street = layout.streets.nearest(building.x, building.z, 200)!;
-      const facing = Math.atan2(-street.dirZ, street.dirX);
-      // Equal up to which way along the street it points.
-      const difference = Math.abs(((building.yaw! - facing) % Math.PI) + Math.PI) % Math.PI;
-      expect(Math.min(difference, Math.PI - difference)).toBeLessThan(1e-6);
+    // Squared up to the block's own edges, which is the same thing as facing
+    // the street and survives the corners, where the nearest street is the one
+    // the building presents its side to.
+    const ring = layout.blocks[0]!.ring;
+    const edges = ring.map((point, i) => {
+      const next = ring[(i + 1) % ring.length]!;
+      return Math.atan2(-(next[1] - point[1]), next[0] - point[0]);
+    });
+
+    for (const building of layout.buildings) {
+      const offBy = edges.map((facing) => {
+        // Equal up to which way along the street it points.
+        const difference = Math.abs(((building.yaw! - facing) % Math.PI) + Math.PI) % Math.PI;
+        return Math.min(difference, Math.PI - difference);
+      });
+      expect(Math.min(...offBy), `${building.x},${building.z}`).toBeLessThan(1e-6);
     }
   });
 
-  it('builds to an even height, whatever street it is on', () => {
+  it('gives every house a frontage of the size asked for', () => {
+    for (const building of layout.buildings) {
+      expect(building.width).toBeLessThanOrEqual(defaultMapWorldOptions.maxFrontage + 1e-9);
+      expect(building.depth).toBeCloseTo(defaultMapWorldOptions.wingDepth, 9);
+    }
+  });
+
+  it('builds to an even height, with a stepped roofline', () => {
     // This neighbourhood is uniformly about seven floors, so heights come from
     // a flat band rather than from how important the road is.
     for (const building of layout.buildings) {
@@ -117,48 +178,40 @@ describe('building a world on real streets', () => {
       expect(building.height).toBeLessThanOrEqual(defaultMapWorldOptions.maxHeight);
     }
 
-    const near = (kind: string) =>
-      layout.buildings.filter((b) => layout.streets.nearest(b.x, b.z, 200)!.kind === kind);
-    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
-
-    expect(mean(near('primary').map((b) => b.height))).toBeCloseTo(
-      mean(near('residential').map((b) => b.height)),
-      0,
-    );
+    // Even is not the same as identical. Neighbours differ by a storey or two,
+    // which is what stops a block reading as one extruded shape.
+    const heights = new Set(layout.buildings.map((b) => Math.round(b.height)));
+    expect(heights.size).toBeGreaterThan(3);
   });
 
-  it('marks exactly one building as the target, the one nearest it', () => {
-    const home = { x: 40, z: -40 };
-    const homing = buildLayoutFromMap(mapOf(CROSSROADS), {
-      ...defaultMapWorldOptions,
-      target: home,
-    });
+  it('fills a block with no room for a courtyard solid instead', () => {
+    // Small blocks in this district really are solid, and a 40 m one has no
+    // room for two wings and a garden between them.
+    const small: Road[] = [
+      { kind: 'residential', width: 8, points: [[-20, 0], [0, 0], [40, 0], [60, 0]] },
+      { kind: 'residential', width: 8, points: [[-20, 40], [0, 40], [40, 40], [60, 40]] },
+      { kind: 'residential', width: 8, points: [[0, -20], [0, 0], [0, 40], [0, 60]] },
+      { kind: 'residential', width: 8, points: [[40, -20], [40, 0], [40, 40], [40, 60]] },
+    ];
+    const dense = buildLayoutFromMap(mapOf(small));
+    expect(dense.blocks).toHaveLength(1);
+    expect(dense.courtyards).toHaveLength(0);
+    expect(dense.buildings.length).toBeGreaterThan(0);
 
-    const marked = homing.buildings.filter((b) => b.isTarget);
-    expect(marked).toHaveLength(1);
-    expect(homing.target).toBe(marked[0]);
-
-    const away = (b: { x: number; z: number }) => Math.hypot(b.x - home.x, b.z - home.z);
-    const nearest = Math.min(...homing.buildings.map(away));
-    expect(away(homing.target!)).toBeCloseTo(nearest, 9);
-  });
-
-  it('marks nothing when there is nowhere to home to', () => {
-    expect(layout.target).toBeNull();
-    expect(layout.buildings.some((b) => b.isTarget)).toBe(false);
+    // Solid all the way through: no hole to fly into.
+    const wall = createColliderField(dense.boxes);
+    expect(wall.sweep(vec(20, 6, -30), vec(20, 6, 70), 0.22)).not.toBeNull();
   });
 
   it('is deterministic for a given map and seed', () => {
-    const again = buildLayoutFromMap(mapOf(CROSSROADS));
-    expect(again.buildings).toEqual(layout.buildings);
+    expect(buildLayoutFromMap(mapOf(BLOCK)).buildings).toEqual(layout.buildings);
   });
 
   it('carries the streets through for the renderer to draw', () => {
-    expect(layout.roads).toEqual(CROSSROADS);
+    expect(layout.roads).toEqual(BLOCK);
   });
 
   it('produces solids the collider can take', () => {
-    const collider = createColliderField(layout.boxes);
     expect(collider.boxCount).toBe(layout.boxes.length);
     for (const box of layout.boxes.map(worldBounds)) {
       expect(box.minY).toBe(0);
@@ -167,28 +220,13 @@ describe('building a world on real streets', () => {
   });
 
   it('leaves the street itself flyable from end to end', () => {
-    const collider = createColliderField(layout.boxes);
-    for (let z = -290; z < 290; z += 10) {
+    for (let z = -30; z < 230; z += 10) {
       expect(collider.sweep(vec(0, 6, z), vec(0, 6, z + 10), 0.22), `z ${z}`).toBeNull();
     }
   });
 
-  it('walls the street in on both sides', () => {
-    // Not every metre of frontage is built on -- the block has gaps, as a real
-    // one does -- but crossing the street should nearly always meet something.
-    const collider = createColliderField(layout.boxes);
-    let hits = 0;
-    let tries = 0;
-    for (let z = -280; z <= 280; z += 10) {
-      tries += 1;
-      if (collider.sweep(vec(-60, 6, z), vec(60, 6, z), 0.22)) hits += 1;
-    }
-    expect(hits / tries).toBeGreaterThan(0.7);
-  });
-
   it('lets a bird crash into the city it generated', () => {
-    const collider = createColliderField(layout.boxes);
-    const bird = createBird(vec(-40, 12, 200), 16);
+    const bird = createBird(vec(100, 12, -60), 16);
     const controls = neutralControls();
     for (let t = 0; t < 60; t += 1 / 120) {
       step(bird, controls, defaultParams, 1 / 120, collider);
@@ -196,38 +234,48 @@ describe('building a world on real streets', () => {
     }
     expect(bird.ending).not.toBeNull();
   });
+
+  it('marks exactly one building as the target, the one nearest it', () => {
+    const home = { x: 40, z: 40 };
+    const homing = buildLayoutFromMap(mapOf(BLOCK), { ...defaultMapWorldOptions, target: home });
+
+    const marked = homing.buildings.filter((b) => b.isTarget);
+    expect(marked).toHaveLength(1);
+    expect(homing.target).toBe(marked[0]);
+
+    const away = (b: { x: number; z: number }) => Math.hypot(b.x - home.x, b.z - home.z);
+    expect(away(homing.target!)).toBeCloseTo(Math.min(...homing.buildings.map(away)), 9);
+  });
+
+  it('marks nothing when there is nowhere to home to', () => {
+    expect(layout.target).toBeNull();
+    expect(layout.buildings.some((b) => b.isTarget)).toBe(false);
+  });
 });
 
 describe('leaving green space alone', () => {
-  const layout = buildLayoutFromMap(mapOf(CROSSROADS, [PARK]));
+  const layout = buildLayoutFromMap(mapOf(BLOCK, [PARK]));
 
   it('builds nothing whose footprint reaches into a park', () => {
-    // Checked at the corners, not just the centre: a building set back from a
-    // road can still reach across a boundary it is not centred on.
     for (const building of layout.buildings) {
-      const corners = footprintCorners(
+      const footprint = footprintSamples(
         building.x,
         building.z,
         building.width,
         building.depth,
         building.yaw ?? 0,
       );
-      expect(layout.green.anyInside(corners), `${building.x},${building.z}`).toBe(false);
+      expect(layout.green.anyInside(footprint), `${building.x},${building.z}`).toBe(false);
     }
   });
 
   it('would have built there without the park', () => {
     // Otherwise the test above proves nothing: the ground has to be somewhere
     // the generator actually wanted to build.
-    const without = buildLayoutFromMap(mapOf(CROSSROADS));
+    const without = buildLayoutFromMap(mapOf(BLOCK));
     const inPark = without.buildings.filter((b) => layout.green.at(b.x, b.z));
     expect(inPark.length).toBeGreaterThan(0);
     expect(layout.buildings.length).toBeLessThan(without.buildings.length);
-  });
-
-  it('plants trees in the park instead', () => {
-    const inPark = layout.trees.filter((t) => layout.green.at(t.x, t.z));
-    expect(inPark.length).toBeGreaterThan(0);
   });
 
   it('carries the areas through for the renderer to draw', () => {
@@ -235,7 +283,7 @@ describe('leaving green space alone', () => {
   });
 
   it('copes with a map that has no green space at all', () => {
-    const bare = buildLayoutFromMap(mapOf(CROSSROADS));
+    const bare = buildLayoutFromMap(mapOf(BLOCK));
     expect(bare.green.count).toBe(0);
     expect(bare.buildings.length).toBeGreaterThan(20);
   });

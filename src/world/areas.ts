@@ -96,24 +96,39 @@ export function indexAreas(areas: readonly Area[]): AreaIndex {
   return { at, anyInside, count: areas.length };
 }
 
-/** The four corners of a footprint, turned by `yaw`, in world coordinates. */
-export function footprintCorners(
+/**
+ * Points covering a footprint, turned by `yaw`, in world coordinates.
+ *
+ * A grid rather than just the corners. Corners alone are enough to catch a
+ * building reaching *into* a park, but not one large enough to sit right over
+ * a small one: with a 46 m frontage and a tennis court's worth of grass, every
+ * corner can be outside while the middle is not.
+ */
+export function footprintSamples(
   x: number,
   z: number,
   width: number,
   depth: number,
   yaw: number,
+  step = 8,
 ): [number, number][] {
   const cos = Math.cos(yaw);
   const sin = Math.sin(yaw);
-  const halfWidth = width / 2;
-  const halfDepth = depth / 2;
+  // An even number of divisions each way, so the grid always has a point on
+  // the centre. With an odd count there is none, and a park smaller than the
+  // step can sit in the hole in the middle of a building and go unnoticed.
+  const even = (span: number) => Math.max(2, 2 * Math.ceil(span / (2 * step)));
+  const across = even(width);
+  const back = even(depth);
 
-  return [
-    [-halfWidth, -halfDepth],
-    [halfWidth, -halfDepth],
-    [halfWidth, halfDepth],
-    [-halfWidth, halfDepth],
-    // Matching the collider's yaw convention, which is Three.js's rotation.y.
-  ].map(([dx, dz]) => [x + dx! * cos + dz! * sin, z - dx! * sin + dz! * cos]);
+  const points: [number, number][] = [];
+  for (let i = 0; i <= across; i += 1) {
+    for (let j = 0; j <= back; j += 1) {
+      const dx = (i / across - 0.5) * width;
+      const dz = (j / back - 0.5) * depth;
+      // Matching the collider's yaw convention, which is Three.js's rotation.y.
+      points.push([x + dx * cos + dz * sin, z - dx * sin + dz * cos]);
+    }
+  }
+  return points;
 }

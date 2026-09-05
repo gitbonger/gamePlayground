@@ -28,6 +28,77 @@ export interface World {
 }
 
 const BUILDING_COLORS = [0x8d8477, 0x9c9284, 0x7a7167, 0xa8a091, 0x6f675e, 0xb0a596];
+
+/** One storey of window, in metres: the tile the pattern repeats over. */
+const WINDOW_TILE_WIDTH = 3.3;
+const WINDOW_TILE_HEIGHT = 3.4;
+
+/**
+ * Draw a grid of windows on a building's walls.
+ *
+ * Derived from world position and the wall's normal rather than from the mesh
+ * UVs, which matters because the buildings are one shared box scaled per
+ * instance: a UV-based pattern would stretch, giving a 46 m block the same
+ * number of windows as a 20 m one, each four times the size. Read off world
+ * coordinates instead and every window is the same real size on every
+ * building, for free, with nothing stored per instance.
+ *
+ * Roofs get none, and nor does the ground floor.
+ */
+function withWindows(material: THREE.MeshLambertMaterial): THREE.MeshLambertMaterial {
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = `varying vec3 vWallPos;\nvarying vec3 vWallNormal;\n${shader.vertexShader}`.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+      #ifdef USE_INSTANCING
+        vWallPos = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+        vWallNormal = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal);
+      #else
+        vWallPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        vWallNormal = normalize(mat3(modelMatrix) * objectNormal);
+      #endif`,
+    );
+
+    shader.fragmentShader = `varying vec3 vWallPos;\nvarying vec3 vWallNormal;\n${shader.fragmentShader}`.replace(
+      '#include <color_fragment>',
+      `#include <color_fragment>
+      {
+        vec3 facing = abs(vWallNormal);
+        // Roofs are flat and windowless; walls are whichever way they face.
+        if (facing.y < 0.6) {
+          vec2 wall = facing.x > facing.z
+            ? vec2(vWallPos.z, vWallPos.y)
+            : vec2(vWallPos.x, vWallPos.y);
+          vec2 grid = wall / vec2(${WINDOW_TILE_WIDTH.toFixed(2)}, ${WINDOW_TILE_HEIGHT.toFixed(2)});
+          vec2 cell = fract(grid);
+
+          // Widen the edges with the screen-space derivative, so distant walls
+          // fade to an even tint instead of shimmering.
+          vec2 soft = fwidth(grid) * 1.2 + 0.004;
+          float across = smoothstep(0.22 - soft.x, 0.22 + soft.x, cell.x)
+                       - smoothstep(0.74 - soft.x, 0.74 + soft.x, cell.x);
+          float up = smoothstep(0.30 - soft.y, 0.30 + soft.y, cell.y)
+                   - smoothstep(0.82 - soft.y, 0.82 + soft.y, cell.y);
+          float pane = clamp(across * up, 0.0, 1.0);
+
+          // Nothing at street level, where the shopfronts would be.
+          pane *= smoothstep(1.6, 3.2, vWallPos.y);
+
+          // A few windows lit, so a wall is not a perfect lattice.
+          vec2 which = floor(grid);
+          float roll = fract(sin(dot(which, vec2(12.9898, 78.233))) * 43758.5453);
+          vec3 glass = mix(vec3(0.13, 0.16, 0.21), vec3(0.85, 0.72, 0.45), step(0.88, roll));
+
+          diffuseColor.rgb = mix(diffuseColor.rgb, glass, pane * 0.8);
+        }
+      }`,
+    );
+  };
+  // Every patched material compiles the same program, differing only in the
+  // colour uniform, so they can share one.
+  material.customProgramCacheKey = () => 'building-windows';
+  return material;
+}
 /** The building being homed in on, picked out to be findable from a distance. */
 const TARGET_COLOR = 0xc0392b;
 
@@ -55,7 +126,7 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
 
   const perColour = Math.ceil(layout.buildings.length / BUILDING_COLORS.length);
   const buckets: THREE.InstancedMesh[] = BUILDING_COLORS.map((colour) => {
-    const material = new THREE.MeshLambertMaterial({ color: colour });
+    const material = withWindows(new THREE.MeshLambertMaterial({ color: colour }));
     disposables.push(material);
     const mesh = new THREE.InstancedMesh(boxGeometry, material, perColour);
     mesh.castShadow = true;
@@ -75,7 +146,7 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
   // rather than a seventh instanced bucket holding a single entry.
   const landmark = layout.buildings.find((building) => building.isTarget);
   if (landmark) {
-    const material = new THREE.MeshLambertMaterial({ color: TARGET_COLOR });
+    const material = withWindows(new THREE.MeshLambertMaterial({ color: TARGET_COLOR }));
     disposables.push(material);
     const mesh = new THREE.Mesh(boxGeometry, material);
     mesh.position.set(landmark.x, landmark.height / 2, landmark.z);
