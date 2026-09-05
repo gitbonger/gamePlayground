@@ -30,10 +30,19 @@ import { vec } from './sim/math3';
 
 export interface FlockOptions {
   count: number;
-  /** Height they leave the loft at, in metres. */
-  releaseAltitude: number;
   /** How far out they fly before turning up again, in metres. */
   range: number;
+  /**
+   * Which way out of the roost they head, in radians clockwise from north,
+   * and how far either side of it they spread.
+   *
+   * A full circle by default, which is right for a loft on a roof with open
+   * sky all round. It is wrong for a roost in a cutting: released in every
+   * direction from a rail yard, most of them fly straight into the blocks
+   * ringing it before they have climbed over the roofs. Given the line to
+   * follow, they leave along it, which is what the open ground is for.
+   */
+  outbound?: { bearing: number; spread: number };
   /** Heights they climb to on the way out, in metres. */
   minAltitude: number;
   maxAltitude: number;
@@ -44,7 +53,6 @@ export interface FlockOptions {
 
 export const defaultFlockOptions: FlockOptions = {
   count: 10,
-  releaseAltitude: 30,
   range: 340,
   minAltitude: 45,
   maxAltitude: 105,
@@ -52,7 +60,14 @@ export const defaultFlockOptions: FlockOptions = {
   seed: 1234,
 };
 
-/** The point the flock lives at: their loft, which is the pigeon's home. */
+/**
+ * The point the flock lives at, and leaves from.
+ *
+ * The height is part of it. It used to be ignored in favour of a fixed release
+ * altitude, which nothing noticed because the only caller passed the same
+ * number -- and which would have been wrong the moment the loft stopped being
+ * a rooftop and became, say, the deck of a wagon.
+ */
 export interface Anchor {
   x: number;
   y: number;
@@ -109,9 +124,11 @@ export function createFlock(
 
   /** Leave the loft on a fresh bearing, climbing out to somewhere distant. */
   const release = (pilot: Pilot) => {
-    const bearing = rand() * Math.PI * 2;
+    const bearing = options.outbound
+      ? options.outbound.bearing + (rand() * 2 - 1) * options.outbound.spread
+      : rand() * Math.PI * 2;
     pilot.member.state = createBird(
-      vec(loft.x, options.releaseAltitude, loft.z),
+      vec(loft.x, loft.y, loft.z),
       12 + rand() * 4,
       bearing,
     );

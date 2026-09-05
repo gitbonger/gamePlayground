@@ -193,3 +193,46 @@ describe('the flock', () => {
     expect(flock.members.every((m) => !m.state.ending)).toBe(true);
   });
 });
+
+describe('leaving the roost', () => {
+  it('scatters in every direction by default', () => {
+    // A loft on a roof has open sky all round it.
+    const flock = createFlock(4, { x: 0, y: 30, z: 0 });
+    const bearings = flock.members.map((m) =>
+      Math.atan2(m.state.velocity.x, -m.state.velocity.z),
+    );
+    const spread = Math.max(...bearings) - Math.min(...bearings);
+    expect(spread).toBeGreaterThan(Math.PI);
+  });
+
+  it('leaves along the line when it is given one', () => {
+    // A roost in a rail yard is ringed with blocks of flats, and the open
+    // ground is the corridor. Released every which way they fly into the
+    // buildings before they have climbed over them.
+    const bearing = Math.PI / 2;
+    const spread = 0.7;
+    const flock = createFlock(4, { x: 0, y: 4, z: 0 }, {
+      ...defaultFlockOptions,
+      outbound: { bearing, spread },
+    });
+
+    for (const member of flock.members) {
+      const went = Math.atan2(member.state.velocity.x, -member.state.velocity.z);
+      const off = Math.abs(((went - bearing + Math.PI) % (2 * Math.PI)) - Math.PI);
+      expect(off).toBeLessThanOrEqual(spread + 1e-6);
+    }
+  });
+
+  it('releases them from the height the roost is at', () => {
+    // Not from a fixed altitude, which is what it used to do -- and which was
+    // invisible only because the one caller passed the same number.
+    for (const height of [4.4, 30, 90]) {
+      const flock = createFlock(3, { x: 12, y: height, z: -8 });
+      for (const member of flock.members) {
+        expect(member.state.position.y).toBe(height);
+        expect(member.state.position.x).toBe(12);
+        expect(member.state.position.z).toBe(-8);
+      }
+    }
+  });
+});

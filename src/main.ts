@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 /**
  * Entry point: fixed-timestep simulation, interpolated rendering, live tuning.
  */
@@ -20,13 +21,14 @@ import { createRunTracker } from './run';
 import { createDebugGui } from './debug-gui';
 import { createScene } from './render/scene';
 import { createBirdRig, PIGEON_MORPHS, type WingPose } from './render/bird';
-import { createFlock } from './flock';
+import { createFlock, defaultFlockOptions } from './flock';
 import { createChaseCamera, defaultCameraParams } from './render/camera';
 import { createHud } from './render/hud';
 import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
 import { buildWorld } from './world/city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
+import { WAGON } from './world/train';
 import { bearing, distance, project } from './world/geo';
 import type { MapData } from './world/streets';
 import homeMap from './world/data/home.json';
@@ -108,7 +110,32 @@ scene.add(rig.object);
 // The other pigeons: same flight model, same collider, same wind, steered by
 // an autopilot that is not especially good at it.
 // The flock lives at the loft, which is where the pigeon is trying to get to.
-const flock = createFlock(PIGEON_MORPHS.length, { x: home.x, y: 30, z: home.z });
+/**
+ * The flock lives on the train now, not at the loft.
+ *
+ * The middle wagon of the rake, and a couple of metres above its stakes so
+ * they leave cleanly rather than clipping the next wagon along on the way out.
+ */
+const rake = layout.trains[0]?.vehicles ?? [];
+const roost = rake.length
+  ? rake[Math.floor(rake.length / 2)]!
+  : { x: home.x, z: home.z };
+/**
+ * And they leave along the line, not in every direction.
+ *
+ * The yard is ringed with blocks of flats. Released on a random bearing from
+ * a wagon roof they meet one about eighty metres out, thirteen metres up, well
+ * before they have climbed over the roofs -- thirty-eight of them in three
+ * minutes. Sent out along the track instead, where the ground is open for half
+ * a kilometre, not one of them hits anything.
+ */
+const alongTheTrack = 'yaw' in roost ? Math.atan2(Math.cos(roost.yaw), -Math.sin(roost.yaw)) : 0;
+
+const flock = createFlock(
+  PIGEON_MORPHS.length,
+  { x: roost.x, y: WAGON.deck + WAGON.stake + 2, z: roost.z },
+  { ...defaultFlockOptions, outbound: { bearing: alongTheTrack, spread: 0.7 } },
+);
 const flockRigs = flock.members.map((member) => {
   const bird = createBirdRig(PIGEON_MORPHS[member.morph]);
   scene.add(bird.object);
@@ -217,6 +244,18 @@ function frame(nowMs: number) {
         ? 'tucked'
         : 'gliding';
   rig.update(interpolatedState, wings, frameTime);
+
+  // Flash the target and size its arrow. Both want the drawn position rather
+  // than the tick position, or the arrow judders against everything else.
+  world.marker?.update(
+    now,
+    camera.position,
+    new THREE.Vector3(
+      interpolatedState.position.x,
+      interpolatedState.position.y,
+      interpolatedState.position.z,
+    ),
+  );
 
   // The flock is far enough away that the raw tick pose is smooth enough.
   flock.members.forEach((member, i) => {

@@ -19,12 +19,28 @@ import type { Area, AreaKind } from './areas';
 
 export { defaultWorldOptions, type WorldOptions } from './layout';
 
+/**
+ * The thing the pigeon is homing on, and how it is pointed out.
+ *
+ * A building today and a wagon just as easily: all it needs is something to
+ * recolour and a height to hang the arrow over, so what is marked is a
+ * decision for whoever builds the world rather than a fact about buildings.
+ */
+export interface TargetMarker {
+  /** Where the target stands, in world metres. */
+  readonly position: THREE.Vector3;
+  /** Flash the target and size the arrow. Once a frame. */
+  update(elapsed: number, viewer: THREE.Vector3, bird: THREE.Vector3): void;
+}
+
 export interface World {
   group: THREE.Group;
   /** Every solid object, in simulation coordinates. */
   boxes: Box[];
   /** Broad-phase-accelerated view of `boxes`, ready to sweep against. */
   collider: Collider;
+  /** The landmark being homed on, if this world has one. */
+  marker: TargetMarker | null;
   dispose(): void;
 }
 
@@ -104,8 +120,57 @@ function withWindows(material: THREE.MeshLambertMaterial): THREE.MeshLambertMate
   material.customProgramCacheKey = () => 'building-windows';
   return material;
 }
-/** The building being homed in on, picked out to be findable from a distance. */
-const TARGET_COLOR = 0xc0392b;
+/**
+ * What the target turns when it flashes.
+ *
+ * It used to be painted on permanently, which made the landmark findable and
+ * also made it the one building in the city that was obviously not a building.
+ * Now it wears an ordinary colour and goes red once a second, and the arrow
+ * above it is what makes it findable at any range.
+ */
+const TARGET_COLOR = 0xd0281c;
+
+/** How long one flash of the target takes, and how much of that is lit. */
+const FLASH_PERIOD = 1;
+const FLASH_DUTY = 0.45;
+/**
+ * Where the flashing fades out, in metres.
+ *
+ * Close up you can see the thing perfectly well, and a building blinking in
+ * your face while you are trying to put down on it is a distraction rather
+ * than a help. It fades across the band rather than switching off, or the last
+ * flash before the threshold reads as the marker breaking.
+ */
+const FLASH_NEAR = 130;
+const FLASH_FAR = 240;
+
+/**
+ * How red the target is, at `elapsed` seconds and `away` metres from the bird.
+ *
+ * A raised cosine over the first part of each second, so it swells and fades
+ * rather than snapping on -- a hard square wave at this size reads as a
+ * rendering fault. Pure arithmetic, and tested as such.
+ */
+export function targetFlash(elapsed: number, away: number): number {
+  const near = Math.min(1, Math.max(0, (away - FLASH_NEAR) / (FLASH_FAR - FLASH_NEAR)));
+  if (near <= 0) return 0;
+
+  const phase = ((elapsed % FLASH_PERIOD) + FLASH_PERIOD) % FLASH_PERIOD;
+  if (phase >= FLASH_DUTY) return 0;
+  return near * 0.5 * (1 - Math.cos((phase / FLASH_DUTY) * Math.PI * 2));
+}
+
+/**
+ * How big to draw the arrow so it looks the same size at any range.
+ *
+ * The whole point of it is that it does not shrink away: a marker you lose at
+ * 800 m is no marker at all. Scaling with distance keeps it subtending a
+ * constant angle, and the floor keeps it from vanishing into the target's own
+ * roof when you are right on top of it.
+ */
+export function arrowScale(distance: number): number {
+  return Math.max(2.2, distance * 0.045);
+}
 
 /** Rise of a roof per metre of half-depth: about 27 degrees off horizontal. */
 const ROOF_PITCH = 0.5;
@@ -308,8 +373,10 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
   // The landmark is one building among thousands, so it gets its own mesh
   // rather than a seventh instanced bucket holding a single entry.
   const landmark = layout.buildings.find((building) => building.isTarget);
+  let marker: TargetMarker | null = null;
   if (landmark) {
-    const material = withWindows(new THREE.MeshLambertMaterial({ color: TARGET_COLOR }));
+    // An ordinary building between flashes, which is what it goes back to.
+    const material = withWindows(new THREE.MeshLambertMaterial({ color: BUILDING_COLORS[0] }));
     disposables.push(material);
     // Full height, with no roof taken out of it: the flat top is exactly the
     // top of the collision box, so the bird lands where it looks like it does.
@@ -320,6 +387,13 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     group.add(mesh);
+
+    marker = createMarker(
+      material,
+      new THREE.Vector3(landmark.x, landmark.height, landmark.z),
+      disposables,
+      group,
+    );
   }
 
   // --- Roofs ----------------------------------------------------------------
@@ -413,8 +487,70 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
     group,
     boxes: layout.boxes,
     collider: createColliderField(layout.boxes),
+    marker,
     dispose() {
       for (const d of disposables) d.dispose();
+    },
+  };
+}
+
+/**
+ * Flash the target, and hang an arrow over it.
+ *
+ * The arrow is drawn with the depth test off and the fog disabled, which is
+ * the difference between a marker and a piece of scenery: it is still there
+ * behind a block of flats and it does not dissolve into the haze at a
+ * kilometre. That is the whole job -- it has to be findable from anywhere,
+ * which is exactly when a normal object is hardest to see.
+ */
+function createMarker(
+  material: THREE.MeshLambertMaterial,
+  top: THREE.Vector3,
+  disposables: { dispose(): void }[],
+  group: THREE.Group,
+): TargetMarker {
+  const lit = new THREE.Color(TARGET_COLOR);
+  const base = material.color.clone();
+
+  const head = new THREE.ConeGeometry(0.5, 1.1, 4);
+  head.rotateX(Math.PI);
+  head.translate(0, 0.55, 0);
+  const shaft = new THREE.CylinderGeometry(0.16, 0.16, 1.1, 4);
+  shaft.translate(0, 1.65, 0);
+
+  const arrowMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffd21f,
+    fog: false,
+    depthTest: false,
+    depthWrite: false,
+  });
+  disposables.push(head, shaft, arrowMaterial);
+
+  const arrow = new THREE.Group();
+  for (const geometry of [head, shaft]) {
+    arrow.add(new THREE.Mesh(geometry, arrowMaterial));
+  }
+  // After everything else, so nothing paints over it.
+  arrow.renderOrder = 999;
+  arrow.traverse((child) => {
+    child.renderOrder = 999;
+  });
+  group.add(arrow);
+
+  const position = top.clone();
+
+  return {
+    position,
+    update(elapsed, viewer, bird) {
+      const flash = targetFlash(elapsed, position.distanceTo(bird));
+      material.color.copy(base).lerp(lit, flash);
+
+      const size = arrowScale(position.distanceTo(viewer));
+      arrow.scale.setScalar(size);
+      // Sitting a little clear of the roof, and rocking gently, because a
+      // marker that moves is found a good deal faster than one that does not.
+      const bob = Math.sin(elapsed * 2.2) * 0.12 + 1;
+      arrow.position.set(position.x, position.y + size * 0.55 * bob + 1.5, position.z);
     },
   };
 }

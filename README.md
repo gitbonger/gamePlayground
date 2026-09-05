@@ -154,9 +154,32 @@ claims combinations built on them, and while one is held the browser often
 stops delivering key-up events, so a control bound to a modifier can stick down
 with no way to let go of it. Pressing one now releases everything instead.
 
-Whichever generated building lands nearest the home point is marked, and drawn
-in red. It gets its own mesh rather than a seventh instanced bucket, because it
-is one building among a couple of thousand.
+Whichever generated building lands nearest the home point is marked. It gets
+its own mesh rather than a seventh instanced bucket, because it is one building
+among a couple of thousand — and because being marked means being recoloured
+several times a second.
+
+**It flashes, and it wears an arrow.** The target sits in an ordinary colour
+and goes red once a second, on a raised cosine so it swells and fades rather
+than snapping — a hard square wave at that size reads as a rendering fault
+rather than a signal. Inside 130 m it stops, fading out across a band from
+240 m rather than switching off at a threshold, because a marker that vanishes
+abruptly looks broken rather than satisfied. Painting it permanently red, which
+is what it used to do, made the landmark findable and also made it the one
+building in the city that was obviously not a building.
+
+The arrow above it is the part that is always there. It is drawn with the depth
+test off and the fog disabled — the difference between a marker and a piece of
+scenery — so it is still visible through a block of flats and does not dissolve
+into the haze, and it is scaled with its distance from the camera so it
+subtends a constant angle. A marker you lose at 800 m is no marker at all; this
+one is legible at 1,157. Both halves are arithmetic and tested as such: what
+the flash does across a second and across the fade band, and that the arrow's
+size stays proportional to range with a floor so it does not vanish underfoot.
+
+Nothing about either is specific to buildings. The marker takes a material to
+recolour and a height to hang the arrow over, so marking a wagon instead is a
+matter of handing it a different pair.
 
 ## Flying over a real place
 
@@ -427,11 +450,23 @@ the attribution and the HUD keeps it on screen.
 
 ## The other pigeons
 
-Ten of them, living at the loft — which is the red building the player is
-trying to get back to. Each leaves low, at 30 m, on its own bearing, climbs as
-it goes, and is released again once it has flown a few hundred metres out or
-flown into something. The effect is a slow scatter outward from home, which
-doubles as a way of spotting where home is from a distance.
+Ten of them, roosting on the middle wagon of the train. Each leaves from the
+deck, climbs as it goes, and is released again once it has flown a few hundred
+metres out or flown into something. The effect is a slow scatter outward, which
+doubles as a way of spotting the train from a distance.
+
+**They leave along the line, not in every direction.** A loft on a roof has
+open sky all round it; a roost in a rail yard does not. Released on random
+bearings from a wagon they met the blocks ringing the yard about eighty metres
+out and thirteen metres up, well before they had climbed over the roofs — 38 of
+them in three minutes, none of which hit the train itself. Sent out along the
+track, where the ground is open for half a kilometre, not one of them hits
+anything: 100% airborne over the same three minutes.
+
+Moving them there also turned up a latent bug. The release used a fixed
+altitude and ignored the loft's own height, which nothing had noticed because
+the only caller passed the same number — and which would have put them 30 m
+above the wagon rather than on it.
 
 They fly the same model the player does, on the same collider and in the same
 wind, and nothing about them is special-cased: they stall, they get blown off
@@ -879,7 +914,10 @@ npm test
   autopilot holds a sane bank instead of rolling over, stays airborne when left
   to itself, flies speed with the nose and height with the wings, and rests
   before it is spent; the flock launches in a spread of colours, keeps most of
-  itself in the air over a city, and puts birds back after they die.
+  itself in the air over a city, and puts birds back after they die. They
+  scatter in every direction from a rooftop but leave along the line when given
+  one, and are released from the height the roost is actually at rather than a
+  fixed one.
 - **`src/world/polygon.test.ts`** — the sign of an area says which way a ring
   winds; insetting moves every edge by the distance asked for, takes a distance
   per edge, and cuts a sharp corner off rather than flinging it into the
@@ -909,7 +947,11 @@ npm test
   the equinox, reaches 90 minus the latitude plus the tilt at midsummer noon
   and due south with it, is a full two tilts lower at midwinter, rises in the
   east and sets in the west, and is below the horizon at night.
-- **`src/world/city.test.ts`** — a roof comes out of the building's height
+- **`src/world/city.test.ts`** — the target flashes once a second, is dark for
+  most of it, swells and fades rather than snapping, repeats whenever you look,
+  stops when the bird is close and fades out across the band rather than
+  switching off; the arrow keeps a constant apparent size at any range, with a
+  floor so it does not vanish underfoot. A roof comes out of the building's height
   rather than being added to it, is pitched to the depth of the wing it covers
   up to a limit, never swallows a building short enough for it to, and is left
   off the landmark so there is somewhere flat to land.
