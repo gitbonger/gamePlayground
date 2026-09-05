@@ -183,7 +183,7 @@ export const defaultParams: FlightParams = {
   liftSlope: 4.5,
   stallAngle: 0.28,
   postStallLift: 0.8,
-  dragBase: 0.12,
+  dragBase: 0.05,
   inducedDrag: 0.062,
   keelDrag: 0.35,
 
@@ -212,7 +212,7 @@ export const defaultParams: FlightParams = {
   yawRate: 1.1,
   controlHalfLife: 0.09,
   controlRefSpeed: 12,
-  trimAngle: 0.17,
+  trimAngle: 0.1,
   pitchStability: 2.2,
   yawStability: 2.6,
 

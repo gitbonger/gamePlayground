@@ -267,15 +267,21 @@ describe('landing', () => {
   }
 
   it('lands cleanly when the flare is timed well', () => {
-    const bird = approach(2, 0.7);
+    const bird = approach(5, 0.7);
     expect(bird.ending).not.toBeNull();
     expect(bird.ending!.kind).toBe('landed');
     expect(bird.ending!.cause).toBeNull();
   });
 
   it('accepts the whole spread of flare strengths at the sweet spot', () => {
-    for (const pitch of [0.3, 0.5, 0.7, 0.9, 1]) {
-      expect(approach(2, pitch).ending!.kind, `pitch ${pitch}`).toBe('landed');
+    // The band is four to seven metres up. It used to be two, and moved when
+    // the bird stopped gliding at barely above its landing speed: arriving at
+    // 14 m/s rather than 11 takes longer to bleed off, so the flare has to
+    // start higher. Anywhere in the band, any strength of pull, it lands.
+    for (const flareAt of [4, 5, 6, 7]) {
+      for (const pitch of [0.3, 0.5, 0.7, 0.9, 1]) {
+        expect(approach(flareAt, pitch).ending!.kind, `${flareAt} m at ${pitch}`).toBe('landed');
+      }
     }
   });
 
@@ -286,7 +292,7 @@ describe('landing', () => {
   });
 
   it('rejects flaring far too high, which balloons and then drops', () => {
-    const bird = approach(8, 0.9);
+    const bird = approach(10, 0.9);
     expect(bird.ending!.kind).toBe('crashed');
     expect(bird.ending!.cause).toBe('hard-impact');
   });
@@ -306,7 +312,7 @@ describe('landing', () => {
   });
 
   it('records the touchdown numbers it judged', () => {
-    const bird = approach(2, 0.7);
+    const bird = approach(5, 0.7);
     const ending = bird.ending!;
     expect(ending.sink).toBeLessThanOrEqual(defaultParams.landingSink);
     expect(ending.speed).toBeLessThanOrEqual(defaultParams.landingSpeed);
@@ -315,7 +321,7 @@ describe('landing', () => {
   });
 
   it('leaves the bird stopped where it landed', () => {
-    const bird = approach(2, 0.7);
+    const bird = approach(5, 0.7);
     expect(length(bird.velocity)).toBe(0);
     expect(bird.position.y).toBe(defaultParams.groundHeight);
   });
@@ -392,10 +398,15 @@ describe('braking', () => {
     expect(settle({ brake: true, flap: true }).sink).toBeLessThan(settle({ brake: true }).sink);
   });
 
-  it('reaches a landable speed and sink when braking into a flare', () => {
+  it('brings the speed down to a landable one, but not the sink', () => {
+    // Held braked and nose-up, the bird settles well inside the speed a
+    // landing allows and just outside the sink it allows. That is the airbrake
+    // doing exactly what it is for and no more: it buys speed with height, so
+    // a steady braked descent is a controlled drop, not an approach. Arresting
+    // it is the reversed beat's job, which is the next group along.
     const { speed, sink } = settle({ brake: true, pitch: 0.4 });
-    expect(speed).toBeLessThanOrEqual(defaultParams.landingSpeed);
-    expect(sink).toBeLessThanOrEqual(defaultParams.landingSink);
+    expect(speed).toBeLessThan(defaultParams.landingSpeed * 0.7);
+    expect(sink).toBeGreaterThan(defaultParams.landingSink);
   });
 
   it('holds a far higher angle of attack before stalling', () => {
@@ -441,7 +452,9 @@ describe('braking', () => {
   function approach(
     options: { brake?: boolean; beat?: boolean; flareAt?: number; pitch?: number } = {},
   ) {
-    const { brake = false, beat = false, flareAt = 4, pitch = 0.6 } = options;
+    // Six metres, not four: a bird arriving at 14 m/s rather than 11 needs
+    // longer to bleed it off, so every flare in the model starts higher now.
+    const { brake = false, beat = false, flareAt = 6, pitch = 0.6 } = options;
     const bird = createBird(vec(0, 80, 0), 15.3);
     const controls = { ...neutralControls() };
     for (let t = 0; t < 90; t += DT) {
@@ -663,7 +676,9 @@ describe('coasting', () => {
   });
 
   it('reaches the same trim whether it enters fast or slow', () => {
-    expect(coast(25).speed).toBeCloseTo(coast(11).speed, 0);
+    // Given long enough: shedding a 25 m/s entry takes a while now there is
+    // less drag to do it with, so 25 seconds is no longer enough to have met.
+    expect(coast(25, 60).speed).toBeCloseTo(coast(11, 60).speed, 0);
   });
 
   it('gives up height at a rate you can feel', () => {
@@ -672,13 +687,16 @@ describe('coasting', () => {
     expect(sink).toBeLessThan(4);
   });
 
-  it('is slower and steeper than flying with a low-drag body would be', () => {
-    const sleek = createBird(vec(0, 20000, 0), 15);
-    const { telemetry } = fly(25, {}, { dragBase: 0.04, trimAngle: 0.09 }, sleek);
+  it('is faster and flatter than flying with a draggy body would be', () => {
+    // Stated the other way round from before, because the comparison it used
+    // to make has gone: the body it called sleek is now roughly the body the
+    // bird has. Against the drag it used to carry, this is the difference.
+    const draggy = createBird(vec(0, 20000, 0), 15);
+    const { telemetry } = fly(25, {}, { dragBase: 0.12, trimAngle: 0.17 }, draggy);
 
     const settled = coast(15);
-    expect(settled.speed).toBeLessThan(telemetry.airspeed - 2);
-    expect(settled.sink).toBeGreaterThan(-telemetry.climbRate);
+    expect(settled.speed).toBeGreaterThan(telemetry.airspeed + 2);
+    expect(settled.sink).toBeLessThan(-telemetry.climbRate);
   });
 });
 
@@ -707,7 +725,7 @@ describe('wing physics', () => {
     // makes the turn. Falling and turning are two views of the same vector.
     const bird = createBird(vec(0, 5000, 0), 15);
     bird.orientation = quatFromAxisAngle(vec(0, 0, -1), Math.PI / 2);
-    fly(2, {}, {}, bird);
+    fly(3, {}, {}, bird);
 
     const forward = rotate(bird.orientation, vec(0, 0, -1));
     expect(Math.abs(forward.x)).toBeGreaterThan(0.3);
@@ -741,9 +759,12 @@ describe('wing physics', () => {
     const bird = createBird(vec(0, 5000, 0), 0);
     bird.velocity = vec(0, 0, 0);
     const { telemetry } = fly(1, {}, {}, bird);
-    // Belly-first at a huge angle of attack is mostly drag.
+    // Belly-first at a huge angle of attack is mostly drag. Stated as a
+    // multiple of the drag at no angle at all, so it says the thing it means
+    // -- separation dominates -- rather than a number that has to be re-fitted
+    // every time the body is retuned.
     expect(telemetry.climbRate).toBeGreaterThan(-defaultParams.gravity);
-    expect(telemetry.dragCoefficient).toBeGreaterThan(0.5);
+    expect(telemetry.dragCoefficient).toBeGreaterThan(defaultParams.dragBase * 5);
   });
 });
 
@@ -876,7 +897,7 @@ describe('perching', () => {
   }
 
   it('treats a clean landing as perched, not as an ending', () => {
-    const bird = land(4, 0.6);
+    const bird = land(6, 0.6);
     expect(bird.ending!.kind).toBe('landed');
     expect(isPerched(bird)).toBe(true);
     expect(hasCrashed(bird)).toBe(false);
@@ -892,7 +913,7 @@ describe('perching', () => {
   });
 
   it('settles a landed bird onto its feet, keeping where it was pointing', () => {
-    const bird = land(4, 0.6);
+    const bird = land(6, 0.6);
     const before = heading(bird);
 
     // Wings level and nose level: a standing bird, not a frozen flare.
@@ -915,7 +936,7 @@ describe('perching', () => {
   });
 
   it('stays put once perched', () => {
-    const bird = land(4, 0.6);
+    const bird = land(6, 0.6);
     const resting = { ...bird.position };
     fly(5, { flap: true, pitch: 1 }, {}, bird);
     expect(bird.position).toEqual(resting);
@@ -940,7 +961,10 @@ describe('rooftops', () => {
   }
 
   it('lets a gentle arrival land on a roof', () => {
-    const bird = approachRoof(34, 11, 0.6);
+    // Gentler than it used to need. The bird carries more speed and glides
+    // further for it, so the same entry now sails over the far parapet and
+    // puts down on the street beyond.
+    const bird = approachRoof(26, 9, 0.6);
     expect(bird.ending!.kind).toBe('landed');
     expect(isPerched(bird)).toBe(true);
     // Standing on the roof, not on the ground twenty metres below it.
@@ -948,7 +972,10 @@ describe('rooftops', () => {
   });
 
   it('settles a roof landing onto its feet like any other', () => {
-    const bird = approachRoof(34, 11, 0.6);
+    const bird = approachRoof(26, 9, 0.6);
+    // Checked to be a landing first: a crash settles the bird upright too, so
+    // without this the rest of it passes whatever happened.
+    expect(bird.ending!.kind).toBe('landed');
     expect(bankAngle(bird)).toBeCloseTo(0, 6);
     expect(rotate(bird.orientation, vec(0, 0, -1)).y).toBeCloseTo(0, 6);
   });

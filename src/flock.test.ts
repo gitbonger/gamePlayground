@@ -155,21 +155,24 @@ describe('the flock', () => {
   });
 
   it('brings them back after they die', () => {
-    // The loft sits at the origin, so the towers have to be lower than the
-    // height the birds leave at -- released inside a solid, a swept collision
-    // reports no hit and they would simply fly through everything.
+    // Walled in rather than sent through a field of towers to see who trips
+    // over one. That is how this used to work, and it tested the autopilot's
+    // incompetence as much as the respawn: the flying improved and the test
+    // quietly stopped exercising anything, because nobody hit anything any
+    // more. A closed wall they cannot out-climb kills every one of them
+    // through the same code path a real collision uses.
     const flock = createFlock(8);
-    const city = createColliderField(
-      Array.from({ length: 900 }, (_, i) =>
-        turnedBox(((i % 30) - 15) * 40, (Math.floor(i / 30) - 15) * 40, 30, 26, 30, 0),
-      ),
-    );
+    const ring = Array.from({ length: 48 }, (_, i) => {
+      const around = (i / 48) * Math.PI * 2;
+      return turnedBox(Math.cos(around) * 150, Math.sin(around) * 150, 40, 400, 40, around);
+    });
+    const wall = createColliderField(ring);
     const wind = createWind();
 
     let died = 0;
     const seen = flock.members.map(() => false);
     for (let t = 0; t < 200; t += DT) {
-      flock.update(DT, city, wind);
+      flock.update(DT, wall, wind);
       flock.members.forEach((member, i) => {
         if (member.state.ending && !seen[i]) {
           seen[i] = true;
@@ -180,9 +183,13 @@ describe('the flock', () => {
       });
     }
 
-    expect(died).toBeGreaterThan(0);
-    // And they did not simply stay dead: most are back in the air.
-    const flying = flock.members.filter((m) => !m.state.ending).length;
-    expect(flying).toBeGreaterThan(flock.members.length / 2);
+    // Every one of them, many times over: they cannot get out.
+    expect(died).toBeGreaterThan(flock.members.length);
+
+    // Then take the wall away. Counting survivors while they are still trapped
+    // measures nothing but how many happened to be mid-respawn at the whistle.
+    const open = createColliderField([]);
+    for (let t = 0; t < 8; t += DT) flock.update(DT, open, wind);
+    expect(flock.members.every((m) => !m.state.ending)).toBe(true);
   });
 });

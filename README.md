@@ -43,11 +43,11 @@ screen, because the game is not over. Miss any one and it is a crash, which
 does end the run and does name what went wrong.
 
 The approach is **brake to slow, beat to settle, flare to touch down**.
-Coasting brings you to about 11 m/s; holding `Ctrl` takes that to 5 m/s in two
-seconds, but it also doubles your descent rate — an airbrake is not a parachute.
-Holding `Space` at the same time reverses the wingbeat and arrests the sink,
-which is the configuration you actually land from. Then pull the nose up at
-roughly **2 metres**.
+Coasting brings you to about 14 m/s; holding `Ctrl` takes that to 5.6 m/s, but
+it also leaves you descending at 4.2 m/s — an airbrake is not a parachute, and
+that is fractionally more sink than a landing allows. Holding `Space` at the
+same time reverses the wingbeat and arrests it, which is the configuration you
+actually land from. Then pull the nose up at roughly **five metres**.
 
 Braking without beating will slow you beautifully and then drive you into the
 ground; that is correct, and it is the single most useful thing to learn.
@@ -111,9 +111,9 @@ Two details matter more than they look:
   A variable-dt flight model cannot be tuned, because every constant you pick
   is quietly a function of frame rate.
 
-Default numbers land close to a real feral pigeon: 0.35 kg, ~15 m/s cruise,
-2.1 m/s sink, roughly 7:1 glide ratio, and about 14 seconds of continuous
-flapping before stamina runs out.
+Default numbers land close to a real feral pigeon: 0.35 kg, 17.6 m/s cruise
+(63 km/h), 2.3 m/s sink, a 6.2:1 glide ratio, and a wing loading of
+57 N/m² against a rock dove's 55–60.
 
 Everything in `FlightParams` and `CameraParams` is bound to the on-screen panel.
 Tuning live is the intended workflow — the committed defaults are a starting
@@ -577,17 +577,33 @@ A pigeon is a powered flier, not a soarer. Stop beating and it should slow down
 and give up height quickly — you should not be able to cross the city on one
 glide. Two parameters carry that:
 
-- **`trimAngle`** (0.17 rad) is the angle of attack the bird settles at with no
-  input, and it sets the speed a coast decays *to*. Trimmed nose-up like this,
-  the bird flies slowly when left alone: powered level flight holds about
-  17 m/s, and letting go bleeds that back to 11 m/s in a couple of seconds.
-  Trimmed flatter, the glide equilibrium sits up at cruise speed and coasting
-  never slows you at all, which is what made an earlier build feel like it had
-  no brakes even before there was a brake.
-- **`dragBase`** (0.12) sets how steeply that coast descends. It takes the
-  glide ratio from a sailplane-like 8:1 down to about 4:1, which is the right
-  neighbourhood for a bird with a round body, a head out front and its feet
-  tucked up under it.
+- **`trimAngle`** (0.1 rad, 5.7°) is the angle of attack the bird settles at
+  with no input, and it sets the speed a coast decays *to*. Lift must balance
+  weight, so the trim angle picks the speed and nothing else does: at this
+  attitude the lift coefficient is 0.45 and the bird settles at 14 m/s.
+- **`dragBase`** (0.05) sets how steeply that coast descends, and with it the
+  glide ratio — 6.2:1, which is the right neighbourhood for a bird with a round
+  body, a head out front and its feet tucked up under it.
+
+**Both were wrong for a long time, and the way it showed was that flying felt
+slow.** At `trimAngle` 0.17 and `dragBase` 0.12 the bird cruised at 41.7 km/h —
+slower than a car — where a real pigeon does 60–80. The arithmetic pinned it
+exactly: a trim angle of 9.7° gives a lift coefficient of 0.765, which balances
+weight at 11.05 m/s, and the measured glide was 11.0. The drag was the worse of
+the two, because it put *best glide* at 30 km/h, barely above the stall. That is
+backwards for anything that flies: best glide belongs well above minimum speed,
+and having it at the bottom meant the bird could not fly fast without falling
+out of the sky. Flattening the trim alone did not help — it just traded speed
+for sink, because at a sensible cruise lift coefficient the old body only
+managed L/D 2.3.
+
+Fixing both moved cruise to 63 km/h and cut the release-to-loft crossing from
+101 to 66 seconds. It also moved the flare: a bird arriving at 14 m/s instead of
+11 needs longer to bleed it off, so the sweet spot went from two metres up to
+between four and seven. Ten tests had encoded the old numbers and were
+re-derived from measurement rather than nudged until green — including one that
+compared the default body against a "low-drag" one, a comparison that had
+quietly collapsed because the default *became* the low-drag one.
 
 The two do different jobs and are worth tuning separately: trim decides *how
 slow* a coast ends up, drag decides *how steep* it is.
@@ -625,9 +641,10 @@ turn along with the height.
 **Gravity is unconditional.** It is applied every tick with no special cases:
 one tick from rest is exactly `-g·dt`, and in vacuum (`airDensity: 0`) free
 fall is exact to nine decimal places. A bird dropped from rest in *real* air
-only reaches 7.4 m/s after a second, but that is drag, not missing gravity —
-falling belly-first puts the wing at a 39° angle of attack with a drag
-coefficient of 0.6. A pigeon is a fairly good parachute.
+only reaches 7.6 m/s after a second, but that is drag, not missing gravity —
+falling belly-first puts the wing at a 36° angle of attack with a drag
+coefficient of 0.47, nine times its drag at no angle at all. A pigeon is a
+fairly good parachute.
 
 **A braking wing is not a wing, and its drag is not a multiple of a wing's.**
 Spreading and cupping adds 40% to the area, but that area is held broadside
@@ -644,11 +661,11 @@ recovered to 10.7 m/s within five seconds. It was not a brake at all.
 `brakeDrag` is therefore an absolute coefficient (1.2) added on top, not a
 multiplier. Braking now behaves the way it looks:
 
-| From an 11.6 m/s coast | Coasting | Braking |
+| From a 15.3 m/s entry | Coasting | Braking |
 | --- | --- | --- |
-| Airspeed after 2 s | 10.7 m/s | **5.1 m/s** |
-| Airspeed after 12 s | 10.8 m/s | **6.6 m/s** |
-| Height lost over 12 s | 14 m | **27 m** |
+| Airspeed after 2 s | 13.6 m/s | **5.5 m/s** |
+| Airspeed after 12 s | 14.9 m/s | **7.1 m/s** |
+| Sink after 12 s | 2.2 m/s | **6.9 m/s** |
 
 Which means braking is a way to stop, not a way to float: it costs you height
 at nearly twice the rate of a coast. Arresting that is what the **reversed
