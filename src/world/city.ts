@@ -10,6 +10,7 @@
  */
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { createColliderField, type Box, type Collider } from '../sim/collision';
 import { generateCityLayout, type Building, type CityLayout } from './layout';
@@ -522,19 +523,44 @@ export function buildWorld(
 
   // --- Trees --------------------------------------------------------------
   // Low, dense clutter near the ground: this is what sells low-altitude speed.
-  const treeGeometry = new THREE.ConeGeometry(1, 1, 6);
-  const treeMaterial = new THREE.MeshLambertMaterial({ color: 0x3f5f34, flatShading: true });
-  disposables.push(treeGeometry, treeMaterial);
-
-  const trees = new THREE.InstancedMesh(treeGeometry, treeMaterial, layout.trees.length);
-  trees.castShadow = true;
-  layout.trees.forEach((tree, i) => {
-    matrix.makeScale(tree.radius, tree.height, tree.radius);
-    matrix.setPosition(tree.x, tree.height / 2, tree.z);
-    trees.setMatrixAt(i, matrix);
+  //
+  // One instanced mesh per sort, which is a handful of draw calls for the
+  // whole nine thousand of them however many sorts there are -- the cost is
+  // in the count, and the count has not changed.
+  const kinds = treeShapes().map(({ geometry, color }) => {
+    const material = new THREE.MeshLambertMaterial({ color, flatShading: true });
+    disposables.push(geometry, material);
+    return { geometry, material, count: 0 };
   });
-  trees.instanceMatrix.needsUpdate = true;
-  group.add(trees);
+
+  // Counted first, because an InstancedMesh is told its size when it is made
+  // and a wrong guess is either wasted memory or missing trees.
+  for (const tree of layout.trees) {
+    const kind = kinds[tree.species % kinds.length];
+    if (kind) kind.count += 1;
+  }
+
+  const stands = kinds.map(({ geometry, material, count }) => {
+    const mesh = new THREE.InstancedMesh(geometry, material, count);
+    mesh.castShadow = true;
+    // Named so the test that counts them can tell a stand of trees from the
+    // other instanced things in the world, which is otherwise guesswork.
+    mesh.name = 'trees';
+    mesh.count = 0;
+    group.add(mesh);
+    return mesh;
+  });
+
+  for (const tree of layout.trees) {
+    const stand = stands[tree.species % stands.length]!;
+    // Every shape is modelled one unit tall with its foot at the origin and
+    // already in its own proportions, so the same scale puts any of them on
+    // the ground at the size the layout asked for.
+    matrix.makeScale(tree.radius, tree.height, tree.radius);
+    matrix.setPosition(tree.x, 0, tree.z);
+    stand.setMatrixAt(stand.count++, matrix);
+  }
+  for (const stand of stands) stand.instanceMatrix.needsUpdate = true;
 
   // --- Parks, woods and water ----------------------------------------------
   // Drawn under the roads, so a path through a park still reads as a path.
@@ -789,6 +815,81 @@ function createMarker(
       arrow.position.set(over.x, over.y + size * 0.55 * bob + 1.5, over.z);
     },
   };
+}
+
+/**
+ * The sorts of tree, as geometry and colour.
+ *
+ * Each is built one unit tall standing on the origin, and as wide as that
+ * sort wants to be for a radius of one -- a poplar is a spike whatever radius
+ * it was given, an old broadleaf is broader than it is tall. The proportion
+ * is baked into the geometry rather than carried alongside it as a number to
+ * multiply in later, because a number to multiply in later is a number that
+ * can be left out.
+ *
+ * Four is enough for a city to stop looking stamped out. They are told apart
+ * by silhouette first and colour second, because at a hundred metres and
+ * forty knots the outline is all there is.
+ */
+function treeShapes(): { geometry: THREE.BufferGeometry; color: number }[] {
+  /** Stand a shape on the ground: modelled about the origin, moved up by half. */
+  const footed = <T extends THREE.BufferGeometry>(geometry: T, centre = 0.5): T => {
+    geometry.translate(0, centre, 0);
+    return geometry;
+  };
+
+  /**
+   * One geometry out of several.
+   *
+   * Everything is flattened to non-indexed first: a cylinder comes indexed
+   * and an icosahedron does not, and merging refuses to mix the two. Nothing
+   * here is big enough for the indices to have been saving anything.
+   */
+  const merged = (parts: THREE.BufferGeometry[]): THREE.BufferGeometry => {
+    const flat = parts.map((part) => part.toNonIndexed());
+    const one = mergeGeometries(flat);
+    for (const part of flat) part.dispose();
+    for (const part of parts) part.dispose();
+    return one;
+  };
+
+  // A spruce: the narrow dark cone this started as.
+  const spruce = footed(new THREE.ConeGeometry(1, 1, 6));
+
+  // A poplar: the same idea drawn out into a spike, which is what a row of
+  // them along a road actually looks like.
+  const poplar = footed(new THREE.ConeGeometry(1, 1, 5));
+
+  // A broadleaf: a round crown on a bare stem. Two pieces merged into one
+  // geometry so it is still a single instanced draw.
+  const crown = new THREE.IcosahedronGeometry(0.42, 0);
+  crown.scale(1, 0.9, 1);
+  crown.translate(0, 0.66, 0);
+  const stem = new THREE.CylinderGeometry(0.055, 0.075, 0.45, 5);
+  stem.translate(0, 0.225, 0);
+  const broadleaf = merged([crown, stem]);
+
+  // An old one of the same: wider, lower, and paler for having been in the
+  // sun longer than the rest of them.
+  const wideCrown = new THREE.IcosahedronGeometry(0.5, 0);
+  wideCrown.scale(1.15, 0.62, 1.15);
+  wideCrown.translate(0, 0.6, 0);
+  const wideStem = new THREE.CylinderGeometry(0.075, 0.1, 0.42, 5);
+  wideStem.translate(0, 0.21, 0);
+  const old = merged([wideCrown, wideStem]);
+
+  /** As wide as this sort stands, for a radius of one. */
+  const wide = <T extends THREE.BufferGeometry>(geometry: T, spread: number): T => {
+    geometry.scale(spread, 1, spread);
+    return geometry;
+  };
+
+  return [
+    { geometry: spruce, color: 0x35512c },
+    { geometry: wide(poplar, 0.55), color: 0x4a6b38 },
+    { geometry: wide(broadleaf, 1.35), color: 0x4f7a3c },
+    { geometry: wide(old, 1.7), color: 0x6b8a48 },
+  ];
 }
 
 /**

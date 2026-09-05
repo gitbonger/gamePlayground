@@ -24,7 +24,7 @@ import {
   polygonCentroid,
   type Point2,
 } from './polygon';
-import type { Building, CityLayout, Tree } from './layout';
+import { SPECIES, type Building, type CityLayout, type Tree } from './layout';
 import {
   chainageOf,
   consistLength,
@@ -374,6 +374,16 @@ export function buildLayoutFromMap(
     step = options.spacing,
   ) {
     const chance = Math.min(1, (perHectare / 10000) * step * step);
+    /**
+     * One sort of tree for the whole of this ring.
+     *
+     * Chosen per place rather than per tree. Four sorts shuffled together
+     * across a courtyard is visual noise -- every tree different from the one
+     * beside it reads as static rather than as variety. A block planted with
+     * one sort reads as a stand of poplars, and the next block over being
+     * something else is what the variety is actually for.
+     */
+    const species = Math.floor(rand() * SPECIES);
     let minX = Infinity;
     let maxX = -Infinity;
     let minZ = Infinity;
@@ -401,7 +411,13 @@ export function buildLayoutFromMap(
         // Not on the water, and not in the middle of a five-a-side pitch.
         const ground = green.at(px, pz);
         if (ground && ground.kind !== 'park' && ground.kind !== 'wood') continue;
-        trees.push({ x: px, z: pz, radius: 2.5 + rand() * 2, height: 6 + rand() * 9 });
+        trees.push({
+          x: px,
+          z: pz,
+          radius: 2.5 + rand() * 2,
+          height: 6 + rand() * 9,
+          species,
+        });
       }
     }
   }

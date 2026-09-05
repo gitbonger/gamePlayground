@@ -99,3 +99,29 @@ describe('collider performance', () => {
     expect(elapsed).toBeLessThan(1000);
   });
 });
+
+describe('the trees it plants', () => {
+  it('plants one sort, because it has no blocks to plant by', () => {
+    // The map-built layout picks a sort per block. This one has no blocks, so
+    // it picks one for the whole wood rather than shuffling four together,
+    // which is the noise that having sorts at all was meant to avoid.
+    const layout = generateCityLayout({ ...defaultWorldOptions, seed: 5 });
+    expect(layout.trees.length).toBeGreaterThan(20);
+    expect(new Set(layout.trees.map((tree) => tree.species)).size).toBe(1);
+  });
+
+  it('plants the same wood twice from the same seed', () => {
+    const once = generateCityLayout({ ...defaultWorldOptions, seed: 7 });
+    const again = generateCityLayout({ ...defaultWorldOptions, seed: 7 });
+    expect(once.trees.map((t) => t.species)).toEqual(again.trees.map((t) => t.species));
+  });
+
+  it('and a different one from a different seed, sooner or later', () => {
+    const sorts = new Set(
+      [1, 2, 3, 4, 5, 6, 7, 8].map(
+        (seed) => generateCityLayout({ ...defaultWorldOptions, seed }).trees[0]?.species,
+      ),
+    );
+    expect(sorts.size).toBeGreaterThan(1);
+  });
+});

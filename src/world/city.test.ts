@@ -454,6 +454,128 @@ describe('drawing the smoke', () => {
   });
 });
 
+describe('the trees', () => {
+  /**
+   * A grid of blocks rather than the single one at the top of this file.
+   *
+   * With one block there is one place to plant and so one sort of tree, and a
+   * world with one sort in it cannot tell whether the sorts are being kept
+   * apart properly -- everything routes to the same stand either way.
+   *
+   * Split at the junctions: a block is found by walking half-edges, so a road
+   * that crosses another without a vertex there crosses nothing.
+   */
+  const gridded: MapData = {
+    ...map,
+    radius: 900,
+    roads: [
+      { kind: 'primary', width: 16, points: [[-40, 0], [0, 0], [200, 0], [400, 0], [440, 0]] },
+      { kind: 'primary', width: 16, points: [[-40, 200], [0, 200], [200, 200], [400, 200], [440, 200]] },
+      { kind: 'residential', width: 8, points: [[0, -40], [0, 0], [0, 200], [0, 240]] },
+      { kind: 'residential', width: 8, points: [[200, -40], [200, 0], [200, 200], [200, 240]] },
+      { kind: 'residential', width: 8, points: [[400, -40], [400, 0], [400, 200], [400, 240]] },
+    ],
+    rails: [],
+  };
+
+  let world: ReturnType<typeof buildWorld>;
+  beforeAll(() => {
+    world = buildWorld(buildLayoutFromMap(gridded, defaultMapWorldOptions), {});
+  });
+
+  /** Every instanced stand of trees in the world. */
+  const stands = (group: THREE.Object3D) => {
+    const found: THREE.InstancedMesh[] = [];
+    group.traverse((object) => {
+      if (object instanceof THREE.InstancedMesh && object.name === 'trees') found.push(object);
+    });
+    return found;
+  };
+
+  it('draws every tree the layout asked for, and no more', () => {
+    // One stand per sort means one chance per sort to lose the count. An
+    // InstancedMesh is told its size when it is made, so a wrong guess is
+    // either wasted memory or missing trees, silently.
+    const layout = buildLayoutFromMap(gridded, defaultMapWorldOptions);
+    const planted = stands(world.group);
+    const drawn = planted.reduce((total, mesh) => total + mesh.count, 0);
+
+    expect(layout.trees.length).toBeGreaterThan(10);
+    expect(drawn).toBe(layout.trees.length);
+
+    // And none of them asked for more room than it reserved. An
+    // InstancedMesh is sized when it is made, so a stand told to draw more
+    // than it was built for draws whatever happens to be in the buffer.
+    for (const stand of planted) {
+      expect(stand.count).toBeLessThanOrEqual(stand.instanceMatrix.count);
+    }
+  });
+
+  it('plants each place with one sort, rather than shuffling them together', () => {
+    // The point of having sorts. Four of them mixed through one courtyard is
+    // static rather than variety: every tree different from the one beside it
+    // is noise. A block planted with one sort reads as a stand of poplars,
+    // and the next block over being something else is what it is for.
+    //
+    // Stated as: a tree's nearest neighbour is almost always its own sort.
+    // Picked per tree instead, it would be about one time in four.
+    const trees = buildLayoutFromMap(gridded, defaultMapWorldOptions).trees;
+    expect(trees.length).toBeGreaterThan(10);
+
+    let same = 0;
+    for (const tree of trees) {
+      let nearest: (typeof trees)[number] | null = null;
+      let closest = Infinity;
+      for (const other of trees) {
+        if (other === tree) continue;
+        const away = Math.hypot(other.x - tree.x, other.z - tree.z);
+        if (away < closest) {
+          closest = away;
+          nearest = other;
+        }
+      }
+      if (nearest && nearest.species === tree.species) same += 1;
+    }
+    expect(same / trees.length).toBeGreaterThan(0.85);
+  });
+
+  it('still uses more than one sort across a map with more than one block', () => {
+    // One per place, but not one everywhere: a city of nothing but spruce is
+    // the uniform trees this replaced.
+    const trees = buildLayoutFromMap(gridded, defaultMapWorldOptions).trees;
+    expect(trees.length).toBeGreaterThan(20);
+    expect(new Set(trees.map((tree) => tree.species)).size).toBeGreaterThan(1);
+  });
+
+  it('plants the same wood every run', () => {
+    // The seed covers the sort as well as the size and the place, so a tree
+    // does not change species between visits.
+    const once = buildLayoutFromMap(gridded, defaultMapWorldOptions);
+    const again = buildLayoutFromMap(gridded, defaultMapWorldOptions);
+    expect(once.trees.map((t) => t.species)).toEqual(again.trees.map((t) => t.species));
+  });
+
+  it('stands them on the ground rather than half in it', () => {
+    // Two halves of the same claim, and both are needed: the shapes are
+    // modelled with their feet at the origin, *and* they are placed there.
+    // The old single cone was modelled about its middle and placed half its
+    // height up, so checking only one of the two proves nothing.
+    const at = new THREE.Matrix4();
+    for (const mesh of stands(world.group)) {
+      const position = mesh.geometry.getAttribute('position');
+      let lowest = Infinity;
+      for (let i = 0; i < position.count; i += 1) lowest = Math.min(lowest, position.getY(i));
+      expect(lowest).toBeGreaterThanOrEqual(-1e-6);
+      expect(lowest).toBeLessThan(0.001);
+
+      for (let i = 0; i < Math.min(mesh.count, 20); i += 1) {
+        mesh.getMatrixAt(i, at);
+        expect(at.elements[13], `instance ${i}`).toBeCloseTo(0, 9);
+      }
+    }
+  });
+});
+
 describe('the surface a resting bird stands on', () => {
   // Built inside the suite, because the ground texture needs the canvas stub
   // that `beforeAll` puts up.

@@ -53,7 +53,24 @@ export interface Tree {
   z: number;
   radius: number;
   height: number;
+  /**
+   * Which sort of tree it is, as an index into the renderer's list.
+   *
+   * A fact about the tree rather than about how it is drawn, so it is decided
+   * here with everything else about it, and stays the same run to run because
+   * it comes off the same seeded stream as its size and its place.
+   */
+  species: number;
 }
+
+/**
+ * How many sorts there are.
+ *
+ * Named here because the layout picks one and the renderer draws it, and the
+ * two have to agree about how many there are to pick from. The renderer keeps
+ * the shapes; this is only the count.
+ */
+export const SPECIES = 4;
 
 export interface CityLayout {
   buildings: Building[];
@@ -75,6 +92,10 @@ const TRUNK_FRACTION = 0.7;
 
 export function generateCityLayout(options: WorldOptions = defaultWorldOptions): CityLayout {
   const rand = mulberry32(options.seed);
+  // One sort for the whole of it. This layout has no blocks to plant by, and
+  // scattering four sorts through one wood is the noise that having sorts at
+  // all was meant to avoid.
+  const species = Math.floor(rand() * SPECIES);
   const buildings: Building[] = [];
   const trees: Tree[] = [];
   const boxes: Box[] = [];
@@ -100,7 +121,7 @@ export function generateCityLayout(options: WorldOptions = defaultWorldOptions):
     const height = 6 + rand() * 9;
     const radius = 2.5 + rand() * 2;
 
-    trees.push({ x, z, radius, height });
+    trees.push({ x, z, radius, height, species });
 
     // Boxed tighter than the cone's base, so clipping a leafy edge does not
     // read as hitting a wall.

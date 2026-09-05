@@ -812,6 +812,29 @@ From 1,189 real streets, 399 railways and 390 green areas: 137 blocks, 4,203
 buildings, 49 courtyards and 9,360 trees, built in about 190 ms, with 20,000
 collision sweeps in 10 ms.
 
+### Trees
+
+Four sorts — a spruce, a poplar drawn out into a spike, a broadleaf with a
+round crown on a stem, and an older, broader, paler one of the same. Told
+apart by silhouette first and colour second, because at a hundred metres and
+forty knots the outline is all there is. One instanced mesh per sort, so the
+whole nine thousand of them are still a handful of draw calls.
+
+**The sort is picked per place, not per tree.** Picked per tree it was visual
+noise: every tree different from the one beside it reads as static rather than
+as variety, and the uniform cones it replaced looked better. A block planted
+with one sort reads as a stand of poplars, and the next block over being
+something else is what having sorts is actually for. `plant()` is called once
+per ring — a block's garden, a park — so one choice per call is exactly one
+sort per place surrounded by roads.
+
+Each shape is modelled one unit tall with its foot at the origin and already
+in its own proportions, so the single scale a tree carries — a radius and a
+height — places any of them. The proportion is baked into the geometry rather
+than carried beside it as a number to multiply in later, because a number to
+multiply in later is a number that can be left out; there was a version with
+one, and nothing noticed when a mutation dropped it.
+
 OpenStreetMap data is ODbL. The baked file is a derived database, so it carries
 the attribution and the HUD keeps it on screen.
 
@@ -1632,6 +1655,17 @@ npm test
   does not follow the leader down is 18 m high in a real descent, and hidden
   at 1 m/s by a bird that can dive. Either one alone passes a test written at
   a single sink rate.
+- **`src/world/city.test.ts`** also covers the trees: every one the layout
+  asked for is drawn and no stand is asked to draw more than it reserved —
+  an `InstancedMesh` is sized when it is made, so a stand told to draw past
+  its allocation draws whatever is in the buffer. They stand on the ground
+  rather than half in it, checked twice over, because the shapes being
+  modelled foot-at-the-origin and the instances being placed there are two
+  claims and the old single cone got both wrong in a way that cancelled out.
+  Each place is planted with one sort — stated as "a tree's nearest neighbour
+  is almost always its own sort", which is one time in four if the sort is
+  picked per tree — while a map with several blocks still uses several sorts,
+  and the same wood comes up every run.
 - **`src/world/polygon.test.ts`** — the sign of an area says which way a ring
   winds; insetting moves every edge by the distance asked for, takes a distance
   per edge, and cuts a sharp corner off rather than flinging it into the
