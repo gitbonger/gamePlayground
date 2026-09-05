@@ -380,7 +380,7 @@ describe('standing a train on the track', () => {
   const LINE: Rail[] = [{ kind: 'rail', width: 8, points: [[-300, 120], [300, 120]] }];
   const layout = buildLayoutFromMap(mapOf(BLOCK, [], LINE), {
     ...defaultMapWorldOptions,
-    trains: [{ near: { x: 40, z: 118 }, wagons: 4 }],
+    trains: [{ near: { x: 40, z: 118 }, cars: 4 }],
   });
 
   it('puts it on the line nearest where it was asked for', () => {
@@ -418,7 +418,7 @@ describe('standing a train on the track', () => {
   it('stands none when there is no railway to stand one on', () => {
     const bare = buildLayoutFromMap(mapOf(BLOCK), {
       ...defaultMapWorldOptions,
-      trains: [{ near: { x: 40, z: 118 }, wagons: 4 }],
+      trains: [{ near: { x: 40, z: 118 }, cars: 4 }],
     });
     expect(bare.trains).toEqual([]);
   });
@@ -457,5 +457,70 @@ describe('leaving green space alone', () => {
     const bare = buildLayoutFromMap(mapOf(BLOCK));
     expect(bare.green.count).toBe(0);
     expect(bare.buildings.length).toBeGreaterThan(20);
+  });
+});
+
+
+describe('two trains in one yard', () => {
+  /** Three parallel sidings, as a yard has. */
+  const SIDINGS: Rail[] = [
+    { kind: 'rail', width: 8, points: [[-300, 112], [300, 112]] },
+    { kind: 'rail', width: 8, points: [[-300, 120], [300, 120]] },
+    { kind: 'rail', width: 8, points: [[-300, 128], [300, 128]] },
+  ];
+  const YARD = mapOf(BLOCK, [], SIDINGS);
+
+  it('puts them on different tracks rather than inside each other', () => {
+    // Both asked for the same place. A yard has parallel sidings, so the
+    // second takes the next-roomiest of them; without that they both take
+    // the roomiest and stand in the same rails.
+    const world = buildLayoutFromMap(YARD, {
+      ...defaultMapWorldOptions,
+      trains: [
+        { near: { x: 40, z: 118 }, cars: 4 },
+        { near: { x: 40, z: 118 }, cars: 3, stock: 'carriage', speed: 0 },
+      ],
+    });
+
+    expect(world.trains).toHaveLength(2);
+    expect(world.trains[0]!.line).not.toBe(world.trains[1]!.line);
+  });
+
+  it('gives each the stock it asked for, and the speed', () => {
+    const world = buildLayoutFromMap(YARD, {
+      ...defaultMapWorldOptions,
+      trains: [
+        { near: { x: 40, z: 118 }, cars: 4 },
+        { near: { x: 40, z: 118 }, cars: 3, stock: 'carriage', speed: 0 },
+      ],
+    });
+
+    const [freight, passenger] = world.trains as [(typeof world.trains)[0], (typeof world.trains)[0]];
+    expect(freight.stock).toBe('wagon');
+    expect(freight.speed).toBeGreaterThan(0);
+    expect(freight.vehicles.slice(1).every((v) => v.kind === 'wagon')).toBe(true);
+
+    expect(passenger.stock).toBe('carriage');
+    expect(passenger.speed).toBe(0);
+    expect(passenger.vehicles[0]!.kind).toBe('engine');
+    expect(passenger.vehicles.slice(1).every((v) => v.kind === 'carriage')).toBe(true);
+  });
+
+  it('asks for only as many as there are tracks', () => {
+    // A third train with nowhere to go is left out rather than stacked on
+    // top of one of the others.
+    const world = buildLayoutFromMap(YARD, {
+      ...defaultMapWorldOptions,
+      trains: [
+        { near: { x: 40, z: 118 }, cars: 3 },
+        { near: { x: 40, z: 118 }, cars: 3 },
+        { near: { x: 40, z: 118 }, cars: 3 },
+        { near: { x: 40, z: 118 }, cars: 3 },
+        { near: { x: 40, z: 118 }, cars: 3 },
+        { near: { x: 40, z: 118 }, cars: 3 },
+      ],
+    });
+    const lines = new Set(world.trains.map((train) => train.line));
+    expect(lines.size).toBe(world.trains.length);
   });
 });

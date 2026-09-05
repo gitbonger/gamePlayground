@@ -199,7 +199,7 @@ describe('levels', () => {
     buildWorld(buildLayoutFromMap(map, {
       ...defaultMapWorldOptions,
       target: { x: 40, z: 40 },
-      trains: [{ near: { x: 0, z: 320 }, wagons: 4 }],
+      trains: [{ near: { x: 0, z: 320 }, cars: 4 }],
     }), {
       landmark: 'Level 2',
       objectives: [{ name: 'Level 1', train: 0, vehicle: 2 }],
@@ -215,7 +215,7 @@ describe('levels', () => {
     const layout = buildLayoutFromMap(map, {
       ...defaultMapWorldOptions,
       target: { x: 40, z: 40 },
-      trains: [{ near: { x: 0, z: 320 }, wagons: 4 }],
+      trains: [{ near: { x: 0, z: 320 }, cars: 4 }],
     });
     const world = buildWorld(layout, {
       landmark: 'Level 2',
@@ -266,7 +266,7 @@ describe('levels', () => {
     // its own -- exactly as the landmark building does.
     const plain = buildWorld(buildLayoutFromMap(map, {
       ...defaultMapWorldOptions,
-      trains: [{ near: { x: 0, z: 320 }, wagons: 4 }],
+      trains: [{ near: { x: 0, z: 320 }, cars: 4 }],
     }));
     const marked = build();
 
@@ -310,7 +310,7 @@ describe('a train that moves', () => {
     const layout = buildLayoutFromMap(map, {
       ...defaultMapWorldOptions,
       target: { x: 40, z: 40 },
-      trains: [{ near: { x: 0, z: 320 }, wagons: 4 }],
+      trains: [{ near: { x: 0, z: 320 }, cars: 4 }],
     });
     const world = buildWorld(layout, {
       landmark: 'Level 2',

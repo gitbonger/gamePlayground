@@ -32,6 +32,7 @@ import {
   lineLength,
   pointAlong,
   type Train,
+  type Stock,
 } from './train';
 import { distance, type Point } from './geo';
 
@@ -138,9 +139,16 @@ function mulberry32(seed: number): () => number {
 export interface TrainSpec {
   /** Somewhere near the line it should run on; the nearest one is chosen. */
   near: Point;
-  /** How many wagons behind the engine. */
-  wagons: number;
-  /** How fast it runs, in metres per second. Yard speed by default. */
+  /** How many vehicles behind the engine. */
+  cars: number;
+  /** What those are: open stake wagons by default. */
+  stock?: Stock;
+  /**
+   * How fast it runs, in metres per second. Yard speed by default.
+   *
+   * Zero for one standing in a platform, which is not a special case
+   * anywhere: it shuttles nowhere, and nothing it touches was moving.
+   */
   speed?: number;
 }
 
@@ -471,12 +479,23 @@ export function buildLayoutFromMap(
   // the lines close enough to be the one meant, the roomiest is the one to
   // stand it on.
   const trains: Train[] = [];
+  /**
+   * Lines already occupied.
+   *
+   * Two trains asked for the same yard would otherwise both take the roomiest
+   * siding and stand in each other. A yard has parallel tracks, so the second
+   * one takes the next-roomiest, which is what putting two trains in a yard
+   * looks like.
+   */
+  const taken = new Set<Rail>();
   for (const spec of options.trains ?? []) {
-    const length = consistLength(spec.wagons);
+    const stock = spec.stock ?? 'wagon';
+    const length = consistLength(spec.cars, stock);
 
     let line: Rail | null = null;
     let best = -Infinity;
     for (const rail of map.rails ?? []) {
+      if (taken.has(rail)) continue;
       const at = chainageOf(rail.points, spec.near.x, spec.near.z);
       const on = pointAlong(rail.points, at);
       if (!on) continue;
@@ -498,11 +517,12 @@ export function buildLayoutFromMap(
     const wanted = chainageOf(line.points, spec.near.x, spec.near.z) + length / 2;
     const along = Math.min(Math.max(wanted, length), run);
 
-    const vehicles = layOutTrain(line, along, spec.wagons);
+    const vehicles = layOutTrain(line, along, spec.cars, stock);
     if (!vehicles.length) continue;
     // Deliberately not added to `boxes`: a train moves, and the world's boxes
     // are built into a grid once and never touched again. It carries its own.
-    trains.push({ line, along, direction: 1, speed: spec.speed ?? 6, vehicles });
+    taken.add(line);
+    trains.push({ line, along, direction: 1, speed: spec.speed ?? 6, stock, vehicles });
   }
 
   // Mark the building nearest the destination, so there is something to aim

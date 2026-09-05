@@ -55,10 +55,10 @@ import {
   onVehicle,
   shuttle,
   stackTop,
+  stockTop,
   trainBoxes,
   turnedBetween,
   tweenAlong,
-  WAGON,
 } from './world/train';
 import { createSmoke } from './world/smoke';
 import {
@@ -126,14 +126,28 @@ const sunOffset = sunDirection.clone().multiplyScalar(SUN_RANGE);
 const release = project(RELEASE_POINT[0], RELEASE_POINT[1], map.centre);
 const home = project(HOME_POINT[0], HOME_POINT[1], map.centre);
 
-/** A rake of empty stake wagons, standing in the yard for the pigeon to use. */
+/**
+ * The yard, where both trains stand.
+ *
+ * One point for the two of them: a train takes the roomiest line near it that
+ * nothing else has taken, so the second one ends up on the next track over,
+ * which is what two trains in a yard look like.
+ */
 const TRAIN_POINT: [number, number] = [47.500052, 19.088174];
 const train = project(TRAIN_POINT[0], TRAIN_POINT[1], map.centre);
 
 const layout = buildLayoutFromMap(map, {
   ...defaultMapWorldOptions,
   target: home,
-  trains: [{ near: train, wagons: 12 }],
+  trains: [
+    // The rake of stake wagons, shuttling up and down the yard.
+    { near: train, cars: 12 },
+    // And a passenger train standing in the platform: same engine, six
+    // coaches, going nowhere. A roof four metres up to land on, and being
+    // stationary it is a thing to bump into rather than a thing that runs
+    // you over.
+    { near: train, cars: 6, stock: 'carriage', speed: 0 },
+  ],
 });
 /**
  * Which vehicle of which rake a level's target is, with `middle` worked out
@@ -424,7 +438,7 @@ function standingSpot(spec: Level): { at: Vec3; facing: number; on: number | nul
     if (!wagon) return null;
     const spot = onVehicle(wagon, person.along, person.across);
     return {
-      at: vec(spot.x, WAGON.deck + defaultParams.bodyRadius, spot.z),
+      at: vec(spot.x, stockTop(wagon.kind) + defaultParams.bodyRadius, spot.z),
       // Facing across the wagon, so it reads as standing about rather than
       // waiting to leave. It turns to look at you when you walk up to it.
       facing: wagon.yaw + Math.PI / 2,
@@ -548,7 +562,7 @@ function moveTrains(dt: number) {
     );
     train.along = run.along;
     train.direction = run.direction;
-    train.vehicles = layOutTrain(train.line, train.along, train.vehicles.length - 1);
+    train.vehicles = layOutTrain(train.line, train.along, train.vehicles.length - 1, train.stock);
     const base = tagged;
     tagged += train.vehicles.length;
     // Every box knows how fast the rake is running, which is what makes
@@ -584,13 +598,16 @@ function moveTrains(dt: number) {
     }
   }
 
-  // Smoke off the leading locomotive's stack, carried at the speed the train
-  // is doing so it trails behind rather than standing over the chimney.
-  const engine = layout.trains[0]?.vehicles[0];
-  if (engine) {
+  // Smoke off a working locomotive's stack, carried at the speed the train is
+  // doing so it trails behind rather than standing over the chimney. The one
+  // standing in the platform is shut down, which is why it has none: the
+  // engine that smokes is the engine that is running, rather than whichever
+  // train happens to be first in the list.
+  const train = layout.trains.find((each) => each.speed > 0);
+  const engine = train?.vehicles[0];
+  if (train && engine) {
     const stack = stackTop();
     const at = onVehicle(engine, stack.along, stack.across);
-    const train = layout.trains[0]!;
     const heading = onVehicle(engine, 1, 0);
     const speed = train.speed * train.direction;
     smoke.update(
@@ -791,6 +808,7 @@ function frame(nowMs: number) {
         train.line,
         tweenAlong(previousAlong[index]!, train.along, alpha),
         train.vehicles.length - 1,
+        train.stock,
       ),
     })),
   );

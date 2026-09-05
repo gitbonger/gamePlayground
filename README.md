@@ -647,6 +647,24 @@ the difference is invisible on a straight line: with the wagon's yaw at zero,
 arithmetic. The test for it runs on a line laid diagonally for exactly that
 reason — on an axis-aligned one it passes either way.
 
+**There are two of them.** A rake of stake wagons shuttling up and down, and
+a passenger train standing in the platform: the same engine, six coaches, and
+not going anywhere. Both are asked for at the same point, and a train takes
+the roomiest line near it *that nothing else has taken* — so the second ends
+up on the next track over, which is what two trains in a yard look like.
+
+The standing one is not a special case anywhere, which is the point of the
+speed being a number rather than a flag. It shuttles nowhere because its step
+is zero. It smokes not at all because the engine that smokes is the one that
+is running rather than whichever train is first in the list. And it is a thing
+to bump into rather than a thing that runs you over, because being touched by
+a solid is only fatal above `struckSpeed`.
+
+A coach is the opposite problem to a stake wagon. A wagon's whole point is an
+open deck a metre and a quarter up; a coach is closed, so there is nothing to
+model but the outside and nothing to fall between — one solid box up to a roof
+four metres up, which is what you land on.
+
 **The train runs.** It shuttles along its line at 6 m/s and turns round when
 the line ends — reflected rather than clamped, so it comes back out at the
 speed it went in rather than stalling against the buffers for a tick. The
@@ -1693,6 +1711,17 @@ npm test
   its own opacity — the bug that made the plume a silhouette — thinning as it
   ages, going paler and larger as it goes, with dead ones left out of the draw
   entirely.
+- **`src/world/train.test.ts`** also covers the passenger train: it is the same
+  engine with coaches behind it, longer than the same number of stake wagons —
+  the sort of thing that goes unnoticed until a train hangs off the end of a
+  siding — and laid out to exactly the length it says it is. A coach is a
+  closed box you land on the roof of, four metres up, with nothing to fall
+  between. Standing still it runs nobody over, because speed is what makes a
+  solid fatal to touch and a train in a platform is a wall.
+- **`src/world/from-map.test.ts`** also covers two trains asked for the same
+  yard: they take different tracks rather than standing inside each other,
+  each gets the stock and the speed it asked for, and six trains asked into a
+  three-track yard produce three rather than a stack.
 - **`src/world/train.test.ts`** — every box a vehicle owns is tagged with it
   and untagged when nobody asked, a passenger keeps its place on the deck
   rather than in the world and turns with the wagon round a bend, the turn is

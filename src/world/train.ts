@@ -56,11 +56,51 @@ export const WAGON = {
   stakesPerSide: 7,
 };
 
+/**
+ * A passenger coach: closed, with a roof to land on and nothing to land in.
+ *
+ * The opposite problem to the stake wagon. A wagon's deck is a metre and a
+ * quarter up and open to the sky; a carriage roof is four metres up, curved
+ * enough to read as a roof and flat enough along the middle to stand on.
+ */
+export const CARRIAGE = {
+  length: 17.5,
+  width: 2.95,
+  /** Top of the underframe, which the body sits on. */
+  floor: 1.1,
+  /** Top of the body sides. */
+  body: 3.65,
+  /** Top of the roof, which is what the pigeon lands on. */
+  roof: 4.05,
+  /** The band of glass down each side: how high it starts and how tall. */
+  windowSill: 2.25,
+  windowHeight: 0.95,
+};
+
 /** Slack over the couplings between one vehicle and the next, in metres. */
 export const COUPLING = 0.9;
 
+/**
+ * What a train is made of behind the engine.
+ *
+ * Named rather than counted, because a train has to be able to say what it is
+ * when it is laid out again -- which happens every tick for anything that
+ * moves, and once for anything that does not.
+ */
+export type Stock = 'wagon' | 'carriage';
+
+/** The length and width of one vehicle of a given sort. */
+export const stockSize = (stock: Stock): { length: number; width: number } =>
+  stock === 'carriage'
+    ? { length: CARRIAGE.length, width: CARRIAGE.width }
+    : { length: WAGON.length, width: WAGON.width };
+
+/** How high the top of a vehicle is: what anything standing on it stands on. */
+export const stockTop = (kind: Vehicle['kind']): number =>
+  kind === 'carriage' ? CARRIAGE.roof : kind === 'wagon' ? WAGON.deck : ENGINE.cab;
+
 export interface Vehicle {
-  kind: 'engine' | 'wagon';
+  kind: 'engine' | 'wagon' | 'carriage';
   /** Centre of the vehicle, in world metres. */
   x: number;
   z: number;
@@ -78,8 +118,10 @@ export interface Train {
   along: number;
   /** Which way it is going: +1 up the line as drawn, -1 back down it. */
   direction: number;
-  /** How fast, in metres per second. */
+  /** How fast, in metres per second. Zero for one standing in a platform. */
   speed: number;
+  /** What it is made of behind the engine. */
+  stock: Stock;
   vehicles: Vehicle[];
 }
 
@@ -191,9 +233,9 @@ export function chainageOf(points: readonly Point2[], x: number, z: number): num
   return at;
 }
 
-/** How long a consist of this many wagons is, over the couplings. */
-export function consistLength(wagons: number): number {
-  return ENGINE.length + wagons * (COUPLING + WAGON.length);
+/** How long a consist of this many vehicles is, over the couplings. */
+export function consistLength(cars: number, stock: Stock = 'wagon'): number {
+  return ENGINE.length + cars * (COUPLING + stockSize(stock).length);
 }
 
 /**
@@ -202,7 +244,12 @@ export function consistLength(wagons: number): number {
  * Returns nothing rather than something wrong when the train will not fit on
  * the line: half a train hanging off the end of a siding is worse than none.
  */
-export function layOutTrain(line: Rail, along: number, wagons: number): Vehicle[] {
+export function layOutTrain(
+  line: Rail,
+  along: number,
+  cars: number,
+  stock: Stock = 'wagon',
+): Vehicle[] {
   const vehicles: Vehicle[] = [];
   let front = along;
 
@@ -226,8 +273,9 @@ export function layOutTrain(line: Rail, along: number, wagons: number): Vehicle[
   };
 
   if (!place('engine', ENGINE.length, ENGINE.width)) return [];
-  for (let i = 0; i < wagons; i += 1) {
-    if (!place('wagon', WAGON.length, WAGON.width)) return [];
+  const size = stockSize(stock);
+  for (let i = 0; i < cars; i += 1) {
+    if (!place(stock, size.length, size.width)) return [];
   }
   return vehicles;
 }
@@ -284,6 +332,18 @@ export function trainBoxes(
       const cab = onVehicle(vehicle, vehicle.length / 2 - ENGINE.cabLength / 2, 0);
       boxes.push(
         tag(turnedBox(cab.x, cab.z, ENGINE.cabLength, ENGINE.cab, vehicle.width, vehicle.yaw), index),
+      );
+      continue;
+    }
+
+    if (vehicle.kind === 'carriage') {
+      // One solid body up to the roof. There is no getting inside it, so
+      // there is nothing to model but the outside.
+      boxes.push(
+        tag(
+          turnedBox(vehicle.x, vehicle.z, vehicle.length, CARRIAGE.roof, vehicle.width, vehicle.yaw),
+          index,
+        ),
       );
       continue;
     }

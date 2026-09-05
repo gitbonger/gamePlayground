@@ -12,6 +12,8 @@ import {
   pointAlong,
   trainBoxes,
   tweenAlong,
+  CARRIAGE,
+  COUPLING,
   WAGON,
 } from './train';
 import { worldBounds } from '../sim/collision';
@@ -464,5 +466,76 @@ describe('drawing a train between two ticks', () => {
       expect(drawn).toBeLessThanOrEqual(SHORT + 1e-9);
       expect(drawn).toBeGreaterThanOrEqual(CONSIST - 1e-9);
     }
+  });
+});
+
+
+describe('a passenger train', () => {
+  const LINE: Rail = { kind: 'rail', width: 8, points: [[0, 0], [400, 0]] };
+
+  it('is the same engine with coaches behind it', () => {
+    const train = layOutTrain(LINE, 300, 6, 'carriage');
+    expect(train).toHaveLength(7);
+    expect(train[0]!.kind).toBe('engine');
+    for (const car of train.slice(1)) expect(car.kind).toBe('carriage');
+  });
+
+  it('is longer than the same number of stake wagons', () => {
+    // A coach is a coach and a wagon is a wagon, so the two consists cannot
+    // be the same length -- which is the sort of thing that goes unnoticed
+    // until a train hangs off the end of a siding.
+    expect(consistLength(6, 'carriage')).toBeGreaterThan(consistLength(6, 'wagon'));
+    expect(consistLength(6, 'carriage')).toBeCloseTo(
+      ENGINE.length + 6 * (COUPLING + CARRIAGE.length),
+      9,
+    );
+  });
+
+  it('lays its coaches out to the length it says it is', () => {
+    const cars = 6;
+    const train = layOutTrain(LINE, 300, cars, 'carriage');
+    const front = train[0]!;
+    const back = train[train.length - 1]!;
+    const nose = front.x + front.length / 2;
+    const tail = back.x - back.length / 2;
+    expect(nose - tail).toBeCloseTo(consistLength(cars, 'carriage'), 6);
+  });
+
+  it('is a closed box you land on the roof of', () => {
+    // The opposite of a stake wagon, whose whole point is an open deck. There
+    // is no getting inside a coach, so there is nothing to model but the
+    // outside and nothing to fall between.
+    const train = layOutTrain(LINE, 300, 6, 'carriage');
+    const collider = createColliderField(trainBoxes(train));
+    const coach = train[3]!;
+
+    expect(collider.heightAt(coach.x, coach.z)).toBeCloseTo(CARRIAGE.roof, 6);
+
+    const hit = collider.sweep(
+      vec(coach.x, CARRIAGE.roof + 4, coach.z),
+      vec(coach.x, 0.1, coach.z),
+      0.22,
+    );
+    expect(hit).not.toBeNull();
+    expect(hit!.normal.y).toBeCloseTo(1, 6);
+    expect(hit!.point.y).toBeCloseTo(CARRIAGE.roof + 0.22, 6);
+  });
+
+  it('stands still, and so runs nobody over', () => {
+    // Speed is what makes a solid fatal to touch. A train in a platform is a
+    // wall, which is exactly what it should be.
+    const train = layOutTrain(LINE, 300, 6, 'carriage');
+    for (const box of trainBoxes(train, undefined, 0)) {
+      expect(box.speed ?? 0).toBe(0);
+    }
+    for (const box of trainBoxes(train, undefined, 6)) {
+      expect(box.speed).toBe(6);
+    }
+  });
+
+  it('goes nowhere when it is standing', () => {
+    const { along, direction } = shuttle(400, consistLength(6, 'carriage'), 200, 1, 0);
+    expect(along).toBe(200);
+    expect(direction).toBe(1);
   });
 });

@@ -15,7 +15,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { createColliderField, type Box, type Collider } from '../sim/collision';
 import { generateCityLayout, type Building, type CityLayout } from './layout';
 import type { Rail, Road } from './streets';
-import { ENGINE, WAGON, type Train, type Vehicle } from './train';
+import { CARRIAGE, ENGINE, WAGON, type Train, type Vehicle } from './train';
 import { defaultSmokeOptions, puffOpacity, puffRadius, type Puff } from './smoke';
 import type { Area, AreaKind } from './areas';
 
@@ -1173,6 +1173,57 @@ function buildVehicle(vehicle: Vehicle): {
     part(0x46474b, -4.6, 0, ENGINE.body, 2.2, vehicle.width * 0.7, 0.34);
     wheel(0x2f3033, -4.6, 0, ENGINE.body + 0.34, 0.62, 0.12);
     pipe(0x232427, ENGINE.stackAlong, 0, ENGINE.body, 0.3, ENGINE.stackHeight);
+  } else if (vehicle.kind === 'carriage') {
+    // A passenger coach: closed sides, a band of glass, and a roof.
+    const LIVERY = 0x486a86;
+    const TRIM = 0xd9c37a;
+    const GLASS = 0x1e2b34;
+    const half = vehicle.length / 2;
+    const side = vehicle.width / 2;
+
+    // Bogies and buffer beams, as the engine has them.
+    for (const end of [bogie, -bogie]) {
+      part(IRON, end, 0, 0.42, 3.2, vehicle.width * 0.74, 0.42);
+      for (const axle of [-0.95, 0.95]) {
+        for (const at of [side * 0.72, -side * 0.72]) {
+          wheel(0x1a1a1c, end + axle, at, 0.0, 0.44, 0.2);
+        }
+      }
+    }
+    for (const end of [half - 0.15, -(half - 0.15)]) {
+      part(0x3a3a3c, end, 0, 0.72, 0.3, vehicle.width + 0.16, 0.5);
+      for (const at of [0.85, -0.85]) part(0x55565a, end, at, 0.86, 0.34, 0.34, 0.26);
+    }
+
+    // Underframe, then the body sitting on it.
+    part(IRON, 0, 0, CARRIAGE.floor - 0.34, vehicle.length, vehicle.width, 0.34);
+    part(LIVERY, 0, 0, CARRIAGE.floor, vehicle.length, vehicle.width, CARRIAGE.body - CARRIAGE.floor);
+
+    // A band of glass down each side, broken into windows so it reads as a
+    // train rather than as a bus. Set slightly proud of the body so the two
+    // do not share the same plane and flicker against each other.
+    const glass = vehicle.width / 2 + 0.02;
+    const bays = 7;
+    const pitch = (vehicle.length - 3.4) / bays;
+    for (let i = 0; i < bays; i += 1) {
+      const along = -(vehicle.length - 3.4) / 2 + pitch * (i + 0.5);
+      for (const at of [glass, -glass]) {
+        part(GLASS, along, at, CARRIAGE.windowSill, pitch * 0.62, 0.06, CARRIAGE.windowHeight);
+      }
+    }
+
+    // Doors at the ends of each side, and a line of trim under the windows.
+    for (const end of [half - 1.1, -(half - 1.1)]) {
+      for (const at of [glass, -glass]) {
+        part(0x3c586e, end, at, CARRIAGE.floor, 1.1, 0.05, CARRIAGE.body - CARRIAGE.floor - 0.2);
+      }
+    }
+    for (const at of [glass, -glass]) {
+      part(TRIM, 0, at, CARRIAGE.windowSill - 0.22, vehicle.length - 0.6, 0.05, 0.12);
+    }
+
+    // A roof a little narrower than the body, so it reads as curved.
+    part(0x8e9296, 0, 0, CARRIAGE.body, vehicle.length, vehicle.width * 0.88, CARRIAGE.roof - CARRIAGE.body);
   } else {
     // Running gear, solebar, and the deck laid on top of it.
     for (const end of [bogie, -bogie]) {
