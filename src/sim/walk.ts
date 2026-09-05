@@ -20,19 +20,30 @@
 
 import type { Collider } from './collision';
 import { heading, isPerched, type BirdState, type FlightParams } from './flight';
-import { add, quatFromAxisAngle, rotate, scale, sub, vec, type Vec3 } from './math3';
+import {
+  add,
+  quatFromAxisAngle,
+  quatMultiply,
+  rotate,
+  scale,
+  sub,
+  vec,
+  type Vec3,
+} from './math3';
 
 export interface WalkControls {
   /** -1 back .. +1 forward. Digital: a pigeon has one walking speed. */
   forward: number;
   /** -1 left .. +1 right, turning on the spot. */
   turn: number;
+  /** Leave the ground. The same key that beats the wings in the air. */
+  launch: boolean;
 }
 
-export const neutralWalk = (): WalkControls => ({ forward: 0, turn: 0 });
+export const neutralWalk = (): WalkControls => ({ forward: 0, turn: 0, launch: false });
 
 export interface WalkTelemetry {
-  /** False when the bird has just stepped off an edge and is in the air. */
+  /** False when the bird has just left the ground, by edge or by wing. */
   grounded: boolean;
   /** Ground covered this step, in metres. */
   travelled: number;
@@ -56,6 +67,11 @@ export function walk(
   if (!isPerched(state)) return { grounded: false, travelled: 0, blocked: false };
 
   state.age += dt;
+
+  if (controls.launch) {
+    takeOff(state, p);
+    return { grounded: false, travelled: 0, blocked: false };
+  }
 
   // --- Turning ------------------------------------------------------------
   // On the spot, and level: a walking pigeon has no bank and no pitch, so the
@@ -174,4 +190,35 @@ function groundUnder(
   }
 
   return best;
+}
+
+/**
+ * Leave the ground under your own power.
+ *
+ * Up and forward at once, at a speed the wing can actually fly at: a bird put
+ * into the air below its stall speed is a bird that has been thrown, and it
+ * comes straight back down. The angle is what stops it being a bunny hop --
+ * steep enough to clear what you were standing on, shallow enough that the
+ * speed goes into flying rather than into the climb.
+ *
+ * A velocity handed over outright rather than a force applied over some
+ * ticks, because that is a fair description of a wing-clap: a pigeon goes
+ * from standing to flying speed inside a fifth of a second, and modelling the
+ * beat-by-beat of that would be modelling something nobody can see.
+ */
+export function takeOff(state: BirdState, p: FlightParams): void {
+  const forward = rotate(state.orientation, vec(0, 0, -1));
+  state.velocity = add(
+    scale(forward, p.launchSpeed * Math.cos(p.launchAngle)),
+    vec(0, p.launchSpeed * Math.sin(p.launchAngle), 0),
+  );
+  // Pitched up to match, so it leaves along its own velocity rather than
+  // flying sideways through the air for the first half second.
+  state.orientation = quatMultiply(
+    quatFromAxisAngle(vec(0, 1, 0), -heading(state)),
+    quatFromAxisAngle(vec(1, 0, 0), p.launchAngle),
+  );
+  state.angularVelocity = vec(0, 0, 0);
+  state.ending = null;
+  state.restingOn = null;
 }

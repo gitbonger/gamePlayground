@@ -105,7 +105,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
         ? 'blocked — turn and walk round it'
         : onFoot.travelled > 0
           ? 'walking — mind the edge'
-          : 'on foot — WASD or arrows to walk, R to fly again'
+          : 'on foot — WASD or arrows to walk, SPACE to take off'
       : telemetry.stalled && !state.ending
         ? 'STALL — push the nose down'
         : '';

@@ -183,6 +183,17 @@ export interface FlightParams {
   walkStepDown: number;
   /** Ground covered by one full stride, in metres. Drives the animation. */
   walkStride: number;
+  /**
+   * Speed a standing bird leaves the ground at, in m/s.
+   *
+   * A pigeon does not roll for a take-off, it leaves with a wing-clap: from
+   * standing to flying speed in a beat or two. So the launch is a velocity
+   * given outright rather than a force applied over time, which is a fair
+   * description of something that happens inside a fifth of a second.
+   */
+  launchSpeed: number;
+  /** How steeply it leaves, in radians above the horizontal. */
+  launchAngle: number;
 
   /** Greatest descent rate the legs can absorb on touchdown, in m/s. */
   landingSink: number;
@@ -244,6 +255,8 @@ export const defaultParams: FlightParams = {
   walkStepUp: 0.12,
   walkStepDown: 0.25,
   walkStride: 0.16,
+  launchSpeed: 11,
+  launchAngle: 0.4,
 
   landingSink: 4,
   landingSpeed: 10,

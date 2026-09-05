@@ -10,6 +10,7 @@ import {
   type BirdState,
 } from './flight';
 import { aabb, createColliderField } from './collision';
+import { createWind, defaultWindParams } from './wind';
 import { vec } from './math3';
 
 const TICK = 1 / 120;
@@ -25,7 +26,7 @@ function landed(at = vec(0, STANDING, 0), bearing = 0): BirdState {
   return bird;
 }
 
-const forward = (n = 1): WalkControls => ({ forward: n, turn: 0 });
+const forward = (n = 1): WalkControls => ({ forward: n, turn: 0, launch: false });
 
 /** Walk for `seconds`, returning the bird. */
 function walked(bird: BirdState, controls: WalkControls, seconds: number, collider?: never) {
@@ -66,7 +67,7 @@ describe('walking', () => {
 
   it('turns on the spot without moving', () => {
     const bird = landed();
-    walked(bird, { forward: 0, turn: 1 }, 0.5);
+    walked(bird, { forward: 0, turn: 1, launch: false }, 0.5);
     expect(heading(bird)).toBeCloseTo(p.walkTurnRate * 0.5, 1);
     expect(bird.position.x).toBeCloseTo(0, 9);
     expect(bird.position.z).toBeCloseTo(0, 9);
@@ -75,7 +76,7 @@ describe('walking', () => {
   it('goes where it is pointed, not where it started pointed', () => {
     // Turn a quarter turn, then walk: the ground covered has to be east.
     const bird = landed();
-    walked(bird, { forward: 0, turn: 1 }, Math.PI / 2 / p.walkTurnRate);
+    walked(bird, { forward: 0, turn: 1, launch: false }, Math.PI / 2 / p.walkTurnRate);
     walked(bird, forward(), 1);
     expect(bird.position.x).toBeCloseTo(p.walkSpeed, 1);
     expect(bird.position.z).toBeCloseTo(0, 1);
@@ -254,6 +255,104 @@ describe('flying out of a fall off a building', () => {
         : { ...neutralControls(), pitch: 1, brake: true, flap: true },
     );
     expect(late.ending?.kind).toBe('crashed');
+  });
+});
+
+describe('taking off', () => {
+  const launch = (): WalkControls => ({ ...neutralWalk(), launch: true });
+
+  it('puts the bird in the air, going forwards and upwards', () => {
+    const bird = landed();
+    const out = walk(bird, launch(), p, TICK);
+
+    expect(out.grounded).toBe(false);
+    expect(isPerched(bird)).toBe(false);
+    expect(bird.ending).toBeNull();
+    expect(bird.restingOn).toBeNull();
+    // Facing north, so forward is -Z, and climbing.
+    expect(bird.velocity.z).toBeLessThan(-1);
+    expect(bird.velocity.y).toBeGreaterThan(1);
+  });
+
+  it('leaves at a speed the wing can fly at, not at a hop', () => {
+    // A bird put into the air below its stall speed has been thrown, and it
+    // comes straight back down. Stated against what the flight model itself
+    // calls too slow to land at, which is a speed it can certainly fly at.
+    const bird = landed();
+    walk(bird, launch(), p, TICK);
+    const speed = Math.hypot(bird.velocity.x, bird.velocity.y, bird.velocity.z);
+    expect(speed).toBeCloseTo(p.launchSpeed, 6);
+    expect(speed).toBeGreaterThan(p.landingSpeed);
+  });
+
+  it('leaves along its own velocity rather than sideways through the air', () => {
+    const bird = landed();
+    walk(bird, launch(), p, TICK);
+    // The climb angle of the velocity, against the attitude it holds.
+    const climb = Math.asin(
+      bird.velocity.y / Math.hypot(bird.velocity.x, bird.velocity.y, bird.velocity.z),
+    );
+    expect(climb).toBeCloseTo(p.launchAngle, 6);
+  });
+
+  it('goes the way the bird is pointed', () => {
+    for (const bearing of [0, 1.1, -2.4]) {
+      const bird = landed(vec(0, STANDING, 0), bearing);
+      walk(bird, launch(), p, TICK);
+      const went = Math.atan2(bird.velocity.x, -bird.velocity.z);
+      expect(went).toBeCloseTo(bearing, 6);
+    }
+  });
+
+  it('does not kill the bird that lets go of the key at once', () => {
+    // The thing that had to be got right. Take off and do nothing else: the
+    // arc has to come back inside the landing limits rather than outside
+    // them, or a tap on the take-off key is a death sentence. Checked in
+    // every direction and at a spread of times, because there is wind.
+    const air = createWind(defaultWindParams);
+    for (let compass = 0; compass < 16; compass += 1) {
+      const bird = landed(vec(0, STANDING, 0), (compass / 16) * Math.PI * 2);
+      bird.age = compass * 5;
+      walk(bird, launch(), p, TICK);
+      for (let i = 0; i < 1500 && bird.ending === null; i += 1) {
+        step(bird, neutralControls(), p, TICK, undefined, air);
+      }
+      expect(bird.ending?.kind, `bearing ${compass}/16`).toBe('landed');
+    }
+  });
+
+  it('and flies away for the one that holds it', () => {
+    const bird = landed();
+    walk(bird, launch(), p, TICK);
+    const beating = { ...neutralControls(), flap: true };
+    for (let i = 0; i < 1200 && bird.ending === null; i += 1) {
+      step(bird, beating, p, TICK, undefined);
+    }
+    expect(bird.ending).toBeNull();
+    expect(bird.position.y).toBeGreaterThan(20);
+  });
+
+  it('will not launch a bird that is not on its feet', () => {
+    const flying = createBird(vec(0, 50, 0), 14, 0);
+    const before = { ...flying.velocity };
+    walk(flying, launch(), p, TICK);
+    expect(flying.velocity).toEqual(before);
+
+    const dead = landed();
+    dead.ending = { ...dead.ending!, kind: 'crashed', cause: 'building' };
+    walk(dead, launch(), p, TICK);
+    expect(dead.ending?.kind).toBe('crashed');
+  });
+
+  it('clears the ground it was standing on, wherever that was', () => {
+    // Off a wagon deck as readily as off the grass: the launch is a velocity,
+    // so it does not care what it was standing on.
+    const deck = 1.25 + p.bodyRadius;
+    const bird = landed(vec(0, deck, 0));
+    bird.restingOn = 3;
+    walk(bird, launch(), p, TICK);
+    expect(bird.restingOn).toBeNull();
+    expect(bird.velocity.y).toBeGreaterThan(1);
   });
 });
 

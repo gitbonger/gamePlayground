@@ -31,6 +31,7 @@ Once you are down, the same keys mean something else:
 | --- | --- |
 | `W` / `S` or `↑` / `↓` | Walk forward / back |
 | `A` / `D` or `←` / `→` | Turn on the spot |
+| `Space` | Take off |
 | `R` | Release again |
 
 Turning is done by banking, not by yawing. Roll into the turn and the tilted
@@ -1172,6 +1173,42 @@ otherwise be. The legs swing in antiphase under it and the forward one lifts.
 All of it is driven by ground covered rather than by the clock, so a bird
 standing still stands still and one walking backwards paddles backwards.
 
+### Taking off
+
+`Space` — the same key that beats the wings in the air — puts a standing bird
+back into it. The launch is a velocity handed over outright rather than a force
+applied over some ticks, because that is a fair description of what a pigeon
+does: it leaves with a wing-clap, standing to flying speed inside a fifth of a
+second, and modelling the beat-by-beat of that would be modelling something
+nobody can see. Eleven metres a second at 0.4 rad, pitched to match so it
+leaves along its own velocity instead of flying sideways through the air for
+the first half second.
+
+**It has to be an edge, not a held key.** The way to land is to brake and then
+beat down onto the surface — it says so in the hint at the top of the screen —
+so a bird that took off whenever the key was down would leave again on the tick
+it arrived, every time, and landing would be impossible. The press is latched
+and held until a simulation tick has actually seen it, so a frame too short to
+run one does not swallow it.
+
+**And a tap must not be a death sentence.** Hold the key and any launch flies
+away — 30 to 55 m of climb in ten seconds, whatever the numbers. Let go of it
+at once and the bird arcs up and comes back down, and whether that is a landing
+or a hard impact is the whole of the tuning:
+
+| Launch | Hands off, peak | Hands off, outcome |
+| --- | --- | --- |
+| 10 m/s at 0.5 rad | 2.4 m | dead — sink 4.1 against a limit of 4 |
+| 12 m/s at 0.4 rad | 3.0 m | lands, sink 3.3 |
+| 11 m/s at 0.4 rad | 1.7 m | lands, sink 3.4, speed 9.1 |
+| 14 m/s at 0.3 rad | 3.3 m | dead — arrives at 10.2, limit 10 |
+
+The 11 m/s row is the one in the game, chosen for the margin rather than the
+height: 80 launches on every compass bearing and at a spread of times through
+the gust field, worst sink 3.38 against a limit of 4 and worst arrival 9.14
+against 10. It still clears 1.7 m from a standing start and travels 20 m before
+setting down, and it climbs away the moment you keep the key held.
+
 ### Falling
 
 There is no maximum survivable drop, and that is the design rather than an
@@ -1416,7 +1453,15 @@ npm test
   survivable by doing nothing, and not survivable by leaving the flare until
   four — which is the fall rule, and is nowhere written down. The stride
   advances with ground covered rather than the clock, stays inside one cycle
-  either way round, and holds still while the bird does.
+  either way round, and holds still while the bird does. Taking off puts the
+  bird in the air going forwards and upwards, at a speed the flight model
+  itself calls too fast to land at — so certainly one it can fly at — along
+  its own velocity rather than sideways through the air, and the way it is
+  pointed. It will not launch a bird that is flying or one that has crashed,
+  and it lets go of whatever it was standing on. The one that matters: take
+  off and do nothing else, on all sixteen compass bearings through the gust
+  field, and every one of them lands rather than crashes — while holding the
+  key climbs past 20 m.
 - **`src/render/bird.test.ts`** also covers the walk cycle: the legs swing in
   opposite directions and only the forward one lifts, both return together at
   the top of the stride, and the head reaches furthest forward in the first

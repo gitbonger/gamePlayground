@@ -66,6 +66,15 @@ export interface InputSource {
   update(dt: number): void;
   /** True on the frame a reset was requested. */
   consumeReset(): boolean;
+  /**
+   * True once per press of the take-off key, not once per frame it is held.
+   *
+   * It has to be an edge. The key is the same one that beats the wings, and
+   * the way to land is to brake and then beat down onto the surface -- so a
+   * bird that took off whenever the key was down would leave again on the
+   * tick it arrived, every time, and landing would be impossible.
+   */
+  consumeLaunch(): boolean;
   dispose(): void;
 }
 
@@ -82,7 +91,11 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     brake: false,
   };
 
-  const walk: WalkControls = { forward: 0, turn: 0 };
+  // `launch` is not set here: it is an edge, and the caller takes it with
+  // `consumeLaunch` so that a frame in which no simulation tick ran does not
+  // swallow the press.
+  const walk: WalkControls = { forward: 0, turn: 0, launch: false };
+  let launchRequested = false;
 
   const anyHeld = (codes: readonly string[]) => codes.some((code) => held.has(code));
   const axis = (negative: readonly string[], positive: readonly string[]) =>
@@ -102,6 +115,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
 
     held.add(e.code);
     if (e.code === 'KeyR') resetRequested = true;
+    if (anyHeld(BINDINGS.flap)) launchRequested = true;
     // Space and the arrows scroll the page otherwise, which fights the controls.
     if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
   };
@@ -136,11 +150,18 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     return requested;
   }
 
+  function consumeLaunch() {
+    const requested = launchRequested;
+    launchRequested = false;
+    return requested;
+  }
+
   return {
     controls,
     walk,
     update,
     consumeReset,
+    consumeLaunch,
     dispose() {
       target.removeEventListener('keydown', onKeyDown);
       target.removeEventListener('keyup', onKeyUp);

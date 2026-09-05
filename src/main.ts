@@ -55,7 +55,7 @@ import {
   tweenAlong,
 } from './world/train';
 import { createSmoke } from './world/smoke';
-import { walk, type WalkTelemetry } from './sim/walk';
+import { walk, type WalkControls, type WalkTelemetry } from './sim/walk';
 import { bearing, distance, project } from './world/geo';
 import type { MapData } from './world/streets';
 import homeMap from './world/data/home.json';
@@ -200,6 +200,14 @@ let bird: BirdState = createBird(spawn, SPAWN_SPEED, spawnHeading);
 let telemetry: FlightTelemetry = step(bird, input.controls, flightParams, TICK);
 /** What the bird did on its feet this tick, when it was on them. */
 let onFoot: WalkTelemetry = { grounded: false, travelled: 0, blocked: false };
+/**
+ * The walk controls handed to the simulation, rebuilt from the input each
+ * tick. Take-off is an edge rather than a held key, and it is held here until
+ * a tick has actually seen it: a frame short enough to run no ticks at all
+ * would otherwise swallow the press.
+ */
+const walkControls: WalkControls = { forward: 0, turn: 0, launch: false };
+let launchPending = false;
 
 /**
  * They keep the player company rather than living anywhere.
@@ -368,11 +376,14 @@ function frame(nowMs: number) {
 
   input.update(frameTime);
   if (input.consumeReset()) respawn();
+  if (input.consumeLaunch()) launchPending = true;
 
   const wasFlying = bird.ending === null;
 
   accumulator += frameTime;
+  let ticked = false;
   while (accumulator >= TICK) {
+    ticked = true;
     previousPosition = { ...bird.position };
     previousOrientation = { ...bird.orientation };
     solid = moveTrains(TICK);
@@ -380,12 +391,16 @@ function frame(nowMs: number) {
     // on its feet and `step` ignores one whose flight has ended, so which of
     // the two does anything is decided by the bird's own state rather than by
     // a flag kept alongside it.
-    onFoot = walk(bird, input.walk, flightParams, TICK, solid);
+    walkControls.forward = input.walk.forward;
+    walkControls.turn = input.walk.turn;
+    walkControls.launch = launchPending;
+    onFoot = walk(bird, walkControls, flightParams, TICK, solid);
     telemetry = step(bird, input.controls, flightParams, TICK, solid, wind);
     flock.update(TICK, solid, wind);
     if (bird.ending === null) run.update(bird, TICK);
     accumulator -= TICK;
   }
+  if (ticked) launchPending = false;
 
   // Only a crash ends the run. A clean landing leaves the bird perched, which
   // is a place to watch it from rather than a screen to dismiss.
