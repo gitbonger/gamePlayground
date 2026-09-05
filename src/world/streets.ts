@@ -19,12 +19,30 @@ export interface Road {
   points: [number, number][];
 }
 
+/**
+ * A railway, as a centreline and the ground it occupies.
+ *
+ * Shaped exactly like a `Road` so the same index can carry it: `width` is not
+ * the gauge but the corridor nothing may be built on, which is what the
+ * generator needs to know and all it needs to know.
+ */
+export interface Rail {
+  /** OpenStreetMap railway class: rail, tram, light_rail or narrow_gauge. */
+  kind: string;
+  /** Width of the corridor in metres. */
+  width: number;
+  /** Polyline in local metres, [x, z] with north at -Z. */
+  points: [number, number][];
+}
+
 export interface MapData {
   name: string;
   centre: [number, number];
   radius: number;
   attribution: string;
   roads: Road[];
+  /** Surface railway: heavy rail and tram. Absent on older baked maps. */
+  rails?: Rail[];
   /** Parks, woods, playing fields and water. Absent on older baked maps. */
   areas?: Area[];
 }

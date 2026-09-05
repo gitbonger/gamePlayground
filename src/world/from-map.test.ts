@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
-import { indexStreets, type MapData, type Road } from './streets';
+import { indexStreets, type MapData, type Rail, type Road } from './streets';
 import { footprintSamples, type Area } from './areas';
 import { distanceToEdges, pointInPolygon } from './polygon';
 import { createColliderField, worldBounds } from '../sim/collision';
@@ -20,12 +20,13 @@ const BLOCK: Road[] = [
   { kind: 'residential', width: 8, points: [[200, -40], [200, 0], [200, 200], [200, 240]] },
 ];
 
-const mapOf = (roads: Road[], areas: Area[] = []): MapData => ({
+const mapOf = (roads: Road[], areas: Area[] = [], rails: Rail[] = []): MapData => ({
   name: 'test',
   centre: [0, 0],
   radius: 300,
   attribution: 'test',
   roads,
+  rails,
   areas,
 });
 
@@ -311,6 +312,66 @@ describe('building a perimeter block', () => {
   it('marks nothing when there is nowhere to home to', () => {
     expect(layout.target).toBeNull();
     expect(layout.buildings.some((b) => b.isTarget)).toBe(false);
+  });
+});
+
+describe('leaving the railway alone', () => {
+  /**
+   * Two lines: one down the frontage on the south side of the block, and one
+   * straight across the courtyard.
+   *
+   * Both are needed. A line in the building band never meets a tree, so on its
+   * own it leaves the planting rule untested; one through the middle never
+   * meets a house.
+   */
+  const THROUGH: Rail[] = [
+    { kind: 'rail', width: 8, points: [[0, 30], [200, 30]] },
+    { kind: 'rail', width: 8, points: [[0, 100], [200, 100]] },
+  ];
+  /** And a tramway in the carriageway, where a tramway belongs. */
+  const TRAM: Rail[] = [{ kind: 'tram', width: 6, points: [[0, 0], [200, 0]] }];
+
+  const layout = buildLayoutFromMap(mapOf(BLOCK, [], THROUGH));
+  const track = indexStreets(THROUGH);
+
+  const onTheTrack = (b: { x: number; z: number; width: number; depth: number; yaw?: number }) =>
+    footprintSamples(b.x, b.z, b.width, b.depth, b.yaw ?? 0, 2).some(([x, z]) => {
+      const rail = track.nearest(x, z, 60);
+      return rail !== null && rail.distance < rail.width / 2;
+    });
+
+  it('builds nothing whose footprint reaches onto the track', () => {
+    for (const building of layout.buildings) {
+      expect(onTheTrack(building), `${building.x},${building.z}`).toBe(false);
+    }
+  });
+
+  it('would have built there without it', () => {
+    // Otherwise the test above proves nothing: the line has to be lying across
+    // ground the generator actually wanted to build on.
+    const without = buildLayoutFromMap(mapOf(BLOCK));
+    expect(without.buildings.filter(onTheTrack).length).toBeGreaterThan(0);
+    expect(layout.buildings.length).toBeLessThan(without.buildings.length);
+  });
+
+  it('plants nothing in the four-foot either', () => {
+    for (const tree of layout.trees) {
+      const rail = track.nearest(tree.x, tree.z, 60);
+      expect(rail === null || rail.distance >= rail.width / 2, `${tree.x},${tree.z}`).toBe(true);
+    }
+  });
+
+  it('leaves the street alone when the line is a tramway in it', () => {
+    // A tram shares the carriageway, so its corridor is inside a street
+    // nothing is built on anyway. It must cost the frontage nothing.
+    const trammed = buildLayoutFromMap(mapOf(BLOCK, [], TRAM));
+    const plain = buildLayoutFromMap(mapOf(BLOCK));
+    expect(trammed.buildings).toEqual(plain.buildings);
+  });
+
+  it('carries the railways through for the renderer to draw', () => {
+    expect(layout.rails).toEqual(THROUGH);
+    expect(buildLayoutFromMap(mapOf(BLOCK)).rails).toEqual([]);
   });
 });
 

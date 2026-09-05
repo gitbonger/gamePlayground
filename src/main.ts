@@ -38,10 +38,14 @@ const TICK = 1 / 120;
  *  backgrounded for a minute should not try to catch up all of it. */
 const MAX_FRAME_TIME = 0.25;
 
-// Directly over the map's centre point, which is what the coordinates in
-// `fetch-map` name. Raised clear of whatever stands there by SPAWN_CLEARANCE.
-/** Where the pigeon is released, and where it is trying to get back to. */
-const RELEASE_POINT: [number, number] = [47.49154, 19.075658];
+/**
+ * Where the pigeon is released, and where it is trying to get back to.
+ *
+ * The baked map is centred between the two rather than on either, so a flight
+ * that crosses two kilometres of city stays inside it with room to wander.
+ * Raised clear of whatever stands at the release point by SPAWN_CLEARANCE.
+ */
+const RELEASE_POINT: [number, number] = [47.502984, 19.104778];
 const HOME_POINT: [number, number] = [47.494953, 19.081954];
 
 const SPAWN_ALTITUDE = 120;

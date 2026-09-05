@@ -39,7 +39,7 @@ export interface BlockOptions {
 
 export const defaultBlockOptions: BlockOptions = {
   minArea: 500,
-  maxArea: 250000,
+  maxArea: 2000000,
 };
 
 /**

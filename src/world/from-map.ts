@@ -15,7 +15,7 @@
  */
 
 import { turnedBox, type Box } from '../sim/collision';
-import { indexStreets, type MapData, type StreetIndex } from './streets';
+import { indexStreets, type MapData, type Rail, type StreetIndex } from './streets';
 import { footprintSamples, indexAreas, type AreaIndex } from './areas';
 import { extractBlocks, type Block } from './blocks';
 import {
@@ -102,7 +102,7 @@ export const defaultMapWorldOptions: MapWorldOptions = {
   wingDepth: 16,
   minCourtyard: 14,
   minBlockArea: 500,
-  maxBlockArea: 250000,
+  maxBlockArea: 2000000,
   minHeight: 16,
   maxHeight: 24,
   spacing: 9,
@@ -126,6 +126,8 @@ export interface MapWorld extends CityLayout {
   streets: StreetIndex;
   green: AreaIndex;
   target: Building | null;
+  /** The railways, carried through for the renderer to draw. */
+  rails: Rail[];
   /** The blocks the streets enclose, for anything that wants the shape of one. */
   blocks: Block[];
   /** Those of them with an open middle, rather than being built solid. */
@@ -139,7 +141,31 @@ export function buildLayoutFromMap(
   options: MapWorldOptions = defaultMapWorldOptions,
 ): MapWorld {
   const streets = indexStreets(map.roads);
+  // A railway is a line with a width and a corridor to keep clear, which is
+  // exactly what the street index already answers questions about. Same index,
+  // different question.
+  const tracks = indexStreets(map.rails ?? []);
   const green = indexAreas(map.areas ?? []);
+
+  /**
+   * Does anything here sit on the railway?
+   *
+   * Sampled across the footprint rather than measured from the middle: a
+   * corridor 8 m wide crossing a 26 m frontage at an angle passes nowhere near
+   * the centre of it. The step is finer than the corridor is wide, so a track
+   * cannot thread between two samples.
+   */
+  const onTrack = (x: number, z: number, width: number, depth: number, yaw: number) => {
+    // Almost nothing on the map is anywhere near a railway, so ask the cheap
+    // question first: is there track within reach of this footprint at all?
+    const span = Math.hypot(width, depth) / 2;
+    if (!tracks.nearest(x, z, span + 8)) return false;
+    return footprintSamples(x, z, width, depth, yaw, 3).some(([sx, sz]) => {
+      const rail = tracks.nearest(sx, sz, 40);
+      return rail !== null && rail.distance < rail.width / 2;
+    });
+  };
+
   const rand = mulberry32(options.seed);
 
   const buildings: Building[] = [];
@@ -257,6 +283,11 @@ export function buildLayoutFromMap(
         // random.
         if (green.anyInside(footprintSamples(bx, bz, width, depth, yaw))) continue;
 
+        // Nor across a railway. A tram shares the carriageway, so its corridor
+        // is already inside a street nothing is built on; heavy rail has its
+        // own ground, and this is what keeps the goods yard a goods yard.
+        if (onTrack(bx, bz, width, depth, yaw)) continue;
+
         buildings.push({ x: bx, z: bz, width, depth, height, yaw });
         boxes.push(turnedBox(bx, bz, width, height, depth, yaw));
       }
@@ -340,6 +371,9 @@ export function buildLayoutFromMap(
         // the street is right for the shape of a block, but says nothing about
         // a wing fronting some other street that cuts through it.
         if (built(px, pz)) continue;
+        // And not in the four-foot. A yard planted as woodland is worse than
+        // a yard left as track, which is what it looks like from the air.
+        if (onTrack(px, pz, 3, 3, 0)) continue;
         // Not on the water, and not in the middle of a five-a-side pitch.
         const ground = green.at(px, pz);
         if (ground && ground.kind !== 'park' && ground.kind !== 'wood') continue;
@@ -360,7 +394,14 @@ export function buildLayoutFromMap(
     const kerb = (street.width / 2 + options.setback) * options.streetRoom;
     return street.distance > kerb + options.wingDepth;
   };
-  for (const block of gardens) plant(block.ring, options.gardenTrees, indoors);
+  for (const block of gardens) {
+    // A courtyard is planted like a garden; the inside of a block the size of
+    // a district is not a courtyard, whatever the geometry calls it, and
+    // planting one at garden density buries a railway yard under nine thousand
+    // trees. Anything above a couple of hectares gets park density instead.
+    const dense = block.area <= 20000;
+    plant(block.ring, dense ? options.gardenTrees : options.parkTrees, indoors);
+  }
 
   // And the ones nothing would fit on, planted right up to the kerb, since
   // there is no frontage here for them to stand behind.
@@ -402,6 +443,7 @@ export function buildLayoutFromMap(
     trees,
     boxes,
     roads: map.roads,
+    rails: map.rails ?? [],
     areas: map.areas ?? [],
     streets,
     green,

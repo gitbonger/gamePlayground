@@ -171,9 +171,16 @@ server, so it works offline and cannot be broken by someone else's rate limit.
 npm run fetch-map -- --centre 47.494593,19.081282 --radius 1200 --name home
 ```
 
-The shipped world is that square of Budapest: 986 roads, 1,428 segments, 77 kB.
-The bird spawns directly over the centre point, raised clear of whatever stands
-there.
+The shipped world is that square of Budapest: 1,189 roads, 399 railways, 390
+green areas, 173 kB. It is centred between the release point and the loft
+rather than on either, so a flight of nearly two kilometres stays inside it
+with room to wander. The bird spawns over the release point, raised clear of
+whatever stands there.
+
+**It is fetched once and stored.** `home.json` is committed and imported as a
+module, so the bundler builds it into the app: there is no request at run time,
+nothing to load, and no map provider in the loop while you are flying. Changing
+the area means re-running the baker and committing the result.
 
 **Why not real buildings too?** Because OSM's road coverage is essentially
 complete worldwide while its building *heights* are patchy — in most cities
@@ -204,8 +211,8 @@ a row knows the block is a closed shape. The block has to come first:
    every stretch of road an edge; arrive at a node and always leave by the next
    way round clockwise, and the walk closes on the block it set out around.
    Faces that come back wound the other way are the outside of the network.
-   1,428 segments give 144 blocks, median 10,880 m2 -- a 104 m square, which is
-   what these blocks measure.
+   The segments give 137 blocks, median around 10,000 m2 -- a 100 m square,
+   which is what these blocks measure.
 2. **Pull the ring in to the kerb**, each edge by its own street's half-width
    plus a 2 m setback, because a block with a boulevard on one side and three
    side streets is not a square anything -- then again by as much, because the
@@ -290,6 +297,39 @@ oriented-box collision that reuses the tested path rather than adding a second
 one. The uniform grid still indexes world bounds for broad phase. 141 distinct
 building orientations here; a grid city would have about two.
 
+**The railway is real too, and nothing is built on it.** OpenStreetMap has
+excellent railway coverage and the query simply never asked for it. It does
+now: 399 surface ways, 155 of heavy rail and 138 of tram in the original
+square, filtered to what can actually be seen -- no tunnels (the metro here is
+45 ways of them), no platforms or ventilation shafts, and none of the 64 razed
+alignments that are lines on a map and nothing on the ground.
+
+Each way carries a corridor width, which is not the gauge but the ground the
+railway occupies, and both buildings and trees are kept off it. The test is
+sampled across a footprint rather than measured from its middle, because a
+corridor 8 m wide crossing a 26 m frontage at an angle passes nowhere near the
+centre of it. A tram is the same machinery with a narrower corridor, and costs
+the frontage nothing: it shares the carriageway, which is ground nothing was
+built on anyway. Houses still stand half a metre from tram rails, as they do.
+
+That last point was worth measuring rather than assuming. Lifting the block
+size cap looked like it would put a housing estate across the Jozsefvaros goods
+yard; counted, the closest building to heavy rail is 37 m, because the yard
+falls in block *interiors* and became courtyard rather than frontage.
+
+The track is drawn as one ribbon with two extra numbers per vertex -- how far
+across the corridor and how far along the line, in metres -- from which the
+shader puts a pair of rails at standard gauge, sleepers at their real spacing,
+and ballast that thins out at the shoulder. Same trick as the windows and the
+tiles, same reason: a fixed real size on any width of corridor.
+
+Which is also how the ribbon was invisible for half an hour. It is wound face
+down, exactly as the road ribbons are -- and the road material says so, in a
+comment about winding not being worth fighting over, above a `side:
+DoubleSide` that I did not copy across. Front-face culling then removed every
+railway on the map. Replacing the shader with flat magenta and finding *that*
+invisible too is what turned it from a shader problem into a two-word one.
+
 **Windows and roof tiles are drawn in the shader, off world coordinates.**
 Both patterns face the same problem: the walls are one shared box scaled per
 instance, so anything keyed to the mesh UVs stretches, and a 26 m house would
@@ -349,9 +389,9 @@ the worry that went with it, was the browser throttling a hidden tab rather
 than anything the renderer was doing -- a frame rate read from a page that is
 not on screen measures the page not being on screen.
 
-From 1,428 real street segments and 243 green areas: 150 blocks, 3,858
-buildings, 56 courtyards and 5,159 trees, built in well under a tenth of a
-second, with 20,000 collision sweeps in 10 ms.
+From 1,189 real streets, 399 railways and 390 green areas: 137 blocks, 4,203
+buildings, 49 courtyards and 9,360 trees, built in about 190 ms, with 20,000
+collision sweeps in 10 ms.
 
 OpenStreetMap data is ODbL. The baked file is a derived database, so it carries
 the attribution and the HUD keeps it on screen.
@@ -819,7 +859,12 @@ npm test
   rather than being added to it, is pitched to the depth of the wing it covers
   up to a limit, never swallows a building short enough for it to, and is left
   off the landmark so there is somewhere flat to land.
-- **`src/world/from-map.test.ts`** — the ring closes, so leaving the courtyard
+- **`src/world/from-map.test.ts`** — the railway has a group of its own:
+  nothing is built or planted on the track, with a control that the line lies
+  across ground the generator wanted to build on, one line through the frontage
+  and another through the courtyard because either alone leaves half the rule
+  untested, and a tramway in the carriageway costing the frontage nothing. The
+  ring closes, so leaving the courtyard
   in any of 24 directions meets building before it reaches the street, while
   the courtyard itself stays open to fly in; gardens are in courtyards and
   nowhere else; nothing overhangs a carriageway, drifts off its block, or sits

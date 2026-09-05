@@ -77,6 +77,26 @@ const ROAD_WIDTHS: Record<string, number> = {
   tertiary_link: 8,
 };
 
+/**
+ * Track the world has to know about, and how wide a corridor to keep for it.
+ *
+ * The width is not the gauge -- it is the ground the railway occupies and
+ * nothing may be built on. A tram shares the carriageway, so its corridor sits
+ * inside a street that is already clear; heavy rail gets its own ground, and
+ * the clearance either side of a running line is what stops houses being
+ * generated across it.
+ *
+ * Everything else OpenStreetMap files under `railway` is left out: platforms
+ * and ventilation shafts are not track, and `razed`, `abandoned` and `disused`
+ * alignments are lines that are no longer there to see.
+ */
+const RAIL_WIDTHS: Record<string, number> = {
+  rail: 8,
+  light_rail: 7,
+  narrow_gauge: 6,
+  tram: 6,
+};
+
 interface Args {
   centre: [number, number];
   radius: number;
@@ -148,8 +168,10 @@ async function main() {
   const areaFilters = Object.keys(AREA_KINDS)
     .flatMap((key) => [`way${alternation(key)}(${bbox});`, `relation${alternation(key)}(${bbox});`])
     .join('');
+  const track = Object.keys(RAIL_WIDTHS).join('|');
   const query =
-    `[out:json][timeout:180];(way["highway"~"^(${wanted})$"](${bbox});${areaFilters});out geom;`;
+    `[out:json][timeout:180];(way["highway"~"^(${wanted})$"](${bbox});` +
+    `way["railway"~"^(${track})$"](${bbox});${areaFilters});out geom;`;
 
   process.stderr.write(`querying OpenStreetMap for ${radius} m around ${lat}, ${lon}\n`);
   const response = await fetch(OVERPASS, {
@@ -198,12 +220,28 @@ async function main() {
   }
 
   const roads = [];
+  const rails = [];
   const areas = [];
   let rawPoints = 0;
 
   for (const element of payload.elements) {
     const tags = element.tags ?? {};
     const highway = tags['highway'];
+    const railway = tags['railway'];
+
+    if (railway && RAIL_WIDTHS[railway] !== undefined) {
+      // Underground, or no longer there: nothing to see from the air. The
+      // metro here is 45 ways of tunnel, and there are 64 razed alignments.
+      const buried = tags['tunnel'] || tags['location'] === 'underground';
+      const gone = tags['razed'] || tags['abandoned'] || tags['disused'];
+      if (buried || gone || !element.geometry || element.geometry.length < 2) continue;
+      rawPoints += element.geometry.length;
+      const points = toLocal(element.geometry, 1.5);
+      if (points.length >= 2) {
+        rails.push({ kind: railway, width: RAIL_WIDTHS[railway]!, points });
+      }
+      continue;
+    }
 
     if (highway) {
       const width = ROAD_WIDTHS[highway];
@@ -237,7 +275,7 @@ async function main() {
     }
   }
 
-  const keptPoints = roads.reduce((total, road) => total + road.points.length, 0);
+  const keptPoints = [...roads, ...rails].reduce((total, way) => total + way.points.length, 0);
   const out = resolve(process.cwd(), 'src/world/data', `${name}.json`);
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(
@@ -250,6 +288,7 @@ async function main() {
         generated: new Date().toISOString(),
         attribution: ATTRIBUTION,
         roads,
+        rails,
         areas,
       },
       null,
@@ -257,9 +296,10 @@ async function main() {
     )}\n`,
   );
 
-  const kb = (Buffer.byteLength(JSON.stringify({ roads, areas })) / 1024).toFixed(0);
+  const kb = (Buffer.byteLength(JSON.stringify({ roads, rails, areas })) / 1024).toFixed(0);
   process.stderr.write(
-    `${roads.length} roads (${keptPoints} points), ${areas.length} green areas, ` +
+    `${roads.length} roads and ${rails.length} railways (${keptPoints} points), ` +
+      `${areas.length} green areas, ` +
       `${rawPoints} points before thinning, ${kb} kB -> ${out}\n`,
   );
 }

@@ -13,7 +13,7 @@ import * as THREE from 'three';
 
 import { createColliderField, type Box, type Collider } from '../sim/collision';
 import { generateCityLayout, type Building, type CityLayout } from './layout';
-import type { Road } from './streets';
+import type { Rail, Road } from './streets';
 import type { Area, AreaKind } from './areas';
 
 export { defaultWorldOptions, type WorldOptions } from './layout';
@@ -377,6 +377,17 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
     }
   }
 
+  // --- Railways -------------------------------------------------------------
+  // Over the road surface, because a tramway is laid in the carriageway.
+  if (layout.rails?.length) {
+    const { geometry, material } = buildRails(layout.rails);
+    disposables.push(geometry, material);
+    const track = new THREE.Mesh(geometry, asDecal(material, RAIL_ORDER));
+    track.receiveShadow = true;
+    track.renderOrder = RAIL_ORDER;
+    group.add(track);
+  }
+
   // --- Streets ------------------------------------------------------------
   if (layout.roads?.length) {
     const { geometry, material } = buildRoads(layout.roads);
@@ -409,9 +420,11 @@ export function buildWorld(layout: CityLayout = generateCityLayout()): World {
  */
 const AREA_LIFT = 0.05;
 const ROAD_LIFT = 0.12;
+const RAIL_LIFT = 0.18;
 
 const AREA_ORDER = 1;
 const ROAD_ORDER = 2;
+const RAIL_ORDER = 3;
 
 /** Pull a ground decal towards the camera, out of the surface it lies on. */
 function asDecal(material: THREE.Material, order: number): THREE.Material {
@@ -478,6 +491,117 @@ function buildAreas(
  * road seen from the air the joints do not read, and one buffer of a few
  * thousand triangles costs a single draw call.
  */
+/** Standard gauge, in metres: the distance between the inside faces of a pair. */
+const GAUGE = 1.435;
+/** Sleeper spacing, in metres. */
+const SLEEPER_PITCH = 0.65;
+
+/**
+ * Every railway as one ribbon, with the track drawn on it in the shader.
+ *
+ * The ribbon carries two extra numbers per vertex: how far across the corridor
+ * it is and how far along the line, both in metres. That is all the shader
+ * needs to put a pair of rails at standard gauge and sleepers at their real
+ * spacing on any width of corridor -- and, as with the windows and the tiles,
+ * it means the pattern is a fixed real size rather than something that
+ * stretches with the geometry it is drawn on.
+ *
+ * Trams are the same track laid in the road: rails, no ballast, no sleepers
+ * showing, because on a tramway they are buried in the carriageway.
+ */
+function buildRails(rails: readonly Rail[]): {
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material;
+} {
+  const positions: number[] = [];
+  const edges: number[] = [];
+
+  for (const rail of rails) {
+    const tram = rail.kind === 'tram' ? 1 : 0;
+    let along = 0;
+
+    for (let i = 1; i < rail.points.length; i += 1) {
+      const [x0, z0] = rail.points[i - 1]!;
+      const [x1, z1] = rail.points[i]!;
+      const dx = x1 - x0;
+      const dz = z1 - z0;
+      const length = Math.hypot(dx, dz);
+      if (length < 1e-3) continue;
+
+      const half = rail.width / 2;
+      const nx = (-dz / length) * half;
+      const nz = (dx / length) * half;
+      const from = along;
+      along += length;
+
+      const quad = [
+        [x0 + nx, z0 + nz, half, from],
+        [x0 - nx, z0 - nz, -half, from],
+        [x1 + nx, z1 + nz, half, along],
+        [x1 - nx, z1 - nz, -half, along],
+      ];
+      for (const corner of [0, 1, 2, 1, 3, 2]) {
+        const [px, pz, across, run] = quad[corner]!;
+        positions.push(px!, RAIL_LIFT, pz!);
+        edges.push(across!, run!, tram);
+      }
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('edge', new THREE.Float32BufferAttribute(edges, 3));
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshLambertMaterial({
+    color: 0xffffff,
+    // Flat ribbons on the ground, wound the same way the roads are, which is
+    // to say face down. Same fix, and the same reason: not worth fighting.
+    side: THREE.DoubleSide,
+  });
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = `attribute vec3 edge;\nvarying vec3 vEdge;\n${shader.vertexShader}`.replace(
+      '#include <begin_vertex>',
+      '#include <begin_vertex>\n        vEdge = edge;',
+    );
+    shader.fragmentShader = `varying vec3 vEdge;\n${shader.fragmentShader}`.replace(
+      '#include <color_fragment>',
+      `#include <color_fragment>
+      {
+        float across = abs(vEdge.x);
+        float along = vEdge.y;
+        float tram = vEdge.z;
+
+        // Widened with the screen-space derivative, so a line of rail a
+        // kilometre off settles to a tint instead of crawling in and out.
+        float soft = fwidth(across) * 1.5 + 0.01;
+
+        // Ballast, thinning to bare ground at the edge of the corridor.
+        float roll = fract(sin(dot(floor(vec2(along, vEdge.x) * 3.0), vec2(12.9898, 78.233))) * 43758.5453);
+        vec3 bed = mix(vec3(0.30, 0.27, 0.24), vec3(0.44, 0.40, 0.35), roll);
+        float shoulder = 1.0 - smoothstep(1.9, 2.8 + soft, across);
+        vec3 colour = mix(diffuseColor.rgb, bed, shoulder * (1.0 - tram));
+
+        // Sleepers, at their real spacing and only under the ballast.
+        float sleeper = (1.0 - smoothstep(0.34, 0.46, fract(along / ${SLEEPER_PITCH.toFixed(3)})))
+                      * (1.0 - smoothstep(1.2, 1.35 + soft, across));
+        colour = mix(colour, vec3(0.24, 0.19, 0.15), sleeper * 0.8 * (1.0 - tram));
+
+        // And the pair of rails, which a tramway has and the rest of it does not.
+        float rail = 1.0 - smoothstep(0.035, 0.055 + soft, abs(across - ${(GAUGE / 2).toFixed(4)}));
+        colour = mix(colour, vec3(0.62, 0.63, 0.66), rail);
+
+        diffuseColor.rgb = colour;
+        // Beyond the ballast a heavy line is just ground; a tramway is road.
+        diffuseColor.a *= max(max(rail, sleeper), mix(shoulder, 0.0, tram));
+      }`,
+    );
+  };
+  material.customProgramCacheKey = () => 'railway-track';
+  material.transparent = true;
+  return { geometry, material };
+}
+
 function buildRoads(roads: readonly Road[]): {
   geometry: THREE.BufferGeometry;
   material: THREE.Material;
