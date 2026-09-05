@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  arrowFade,
   arrowScale,
   buildRoofs,
   buildWorld,
@@ -150,6 +151,29 @@ describe('marking the target', () => {
     for (const t of [0, 0.2, 0.225, 0.4, 0.9]) {
       expect(targetFlash(t, true), `${t}s`).toBe(0);
     }
+  });
+
+  it('thins the arrow out as you arrive, rather than filling the screen', () => {
+    // It does not shrink below a floor and is drawn in front of everything,
+    // so on short final it is a yellow arrow between you and the thing it is
+    // pointing at. Fine while every target was a roof you came down onto;
+    // a patch of concrete on the ground is approached through it.
+    expect(arrowFade(400)).toBe(1);
+    expect(arrowFade(30)).toBe(1);
+    expect(arrowFade(4)).toBe(0);
+    expect(arrowFade(0)).toBe(0);
+
+    // Faded rather than switched off, or the last frame before it goes reads
+    // as the marker breaking.
+    let last = arrowFade(0);
+    let jump = 0;
+    for (let away = 0; away < 60; away += 0.25) {
+      const now = arrowFade(away);
+      jump = Math.max(jump, Math.abs(now - last));
+      expect(now).toBeGreaterThanOrEqual(last);
+      last = now;
+    }
+    expect(jump).toBeLessThan(0.05);
   });
 
   it('keeps the arrow the same apparent size however far off it is', () => {

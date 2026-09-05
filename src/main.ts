@@ -36,6 +36,7 @@ import { loadProgress, saveProgress } from './progress';
 import { createLevelMenu } from './render/menu';
 import {
   combineColliders,
+  aabb,
   createColliderField,
   type Collider,
 } from './sim/collision';
@@ -43,7 +44,7 @@ import { createChaseCamera, defaultCameraParams, defaultWatchParams } from './re
 import { createHud } from './render/hud';
 import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
-import { buildWorld, targetFlash } from './world/city';
+import { buildWorld, PATCH_HEIGHT, targetFlash } from './world/city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
 import {
   carriedBy,
@@ -150,8 +151,30 @@ const smoke = createSmoke();
  */
 const landmarkLevel = LEVELS.find((spec) => spec.target.kind === 'building');
 
+/** Where each level's concrete patch goes, in local metres. */
+const patches = LEVELS.filter((spec) => spec.target.kind === 'patch').map((spec) => {
+  const on = spec.target as Extract<LevelTarget, { kind: 'patch' }>;
+  const at = project(on.at[0], on.at[1], map.centre);
+  return { name: spec.name, x: at.x, z: at.z, size: on.size };
+});
+// Solid, so landing on one is landing on it rather than on the grass beside
+// it, and so a bird can walk on and off it like any other kerb.
+for (const patch of patches) {
+  layout.boxes.push(
+    aabb(
+      patch.x - patch.size / 2,
+      0,
+      patch.z - patch.size / 2,
+      patch.x + patch.size / 2,
+      PATCH_HEIGHT,
+      patch.z + patch.size / 2,
+    ),
+  );
+}
+
 const world = buildWorld(layout, {
   ...(landmarkLevel ? { landmark: landmarkLevel.name } : {}),
+  patches,
   // Every level's target is built and sitting there dark. Which one is lit is
   // the whole of switching between them.
   objectives: LEVELS.filter((spec) => spec.target.kind === 'wagon').map((spec) => {
@@ -352,21 +375,12 @@ function carrierOf(train: number, vehicle: number): number {
  */
 const residents: Resident[] = [];
 for (const spec of LEVELS) {
-  if (spec.target.kind !== 'wagon') continue;
-  const car = carOf(spec.target);
-  const wagon = layout.trains[spec.target.train]?.vehicles[car];
-  if (!wagon) continue;
+  const stood = standingSpot(spec);
+  if (!stood) continue;
 
-  const spot = onVehicle(wagon, spec.person.along, spec.person.across);
-  const state = createBird(
-    vec(spot.x, WAGON.deck + defaultParams.bodyRadius, spot.z),
-    0,
-    // Facing across the wagon, so it reads as standing about rather than
-    // waiting to leave. It turns to face you when you walk up to it.
-    wagon.yaw + Math.PI / 2,
-  );
+  const state = createBird(stood.at, 0, stood.facing);
   state.velocity = vec(0, 0, 0);
-  state.restingOn = carrierOf(spec.target.train, car);
+  state.restingOn = stood.on;
   state.ending = {
     kind: 'landed',
     cause: null,
@@ -378,6 +392,46 @@ for (const spec of LEVELS) {
   const rig = createBirdRig(PIGEON_MORPHS[spec.person.morph % PIGEON_MORPHS.length]);
   scene.add(rig.object);
   residents.push({ state, rig, completes: spec.name, glowing: 0 });
+}
+
+/**
+ * Where a level's resident stands, whatever kind of thing the level is about.
+ *
+ * The three kinds differ only in what they are standing on and how high that
+ * is. `on` is the collider's tag for it, which only a wagon has -- a roof and
+ * a slab of concrete are part of the world and belong to nobody, so a bird on
+ * one is standing on nothing in particular, exactly as it is on the grass.
+ */
+function standingSpot(spec: Level): { at: Vec3; facing: number; on: number | null } | null {
+  const person = spec.person;
+
+  if (spec.target.kind === 'wagon') {
+    const car = carOf(spec.target);
+    const wagon = layout.trains[spec.target.train]?.vehicles[car];
+    if (!wagon) return null;
+    const spot = onVehicle(wagon, person.along, person.across);
+    return {
+      at: vec(spot.x, WAGON.deck + defaultParams.bodyRadius, spot.z),
+      // Facing across the wagon, so it reads as standing about rather than
+      // waiting to leave. It turns to look at you when you walk up to it.
+      facing: wagon.yaw + Math.PI / 2,
+      on: carrierOf(spec.target.train, car),
+    };
+  }
+
+  // Everything else is a fixed thing with a top, so the only question is
+  // where that top is. The marker already knows, having been built on it.
+  const marker = objective(spec.name);
+  if (!marker) return null;
+  return {
+    at: vec(
+      marker.position.x + person.along,
+      marker.position.y + defaultParams.bodyRadius,
+      marker.position.z + person.across,
+    ),
+    facing: Math.PI / 2,
+    on: null,
+  };
 }
 
 const run = createRunTracker(bird);

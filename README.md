@@ -196,6 +196,22 @@ Both halves of the marker are arithmetic and tested as such: what the flash
 does across a second and across the fade band, and that the arrow's size stays
 proportional to range with a floor so it does not vanish underfoot.
 
+**Three of them, getting harder.** *The Park* is a patch of concrete on open
+ground at midday: nothing to fly round, nothing that moves, and the whole
+approach visible from the start. *The Loft* is twenty-four metres up on a roof
+among other roofs in late-afternoon light — still nothing moving, but you have
+to pick the right one. *The Yard* is a wagon of a running train under a low
+evening sun, which is the first target that will not wait for you.
+
+**Every target is a thing, never a place.** Open ground was the awkward case:
+a wagon and a building are objects with a material each to flash and a top to
+land on, and a field is a field. Rather than teach the marker about targets
+that are not things, a level that wants one lays one — a patch of concrete,
+ten centimetres thick so you can walk on and off it, solid so that landing on
+it is landing on *it* rather than on the grass beside it. Everything
+downstream then treats all three kinds the same, and there is no special case
+anywhere.
+
 **A level is data, in `src/levels.ts`.** The map is settled, so a coordinate
 written there means the same place for good — which is what makes a level
 something you can describe rather than something you have to build. Each one
@@ -229,6 +245,15 @@ levels in it, or something typed into the console. There is no version of that
 worth throwing over. Storage that does not exist, refuses to be read or refuses
 to be written are all ordinary cases rather than faults: the game is perfectly
 playable without remembering anything.
+
+**The arrow thins out as you arrive.** It does not shrink below a floor and is
+drawn in front of everything, so on short final it was a yellow arrow filling
+the screen, between you and the thing it was pointing at. That was survivable
+while every target was a roof you came down onto from above; a patch of
+concrete on the ground is approached *through* it. It fades to nothing over
+the last twenty metres — faded rather than switched off, or the last frame
+before it goes reads as the marker breaking, which is the same mistake the
+flash used to make at its own threshold.
 
 **`L` opens a level menu** and a number flies one. Digits do nothing while it
 is closed, or every number typed during a flight would be a level change, and a
@@ -1747,7 +1772,9 @@ npm test
   most of it, swells and fades rather than snapping, repeats whenever you look,
   goes on doing it however close the bird gets, and stops the moment the bird
   is on its feet — which replaced fading out across a band rather than
-  switching off; the arrow keeps a constant apparent size at any range, with a
+  switching off. The arrow does the opposite and thins out as you arrive, at
+  full strength beyond thirty metres and gone inside eight, continuously
+  enough that no frame of it jumps by more than a twentieth; the arrow keeps a constant apparent size at any range, with a
   floor so it does not vanish underfoot. A roof comes out of the building's height
   rather than being added to it, is pitched to the depth of the wing it covers
   up to a limit, never swallows a building short enough for it to, and is left

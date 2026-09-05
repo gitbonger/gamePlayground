@@ -11,7 +11,15 @@
  * be another field on the same objects.
  */
 
-/** What a level asks you to land on. */
+/**
+ * What a level asks you to land on. Always a thing, never a place.
+ *
+ * Open ground was the awkward case: a wagon and a building are objects with a
+ * material each to flash and a top to land on, and a field is a field. Rather
+ * than teach the marker about targets that are not things, a level that wants
+ * one lays one -- a patch of concrete in the park. Everything downstream then
+ * treats all three the same.
+ */
 export type LevelTarget =
   /**
    * A vehicle of one of the rakes. By index rather than by coordinate,
@@ -19,7 +27,9 @@ export type LevelTarget =
    */
   | { kind: 'wagon'; train: number; car: number | 'middle' }
   /** The building nearest a point, given in degrees. */
-  | { kind: 'building'; near: [number, number] };
+  | { kind: 'building'; near: [number, number] }
+  /** A patch of concrete, laid at a point given in degrees. */
+  | { kind: 'patch'; at: [number, number]; size: number };
 
 /** Who is waiting there. */
 export interface LevelPerson {
@@ -54,13 +64,35 @@ export interface Level {
 
 export const LEVELS: readonly Level[] = [
   {
-    name: 'The Yard',
-    // North-east of the rail yard, high enough to see it from.
+    // A short hop onto a concrete patch in the park, in the flattest light
+    // there is. Nothing to fly round, nothing that moves, and the whole
+    // approach visible from the start.
+    name: 'The Park',
+    start: [47.495944, 19.093122],
+    // Midday, so the shadows are short and the ground reads plainly.
+    when: '2025-06-21T10:00:00Z',
+    target: { kind: 'patch', at: [47.494297, 19.090454], size: 9 },
+    person: { morph: 6, along: 2.4, across: 0 },
+  },
+  {
+    // Twenty-four metres up, on a roof among other roofs. Still nothing
+    // moving, but now you have to pick the right one and stop on it.
+    name: 'The Loft',
     start: [47.503261, 19.091374],
     // Late afternoon in midsummer: 24 degrees up and a little north of due
     // west, which hangs the sun over the rooftops instead of above the top of
     // the frame, and makes the shadows long enough to read from the air.
     when: '2025-06-21T16:00:00Z',
+    target: { kind: 'building', near: [47.494953, 19.081954] },
+    person: { morph: 1, along: 2.6, across: 0 },
+  },
+  {
+    // A wagon of a running train, which is the first target that will not
+    // wait for you.
+    name: 'The Yard',
+    start: [47.503261, 19.091374],
+    // Low evening sun, straight down the yard.
+    when: '2025-06-21T17:30:00Z',
     target: { kind: 'wagon', train: 0, car: 'middle' },
     person: { morph: 3, along: 2.5, across: 0 },
   },

@@ -65,6 +65,17 @@ export interface ObjectiveOptions {
    * level is a decision about the game, not a fact about the train.
    */
   objectives?: { name: string; train: number; vehicle: number }[];
+  /**
+   * Concrete patches to lay, in local metres.
+   *
+   * Because open ground is the one target with nothing to be: a wagon and a
+   * building are objects with a material each to flash and a top to land on,
+   * and a field is a field. Rather than make the marker cope with a target
+   * that is not a thing, the level lays a thing -- a patch of concrete in the
+   * park, which is an ordinary object like the others and needs no special
+   * case anywhere.
+   */
+  patches?: { name: string; x: number; z: number; size: number }[];
 }
 
 export interface World {
@@ -222,6 +233,31 @@ export function targetFlash(elapsed: number, down: boolean): number {
  */
 export function arrowScale(distance: number): number {
   return Math.max(2.2, distance * 0.045);
+}
+
+/**
+ * Where the arrow starts thinning out and where it is gone, in metres.
+ *
+ * Because it does not shrink below its floor and is drawn in front of
+ * everything: on short final it is a yellow arrow filling the screen, between
+ * you and the thing it is pointing at. That was survivable while every target
+ * was a roof you came down onto from above. A patch of concrete on the ground
+ * is approached through it.
+ */
+const ARROW_GONE = 8;
+const ARROW_FULL = 26;
+
+/**
+ * How solid the arrow is at a given range, 0 to 1.
+ *
+ * Faded rather than switched off, or the last frame before it goes reads as
+ * the marker breaking -- the same reason the flash used to fade, and the same
+ * mistake if it is not. By the time it has gone you are close enough to see
+ * what you are landing on without help.
+ */
+export function arrowFade(distance: number): number {
+  const across = (distance - ARROW_GONE) / (ARROW_FULL - ARROW_GONE);
+  return across < 0 ? 0 : across > 1 ? 1 : across;
 }
 
 /** Rise of a roof per metre of half-depth: about 27 degrees off horizontal. */
@@ -512,17 +548,6 @@ export function buildWorld(
     }
   }
 
-  // --- Railways -------------------------------------------------------------
-  // Over the road surface, because a tramway is laid in the carriageway.
-  if (layout.rails?.length) {
-    const { geometry, material } = buildRails(layout.rails);
-    disposables.push(geometry, material);
-    const track = new THREE.Mesh(geometry, asDecal(material, RAIL_ORDER));
-    track.receiveShadow = true;
-    track.renderOrder = RAIL_ORDER;
-    group.add(track);
-  }
-
   // --- Trains ---------------------------------------------------------------
   // A mesh per vehicle, positioned from the layout every frame. A train moves,
   // so its position cannot live in its vertices; and a wagon that is an
@@ -618,6 +643,30 @@ export function buildWorld(
     }
   };
 
+  // --- Concrete ------------------------------------------------------------
+  // A patch of it in the park, so that a level about landing on open ground
+  // is a level about landing on a thing, like all the others.
+  for (const patch of options.patches ?? []) {
+    const slab = new THREE.BoxGeometry(patch.size, PATCH_HEIGHT, patch.size);
+    const concrete = new THREE.MeshLambertMaterial({ color: PATCH_COLOR });
+    disposables.push(slab, concrete);
+
+    const mesh = new THREE.Mesh(slab, concrete);
+    mesh.position.set(patch.x, PATCH_HEIGHT / 2, patch.z);
+    mesh.receiveShadow = true;
+    group.add(mesh);
+
+    markers.push(
+      createMarker(
+        patch.name,
+        concrete,
+        new THREE.Vector3(patch.x, PATCH_HEIGHT, patch.z),
+        disposables,
+        overlay,
+      ),
+    );
+  }
+
   // --- Railways -------------------------------------------------------------
   // Over the road surface, because a tramway is laid in the carriageway.
   if (layout.rails?.length) {
@@ -686,7 +735,11 @@ function createMarker(
 
   // Drawn in its own pass over a cleared depth buffer, so it needs no tricks
   // to stay in front: there is simply nothing else in the pass with it.
-  const arrowMaterial = new THREE.MeshBasicMaterial({ color: 0xffd21f, fog: false });
+  const arrowMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffd21f,
+    fog: false,
+    transparent: true,
+  });
   disposables.push(head, shaft, arrowMaterial);
 
   const arrow = new THREE.Group();
@@ -716,7 +769,12 @@ function createMarker(
       arrow.visible = over !== null;
       if (!over) return;
 
-      const size = arrowScale(over.distanceTo(viewer));
+      const range = over.distanceTo(viewer);
+      arrowMaterial.opacity = arrowFade(range);
+      arrow.visible = arrowMaterial.opacity > 0;
+      if (!arrow.visible) return;
+
+      const size = arrowScale(range);
       arrow.scale.setScalar(size);
       // Sitting a little clear of what it points at, and rocking gently,
       // because a marker that moves is found a good deal faster than one
@@ -740,6 +798,15 @@ function createMarker(
 const AREA_LIFT = 0.05;
 const ROAD_LIFT = 0.12;
 const RAIL_LIFT = 0.18;
+/**
+ * How thick a concrete patch is, in metres.
+ *
+ * Low enough to walk on and off -- `walkStepUp` is 12 cm -- so it is somewhere
+ * to stand about rather than a plinth to be stuck on.
+ */
+export const PATCH_HEIGHT = 0.1;
+/** Poured concrete, a bit paler than the roads. */
+const PATCH_COLOR = 0x9a9a94;
 
 /**
  * Height of whatever is drawn flat on the ground at a point, in metres.
