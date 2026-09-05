@@ -30,9 +30,11 @@ import { vec } from './sim/math3';
 
 export interface FlockOptions {
   count: number;
-  /** Birds wander within this radius of the middle of the map, in metres. */
+  /** Height they leave the loft at, in metres. */
+  releaseAltitude: number;
+  /** How far out they fly before turning up again, in metres. */
   range: number;
-  /** Heights they cruise between, in metres. */
+  /** Heights they climb to on the way out, in metres. */
   minAltitude: number;
   maxAltitude: number;
   /** Seconds a dead bird stays down before another is released. */
@@ -42,12 +44,20 @@ export interface FlockOptions {
 
 export const defaultFlockOptions: FlockOptions = {
   count: 10,
-  range: 520,
-  minAltitude: 48,
+  releaseAltitude: 30,
+  range: 340,
+  minAltitude: 45,
   maxAltitude: 105,
   respawnDelay: 2.5,
   seed: 1234,
 };
+
+/** The point the flock lives at: their loft, which is the pigeon's home. */
+export interface Anchor {
+  x: number;
+  y: number;
+  z: number;
+}
 
 export interface FlockMember {
   state: BirdState;
@@ -73,22 +83,22 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+/**
+ * Pigeons living at the loft, which is wherever the player is trying to get
+ * back to.
+ *
+ * Each leaves low and heads off in its own direction, climbing as it goes, and
+ * is released again once it has gone far enough or flown into something. The
+ * effect is a slow scatter outward from home, which doubles as a way of seeing
+ * where home is from some distance off.
+ */
 export function createFlock(
   morphCount: number,
+  loft: Anchor = { x: 0, y: 30, z: 0 },
   options: FlockOptions = defaultFlockOptions,
   flight: FlightParams = defaultParams,
 ): Flock {
   const rand = mulberry32(options.seed);
-
-  const somewhere = (): Waypoint => {
-    const angle = rand() * Math.PI * 2;
-    const radius = options.range * Math.sqrt(rand());
-    return {
-      x: Math.cos(angle) * radius,
-      z: Math.sin(angle) * radius,
-      altitude: options.minAltitude + rand() * (options.maxAltitude - options.minAltitude),
-    };
-  };
 
   interface Pilot {
     member: FlockMember;
@@ -97,16 +107,21 @@ export function createFlock(
     waypoint: Waypoint;
   }
 
+  /** Leave the loft on a fresh bearing, climbing out to somewhere distant. */
   const release = (pilot: Pilot) => {
-    const start = somewhere();
+    const bearing = rand() * Math.PI * 2;
     pilot.member.state = createBird(
-      vec(start.x, start.altitude, start.z),
-      11 + rand() * 6,
-      rand() * Math.PI * 2,
+      vec(loft.x, options.releaseAltitude, loft.z),
+      12 + rand() * 4,
+      bearing,
     );
     pilot.member.down = 0;
     pilot.memory.beating = true;
-    pilot.waypoint = somewhere();
+    pilot.waypoint = {
+      x: loft.x + Math.sin(bearing) * options.range,
+      z: loft.z - Math.cos(bearing) * options.range,
+      altitude: options.minAltitude + rand() * (options.maxAltitude - options.minAltitude),
+    };
   };
 
   const pilots: Pilot[] = [];
@@ -115,9 +130,11 @@ export function createFlock(
       member: { state: createBird(), morph: Math.floor(rand() * morphCount), down: 0 },
       controls: neutralControls(),
       memory: { beating: true },
-      waypoint: somewhere(),
+      waypoint: { x: loft.x, z: loft.z, altitude: options.minAltitude },
     };
     release(pilot);
+    // Stagger the start, so they are not all released in the same instant.
+    pilot.member.down = 0;
     pilots.push(pilot);
   }
 
@@ -131,9 +148,10 @@ export function createFlock(
         continue;
       }
 
-      // Somewhere new to be, once it gets where it was going.
+      // Once it has flown its leg, it goes back to the loft and out again.
       if (distanceTo(member.state, pilot.waypoint) < defaultAutopilotParams.arrival) {
-        pilot.waypoint = somewhere();
+        release(pilot);
+        continue;
       }
 
       steer(member.state, pilot.waypoint, pilot.memory, pilot.controls);

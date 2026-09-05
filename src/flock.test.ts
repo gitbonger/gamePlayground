@@ -155,11 +155,13 @@ describe('the flock', () => {
   });
 
   it('brings them back after they die', () => {
+    // The loft sits at the origin, so the towers have to be lower than the
+    // height the birds leave at -- released inside a solid, a swept collision
+    // reports no hit and they would simply fly through everything.
     const flock = createFlock(8);
-    // Towers tall enough to be worth hitting, packed tight enough to be hit.
     const city = createColliderField(
       Array.from({ length: 900 }, (_, i) =>
-        turnedBox(((i % 30) - 15) * 34, (Math.floor(i / 30) - 15) * 34, 26, 70, 26, 0),
+        turnedBox(((i % 30) - 15) * 40, (Math.floor(i / 30) - 15) * 40, 30, 26, 30, 0),
       ),
     );
     const wind = createWind();

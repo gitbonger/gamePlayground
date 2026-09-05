@@ -73,7 +73,8 @@ scene.add(rig.object);
 
 // The other pigeons: same flight model, same collider, same wind, steered by
 // an autopilot that is not especially good at it.
-const flock = createFlock(PIGEON_MORPHS.length);
+// The flock lives at the loft, which is where the pigeon is trying to get to.
+const flock = createFlock(PIGEON_MORPHS.length, { x: home.x, y: 30, z: home.z });
 const flockRigs = flock.members.map((member) => {
   const bird = createBirdRig(PIGEON_MORPHS[member.morph]);
   scene.add(bird.object);

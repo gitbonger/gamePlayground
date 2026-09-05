@@ -78,7 +78,7 @@ src/
   world/       streets.ts indexes real roads and areas.ts real parks;
                from-map.ts and layout.ts produce a CityLayout; city.ts turns
                one into meshes
-  flock.ts     the other pigeons, and putting them back when they die
+  flock.ts     the pigeons at the loft, and putting them back when they die
   input.ts     keyboard to control axes
   run.ts       per-flight statistics
   debug-gui.ts live tuning panel
@@ -232,13 +232,25 @@ the attribution and the HUD keeps it on screen.
 
 ## The other pigeons
 
-Ten of them, flying the same model the player does, on the same collider and in
-the same wind. Nothing about them is special-cased: they stall, they get blown
-off course, and when they fly into a building they die exactly as the player
-does, wait a couple of seconds, and are released again somewhere else. They
+Ten of them, living at the loft — which is the red building the player is
+trying to get back to. Each leaves low, at 30 m, on its own bearing, climbs as
+it goes, and is released again once it has flown a few hundred metres out or
+flown into something. The effect is a slow scatter outward from home, which
+doubles as a way of spotting where home is from a distance.
+
+They fly the same model the player does, on the same collider and in the same
+wind, and nothing about them is special-cased: they stall, they get blown off
+course, and when they hit a building they die exactly as the player does. They
 come in the real feral pigeon colour schemes — blue bar, checker, spread, red,
 mealy, pied, white, grizzle — picked deterministically, so it is the same flock
 every run.
+
+An earlier version had them wandering the map at large, which was a mistake
+worth recording: they were *there*, but the nearest one was typically 274 m
+away and three pixels across, and more than half the time none was inside the
+camera's cone at all. Chasing that with a flock anchored to the player never
+really worked either. Living at the loft does, because it is a place the player
+is flying towards and looking at.
 
 `src/sim/autopilot.ts` flies them, and getting it to work taught three things
 the hard way. All three are the same mistake in different clothes: commanding
@@ -259,8 +271,8 @@ an *outcome* directly instead of the thing that produces it.
   time on the wing: exactly what draining at 0.07/s and recovering at 0.14/s
   can sustain.
 
-Together those took the flock from 333 crashes in five minutes to 12, and from
-70% of the time airborne to 99%. Ten birds cost about 0.012 ms a tick.
+Together those took the flock from 333 crashes in five minutes to 18, and from
+70% of the time airborne to 98%. Ten birds cost about 0.013 ms a tick.
 
 ## Wind
 
