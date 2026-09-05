@@ -75,6 +75,15 @@ export interface InputSource {
    * tick it arrived, every time, and landing would be impossible.
    */
   consumeLaunch(): boolean;
+  /** True on the press that opens or closes the level menu. */
+  consumeMenu(): boolean;
+  /**
+   * A number key pressed since the last call, or null.
+   *
+   * Taken one at a time rather than as a set, because a digit is a choice and
+   * two of them are two choices, not one.
+   */
+  consumeDigit(): number | null;
   dispose(): void;
 }
 
@@ -96,6 +105,8 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
   // swallow the press.
   const walk: WalkControls = { forward: 0, turn: 0, launch: false };
   let launchRequested = false;
+  let menuRequested = false;
+  const digits: number[] = [];
 
   const anyHeld = (codes: readonly string[]) => codes.some((code) => held.has(code));
   const axis = (negative: readonly string[], positive: readonly string[]) =>
@@ -116,6 +127,10 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     held.add(e.code);
     if (e.code === 'KeyR') resetRequested = true;
     if (anyHeld(BINDINGS.flap)) launchRequested = true;
+    if (e.code === 'KeyL') menuRequested = true;
+    // Digit1..Digit9 on the top row, and the same on the numeric pad.
+    const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
+    if (digit) digits.push(Number(digit[1]));
     // Space and the arrows scroll the page otherwise, which fights the controls.
     if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
   };
@@ -156,12 +171,24 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     return requested;
   }
 
+  function consumeMenu() {
+    const requested = menuRequested;
+    menuRequested = false;
+    return requested;
+  }
+
+  function consumeDigit() {
+    return digits.shift() ?? null;
+  }
+
   return {
     controls,
     walk,
     update,
     consumeReset,
     consumeLaunch,
+    consumeMenu,
+    consumeDigit,
     dispose() {
       target.removeEventListener('keydown', onKeyDown);
       target.removeEventListener('keyup', onKeyUp);

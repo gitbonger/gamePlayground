@@ -31,6 +31,9 @@ import { createDebugGui } from './debug-gui';
 import { createScene } from './render/scene';
 import { createBirdRig, PIGEON_MORPHS, type WingPose } from './render/bird';
 import { createFlock } from './flock';
+import { LEVELS, levelNamed, type Level, type LevelTarget } from './levels';
+import { loadProgress, saveProgress } from './progress';
+import { createLevelMenu } from './render/menu';
 import {
   combineColliders,
   createColliderField,
@@ -98,18 +101,6 @@ const SPAWN_CLEARANCE = 40;
 /** Altitude below which the HUD starts showing the approach cue, in metres. */
 const APPROACH_ALTITUDE = 45;
 
-/**
- * When the game is set: six in the evening on the longest day, over the map's
- * own coordinates.
- *
- * The sun is then where it really was rather than wherever looked all right --
- * 24 degrees up and a little north of due west, which is the point of picking
- * an hour rather than a direction. Early afternoon was the first choice and
- * was wrong for a reason worth keeping: at 54 degrees the sun sits above the
- * top of the frame in level flight, so a pigeon never sees it. This one hangs
- * over the rooftops, and the shadows are long enough to read from the air.
- */
-const WHEN = new Date('2025-06-21T16:00:00Z');
 /** How far up-sun the shadow camera sits from the bird, in metres. */
 const SUN_RANGE = 320;
 
@@ -120,10 +111,15 @@ const overlay = document.querySelector<HTMLElement>('#overlay')!;
 // JSON widens the fixed-length tuples, so this crosses through unknown.
 const map = homeMap as unknown as MapData;
 
-const { renderer, scene, camera, sun, sunDirection } = createScene(canvas, {
-  sun: sunVector(map.centre[0], map.centre[1], WHEN),
+const { renderer, scene, camera, sun, sunDirection, setSun } = createScene(canvas, {
+  sun: sunVector(map.centre[0], map.centre[1], new Date(LEVELS[0]?.when ?? 0)),
 });
-const SUN_OFFSET = sunDirection.clone().multiplyScalar(SUN_RANGE);
+/**
+ * How far up-sun the shadow camera sits from the bird.
+ *
+ * Recomputed whenever the sun moves, which is every time a level begins.
+ */
+const sunOffset = sunDirection.clone().multiplyScalar(SUN_RANGE);
 
 const release = project(RELEASE_POINT[0], RELEASE_POINT[1], map.centre);
 const home = project(HOME_POINT[0], HOME_POINT[1], map.centre);
@@ -138,27 +134,75 @@ const layout = buildLayoutFromMap(map, {
   trains: [{ near: train, wagons: 12 }],
 });
 /**
- * The levels, in order, and which one is being flown at the moment.
- *
- * Level 1 is the middle wagon of the rake the flock roosts on; Level 2 is the
- * loft, which is where the homing pigeon was always headed. Only the level
- * being flown is marked -- the others are built and sitting there dark, so
- * moving the game on is a matter of switching which one is lit.
+ * Which vehicle of which rake a level's target is, with `middle` worked out
+ * here because only this end knows how long the rake came out.
  */
-const LEVELS = ['Level 1', 'Level 2'] as const;
-const middleCar = Math.floor((layout.trains[0]?.vehicles.length ?? 1) / 2);
+const carOf = (target: Extract<LevelTarget, { kind: 'wagon' }>): number =>
+  target.car === 'middle'
+    ? Math.floor((layout.trains[target.train]?.vehicles.length ?? 1) / 2)
+    : target.car;
 
 const smoke = createSmoke();
+/**
+ * The landmark building belongs to whichever level is about a building, if
+ * any is. None is yet, so it stands there as a landmark and nothing more --
+ * which is what it looked like before it was ever a target.
+ */
+const landmarkLevel = LEVELS.find((spec) => spec.target.kind === 'building');
+
 const world = buildWorld(layout, {
-  landmark: LEVELS[1],
-  objectives: [{ name: LEVELS[0], train: 0, vehicle: middleCar }],
+  ...(landmarkLevel ? { landmark: landmarkLevel.name } : {}),
+  // Every level's target is built and sitting there dark. Which one is lit is
+  // the whole of switching between them.
+  objectives: LEVELS.filter((spec) => spec.target.kind === 'wagon').map((spec) => {
+    const on = spec.target as Extract<LevelTarget, { kind: 'wagon' }>;
+    return { name: spec.name, train: on.train, vehicle: carOf(on) };
+  }),
   smoke: smoke.puffs.length,
 });
 
-/** The one being flown. How this advances is not decided yet. */
-let level = 0;
+/**
+ * Storage, if the browser will give us any.
+ *
+ * Touching `localStorage` at all throws in some settings, so even getting
+ * hold of it is a thing that can fail.
+ */
+function storage(): Storage | undefined {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The one being flown, remembered between visits. */
+let level = loadProgress(storage(), LEVELS.length);
+
+/**
+ * The last level finished and when, for the HUD to say so.
+ *
+ * It says so for a few seconds and then stops. An announcement that never
+ * goes away is not an announcement, and this one sits in the slot everything
+ * else has to speak through -- including the line telling you how to leave
+ * the conversation you are in.
+ */
+let reached: string | null = null;
+let reachedAt = 0;
+const NOTE_SECONDS = 6;
+
+/**
+ * The resident the hero is standing with, or null.
+ *
+ * Held rather than recomputed from the level, because the level moves on the
+ * moment they meet and the conversation does not: they go on standing there
+ * until one of them walks away or takes off.
+ */
+let talkingTo: Resident | null = null;
+
+// All of the above is declared here rather than beside the code that uses it
+// because `playLevel` runs at module scope, and a `let` read before its own
+// declaration throws. This file has now made that mistake twice.
 const objective = (name: string) => world.markers.find((marker) => marker.name === name) ?? null;
-for (const marker of world.markers) marker.setActive(marker.name === LEVELS[level]);
 scene.add(world.group);
 
 /**
@@ -193,20 +237,34 @@ const rebuildWind = () => {
   wind = createWind(windParams);
 };
 
-// The release point is named in degrees, but the city around it is generated,
-// so make sure nothing has been built into the space the bird appears in.
-const spawnFloor = world.collider.heightAt(release.x, release.z);
-const spawn = vec(
-  release.x,
-  Number.isFinite(spawnFloor)
-    ? Math.max(SPAWN_ALTITUDE, spawnFloor + SPAWN_CLEARANCE)
-    : SPAWN_ALTITUDE,
-  release.z,
-);
-// Released pointing straight at home, the way a homing pigeon starts out.
-const spawnHeading = bearing(release, home);
+/**
+ * Where a level starts, and which way the bird is pointed.
+ *
+ * The release point is named in degrees, but the city around it is generated,
+ * so it makes sure nothing has been built into the space the bird appears in.
+ * Pointed at whatever the level is about, which is the direction a homing
+ * pigeon leaves in and saves the player a search before they have started.
+ */
+function releaseFor(spec: Level | undefined): { at: Vec3; heading: number } {
+  const point = spec ? project(spec.start[0], spec.start[1], map.centre) : release;
+  const floor = world.collider.heightAt(point.x, point.z);
+  const marker = spec ? objective(spec.name) : null;
+  const aim = marker ? { x: marker.position.x, z: marker.position.z } : home;
+  return {
+    at: vec(
+      point.x,
+      Number.isFinite(floor)
+        ? Math.max(SPAWN_ALTITUDE, floor + SPAWN_CLEARANCE)
+        : SPAWN_ALTITUDE,
+      point.z,
+    ),
+    heading: bearing(point, aim),
+  };
+}
 
-let bird: BirdState = createBird(spawn, SPAWN_SPEED, spawnHeading);
+let start = releaseFor(LEVELS[level]);
+
+let bird: BirdState = createBird(start.at, SPAWN_SPEED, start.heading);
 let telemetry: FlightTelemetry = step(bird, input.controls, flightParams, TICK);
 /** What the bird did on its feet this tick, when it was on them. */
 let onFoot: WalkTelemetry = { grounded: false, travelled: 0, blocked: false };
@@ -284,34 +342,42 @@ function carrierOf(train: number, vehicle: number): number {
   return base + vehicle;
 }
 
+/**
+ * A pigeon standing on every level's target, waiting to be walked up to.
+ *
+ * Built once for all of them rather than made and unmade as levels change.
+ * They are stationary birds on wagons that were going to be drawn anyway, and
+ * a level nobody is playing having somebody standing on it costs a draw call
+ * and reads, correctly, as a city with pigeons in it.
+ */
 const residents: Resident[] = [];
-{
-  const wagon = layout.trains[0]?.vehicles[middleCar];
-  if (wagon) {
-    // A little along the deck from the middle, so meeting it is a short walk
-    // rather than something that happens the moment you touch down.
-    const spot = onVehicle(wagon, 2.5, 0);
-    const state = createBird(
-      vec(spot.x, WAGON.deck + defaultParams.bodyRadius, spot.z),
-      0,
-      // Facing across the wagon, so it reads as standing about rather than
-      // waiting to leave.
-      wagon.yaw + Math.PI / 2,
-    );
-    state.velocity = vec(0, 0, 0);
-    state.restingOn = carrierOf(0, middleCar);
-    state.ending = {
-      kind: 'landed',
-      cause: null,
-      speed: 0,
-      sink: 0,
-      bank: 0,
-      position: state.position,
-    };
-    const rig = createBirdRig(PIGEON_MORPHS[3]);
-    scene.add(rig.object);
-    residents.push({ state, rig, completes: LEVELS[0], glowing: 0 });
-  }
+for (const spec of LEVELS) {
+  if (spec.target.kind !== 'wagon') continue;
+  const car = carOf(spec.target);
+  const wagon = layout.trains[spec.target.train]?.vehicles[car];
+  if (!wagon) continue;
+
+  const spot = onVehicle(wagon, spec.person.along, spec.person.across);
+  const state = createBird(
+    vec(spot.x, WAGON.deck + defaultParams.bodyRadius, spot.z),
+    0,
+    // Facing across the wagon, so it reads as standing about rather than
+    // waiting to leave. It turns to face you when you walk up to it.
+    wagon.yaw + Math.PI / 2,
+  );
+  state.velocity = vec(0, 0, 0);
+  state.restingOn = carrierOf(spec.target.train, car);
+  state.ending = {
+    kind: 'landed',
+    cause: null,
+    speed: 0,
+    sink: 0,
+    bank: 0,
+    position: state.position,
+  };
+  const rig = createBirdRig(PIGEON_MORPHS[spec.person.morph % PIGEON_MORPHS.length]);
+  scene.add(rig.object);
+  residents.push({ state, rig, completes: spec.name, glowing: 0 });
 }
 
 const run = createRunTracker(bird);
@@ -322,7 +388,7 @@ let previousPosition: Vec3 = { ...bird.position };
 let previousOrientation: Quat = { ...bird.orientation };
 
 function respawn() {
-  bird = createBird(spawn, SPAWN_SPEED, spawnHeading);
+  bird = createBird(start.at, SPAWN_SPEED, start.heading);
   previousPosition = { ...bird.position };
   previousOrientation = { ...bird.orientation };
   run.reset(bird);
@@ -330,7 +396,38 @@ function respawn() {
   chase.snap(bird, cameraParams);
 }
 
+/**
+ * Switch to a level: its target, its hour, its release point.
+ *
+ * Everything a level is, applied in one place, so that starting the game and
+ * picking one out of the menu and finishing the one before are all the same
+ * thing happening.
+ */
+function playLevel(at: number): void {
+  const spec = LEVELS[at];
+  if (!spec) return;
+
+  level = at;
+  saveProgress(storage(), at);
+
+  for (const marker of world.markers) marker.setActive(marker.name === spec.name);
+  // Where the sun really was over this map at that hour, rather than wherever
+  // looked all right.
+  setSun(sunVector(map.centre[0], map.centre[1], new Date(spec.when)));
+  sunOffset.copy(sunDirection).multiplyScalar(SUN_RANGE);
+
+  reached = null;
+  talkingTo = null;
+  start = releaseFor(spec);
+  respawn();
+}
+
 createDebugGui(flightParams, cameraParams, windParams, { respawn, rebuildWind });
+
+const menu = createLevelMenu(overlay, LEVELS);
+// The level being flown is the one remembered, applied through the same path
+// everything else uses rather than by having been set up that way.
+playLevel(level);
 
 // --- Loop ------------------------------------------------------------------
 const interpolatedState: BirdState = { ...bird };
@@ -471,42 +568,22 @@ function reachLevel(): void {
   talkingTo = residents.find((resident) => meeting(bird, resident.state)) ?? null;
 
   const here = LEVELS[level];
-  if (!here || talkingTo?.completes !== here) return;
+  if (!here || talkingTo?.completes !== here.name) return;
 
-  reached = here;
+  reached = here.name;
   reachedAt = clock;
-  if (level + 1 < LEVELS.length) {
-    level += 1;
-    for (const marker of world.markers) marker.setActive(marker.name === LEVELS[level]);
-  }
+  // The next one, if there is one. Staying put on the last is the honest
+  // answer until there is something to move on to.
+  if (level + 1 < LEVELS.length) playLevel(level + 1);
 }
 
 /** The resident this level is about, if it has one. */
 function levelPerson(): Resident | null {
   const here = LEVELS[level];
-  return residents.find((resident) => resident.completes === here) ?? null;
+  return here ? (residents.find((r) => r.completes === here.name) ?? null) : null;
 }
 
-/**
- * The last level finished and when, for the HUD to say so.
- *
- * It says so for a few seconds and then stops. An announcement that never
- * goes away is not an announcement, and this one sits in the slot everything
- * else has to speak through -- including the line telling you how to leave
- * the conversation you are in.
- */
-let reached: string | null = null;
-let reachedAt = 0;
-const NOTE_SECONDS = 6;
 
-/**
- * The resident the hero is standing with, or null.
- *
- * Held rather than recomputed from the level, because the level moves on the
- * moment they meet and the conversation does not: they go on standing there
- * until one of them walks away or takes off.
- */
-let talkingTo: Resident | null = null;
 
 function frame(nowMs: number) {
   const now = nowMs / 1000;
@@ -516,6 +593,13 @@ function frame(nowMs: number) {
   smoothedFps += (1 / Math.max(frameTime, 1e-4) - smoothedFps) * 0.1;
 
   input.update(frameTime);
+  if (input.consumeMenu()) menu.toggle(level);
+  // Digits are only ever a level while the menu is up, so they are offered to
+  // it and it says whether it wanted one.
+  for (let digit = input.consumeDigit(); digit !== null; digit = input.consumeDigit()) {
+    const picked = menu.choose(digit);
+    if (picked !== null) playLevel(picked);
+  }
   if (input.consumeReset()) respawn();
   if (input.consumeLaunch()) launchPending = true;
 
@@ -611,7 +695,7 @@ function frame(nowMs: number) {
     resident.glowing = showing === 'person' && resident === person ? pulse : 0;
   }
 
-  const marker = objective(LEVELS[level]);
+  const marker = objective(LEVELS[level]?.name ?? '');
   marker?.update(
     now,
     camera.position,
@@ -685,7 +769,7 @@ function frame(nowMs: number) {
     interpolatedState.position.y,
     interpolatedState.position.z,
   );
-  sun.position.copy(sun.target.position).add(SUN_OFFSET);
+  sun.position.copy(sun.target.position).add(sunOffset);
   sun.target.updateMatrixWorld();
 
   // The approach cue is only shown while still flying and low enough to act on.
@@ -698,13 +782,13 @@ function frame(nowMs: number) {
     interpolatedState,
     telemetry,
     landing,
-    distance(interpolatedState.position, objective(LEVELS[level])?.position ?? home),
+    distance(interpolatedState.position, objective(LEVELS[level]?.name ?? '')?.position ?? home),
     smoothedFps,
     onFoot,
     reached === null || clock - reachedAt > NOTE_SECONDS
       ? null
-      : level > LEVELS.indexOf(reached as (typeof LEVELS)[number])
-        ? `${reached} reached — now for ${LEVELS[level]}`
+      : level > levelNamed(reached)
+        ? `${reached} reached — now for ${LEVELS[level]?.name}`
         : `${reached} reached — that is all of them`,
     stance === 'talking',
   );

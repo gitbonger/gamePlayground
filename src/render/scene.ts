@@ -9,6 +9,14 @@ export interface SceneBundle {
   sun: THREE.DirectionalLight;
   /** Unit vector pointing at the sun, for anything that has to agree with it. */
   sunDirection: THREE.Vector3;
+  /**
+   * Move the sun.
+   *
+   * Every level is flown at its own hour, so this is not set once. Three
+   * things have to agree about where it is -- the light, the disc in the sky
+   * and the glare around it -- and they agree by all being told here.
+   */
+  setSun(direction: { x: number; y: number; z: number }): void;
   resize(): void;
 }
 
@@ -67,7 +75,15 @@ export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): S
   scene.add(sun);
   scene.add(sun.target);
 
-  scene.add(createSkyDome(sunDirection));
+  const skyDome = createSkyDome(sunDirection);
+  scene.add(skyDome);
+  const skyMaterial = skyDome.material as THREE.ShaderMaterial;
+
+  function setSun(direction: { x: number; y: number; z: number }) {
+    sunDirection.set(direction.x, direction.y, direction.z).normalize();
+    sun.position.copy(sunDirection).multiplyScalar(400);
+    (skyMaterial.uniforms['sunDirection']!.value as THREE.Vector3).copy(sunDirection);
+  }
 
   function resize() {
     const width = window.innerWidth;
@@ -79,7 +95,7 @@ export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): S
   resize();
   window.addEventListener('resize', resize);
 
-  return { renderer, scene, camera, sun, sunDirection, resize };
+  return { renderer, scene, camera, sun, sunDirection, setSun, resize };
 }
 
 /**

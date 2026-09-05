@@ -23,6 +23,7 @@ Then open http://localhost:5183.
 | `T` | Tuck the wings and dive |
 | `B` | Brake — spread the wings, fan the tail, beat backwards |
 | `R` | Release again |
+| `L` | Levels — then a number to fly one |
 | `H` | Hide the tuning panel |
 
 Once you are down, the same keys mean something else:
@@ -195,11 +196,44 @@ Both halves of the marker are arithmetic and tested as such: what the flash
 does across a second and across the fade band, and that the arrow's size stays
 proportional to range with a floor so it does not vanish underfoot.
 
-**There are two levels, and only one is lit.** Level 1 is the middle wagon of
-the rake the flock roosts on; Level 2 is the loft, which is where the homing
-pigeon was always headed. Both are built, both have a marker, and the one being
-flown is the one switched on — so moving the game forward is a matter of
-lighting the next one.
+**A level is data, in `src/levels.ts`.** The map is settled, so a coordinate
+written there means the same place for good — which is what makes a level
+something you can describe rather than something you have to build. Each one
+carries five things: a name, a point to be released at, an hour to fly it at,
+a thing to land on, and somebody standing on it.
+
+The hour is the interesting one. It is an instant rather than a light
+direction, and the sun is worked out from the real solar position over the
+map's own coordinates at that moment — so choosing an hour is a lighting
+decision that cannot be wrong for the place. Changing level moves the sun, the
+sky's own disc and glare, and the shadow frustum, all from the one number.
+
+There is no story yet and no mechanism for one. These are landing problems in
+increasing order of difficulty, and whatever eventually joins them up can be
+another field on the same objects.
+
+**Every level's target is built and sitting there dark.** Which one is lit is
+the whole of switching between them, and so is a pigeon standing on each of
+them: they are stationary birds on wagons that were going to be drawn anyway,
+and a level nobody is playing having somebody waiting on it reads, correctly,
+as a city with pigeons in it.
+
+`playLevel` is the single path in. Starting the game, picking one out of the
+menu and finishing the one before are all the same thing happening: light the
+target, move the sun, remember the choice, and release from the level's own
+point pointed at its own target.
+
+**Which level you are on is remembered**, in local storage, and anything else
+found there is treated as the beginning — a number from a build with more
+levels in it, or something typed into the console. There is no version of that
+worth throwing over. Storage that does not exist, refuses to be read or refuses
+to be written are all ordinary cases rather than faults: the game is perfectly
+playable without remembering anything.
+
+**`L` opens a level menu** and a number flies one. Digits do nothing while it
+is closed, or every number typed during a flight would be a level change, and a
+number that is not a level does nothing either, because a menu that closes
+itself when you mistype is worse than one that waits.
 
 **A level is finished by meeting somebody.** There is a pigeon standing on the
 middle wagon, and walking up to it lights Level 2. That is one rule, not a
@@ -1687,6 +1721,21 @@ npm test
   not as bad framing at all, which is how the first version of this test
   passed while the shot was visibly broken. Re-entering the shot somewhere
   else does not fling the camera the distance between the two conversations.
+- **`src/progress.test.ts`** — a fresh player starts at the beginning, one
+  coming back comes back to where they were, and everything that can go wrong
+  with storage is an ordinary case: no storage at all, storage that throws on
+  read, storage that throws on write, and a stored value that is not a level —
+  out of range, negative, fractional, empty, a word. Also that the levels
+  themselves are well formed: named, named differently from each other,
+  starting somewhere over Budapest, and at an hour a `Date` can be made of.
+- **`src/render/menu.test.ts`** — which level a number key picks: counting
+  from one, nothing at all while the menu is closed, nothing for a number that
+  is not a level, and exactly as many working numbers as there are levels. The
+  menu's own markup is not tested, because there is no DOM in this suite and
+  adding one to check that three names come out as three rows is not worth a
+  dependency — it is built out of nodes with `textContent` rather than out of a
+  string, so the one thing worth testing about it, that a level name cannot
+  become markup, is true by construction instead.
 - **`src/render/sun.test.ts`** — the sun is overhead at the equator at noon on
   the equinox, reaches 90 minus the latitude plus the tilt at midsummer noon
   and due south with it, is a full two tilts lower at midwinter, rises in the
