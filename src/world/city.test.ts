@@ -41,6 +41,7 @@ const TOWER: Landmark = {
   height: 31,
   penthouse: { cover: 0.5, rise: 3.2 },
   planting: { rows: 2, perRow: 6, radius: 0.7 },
+  people: [{ along: -3, across: 5, facing: Math.PI }],
 };
 
 const map: MapData = {
@@ -343,6 +344,29 @@ describe('levels', () => {
     world.dispose();
   });
 
+  it('draws everyone standing on it, at the size a person is', () => {
+    const layout = buildLayoutFromMap(map, { ...defaultMapWorldOptions, landmarks: [TOWER] });
+    const world = buildWorld(layout, {});
+
+    const crowd: THREE.InstancedMesh[] = [];
+    world.group.traverse((child) => {
+      if (child instanceof THREE.InstancedMesh && child.name === 'people') crowd.push(child);
+    });
+    const drawn = crowd.reduce((total, mesh) => total + mesh.count, 0);
+    expect(layout.people).toHaveLength(1);
+    expect(drawn).toBe(layout.people.length);
+
+    // Two metres of them, standing on the terrace rather than sunk into it.
+    const matrix = new THREE.Matrix4();
+    crowd[0]!.getMatrixAt(0, matrix);
+    const size = new THREE.Vector3();
+    const at = new THREE.Vector3();
+    matrix.decompose(at, new THREE.Quaternion(), size);
+    expect(size.y).toBeCloseTo(2, 6);
+    expect(at.y).toBeCloseTo(TOWER.height, 6);
+    world.dispose();
+  });
+
   it('keeps the arrows out of the world, in a pass of their own', () => {
     // Drawing them last with the depth test off is not enough: transparent
     // objects render after every opaque one whatever their render order, so
@@ -385,7 +409,7 @@ describe('levels', () => {
     const trisOf = (world: ReturnType<typeof buildWorld>) => {
       let total = 0;
       world.group.traverse((child: any) => {
-        if (child.isMesh && child.material?.vertexColors) {
+        if (child.isMesh && child.name === 'vehicle') {
           total += child.geometry.getAttribute('position').count;
         }
       });

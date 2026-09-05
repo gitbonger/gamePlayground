@@ -26,12 +26,16 @@ import {
 } from './polygon';
 import {
   penthouseOf,
+  peopleOn,
   plantTerrace,
+  PERSON_HEIGHT,
+  PERSON_WIDTH,
   SPECIES,
   type Building,
   type Bush,
   type CityLayout,
   type Landmark,
+  type Person,
   type Tree,
 } from './layout';
 import {
@@ -222,6 +226,7 @@ export function buildLayoutFromMap(
   // that follows has to give way to them rather than the other way round.
   const landmarks: Landmark[] = (options.landmarks ?? []).map((landmark) => ({ ...landmark }));
   const bushes: Bush[] = [];
+  const people: Person[] = [];
   for (const landmark of landmarks) {
     if (landmark.height <= 0) continue;
 
@@ -254,6 +259,23 @@ export function buildLayoutFromMap(
           penthouse.top,
           penthouse.depth,
           penthouse.yaw,
+        ),
+      );
+    }
+
+    for (const person of peopleOn(landmark)) {
+      people.push(person);
+      // Solid, and for the same reason a tree is: two metres of somebody
+      // standing on a roof is something to fly round, not something to fly
+      // through.
+      boxes.push(
+        aabb(
+          person.x - PERSON_WIDTH / 2,
+          person.base,
+          person.z - PERSON_WIDTH / 2,
+          person.x + PERSON_WIDTH / 2,
+          person.base + PERSON_HEIGHT,
+          person.z + PERSON_WIDTH / 2,
         ),
       );
     }
@@ -634,6 +656,7 @@ export function buildLayoutFromMap(
     trees,
     landmarks,
     bushes,
+    people,
     boxes,
     roads: map.roads,
     rails: map.rails ?? [],

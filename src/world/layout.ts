@@ -119,6 +119,8 @@ export interface Landmark {
   penthouse?: Penthouse;
   /** What is planted on the terrace, if anything. */
   planting?: Planting;
+  /** Anybody standing on the terrace. */
+  people?: readonly Standing[];
   /**
    * Clear ground kept around it, in metres.
    *
@@ -128,6 +130,43 @@ export interface Landmark {
    */
   margin?: number;
 }
+
+/**
+ * Somewhere on a landmark for somebody to stand, in its own frame.
+ *
+ * Along and across the tier they are on, so that turning the building takes
+ * them with it, and so that a description reads as a place on a terrace
+ * rather than as a coordinate that happens to land on one.
+ */
+export interface Standing {
+  along: number;
+  across: number;
+  /** Which way they look, measured from the way the building faces. */
+  facing: number;
+}
+
+/**
+ * A person, standing somewhere.
+ *
+ * Scenery with a scale to it: two metres of something recognisable is what
+ * tells you how big a roof is and how fast you are going over it, which is a
+ * job nothing else in the world does -- a block of flats is whatever size you
+ * decide it is until there is somebody standing on it.
+ */
+export interface Person {
+  x: number;
+  z: number;
+  /** The height of the surface they stand on. */
+  base: number;
+  /** Which way they face, in the collider's yaw convention. */
+  facing: number;
+}
+
+/** How tall a person is, in metres. */
+export const PERSON_HEIGHT = 2;
+
+/** How wide across their collision box is, in metres. */
+export const PERSON_WIDTH = 0.6;
 
 /**
  * A shrub standing on something, rather than a tree standing in the ground.
@@ -275,6 +314,25 @@ export function plantTerrace(landmark: Landmark): Bush[] {
   return bushes;
 }
 
+/**
+ * Whoever is standing on a landmark's terrace.
+ *
+ * On the terrace and not on the roof of the penthouse, because the terrace is
+ * the half of the building that is outdoors. Nobody stands anywhere else yet;
+ * when they do, they go in the same list, and the renderer and the collider
+ * will not know the difference.
+ */
+export function peopleOn(landmark: Landmark): Person[] {
+  const terrace = terraceOf(landmark);
+  if (!landmark.people || !terrace) return [];
+
+  return landmark.people.map((spot) => ({
+    ...pointOn(terrace, spot.along, spot.across),
+    base: terrace.top,
+    facing: terrace.yaw + spot.facing,
+  }));
+}
+
 export interface Bush {
   x: number;
   z: number;
@@ -315,6 +373,8 @@ export interface CityLayout {
   landmarks: Landmark[];
   /** Bushes on the terraces of those, if any of them has one. */
   bushes: Bush[];
+  /** People standing about on them. */
+  people: Person[];
   /** Solid volumes for every object above, in simulation coordinates. */
   boxes: Box[];
   /** Streets to draw, when the world was built from a real map. */
@@ -371,5 +431,5 @@ export function generateCityLayout(options: WorldOptions = defaultWorldOptions):
 
   // No landmarks: this layout describes nothing, it only generates. And so
   // nothing to plant a terrace on either.
-  return { buildings, trees, landmarks: [], bushes: [], boxes };
+  return { buildings, trees, landmarks: [], bushes: [], people: [], boxes };
 }

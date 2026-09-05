@@ -216,6 +216,24 @@ metre loft turned out to have been standing on the pavement all along.
 
 The bushes are solid, like the trees. A bush you can fly through is scenery.
 
+**And there is somebody standing on it.** Two metres of person at the parapet,
+looking out over the city — the first of them, and the only thing in the world
+whose size you already know. A roof is whatever size you decide it is until
+there is a person standing on it, and a hundred and ten kilometres an hour is
+a number on a panel until something person-sized goes past. They stand beyond
+the near row of bushes rather than between the rows, which keeps them out of
+the strip the bird comes down on, and they are solid for the same reason a
+tree is.
+
+They are described the way the bushes are — along and across the terrace, in
+the building's own frame — so the turn takes them with it. The layout carries
+a `people` list of its own and the renderer draws whatever is in it, so when
+there are people who are not standing on a landmark they go in the same list
+and nothing downstream learns anything new. A figure is one instanced draw
+whatever colours it is made of, which is what `painted` is for: merge the
+parts and put the colour in the vertices, rather than a mesh per colour all
+describing the same person.
+
 **And the terrace is the target, not the roof.** The arrow hangs over the
 middle of the lower half, not over the highest point, because the highest
 point is three metres above and half a building along from the place you are

@@ -61,6 +61,10 @@ export const LOFT: LandmarkSpec = {
   // Longer rows for a longer terrace: the spacing within a row is what makes
   // it read as a hedge rather than as a line of separate shrubs.
   planting: { rows: 2, perRow: 16, radius: 0.7 },
+  // Somebody at the parapet, looking out over the city. Beyond the near row
+  // of bushes rather than between them, so they are out of the strip the
+  // bird comes down on, and turned to face off the edge.
+  people: [{ along: -6, across: 17.5, facing: Math.PI }],
 };
 
 /**

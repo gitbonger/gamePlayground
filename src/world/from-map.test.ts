@@ -320,6 +320,7 @@ describe('describing a thing into the world', () => {
     margin: 9,
     penthouse: { cover: 0.5, rise: 3.2 },
     planting: { rows: 2, perRow: 6, radius: 0.7 },
+    people: [{ along: -3, across: 5, facing: Math.PI }],
   };
   // In the park, which is where a patch of concrete belongs and, more to the
   // point here, where the trees are.
@@ -477,6 +478,57 @@ describe('describing a thing into the world', () => {
     expect(field.heightAt(bush.x, bush.z)).toBeCloseTo(bush.base + bush.height, 6);
     // But the strip down the middle is the terrace and nothing else.
     expect(field.heightAt(terrace.x, terrace.z)).toBeCloseTo(TOWER.height, 6);
+  });
+
+  it('stands people on the terrace, turned with the building', () => {
+    const spot = TOWER.people![0]!;
+
+    /** Where somebody is, measured back in the terrace's own frame. */
+    const placed = (landmark: Landmark) => {
+      const terrace = terraceOf(landmark)!;
+      const person = withLandmark(landmark).people[0]!;
+      const dx = person.x - terrace.x;
+      const dz = person.z - terrace.z;
+      return {
+        along: dx * Math.cos(terrace.yaw) - dz * Math.sin(terrace.yaw),
+        across: dx * Math.sin(terrace.yaw) + dz * Math.cos(terrace.yaw),
+        base: person.base,
+        facing: person.facing - terrace.yaw,
+      };
+    };
+
+    // Where the description says, on the terrace and not on the ground.
+    expect(placed(TOWER).along).toBeCloseTo(spot.along, 6);
+    expect(placed(TOWER).across).toBeCloseTo(spot.across, 6);
+    expect(placed(TOWER).base).toBe(TOWER.height);
+
+    // And the same place on the building however the building is turned,
+    // which is the whole reason it is said in the building's own frame.
+    for (const yaw of [Math.PI / 2, Math.PI, -1.1]) {
+      const turned = placed({ ...TOWER, yaw });
+      expect(turned.along, `${yaw}`).toBeCloseTo(spot.along, 6);
+      expect(turned.across, `${yaw}`).toBeCloseTo(spot.across, 6);
+      expect(turned.facing, `${yaw}`).toBeCloseTo(spot.facing, 6);
+      // Somewhere else in the world, though: this is a real turn.
+      expect(withLandmark({ ...TOWER, yaw }).people[0]!.x).not.toBeCloseTo(
+        withLandmark(TOWER).people[0]!.x,
+        1,
+      );
+    }
+  });
+
+  it('makes a person solid, and two metres of them', () => {
+    // Something to fly round rather than through, and the only thing in the
+    // world whose size you already know.
+    const layout = withLandmark(TOWER);
+    const person = layout.people[0]!;
+    const field = createColliderField(layout.boxes);
+    expect(field.heightAt(person.x, person.z)).toBeCloseTo(TOWER.height + 2, 6);
+  });
+
+  it('stands nobody where there is no terrace', () => {
+    const { penthouse: _, ...plain } = TOWER;
+    expect(withLandmark(plain).people).toEqual([]);
   });
 
   it('plants nothing where there is no terrace to plant', () => {

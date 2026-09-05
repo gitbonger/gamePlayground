@@ -16,6 +16,7 @@ import { createColliderField, type Box, type Collider } from '../sim/collision';
 import {
   generateCityLayout,
   penthouseOf,
+  PERSON_HEIGHT,
   terraceOf,
   type Building,
   type CityLayout,
@@ -656,6 +657,32 @@ export function buildWorld(
     hedge.instanceMatrix.needsUpdate = true;
   }
 
+  // --- People ---------------------------------------------------------------
+  // Two metres of somebody, which is the only thing in the world with a size
+  // you already know. A roof is whatever size you decide it is until there is
+  // a person standing on it.
+  if (layout.people.length) {
+    const figure = personShape();
+    const skin = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    disposables.push(figure, skin);
+
+    const crowd = new THREE.InstancedMesh(figure, skin, layout.people.length);
+    crowd.castShadow = true;
+    crowd.receiveShadow = true;
+    // Named so a test can count them apart from every other instanced thing.
+    crowd.name = 'people';
+    group.add(crowd);
+
+    layout.people.forEach((person, i) => {
+      rotation.setFromAxisAngle(up, person.facing);
+      position.set(person.x, person.base, person.z);
+      scale.setScalar(PERSON_HEIGHT);
+      matrix.compose(position, rotation, scale);
+      crowd.setMatrixAt(i, matrix);
+    });
+    crowd.instanceMatrix.needsUpdate = true;
+  }
+
   // --- Parks, woods and water ----------------------------------------------
   // Drawn under the roads, so a path through a park still reads as a path.
   if (layout.areas?.length) {
@@ -687,6 +714,9 @@ export function buildWorld(
       const mesh = new THREE.Mesh(geometry, material);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+      // Named for the same reason the stands of trees are: so a test counting
+      // the rake can tell it from everything else built out of many colours.
+      mesh.name = 'vehicle';
       group.add(mesh);
       rolling.push({ mesh, train: t, vehicle: v });
 
@@ -897,11 +927,90 @@ function createMarker(
  * big enough for the indices to have been saving anything.
  */
 function merged(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const flat = parts.map((part) => part.toNonIndexed());
+  const flat = parts.map((part) => (part.index ? part.toNonIndexed() : part));
   const one = mergeGeometries(flat);
-  for (const part of flat) part.dispose();
-  for (const part of parts) part.dispose();
+  // A part that was already flat is its own flattening, so the two lists
+  // overlap and disposing both by hand would free it twice.
+  for (const part of new Set([...parts, ...flat])) part.dispose();
   return one;
+}
+
+/**
+ * Merge parts of different colours into one vertex-coloured geometry.
+ *
+ * Which is what lets a thing made of several colours still be one instanced
+ * draw. A material per colour would mean a mesh per colour and a matrix
+ * written per colour, all of them describing the same object.
+ */
+function painted(parts: { geometry: THREE.BufferGeometry; color: number }[]): THREE.BufferGeometry {
+  const tint = new THREE.Color();
+  for (const part of parts) {
+    tint.set(part.color);
+    const count = part.geometry.getAttribute('position').count;
+    const colours = new Float32Array(count * 3);
+    for (let i = 0; i < count; i += 1) {
+      colours[i * 3] = tint.r;
+      colours[i * 3 + 1] = tint.g;
+      colours[i * 3 + 2] = tint.b;
+    }
+    part.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
+  }
+  return merged(parts.map((part) => part.geometry));
+}
+
+/**
+ * A person, standing.
+ *
+ * Modelled one unit tall on the origin like everything else that stands on
+ * something, and scaled by their height rather than by a height and a girth:
+ * a person is not wider for being taller in any way worth modelling, and
+ * proportions given as two numbers are proportions that can be given wrongly.
+ *
+ * Facing -Z, which is the way the bird faces at a heading of zero, so a
+ * rotation about Y means the same thing for both of them.
+ */
+function personShape(): THREE.BufferGeometry {
+  const box = (
+    color: number,
+    width: number,
+    height: number,
+    depth: number,
+    x: number,
+    y: number,
+  ) => {
+    const part = new THREE.BoxGeometry(width, height, depth);
+    part.translate(x, y + height / 2, 0);
+    return { geometry: part, color };
+  };
+
+  // Told apart by tone rather than by hue, because at fifty metres in a low
+  // sun the hue is gone: a mid coat over dark trousers, and a head paler than
+  // either so the head and shoulders are the shape that survives.
+  const COAT = 0x5a6c86;
+  const TROUSERS = 0x2e3138;
+  const SKIN = 0xd8a882;
+  const HAIR = 0x3a2e26;
+
+  // Proportioned off two metres: a 46 cm shoulder, an 85 cm leg, a 22 cm
+  // head. It reads as a person at fifty metres, which is the whole job.
+  const head = new THREE.IcosahedronGeometry(0.055, 0);
+  head.scale(1, 1.1, 0.95);
+  head.translate(0, 0.925, 0);
+
+  const cap = new THREE.SphereGeometry(0.057, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2);
+  cap.scale(1, 0.7, 0.95);
+  cap.translate(0, 0.935, 0);
+
+  return painted([
+    box(TROUSERS, 0.07, 0.43, 0.08, -0.046, 0),
+    box(TROUSERS, 0.07, 0.43, 0.08, 0.046, 0),
+    box(COAT, 0.2, 0.36, 0.12, 0, 0.43),
+    box(COAT, 0.05, 0.33, 0.09, -0.135, 0.45),
+    box(COAT, 0.05, 0.33, 0.09, 0.135, 0.45),
+    box(SKIN, 0.05, 0.06, 0.05, 0, 0.79),
+    { geometry: head, color: SKIN },
+    { geometry: cap, color: HAIR },
+  ]);
 }
 
 /**
