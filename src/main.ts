@@ -41,11 +41,16 @@ const MAX_FRAME_TIME = 0.25;
 /**
  * Where the pigeon is released, and where it is trying to get back to.
  *
- * The baked map is centred between the two rather than on either, so a flight
- * that crosses two kilometres of city stays inside it with room to wander.
- * Raised clear of whatever stands at the release point by SPAWN_CLEARANCE.
+ * The release point sits on the line from the loft through the train, 400 m
+ * short of it, so the pigeon is let go facing both: the rake of wagons is dead
+ * ahead and home is directly beyond it. From 120 m the bird glides 515 m, so
+ * the train is comfortably in reach and wants braking to settle on.
+ *
+ * The baked map is centred between release and loft rather than on either, so
+ * the flight stays inside it with room to wander. The bird is raised clear of
+ * whatever stands at the release point by SPAWN_CLEARANCE.
  */
-const RELEASE_POINT: [number, number] = [47.502984, 19.104778];
+const RELEASE_POINT: [number, number] = [47.503261, 19.091374];
 const HOME_POINT: [number, number] = [47.494953, 19.081954];
 
 const SPAWN_ALTITUDE = 120;

@@ -173,9 +173,15 @@ npm run fetch-map -- --centre 47.494593,19.081282 --radius 1200 --name home
 
 The shipped world is that square of Budapest: 1,189 roads, 399 railways, 390
 green areas, 173 kB. It is centred between the release point and the loft
-rather than on either, so a flight of nearly two kilometres stays inside it
-with room to wander. The bird spawns over the release point, raised clear of
-whatever stands there.
+rather than on either, so the flight stays inside it with room to wander. The
+bird spawns over the release point, raised clear of whatever stands there.
+
+The release point sits on the line from the loft *through the train*, 400 m
+short of it, so the pigeon is let go facing both at once: the rake of wagons is
+dead ahead and home is a kilometre directly beyond it. That distance is chosen
+against what the bird can actually do -- from 120 m it glides 515 m and arrives
+at 10.9 m/s, which is just over the 10 m/s a landing allows, so reaching the
+wagons is a glide and settling on one wants the airbrake.
 
 **It is fetched once and stored.** `home.json` is committed and imported as a
 module, so the bundler builds it into the app: there is no request at run time,
