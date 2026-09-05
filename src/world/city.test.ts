@@ -199,6 +199,23 @@ describe('levels', () => {
     world.dispose();
   });
 
+  it('keeps the arrows out of the world, in a pass of their own', () => {
+    // Drawing them last with the depth test off is not enough: transparent
+    // objects render after every opaque one whatever their render order, so
+    // the road and railway ribbons painted straight over the top.
+    const world = build();
+    expect(countArrows(world).total).toBe(2);
+
+    let inTheWorld = 0;
+    world.group.traverse((child: { type?: string }) => {
+      if (child.type === 'Mesh' && (child as { material?: { fog?: boolean } }).material?.fog === false) {
+        inTheWorld += 1;
+      }
+    });
+    expect(inTheWorld).toBe(0);
+    world.dispose();
+  });
+
   it('marks nothing until a level is made active', () => {
     // Everything is built and sitting there dark, so moving the game on is a
     // matter of switching which one is lit.
@@ -237,12 +254,17 @@ describe('levels', () => {
   });
 });
 
-/** How many target arrows exist in a world, and how many are showing. */
+/**
+ * How many target arrows exist in a world, and how many are showing.
+ *
+ * Counted in the overlay, which is where they live: they are drawn in a pass
+ * of their own so that nothing in the world can be in front of them.
+ */
 function countArrows(world: ReturnType<typeof buildWorld>) {
   let total = 0;
   let visible = 0;
-  world.group.traverse((child: any) => {
-    if (child.isMesh && child.material?.depthTest === false && child.material?.fog === false) {
+  world.overlay.traverse((child: any) => {
+    if (child.isMesh) {
       total += 1;
       // Head and shaft share a parent group, which is what gets hidden.
       if (child.parent?.visible) visible += 1;

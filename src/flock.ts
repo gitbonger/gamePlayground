@@ -46,8 +46,20 @@ export interface FlockOptions {
   /** Heights they climb to on the way out, in metres. */
   minAltitude: number;
   maxAltitude: number;
-  /** Seconds a dead bird stays down before another is released. */
+  /**
+   * Seconds a dead bird stays down before another is released.
+   *
+   * Zero puts it straight back in the air on the tick it died.
+   */
   respawnDelay: number;
+  /**
+   * Seconds between birds when the flock is first let out.
+   *
+   * They used to appear all at once, which reads as a spawn rather than a
+   * loft waking up. Staggering them was what the code claimed to do and did
+   * not: it set every bird's timer to zero immediately afterwards.
+   */
+  emitInterval: number;
   seed: number;
 }
 
@@ -56,7 +68,8 @@ export const defaultFlockOptions: FlockOptions = {
   range: 340,
   minAltitude: 45,
   maxAltitude: 105,
-  respawnDelay: 2.5,
+  respawnDelay: 0,
+  emitInterval: 3,
   seed: 1234,
 };
 
@@ -149,9 +162,10 @@ export function createFlock(
       memory: { beating: true },
       waypoint: { x: loft.x, z: loft.z, altitude: options.minAltitude },
     };
+    // Released so it has a real position to sit at, then held back: one comes
+    // out every `emitInterval` seconds rather than all of them at once.
     release(pilot);
-    // Stagger the start, so they are not all released in the same instant.
-    pilot.member.down = 0;
+    pilot.member.down = i * options.emitInterval;
     pilots.push(pilot);
   }
 
@@ -159,10 +173,13 @@ export function createFlock(
     for (const pilot of pilots) {
       const { member } = pilot;
 
-      if (member.state.ending) {
+      // Waiting: either not let out yet, or down after hitting something.
+      // Both are the same thing to everyone else -- a bird that is not in the
+      // air -- so they are the same thing here.
+      if (member.down > 0) {
         member.down -= dt;
-        if (member.down <= 0) release(pilot);
-        continue;
+        if (member.down > 0) continue;
+        release(pilot);
       }
 
       // Once it has flown its leg, it goes back to the loft and out again.
@@ -174,7 +191,11 @@ export function createFlock(
       steer(member.state, pilot.waypoint, pilot.memory, pilot.controls);
       step(member.state, pilot.controls, flight, dt, collider, wind);
 
-      if (member.state.ending) member.down = options.respawnDelay;
+      if (member.state.ending) {
+        member.down = options.respawnDelay;
+        // Nothing to wait for: back in the air on the spot.
+        if (member.down <= 0) release(pilot);
+      }
     }
   }
 

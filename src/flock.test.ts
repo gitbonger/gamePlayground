@@ -161,6 +161,12 @@ describe('the flock', () => {
     // quietly stopped exercising anything, because nobody hit anything any
     // more. A closed wall they cannot out-climb kills every one of them
     // through the same code path a real collision uses.
+    //
+    // Counted by watching them come home rather than by watching them die.
+    // A bird now goes back in the air on the tick it hits something, so an
+    // ending is never visible from outside -- polling for one, which is what
+    // this did, sees nothing at all. The wall is inside the range they fly to,
+    // so they never reach a waypoint: every return to the middle is a death.
     const flock = createFlock(8);
     const ring = Array.from({ length: 48 }, (_, i) => {
       const around = (i / 48) * Math.PI * 2;
@@ -169,27 +175,23 @@ describe('the flock', () => {
     const wall = createColliderField(ring);
     const wind = createWind();
 
-    let died = 0;
-    const seen = flock.members.map(() => false);
-    for (let t = 0; t < 200; t += DT) {
+    let returns = 0;
+    const away = flock.members.map(() => false);
+    for (let t = 0; t < 300; t += DT) {
       flock.update(DT, wall, wind);
       flock.members.forEach((member, i) => {
-        if (member.state.ending && !seen[i]) {
-          seen[i] = true;
-          died += 1;
-        } else if (!member.state.ending) {
-          seen[i] = false;
+        const out = Math.hypot(member.state.position.x, member.state.position.z);
+        if (out > 100) away[i] = true;
+        else if (away[i] && out < 5) {
+          away[i] = false;
+          returns += 1;
         }
       });
     }
 
     // Every one of them, many times over: they cannot get out.
-    expect(died).toBeGreaterThan(flock.members.length);
-
-    // Then take the wall away. Counting survivors while they are still trapped
-    // measures nothing but how many happened to be mid-respawn at the whistle.
-    const open = createColliderField([]);
-    for (let t = 0; t < 8; t += DT) flock.update(DT, open, wind);
+    expect(returns).toBeGreaterThan(flock.members.length);
+    // And none of them is left lying there.
     expect(flock.members.every((m) => !m.state.ending)).toBe(true);
   });
 });
@@ -234,5 +236,52 @@ describe('leaving the roost', () => {
         expect(member.state.position.z).toBe(-8);
       }
     }
+  });
+});
+
+describe('letting them out', () => {
+  const open = createColliderField([]);
+
+  it('emits one at a time rather than all at once', () => {
+    // A loft waking up, not a spawn: the first is out immediately and the
+    // rest follow at the emission interval.
+    const flock = createFlock(4, { x: 0, y: 6, z: 0 });
+    const wind = createWind();
+    const inTheAir = () => flock.members.filter((m) => m.down <= 0).length;
+
+    expect(inTheAir()).toBe(1);
+    for (const seconds of [3, 6, 9]) {
+      for (let t = 0; t < 3; t += DT) flock.update(DT, open, wind);
+      expect(inTheAir(), `${seconds}s`).toBe(seconds / defaultFlockOptions.emitInterval + 1);
+    }
+  });
+
+  it('keeps the ones still waiting out of the air entirely', () => {
+    // They have a position -- the roost -- but nothing should draw them there.
+    const flock = createFlock(4, { x: 0, y: 6, z: 0 });
+    expect(flock.members.filter((m) => m.down > 0).length).toBe(flock.members.length - 1);
+  });
+
+  it('puts a dead one straight back', () => {
+    const flock = createFlock(4, { x: 0, y: 40, z: 0 });
+    const wind = createWind();
+    for (let t = 0; t < 30; t += DT) flock.update(DT, open, wind);
+
+    const victim = flock.members.find((m) => m.down <= 0)!;
+    const where = { ...victim.state.position };
+    victim.state.ending = {
+      kind: 'crashed',
+      cause: 'hard-impact',
+      speed: 12,
+      sink: 6,
+      bank: 0,
+      position: where,
+    };
+
+    flock.update(DT, open, wind);
+    expect(victim.state.ending).toBeNull();
+    expect(victim.down).toBe(0);
+    // Back at the roost, not left where it fell.
+    expect(Math.hypot(victim.state.position.x, victim.state.position.z)).toBeLessThan(1);
   });
 });

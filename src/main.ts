@@ -123,6 +123,15 @@ const objective = (name: string) => world.markers.find((marker) => marker.name =
 for (const marker of world.markers) marker.setActive(marker.name === LEVELS[level]);
 scene.add(world.group);
 
+/**
+ * The marker arrows get a pass of their own, over a cleared depth buffer.
+ *
+ * Nothing in the world can then be in front of them, which is the point: an
+ * arrow you cannot see from behind a block of flats is no help at all.
+ */
+const markerPass = new THREE.Scene();
+markerPass.add(world.overlay);
+
 const rig = createBirdRig();
 scene.add(rig.object);
 
@@ -276,6 +285,9 @@ function frame(nowMs: number) {
 
   // The flock is far enough away that the raw tick pose is smooth enough.
   flock.members.forEach((member, i) => {
+    // A bird waiting its turn to be let out is not in the air, and should not
+    // be standing on the wagon either.
+    flockRigs[i]!.object.visible = member.down <= 0;
     flockRigs[i]!.update(member.state, isPerched(member.state) ? 'perched' : 'gliding', frameTime);
   });
 
@@ -330,6 +342,11 @@ function frame(nowMs: number) {
     smoothedFps,
   );
   renderer.render(scene, camera);
+  // Then the arrows, on a fresh depth buffer so the world cannot cover them.
+  renderer.autoClear = false;
+  renderer.clearDepth();
+  renderer.render(markerPass, camera);
+  renderer.autoClear = true;
 
   requestAnimationFrame(frame);
 }

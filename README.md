@@ -168,14 +168,23 @@ abruptly looks broken rather than satisfied. Painting it permanently red, which
 is what it used to do, made the landmark findable and also made it the one
 building in the city that was obviously not a building.
 
-The arrow above it is the part that is always there. It is drawn with the depth
-test off and the fog disabled — the difference between a marker and a piece of
-scenery — so it is still visible through a block of flats and does not dissolve
-into the haze, and it is scaled with its distance from the camera so it
-subtends a constant angle. A marker you lose at 800 m is no marker at all; this
-one is legible at 1,157. Both halves are arithmetic and tested as such: what
-the flash does across a second and across the fade band, and that the arrow's
-size stays proportional to range with a floor so it does not vanish underfoot.
+The arrow above it is the part that is always there. It is scaled with its
+distance from the camera so it subtends a constant angle — a marker you lose at
+800 m is no marker at all, and this one is legible at 1,157 — and it is drawn
+in **a pass of its own**, after the world, over a cleared depth buffer.
+
+That last part took two goes. Turning the depth test off and giving it the
+highest render order is the obvious answer and it is not enough: transparent
+objects are drawn after every opaque one whatever their render order, so the
+road and railway ribbons went straight over the top of an arrow that had
+already been painted. Sorting cannot fix that, because the two are in different
+passes. Putting the arrows in a scene of their own and clearing the depth
+buffer before drawing them is an arrangement nothing can get in front of, and
+it needs no depth tricks at all — there is simply nothing else in the pass.
+
+Both halves of the marker are arithmetic and tested as such: what the flash
+does across a second and across the fade band, and that the arrow's size stays
+proportional to range with a floor so it does not vanish underfoot.
 
 **There are two levels, and only one is lit.** Level 1 is the middle wagon of
 the rake the flock roosts on; Level 2 is the loft, which is where the homing
@@ -470,6 +479,15 @@ Ten of them, roosting on the middle wagon of the train. Each leaves from the
 deck, climbs as it goes, and is released again once it has flown a few hundred
 metres out or flown into something. The effect is a slow scatter outward, which
 doubles as a way of spotting the train from a distance.
+
+**They come out one at a time**, three seconds apart, so the loft reads as
+waking up rather than as ten birds spawning at once. That was what the code
+already claimed to do — there was a comment about staggering the start — sitting
+directly above a line that set every bird's timer back to zero. And a bird that
+hits something is back in the air on the same tick now, which is worth knowing
+if you go looking for a dead one: an ending is no longer visible from outside
+at all, and a test that counted them by polling for it silently stopped
+counting anything.
 
 **They leave along the line, not in every direction.** A loft on a roof has
 open sky all round it; a roost in a rail yard does not. Released on random
@@ -926,7 +944,10 @@ npm test
   model bit for bit, and the energy books balance even though moving air can do
   work on the bird.
 
-- **`src/flock.test.ts`** — heading error takes the short way round, the
+- **`src/flock.test.ts`** — birds come out one at a time rather than all at
+  once, the ones still waiting are not in the air, and a dead one is back at
+  the roost on the tick it died — counted by watching them come home, since an
+  ending no longer survives to be polled for. Heading error takes the short way round, the
   autopilot holds a sane bank instead of rolling over, stays airborne when left
   to itself, flies speed with the nose and height with the wings, and rests
   before it is spent; the flock launches in a spread of colours, keeps most of

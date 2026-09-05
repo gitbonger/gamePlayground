@@ -57,6 +57,16 @@ export interface World {
   collider: Collider;
   /** Everything the pigeon can be sent to, in the order it was named. */
   markers: TargetMarker[];
+  /**
+   * Marker arrows, to be drawn in a pass of their own after the world.
+   *
+   * Kept out of `group` on purpose. Drawing them last with the depth test off
+   * is not enough: transparent objects render after every opaque one whatever
+   * their render order, so the road and railway ribbons painted straight over
+   * the top of an arrow that had already been drawn. A second pass over a
+   * cleared depth buffer is the only arrangement nothing can get in front of.
+   */
+  overlay: THREE.Group;
   dispose(): void;
 }
 
@@ -351,6 +361,7 @@ export function buildWorld(
   options: ObjectiveOptions = {},
 ): World {
   const group = new THREE.Group();
+  const overlay = new THREE.Group();
   const disposables: { dispose(): void }[] = [];
   const markers: TargetMarker[] = [];
 
@@ -413,7 +424,7 @@ export function buildWorld(
         material,
         new THREE.Vector3(landmark.x, landmark.height, landmark.z),
         disposables,
-        group,
+        overlay,
       ),
     );
   }
@@ -522,7 +533,7 @@ export function buildWorld(
           material as THREE.MeshLambertMaterial,
           new THREE.Vector3(vehicle.x, WAGON.deck + WAGON.stake, vehicle.z),
           disposables,
-          group,
+          overlay,
         ),
       );
     }
@@ -543,6 +554,7 @@ export function buildWorld(
     boxes: layout.boxes,
     collider: createColliderField(layout.boxes),
     markers,
+    overlay,
     dispose() {
       for (const d of disposables) d.dispose();
     },
@@ -578,23 +590,15 @@ function createMarker(
   const shaft = new THREE.CylinderGeometry(0.16, 0.16, 1.1, 4);
   shaft.translate(0, 1.65, 0);
 
-  const arrowMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffd21f,
-    fog: false,
-    depthTest: false,
-    depthWrite: false,
-  });
+  // Drawn in its own pass over a cleared depth buffer, so it needs no tricks
+  // to stay in front: there is simply nothing else in the pass with it.
+  const arrowMaterial = new THREE.MeshBasicMaterial({ color: 0xffd21f, fog: false });
   disposables.push(head, shaft, arrowMaterial);
 
   const arrow = new THREE.Group();
   for (const geometry of [head, shaft]) {
     arrow.add(new THREE.Mesh(geometry, arrowMaterial));
   }
-  // After everything else, so nothing paints over it.
-  arrow.renderOrder = 999;
-  arrow.traverse((child) => {
-    child.renderOrder = 999;
-  });
   arrow.visible = false;
   group.add(arrow);
 
