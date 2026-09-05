@@ -24,7 +24,7 @@ import {
   polygonCentroid,
   type Point2,
 } from './polygon';
-import { SPECIES, type Building, type CityLayout, type Tree } from './layout';
+import { SPECIES, type Building, type CityLayout, type Landmark, type Tree } from './layout';
 import {
   chainageOf,
   consistLength,
@@ -34,7 +34,7 @@ import {
   type Train,
   type Stock,
 } from './train';
-import { distance, type Point } from './geo';
+import type { Point } from './geo';
 
 export interface MapWorldOptions {
   /** Clear space kept between the carriageway and the wall, in metres. */
@@ -97,10 +97,15 @@ export interface MapWorldOptions {
   gardenTrees: number;
   seed: number;
   /**
-   * Where the pigeon is trying to get to. The building nearest it is marked,
-   * so the renderer can pick it out as a landmark to home in on.
+   * Described things to place before anything is generated around them.
+   *
+   * Put down first and reserved, so a house is never built through the loft
+   * and a tree is never planted on the concrete. That order is the whole
+   * point: generation gives way to description rather than the other way
+   * round, which is what lets a level name a thing and rely on it being
+   * there and being that shape.
    */
-  target?: Point;
+  landmarks?: Landmark[];
   /** Trains to run on the track. */
   trains?: TrainSpec[];
   /** How far from where a train was asked for a line may be, in metres. */
@@ -155,7 +160,6 @@ export interface TrainSpec {
 export interface MapWorld extends CityLayout {
   streets: StreetIndex;
   green: AreaIndex;
-  target: Building | null;
   /** The railways, carried through for the renderer to draw. */
   rails: Rail[];
   /** Trains standing on them, each knowing how far along its line it is. */
@@ -203,6 +207,58 @@ export function buildLayoutFromMap(
   const buildings: Building[] = [];
   const trees: Tree[] = [];
   const boxes: Box[] = [];
+
+  // --- Landmarks ------------------------------------------------------------
+  // First, before anything is worked out from the map, because everything
+  // that follows has to give way to them rather than the other way round.
+  const landmarks: Landmark[] = (options.landmarks ?? []).map((landmark) => ({ ...landmark }));
+  for (const landmark of landmarks) {
+    if (landmark.height <= 0) continue;
+    // A described building is a building: it stands in the collider and in
+    // the list, so that everything already written to keep clear of buildings
+    // keeps clear of this one too.
+    const building: Building = {
+      x: landmark.x,
+      z: landmark.z,
+      width: landmark.width,
+      depth: landmark.depth,
+      height: landmark.height,
+      ...(landmark.yaw === undefined ? {} : { yaw: landmark.yaw }),
+    };
+    buildings.push(building);
+    boxes.push(
+      turnedBox(
+        landmark.x,
+        landmark.z,
+        landmark.width,
+        landmark.height,
+        landmark.depth,
+        landmark.yaw ?? 0,
+      ),
+    );
+  }
+
+  /**
+   * Whether a point is on ground a landmark has taken, plus its margin.
+   *
+   * Tested in the landmark's own frame, so a turned one is the rectangle it
+   * is rather than the larger square its world bounds describe -- the same
+   * treatment `built` gives a house.
+   */
+  function reserved(x: number, z: number, clearance = 0): boolean {
+    return landmarks.some((landmark) => {
+      const turn = -(landmark.yaw ?? 0);
+      const dx = x - landmark.x;
+      const dz = z - landmark.z;
+      const along = dx * Math.cos(turn) + dz * Math.sin(turn);
+      const across = -dx * Math.sin(turn) + dz * Math.cos(turn);
+      const room = (landmark.margin ?? 0) + clearance;
+      return (
+        Math.abs(along) <= landmark.width / 2 + room &&
+        Math.abs(across) <= landmark.depth / 2 + room
+      );
+    });
+  }
   const gardens: Block[] = [];
   const bare: Block[] = [];
 
@@ -315,6 +371,13 @@ export function buildLayoutFromMap(
         // random.
         if (green.anyInside(footprintSamples(bx, bz, width, depth, yaw))) continue;
 
+        // Nor on ground a landmark has already taken. Tested over the
+        // house's own footprint rather than its centre, because a wing whose
+        // middle clears the loft can still be built through the side of it.
+        if (footprintSamples(bx, bz, width, depth, yaw).some(([sx, sz]) => reserved(sx, sz))) {
+          continue;
+        }
+
         // Nor across a railway. A tram shares the carriageway, so its corridor
         // is already inside a street nothing is built on; heavy rail has its
         // own ground, and this is what keeps the goods yard a goods yard.
@@ -413,6 +476,9 @@ export function buildLayoutFromMap(
         // the street is right for the shape of a block, but says nothing about
         // a wing fronting some other street that cuts through it.
         if (built(px, pz)) continue;
+        // And off the described furniture: a wood grown over a landing patch
+        // is a landing patch you cannot see or use.
+        if (reserved(px, pz)) continue;
         // And not in the four-foot. A yard planted as woodland is worse than
         // a yard left as track, which is what it looks like from the air.
         if (onTrack(px, pz, 3, 3, 0)) continue;
@@ -525,24 +591,10 @@ export function buildLayoutFromMap(
     trains.push({ line, along, direction: 1, speed: spec.speed ?? 6, stock, vehicles });
   }
 
-  // Mark the building nearest the destination, so there is something to aim
-  // at rather than a bare coordinate.
-  let target: Building | null = null;
-  if (options.target) {
-    let nearest = Infinity;
-    for (const building of buildings) {
-      const away = distance(options.target, building);
-      if (away < nearest) {
-        nearest = away;
-        target = building;
-      }
-    }
-    if (target) target.isTarget = true;
-  }
-
   return {
     buildings,
     trees,
+    landmarks,
     boxes,
     roads: map.roads,
     rails: map.rails ?? [],
@@ -553,6 +605,5 @@ export function buildLayoutFromMap(
     blocks,
     gardens,
     bare,
-    target,
   };
 }

@@ -44,8 +44,43 @@ export interface Building {
   height: number;
   /** Rotation about the vertical axis, radians. Zero for the procedural city. */
   yaw?: number;
-  /** The landmark the pigeon is homing on. At most one building has this. */
-  isTarget?: boolean;
+}
+
+/**
+ * A described thing, placed before the city is generated around it.
+ *
+ * Everything else in the world is worked out from the map: where the streets
+ * run, so where the blocks are, so where the houses and the trees go. A
+ * landmark is the other way round -- it is written down, put in place first,
+ * and the generation avoids it. That is what makes it something a level can
+ * name and rely on: the loft is a particular building at a particular
+ * coordinate rather than whichever house happened to come out nearest.
+ *
+ * A patch of concrete is the same idea lying flat. Zero height means nothing
+ * to fly into and nothing to land on that is not the ground, but it is still
+ * reserved ground and still something a level can point at.
+ */
+export interface Landmark {
+  /** What levels call it. */
+  name: string;
+  /** Where it stands, in local metres. */
+  x: number;
+  z: number;
+  /** Its footprint: along it and across it. */
+  width: number;
+  depth: number;
+  /** How tall. Zero for something flat. */
+  height: number;
+  /** Which way it faces, in the collider's yaw convention. */
+  yaw?: number;
+  /**
+   * Clear ground kept around it, in metres.
+   *
+   * So that a landmark is a landmark rather than something wedged between
+   * two houses -- and, for a flat one, so that the approach to it is not
+   * through a wood.
+   */
+  margin?: number;
 }
 
 export interface Tree {
@@ -75,6 +110,8 @@ export const SPECIES = 4;
 export interface CityLayout {
   buildings: Building[];
   trees: Tree[];
+  /** Described things, placed before the rest and avoided by it. */
+  landmarks: Landmark[];
   /** Solid volumes for every object above, in simulation coordinates. */
   boxes: Box[];
   /** Streets to draw, when the world was built from a real map. */
@@ -129,5 +166,6 @@ export function generateCityLayout(options: WorldOptions = defaultWorldOptions):
     boxes.push(aabb(x - trunk, 0, z - trunk, x + trunk, height, z + trunk));
   }
 
-  return { buildings, trees, boxes };
+  // No landmarks: this layout describes nothing, it only generates.
+  return { buildings, trees, landmarks: [], boxes };
 }

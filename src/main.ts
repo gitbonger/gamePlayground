@@ -31,7 +31,8 @@ import { createDebugGui } from './debug-gui';
 import { createScene } from './render/scene';
 import { createBirdRig, PIGEON_MORPHS, type WingPose } from './render/bird';
 import { createFlock } from './flock';
-import { LEVELS, type Level, type LevelTarget } from './levels';
+import { LEVELS, targetName, type Level, type LevelTarget } from './levels';
+import { LANDMARKS } from './landmarks';
 import { begin, isOver, reply, type Exchange } from './dialogue';
 import { createDialoguePanel } from './render/dialogue';
 import { loadProgress, saveProgress } from './progress';
@@ -138,7 +139,12 @@ const train = project(TRAIN_POINT[0], TRAIN_POINT[1], map.centre);
 
 const layout = buildLayoutFromMap(map, {
   ...defaultMapWorldOptions,
-  target: home,
+  // Described first, and everything generated afterwards gives way to them.
+  landmarks: LANDMARKS.map((landmark) => {
+    const at = project(landmark.at[0], landmark.at[1], map.centre);
+    const { at: _degrees, ...rest } = landmark;
+    return { ...rest, x: at.x, z: at.z };
+  }),
   trains: [
     // The rake of stake wagons, shuttling up and down the yard.
     { near: train, cars: 12 },
@@ -162,32 +168,14 @@ const carOf = (target: Extract<LevelTarget, { kind: 'wagon' }>): number =>
     : target.car;
 
 const smoke = createSmoke();
-/**
- * The landmark building belongs to whichever level is about a building, if
- * any is. None is yet, so it stands there as a landmark and nothing more --
- * which is what it looked like before it was ever a target.
- */
-const landmarkLevel = LEVELS.find((spec) => spec.target.kind === 'building');
-
-/** Where each level's concrete patch goes, in local metres. */
-const patches = LEVELS.filter((spec) => spec.target.kind === 'patch').map((spec) => {
-  const on = spec.target as Extract<LevelTarget, { kind: 'patch' }>;
-  const at = project(on.at[0], on.at[1], map.centre);
-  return { name: spec.name, x: at.x, z: at.z, size: on.size };
-});
-// Nothing solid: a patch is level with the grass, so it is a marking rather
-// than a step. Landing on it, landing beside it and walking across from one
-// to the other are all the same surface, which is what keeps the first level
-// a first level.
-
 const world = buildWorld(layout, {
-  ...(landmarkLevel ? { landmark: landmarkLevel.name } : {}),
-  patches,
-  // Every level's target is built and sitting there dark. Which one is lit is
-  // the whole of switching between them.
+  // The described things need no list here: they arrive on the layout already
+  // named, having been put there on purpose. Only the wagons do, because
+  // which wagon is a level is a decision about the game rather than a fact
+  // about the train.
   objectives: LEVELS.filter((spec) => spec.target.kind === 'wagon').map((spec) => {
     const on = spec.target as Extract<LevelTarget, { kind: 'wagon' }>;
-    return { name: spec.name, train: on.train, vehicle: carOf(on) };
+    return { name: on.name, train: on.train, vehicle: carOf(on) };
   }),
   smoke: smoke.puffs.length,
 });
@@ -256,6 +244,11 @@ let talkingTo: Resident | null = null;
 // because `playLevel` runs at module scope, and a `let` read before its own
 // declaration throws. This file has now made that mistake twice.
 const objective = (name: string) => world.markers.find((marker) => marker.name === name) ?? null;
+/** The marker for whatever the level being played is about. */
+const activeMarker = () => {
+  const here = LEVELS[level];
+  return here ? objective(targetName(here)) : null;
+};
 scene.add(world.group);
 
 /**
@@ -301,7 +294,7 @@ const rebuildWind = () => {
 function releaseFor(spec: Level | undefined): { at: Vec3; heading: number } {
   const point = spec ? project(spec.start[0], spec.start[1], map.centre) : release;
   const floor = world.collider.heightAt(point.x, point.z);
-  const marker = spec ? objective(spec.name) : null;
+  const marker = spec ? objective(targetName(spec)) : null;
   const aim = marker ? { x: marker.position.x, z: marker.position.z } : home;
   return {
     at: vec(
@@ -449,13 +442,15 @@ function standingSpot(spec: Level): { at: Vec3; facing: number; on: number | nul
     };
   }
 
-  // Everything else is a fixed thing, and the only question is what height
-  // its top is. The marker already knows, having been built on it -- except
-  // for a patch, whose marker sits on the marking and whose *surface* is the
-  // ground the marking is painted on.
-  const marker = objective(spec.name);
-  if (!marker) return null;
-  const top = spec.target.kind === 'patch' ? defaultParams.groundHeight : marker.position.y;
+  // Otherwise it is one of the described things, which stands still and whose
+  // shape is written down. Where its top is comes from the description rather
+  // than from the marker: a building's marker sits on its roof, but a flat
+  // one's sits on the marking, and what a bird stands on there is the ground
+  // the marking is painted on.
+  const described = LANDMARKS.find((landmark) => landmark.name === spec.target.name);
+  const marker = objective(spec.target.name);
+  if (!described || !marker) return null;
+  const top = described.height > 0 ? described.height : defaultParams.groundHeight;
   return {
     at: vec(
       marker.position.x + person.along,
@@ -497,7 +492,7 @@ function playLevel(at: number): void {
   level = at;
   saveProgress(storage(), at);
 
-  for (const marker of world.markers) marker.setActive(marker.name === spec.name);
+  for (const marker of world.markers) marker.setActive(marker.name === targetName(spec));
   // Where the sun really was over this map at that hour, rather than wherever
   // looked all right.
   setSun(sunVector(map.centre[0], map.centre[1], new Date(spec.when)));
@@ -835,7 +830,7 @@ function frame(nowMs: number) {
     resident.glowing = showing === 'person' && resident === person ? pulse : 0;
   }
 
-  const marker = objective(LEVELS[level]?.name ?? '');
+  const marker = activeMarker();
   marker?.update(
     now,
     camera.position,
@@ -922,7 +917,7 @@ function frame(nowMs: number) {
     interpolatedState,
     telemetry,
     landing,
-    distance(interpolatedState.position, objective(LEVELS[level]?.name ?? '')?.position ?? home),
+    distance(interpolatedState.position, activeMarker()?.position ?? home),
     smoothedFps,
     onFoot,
     banner(),

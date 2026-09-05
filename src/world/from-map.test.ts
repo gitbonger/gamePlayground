@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
+import type { Landmark } from './layout';
 import { indexStreets, type MapData, type Rail, type Road } from './streets';
 import { footprintSamples, type Area } from './areas';
 import { distanceToEdges, pointInPolygon } from './polygon';
@@ -298,21 +299,118 @@ describe('building a perimeter block', () => {
     expect(bird.ending).not.toBeNull();
   });
 
-  it('marks exactly one building as the target, the one nearest it', () => {
-    const home = { x: 40, z: 40 };
-    const homing = buildLayoutFromMap(mapOf(BLOCK), { ...defaultMapWorldOptions, target: home });
+});
 
-    const marked = homing.buildings.filter((b) => b.isTarget);
-    expect(marked).toHaveLength(1);
-    expect(homing.target).toBe(marked[0]);
+/**
+ * The described things: the ones written down rather than worked out.
+ *
+ * They go in before anything is generated, and the generation gives way to
+ * them. That order is the whole point -- it is what lets a level say "The
+ * Loft" and mean a particular building of a particular shape, instead of
+ * whichever house happened to come out nearest to a coordinate.
+ */
+describe('describing a thing into the world', () => {
+  const TOWER: Landmark = {
+    name: 'The Loft',
+    x: 40,
+    z: 40,
+    width: 16,
+    depth: 12,
+    height: 31,
+    margin: 9,
+  };
+  // In the park, which is where a patch of concrete belongs and, more to the
+  // point here, where the trees are.
+  const SLAB: Landmark = {
+    name: 'The Concrete',
+    x: 160,
+    z: 40,
+    width: 9,
+    depth: 9,
+    height: 0,
+    margin: 7,
+  };
 
-    const away = (b: { x: number; z: number }) => Math.hypot(b.x - home.x, b.z - home.z);
-    expect(away(homing.target!)).toBeCloseTo(Math.min(...homing.buildings.map(away)), 9);
+  const withLandmark = (landmark: Landmark) =>
+    buildLayoutFromMap(mapOf(BLOCK), { ...defaultMapWorldOptions, landmarks: [landmark] });
+
+  /**
+   * Whether a point falls on the ground a landmark has taken.
+   *
+   * Worked out here from the description alone rather than borrowed from the
+   * generator, so that the two agreeing means something.
+   */
+  const taken = (landmark: Landmark, x: number, z: number) => {
+    const turn = -(landmark.yaw ?? 0);
+    const along = (x - landmark.x) * Math.cos(turn) + (z - landmark.z) * Math.sin(turn);
+    const across = -(x - landmark.x) * Math.sin(turn) + (z - landmark.z) * Math.cos(turn);
+    return (
+      Math.abs(along) <= landmark.width / 2 + (landmark.margin ?? 0) &&
+      Math.abs(across) <= landmark.depth / 2 + (landmark.margin ?? 0)
+    );
+  };
+
+  it('stands exactly where it was described, at its own size', () => {
+    const described = withLandmark(TOWER);
+    const it_ = described.buildings.filter((b) => b.height === TOWER.height);
+    expect(it_).toHaveLength(1);
+    expect(it_[0]).toMatchObject({ x: 40, z: 40, width: 16, depth: 12, height: 31 });
+    // And it is listed as described, so the renderer knows to draw it apart
+    // from the crowd and the levels know it is there to be aimed at.
+    expect(described.landmarks.map((l) => l.name)).toEqual(['The Loft']);
   });
 
-  it('marks nothing when there is nowhere to home to', () => {
-    expect(layout.target).toBeNull();
-    expect(layout.buildings.some((b) => b.isTarget)).toBe(false);
+  it('has no house built through it, nor inside its margin', () => {
+    const plain = buildLayoutFromMap(mapOf(BLOCK), defaultMapWorldOptions);
+    const onIt = (buildings: readonly { x: number; z: number; width: number; depth: number; yaw?: number }[]) =>
+      buildings.filter((b) =>
+        footprintSamples(b.x, b.z, b.width, b.depth, b.yaw ?? 0).some(([x, z]) =>
+          taken(TOWER, x, z),
+        ),
+      );
+
+    // The ground it takes is ground the generator would otherwise have built
+    // on, or this proves nothing.
+    expect(onIt(plain.buildings).length).toBeGreaterThan(0);
+
+    const described = withLandmark(TOWER);
+    const others = described.buildings.filter((b) => b.height !== TOWER.height);
+    expect(onIt(others)).toEqual([]);
+  });
+
+  it('has no tree planted on it, nor inside its margin', () => {
+    const plain = buildLayoutFromMap(mapOf(BLOCK, [PARK]), defaultMapWorldOptions);
+    const onIt = (trees: readonly { x: number; z: number }[]) =>
+      trees.filter((t) => taken(SLAB, t.x, t.z));
+
+    expect(onIt(plain.trees).length).toBeGreaterThan(0);
+    expect(onIt(buildLayoutFromMap(mapOf(BLOCK, [PARK]), {
+      ...defaultMapWorldOptions,
+      landmarks: [SLAB],
+    }).trees)).toEqual([]);
+  });
+
+  it('gives a flat one no walls, so it can be walked onto from outside', () => {
+    // A slab of concrete is a marking, not a thing: a bird flying at head
+    // height across it must pass straight through where it is.
+    const flat = withLandmark(SLAB);
+    expect(flat.buildings.some((b) => b.x === SLAB.x && b.z === SLAB.z)).toBe(false);
+
+    const across = (layout: ReturnType<typeof withLandmark>) =>
+      createColliderField(layout.boxes).sweep(
+        vec(SLAB.x - 6, 1, SLAB.z),
+        vec(SLAB.x + 6, 1, SLAB.z),
+        0.22,
+      );
+    expect(across(flat)).toBeNull();
+
+    // The same description given a height is a wall, so the sweep above is an
+    // observation about the slab rather than one about that stretch of park.
+    expect(across(withLandmark({ ...SLAB, height: 20 }))).not.toBeNull();
+  });
+
+  it('describes nothing when no landmarks are given', () => {
+    expect(buildLayoutFromMap(mapOf(BLOCK), defaultMapWorldOptions).landmarks).toEqual([]);
   });
 });
 

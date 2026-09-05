@@ -12,6 +12,7 @@
  */
 
 import { GREETING, type Turn } from './dialogue';
+import { LOFT, PARK_PATCH } from './landmarks';
 
 /**
  * What a level asks you to land on. Always a thing, never a place.
@@ -27,11 +28,19 @@ export type LevelTarget =
    * A vehicle of one of the rakes. By index rather than by coordinate,
    * because it will not be where you left it.
    */
-  | { kind: 'wagon'; train: number; car: number | 'middle' }
-  /** The building nearest a point, given in degrees. */
-  | { kind: 'building'; near: [number, number] }
-  /** A patch of concrete, laid at a point given in degrees. */
-  | { kind: 'patch'; at: [number, number]; size: number };
+  | { kind: 'wagon'; name: string; train: number; car: number | 'middle' }
+  /**
+   * One of the described things in the world, by name.
+   *
+   * Referenced rather than described here, so that two levels aiming at the
+   * same building are aiming at the same building. The name comes off the
+   * landmark itself rather than being written out again, which is a typo
+   * that cannot be made.
+   */
+  | { kind: 'landmark'; name: string };
+
+/** What the marker over a level's target is called. */
+export const targetName = (level: Level): string => level.target.name;
 
 /** Who is waiting there. */
 export interface LevelPerson {
@@ -80,7 +89,7 @@ export const LEVELS: readonly Level[] = [
     start: [47.495944, 19.093122],
     // Midday, so the shadows are short and the ground reads plainly.
     when: '2025-06-21T10:00:00Z',
-    target: { kind: 'patch', at: [47.494297, 19.090454], size: 9 },
+    target: { kind: 'landmark', name: PARK_PATCH.name },
     person: { morph: 6, along: 2.4, across: 0 },
     dialogue: GREETING,
   },
@@ -96,7 +105,7 @@ export const LEVELS: readonly Level[] = [
     // west, which hangs the sun over the rooftops instead of above the top of
     // the frame, and makes the shadows long enough to read from the air.
     when: '2025-06-21T16:00:00Z',
-    target: { kind: 'building', near: [47.494953, 19.081954] },
+    target: { kind: 'landmark', name: LOFT.name },
     person: { morph: 1, along: 2.6, across: 0 },
     dialogue: GREETING,
   },
@@ -107,7 +116,7 @@ export const LEVELS: readonly Level[] = [
     start: [47.503261, 19.091374],
     // Low evening sun, straight down the yard.
     when: '2025-06-21T17:30:00Z',
-    target: { kind: 'wagon', train: 0, car: 'middle' },
+    target: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' },
     person: { morph: 3, along: 2.5, across: 0 },
     dialogue: GREETING,
   },

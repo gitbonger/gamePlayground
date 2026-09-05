@@ -157,18 +157,35 @@ buildings. Coasting all the way there is one way to get it wrong — the bird
 turns up 44 seconds later doing 12.7 m/s at 11 m, below the rooftops and much
 too fast — but that is an observation about one way to fly it, not a limit.
 
-The home point itself sits on open ground 13 m from a residential street, so
-the red landmark is the building nearest it, about 32 m away.
+The home point itself is where **The Loft** stands, which is not a house the
+generator happened to put there but a building written down and placed on
+purpose.
 
 Every control is a plain key. Modifiers make poor ones: the operating system
 claims combinations built on them, and while one is held the browser often
 stops delivering key-up events, so a control bound to a modifier can stick down
 with no way to let go of it. Pressing one now releases everything instead.
 
-Whichever generated building lands nearest the home point is marked. It gets
-its own mesh rather than a seventh instanced bucket, because it is one building
-among a couple of thousand — and because being marked means being recoloured
-several times a second.
+**Some things in the world are described rather than generated.** Everything
+else is worked out from the map: where the streets run, so where the blocks
+are, so where the houses and the trees go. A landmark is the other way round.
+It is written down in `src/landmarks.ts` as a name, a coordinate and a size,
+it goes into the layout *before* any of that, and the generation gives way to
+it — no house is built through one and no tree is planted on one, each tested
+over its own footprint in the landmark's own frame, and each keeping a margin
+of clear ground so a landmark is a landmark rather than the end of a terrace.
+
+That order is what makes them nameable. A level says `The Loft` and gets a
+particular building of a particular shape at a particular coordinate; before,
+it named a point and got whichever house came out nearest to it, which is a
+thing you can only describe by pointing at the result. Two levels aiming at
+the same building now demonstrably aim at the same building, and a level
+naming something that does not exist is a failing test rather than a missing
+marker at run time.
+
+Each described thing gets its own mesh rather than a seventh instanced bucket,
+because it is one building among a couple of thousand — and because being the
+target means being recoloured several times a second.
 
 **It flashes, and it wears an arrow.** The target sits in an ordinary colour
 and goes red once a second, on a raised cosine so it swells and fades rather
@@ -199,17 +216,26 @@ proportional to range with a floor so it does not vanish underfoot.
 
 **Three of them, getting harder.** *The Park* is a patch of concrete on open
 ground at midday: nothing to fly round, nothing that moves, and the whole
-approach visible from the start. *The Loft* is twenty-four metres up on a roof
-among other roofs in late-afternoon light — still nothing moving, but you have
-to pick the right one. *The Yard* is a wagon of a running train under a low
-evening sun, which is the first target that will not wait for you.
+approach visible from the start. *The Loft* is thirty-one metres up on a
+flat-topped block standing seven metres clear of the 16–24 m roofline around
+it, in late-afternoon light — still nothing moving, but you have to pick it
+out of a city of roofs and then stop on sixteen metres by twelve. *The Yard*
+is a wagon of a running train under a low evening sun, which is the first
+target that will not wait for you.
 
 **Every target is a thing, never a place.** Open ground was the awkward case:
 a wagon and a building are objects with a material each to flash and a top to
 land on, and a field is a field. Rather than teach the marker about targets
-that are not things, a level that wants one lays one — a patch of concrete in
-the park. Everything downstream then treats all three kinds the same, and
-there is no special case anywhere.
+that are not things, a level that wants one describes one — a patch of
+concrete in the park, `The Concrete`, laid the same way the Loft is and by the
+same machinery. Everything downstream then treats all three kinds the same,
+and there is no special case anywhere.
+
+So a level's target is one of two references: a vehicle of a rake, by index
+rather than by coordinate because it will not be where you left it, or a
+described thing, by name. Both are looked up the same way — the marker called
+after what the level is about, never after the level itself, since two levels
+on one building would otherwise want the same marker under two names.
 
 **And the patch is level with the grass**, a flat layer like the roads rather
 than a slab sitting on top. A step of even ten centimetres makes the first
@@ -414,7 +440,7 @@ to turn a little to the right goes almost all the way round to the left.
 Nothing about the marker is specific to buildings: it takes a material to
 recolour and a height to hang the arrow over. Marking a wagon needed two
 things. It gets its own mesh, pulled out of the merged rake, for the same
-reason the landmark building does — one wagon cannot be recoloured inside a
+reason a described building does — one wagon cannot be recoloured inside a
 mesh that holds thirteen. And the flash moved from the diffuse colour to the
 **emissive**, because a wagon is one mesh of many vertex colours — timber,
 rust, iron — and multiplying that lot by red gives a muddy brown rather than a
@@ -787,10 +813,12 @@ The roofs are gabled, pitched about 27 degrees, in courses of clay tile 26 cm
 across, with the gable ends left as the party walls they are. The roof takes
 the top few metres *of* the building rather than being piled on top of it, so
 the ridge is still the height the layout says and the collision box, which
-stops there, keeps its meaning. The landmark is the exception and stays flat:
-it is the one building the pigeon is meant to put down on, and a ridge is
+stops there, keeps its meaning. Described buildings are the exception and stay
+flat: they are the ones the pigeon is meant to put down on, and a ridge is
 nowhere for a bird to stand -- the collider would settle it on the ridge line
-with the tiles falling away underneath.
+with the tiles falling away underneath. `buildRoofs` takes the set to leave
+bare, and the instanced crowd skips the same set, so a landmark is left out of
+both by one decision rather than two.
 
 Windows are never lit. It is six in the evening in June; a lit window at that
 hour reads as a mistake rather than as life. What varies between panes is how

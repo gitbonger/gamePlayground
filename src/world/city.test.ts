@@ -24,6 +24,9 @@ const BLOCK: Road[] = [
 /** Four hundred metres of siding, well clear of the block. */
 const SIDING: Rail[] = [{ kind: 'rail', width: 8, points: [[-200, 320], [200, 320]] }];
 
+/** A described building, standing in the middle of the block. */
+const TOWER = { name: 'Level 2', x: 40, z: 40, width: 16, depth: 12, height: 31 };
+
 const map: MapData = {
   name: 'test',
   centre: [0, 0],
@@ -77,17 +80,18 @@ describe('roofs', () => {
     }
   });
 
-  it('leaves the landmark flat, so the pigeon has somewhere to land', () => {
+  it('leaves a named building flat, so the pigeon has somewhere to land', () => {
     // A pitched roof is nowhere for a bird to stand: the collider would settle
     // it on the ridge line with the tiles falling away underneath.
-    const homing = buildLayoutFromMap(map, { ...defaultMapWorldOptions, target: { x: 40, z: 40 } });
-    const marked = homing.buildings.filter((b) => b.isTarget);
-    expect(marked).toHaveLength(1);
+    const homing = buildLayoutFromMap(map, { ...defaultMapWorldOptions, landmarks: [TOWER] });
+    const at = homing.buildings.findIndex((b) => b.height === TOWER.height);
+    expect(at).toBeGreaterThanOrEqual(0);
 
-    // Six triangles per roof, three vertices each, and one building without.
-    const vertices = buildRoofs(homing.buildings).getAttribute('position').count;
-    expect(vertices).toBe((homing.buildings.length - 1) * 6 * 3);
-    expect(buildRoofs([marked[0]!]).getAttribute('position').count).toBe(0);
+    // Six triangles per roof, three vertices each, and one building left bare.
+    const all = buildRoofs(homing.buildings).getAttribute('position').count;
+    expect(all).toBe(homing.buildings.length * 6 * 3);
+    const bare = buildRoofs(homing.buildings, new Set([at])).getAttribute('position').count;
+    expect(bare).toBe(all - 6 * 3);
   });
 
   it('pitches a roof to its own depth, up to a limit', () => {
@@ -198,10 +202,9 @@ describe('levels', () => {
   const build = () =>
     buildWorld(buildLayoutFromMap(map, {
       ...defaultMapWorldOptions,
-      target: { x: 40, z: 40 },
+      landmarks: [TOWER],
       trains: [{ near: { x: 0, z: 320 }, cars: 4 }],
     }), {
-      landmark: 'Level 2',
       objectives: [{ name: 'Level 1', train: 0, vehicle: 2 }],
     });
 
@@ -214,11 +217,10 @@ describe('levels', () => {
   it('puts the level-one marker on the wagon it was told to', () => {
     const layout = buildLayoutFromMap(map, {
       ...defaultMapWorldOptions,
-      target: { x: 40, z: 40 },
+      landmarks: [TOWER],
       trains: [{ near: { x: 0, z: 320 }, cars: 4 }],
     });
     const world = buildWorld(layout, {
-      landmark: 'Level 2',
       objectives: [{ name: 'Level 1', train: 0, vehicle: 2 }],
     });
 
@@ -309,11 +311,10 @@ describe('a train that moves', () => {
   const make = () => {
     const layout = buildLayoutFromMap(map, {
       ...defaultMapWorldOptions,
-      target: { x: 40, z: 40 },
+      landmarks: [TOWER],
       trains: [{ near: { x: 0, z: 320 }, cars: 4 }],
     });
     const world = buildWorld(layout, {
-      landmark: 'Level 2',
       objectives: [{ name: 'Level 1', train: 0, vehicle: 2 }],
     });
     return { layout, world };
@@ -390,7 +391,7 @@ describe('a train that moves', () => {
 describe('drawing the smoke', () => {
   const build = () =>
     buildWorld(
-      buildLayoutFromMap(map, { ...defaultMapWorldOptions, target: { x: 40, z: 40 } }),
+      buildLayoutFromMap(map, { ...defaultMapWorldOptions, landmarks: [TOWER] }),
       { smoke: 64 },
     );
 

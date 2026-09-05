@@ -57,26 +57,15 @@ export interface TargetMarker {
 export interface ObjectiveOptions {
   /** How many puffs of smoke the renderer must be ready to draw. */
   smoke?: number;
-  /** What to call the marked building, if the layout has one. */
-  landmark?: string;
   /**
    * Vehicles to pick out as objectives, by which train and where in the rake.
    *
    * Named here rather than flagged on the layout because which wagon is a
-   * level is a decision about the game, not a fact about the train.
+   * level is a decision about the game, not a fact about the train. The
+   * described things in the world need no such list: they arrive on the
+   * layout already named, having been put there on purpose.
    */
   objectives?: { name: string; train: number; vehicle: number }[];
-  /**
-   * Concrete patches to lay, in local metres.
-   *
-   * Because open ground is the one target with nothing to be: a wagon and a
-   * building are objects with a material each to flash and a top to land on,
-   * and a field is a field. Rather than make the marker cope with a target
-   * that is not a thing, the level lays a thing -- a patch of concrete in the
-   * park, which is an ordinary object like the others and needs no special
-   * case anywhere.
-   */
-  patches?: { name: string; x: number; z: number; size: number }[];
 }
 
 export interface World {
@@ -314,8 +303,18 @@ function roofPrism(): [number, number, number][][] {
  * down on, and a pitched roof is not somewhere a bird can stand -- the collider
  * would settle it on the ridge line while the tiles fell away underneath.
  */
-export function buildRoofs(buildings: readonly Building[]): THREE.BufferGeometry {
-  const tiled = buildings.filter((building) => !building.isTarget);
+export function buildRoofs(
+  buildings: readonly Building[],
+  /**
+   * Buildings to leave bare, by index.
+   *
+   * A landmark's flat top is exactly the top of its collision box, so the
+   * bird lands where it looks like it does. A pitched roof over that would
+   * be a roof you fall through.
+   */
+  bare: ReadonlySet<number> = new Set(),
+): THREE.BufferGeometry {
+  const tiled = buildings.filter((_, i) => !bare.has(i));
   const prism = roofPrism();
   const positions = new Float32Array(tiled.length * prism.length * 9);
   const matrix = new THREE.Matrix4();
@@ -465,39 +464,83 @@ export function buildWorld(
   const scale = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
 
-  // The landmark is one building among thousands, so it gets its own mesh
-  // rather than a seventh instanced bucket holding a single entry.
-  const landmark = layout.buildings.find((building) => building.isTarget);
-  if (landmark) {
-    // An ordinary building between flashes, which is what it goes back to.
-    const material = withWindows(new THREE.MeshLambertMaterial({ color: BUILDING_COLORS[0] }));
-    disposables.push(material);
-    // Full height, with no roof taken out of it: the flat top is exactly the
-    // top of the collision box, so the bird lands where it looks like it does.
-    const mesh = new THREE.Mesh(boxGeometry, material);
-    mesh.position.set(landmark.x, landmark.height / 2, landmark.z);
+  /**
+   * The described things, each drawn on its own.
+   *
+   * A landmark is one building among thousands, so it gets its own mesh
+   * rather than a seventh instanced bucket holding a single entry -- and it
+   * has to be its own mesh anyway, because it is the thing that flashes.
+   *
+   * Which buildings these are is recorded so the instanced crowd and the
+   * roofs both leave them out: a landmark's flat top is exactly the top of
+   * its collision box, and a pitched roof over that is a roof you fall
+   * through.
+   */
+  const described = new Set<number>();
+  for (const landmark of layout.landmarks) {
+    if (landmark.height > 0) {
+      const at = layout.buildings.findIndex(
+        (building) =>
+          building.x === landmark.x &&
+          building.z === landmark.z &&
+          building.height === landmark.height,
+      );
+      if (at >= 0) described.add(at);
+
+      // An ordinary building between flashes, which is what it goes back to.
+      const material = withWindows(new THREE.MeshLambertMaterial({ color: LANDMARK_COLOR }));
+      disposables.push(material);
+      const mesh = new THREE.Mesh(boxGeometry, material);
+      mesh.position.set(landmark.x, landmark.height / 2, landmark.z);
+      mesh.rotation.y = landmark.yaw ?? 0;
+      mesh.scale.set(landmark.width, landmark.height, landmark.depth);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+
+      markers.push(
+        createMarker(
+          landmark.name,
+          material,
+          new THREE.Vector3(landmark.x, landmark.height, landmark.z),
+          disposables,
+          overlay,
+        ),
+      );
+      continue;
+    }
+
+    // Flat: a patch of concrete, level with the grass rather than laid on
+    // top of it. A slab even ten centimetres proud is a step, and a level
+    // whose target you have to land *inside* is a much harder level than one
+    // whose target you land near and walk onto.
+    const slab = new THREE.PlaneGeometry(landmark.width, landmark.depth);
+    slab.rotateX(-Math.PI / 2);
+    const concrete = new THREE.MeshLambertMaterial({
+      color: PATCH_COLOR,
+      side: THREE.DoubleSide,
+    });
+    disposables.push(slab, concrete);
+
+    const mesh = new THREE.Mesh(slab, asDecal(concrete, PATCH_ORDER));
+    mesh.position.set(landmark.x, PATCH_LIFT, landmark.z);
     mesh.rotation.y = landmark.yaw ?? 0;
-    mesh.scale.set(landmark.width, landmark.height, landmark.depth);
-    mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.renderOrder = PATCH_ORDER;
     group.add(mesh);
 
     markers.push(
       createMarker(
-        options.landmark ?? 'target',
-        material,
-        new THREE.Vector3(landmark.x, landmark.height, landmark.z),
+        landmark.name,
+        concrete,
+        new THREE.Vector3(landmark.x, PATCH_LIFT, landmark.z),
         disposables,
         overlay,
       ),
     );
   }
 
-  // --- Roofs ----------------------------------------------------------------
-  // The roof takes the top few metres of the building rather than being piled
-  // on top of it, so the ridge is still the height the layout says it is and
-  // the collision box -- which stops at that height -- keeps its meaning.
-  const roofGeometry = buildRoofs(layout.buildings);
+  const roofGeometry = buildRoofs(layout.buildings, described);
   const roofMaterial = withTiles(new THREE.MeshLambertMaterial({ color: 0xffffff }));
   disposables.push(roofGeometry, roofMaterial);
 
@@ -507,7 +550,7 @@ export function buildWorld(
   group.add(roofs);
 
   layout.buildings.forEach((building, i) => {
-    if (building.isTarget) return;
+    if (described.has(i)) return;
     const walls = building.height - roofRise(building);
     rotation.setFromAxisAngle(up, building.yaw ?? 0);
     position.set(building.x, walls / 2, building.z);
@@ -668,36 +711,6 @@ export function buildWorld(
       if (at) marker.position.set(at.x, WAGON.deck + WAGON.stake, at.z);
     }
   };
-
-  // --- Concrete ------------------------------------------------------------
-  // A patch of it in the park, so that a level about landing on open ground
-  // is a level about landing on a thing, like all the others. Flat with the
-  // grass, so you can put down beside it and walk on.
-  for (const patch of options.patches ?? []) {
-    const slab = new THREE.PlaneGeometry(patch.size, patch.size);
-    slab.rotateX(-Math.PI / 2);
-    const concrete = new THREE.MeshLambertMaterial({
-      color: PATCH_COLOR,
-      side: THREE.DoubleSide,
-    });
-    disposables.push(slab, concrete);
-
-    const mesh = new THREE.Mesh(slab, asDecal(concrete, PATCH_ORDER));
-    mesh.position.set(patch.x, PATCH_LIFT, patch.z);
-    mesh.receiveShadow = true;
-    mesh.renderOrder = PATCH_ORDER;
-    group.add(mesh);
-
-    markers.push(
-      createMarker(
-        patch.name,
-        concrete,
-        new THREE.Vector3(patch.x, PATCH_LIFT, patch.z),
-        disposables,
-        overlay,
-      ),
-    );
-  }
 
   // --- Railways -------------------------------------------------------------
   // Over the road surface, because a tramway is laid in the carriageway.
@@ -917,6 +930,8 @@ const RAIL_LIFT = 0.18;
 const PATCH_LIFT = 0.07;
 /** Poured concrete, a bit paler than the roads. */
 const PATCH_COLOR = 0x9a9a94;
+/** A landmark building, a shade off the crowd it stands in. */
+const LANDMARK_COLOR = 0x8d8477;
 
 /**
  * Height of whatever is drawn flat on the ground at a point, in metres.
