@@ -2155,6 +2155,34 @@ nothing is a silent no-op and the bird it leaves — one with no emissive at all
 a test to the real shader source three ships, and a release that renames the
 chunk fails there instead of shipping a pigeon nobody can find.
 
+### The track, and the moire it used to make
+
+A railway is drawn in the fragment shader rather than modelled: ballast,
+sleepers at their real 65 cm spacing, and the two rails, all from one flat
+ribbon and a couple of numbers per vertex. It costs one draw call for every
+metre of track in the city, and up close it is exactly right.
+
+At a distance it was wrong in two ways, and only one of them was aliasing.
+
+**A tramway was a ladder of white rungs.** The sleeper stripes reached the
+alpha but not the colour -- a tramway's sleepers are deliberately not painted,
+since tram rails are set in the road -- so what they cut out of the ribbon was
+the material's own base white. The brightest thing in the district, in stripes
+too small to draw. A tramway is now its rails and nothing else, which is both
+what one looks like and what one can be drawn as.
+
+**And the sleepers now fade into their own average.** A stripe every 65 cm is
+a stripe every fraction of a pixel at any real distance, and a pattern finer
+than the pixels sampling it does not come out fine — it comes out as moire,
+crawling as the camera moves. So the shader measures its own period in pixels
+(`fwidth`) and blends the stripes towards the mean they average to over one
+period. What is lost at distance is the pattern; the tone stays exactly where
+it was, which is why the yard still reads as ballast from a hundred metres up
+rather than as bare ground.
+
+The same trick was already being used across the track's width — that is what
+the `soft` term is — and the length had simply never been given it.
+
 ## Walking
 
 A landed pigeon is not stuck where it came down. `src/sim/walk.ts` is a second

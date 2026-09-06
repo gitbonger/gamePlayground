@@ -1738,7 +1738,18 @@ function buildRails(rails: readonly Rail[]): {
         vec3 colour = mix(diffuseColor.rgb, bed, shoulder * (1.0 - tram));
 
         // Sleepers, at their real spacing and only under the ballast.
-        float sleeper = (1.0 - smoothstep(0.34, 0.46, fract(along / ${SLEEPER_PITCH.toFixed(3)})))
+        //
+        // Faded into their own average as the pattern gets too fine to draw.
+        // A stripe every 65 cm is a stripe every fraction of a pixel at any
+        // distance, and a pattern finer than the pixels sampling it does not
+        // come out fine -- it comes out as moire, crawling as the camera
+        // moves. The mean is what the stripes average to over one period, so
+        // what is lost at distance is the pattern and not the tone.
+        float period = fwidth(along) / ${SLEEPER_PITCH.toFixed(3)};
+        float detail = 1.0 - smoothstep(0.2, 0.5, period);
+        float mean = 0.40;
+        float stripes = 1.0 - smoothstep(0.34, 0.46, fract(along / ${SLEEPER_PITCH.toFixed(3)}));
+        float sleeper = mix(mean, stripes, detail)
                       * (1.0 - smoothstep(1.2, 1.35 + soft, across));
         colour = mix(colour, vec3(0.24, 0.19, 0.15), sleeper * 0.8 * (1.0 - tram));
 
@@ -1747,8 +1758,13 @@ function buildRails(rails: readonly Rail[]): {
         colour = mix(colour, vec3(0.62, 0.63, 0.66), rail);
 
         diffuseColor.rgb = colour;
-        // Beyond the ballast a heavy line is just ground; a tramway is road.
-        diffuseColor.a *= max(max(rail, sleeper), mix(shoulder, 0.0, tram));
+        // Beyond the ballast a heavy line is just ground; a tramway is road,
+        // and a tramway is *only* its rails. The sleepers used to reach the
+        // alpha here without reaching the colour above, which painted a
+        // tramway as a ladder of white rungs in the material's own base
+        // colour -- the brightest thing in the district, and every one of
+        // them too small to draw.
+        diffuseColor.a *= max(rail, mix(max(sleeper, shoulder), 0.0, tram));
       }`,
     );
   };
