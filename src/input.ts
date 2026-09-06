@@ -66,6 +66,8 @@ export interface InputSource {
   update(dt: number): void;
   /** True on the frame a reset was requested. */
   consumeReset(): boolean;
+  /** True on the press that turns the spoken instructions on or off. */
+  consumeVoice(): boolean;
   /**
    * True once per press of the take-off key, not once per frame it is held.
    *
@@ -114,6 +116,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
   const walk: WalkControls = { forward: 0, turn: 0, launch: false };
   let launchRequested = false;
   let menuRequested = false;
+  let voiceRequested = false;
   const digits: number[] = [];
 
   const anyHeld = (codes: readonly string[]) => codes.some((code) => held.has(code));
@@ -135,6 +138,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
 
     held.add(e.code);
     if (e.code === 'KeyR') resetRequested = true;
+    if (e.code === 'KeyV') voiceRequested = true;
     if (anyHeld(BINDINGS.flap)) launchRequested = true;
     if (e.code === 'KeyL') menuRequested = true;
     // Digit1..Digit9 on the top row, and the same on the numeric pad.
@@ -168,6 +172,12 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     walk.turn = axis(WALK_BINDINGS.left, WALK_BINDINGS.right);
   }
 
+  function consumeVoice() {
+    const requested = voiceRequested;
+    voiceRequested = false;
+    return requested;
+  }
+
   function consumeReset() {
     const requested = resetRequested;
     resetRequested = false;
@@ -195,6 +205,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     walk,
     update,
     consumeReset,
+    consumeVoice,
     consumeLaunch,
     consumeMenu,
     consumeDigit,

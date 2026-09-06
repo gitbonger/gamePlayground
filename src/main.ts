@@ -45,6 +45,7 @@ import {
 import { HOME_TREE, LANDMARKS } from './landmarks';
 import { begin, isOver, reply, type Exchange } from './dialogue';
 import { createDialoguePanel, speechColour } from './render/dialogue';
+import { browserSpeaker, createVoice } from './render/voice';
 import {
   approachFor,
   cautionFor,
@@ -823,6 +824,14 @@ createDebugGui(flightParams, cameraParams, windParams, pictureParams, {
 const menu = createLevelMenu(overlay, LEVELS);
 const talkPanel = createDialoguePanel(overlay);
 const tipPanel = createTipPanel(overlay);
+/**
+ * The same instructions, said out loud.
+ *
+ * Reading is the one thing a player three seconds from a rooftop cannot spare
+ * attention for, and speech arrives without being looked at. V turns it off,
+ * for the two of us who will get tired of it first.
+ */
+const voice = createVoice(browserSpeaker(window.speechSynthesis));
 /** Hands out the flying lessons, by how far this flight has gone. */
 const tutor = createTutor();
 /**
@@ -1124,7 +1133,16 @@ function opened(): number {
  * things to say, the next thing is to go; standing on a roof, the next thing
  * is that the controls are different now.
  */
+/** The last thing said about the voice itself, and when. */
+let voiceNote: { text: string; at: number } | null = null;
+/** How long that stays up, in seconds. */
+const NOTICE = 2;
+
 function command(): Tip | null {
+  // A setting confirming itself outranks everything for a moment, because
+  // the player has just pressed a key and is owed an answer about it.
+  if (voiceNote && clock - voiceNote.at < NOTICE) return { keys: ['V'], text: voiceNote.text };
+
   if (finished && talkingTo && !midSentence()) return { keys: ['SPACE'], text: 'Take off!' };
 
   // On foot, where the controls are a different set entirely and the player
@@ -1165,6 +1183,15 @@ function frame(nowMs: number) {
     else if (talk && !isOver(talk)) talk = reply(talk, digit);
   }
   if (input.consumeReset()) respawn();
+  // V for the voice. An undiscoverable key for now, which is the right amount
+  // of discoverable for a thing whose whole purpose is to be turned off by
+  // whoever is tired of it.
+  if (input.consumeVoice()) {
+    // Said through the panel rather than shown here and overwritten a line
+    // later by whatever the flight has to say: the panel is told what to show
+    // once a frame, so anything written straight to it lasts one frame.
+    voiceNote = { text: voice.toggle() ? 'Voice on' : 'Voice off', at: clock };
+  }
   // Leaving a finished conversation starts the next level rather than taking
   // off from this one, so the key is taken here before the flight model can
   // have it -- and while there is still something to say it is taken and
@@ -1302,9 +1329,9 @@ function frame(nowMs: number) {
   // entirely below the "pull up" mark would have taught nothing.
   // Some lessons count from the take-off and some from the arrival, and the
   // arrival is the harder half.
-  tipPanel.show(
-    urgent ?? tutor.update({ flown: run.stats.distance, toGo }, frameTime, input.anyDown),
-  );
+  const saying = urgent ?? tutor.update({ flown: run.stats.distance, toGo }, frameTime, input.anyDown);
+  tipPanel.show(saying);
+  voice.update(saying, clock);
   world.updateSmoke(allPuffs, camera.quaternion);
   rig.update(interpolatedState, wings, frameTime);
 

@@ -2420,6 +2420,28 @@ before the nose. Tired comes last because it is the only one you can put off.
 The stamina bar goes red at the same mark the "slow down" instruction appears
 at, so the words and the picture say it together.
 
+**And they are said out loud.** Reading is the one thing a player three
+seconds from a rooftop cannot spare attention for, and speech arrives without
+being looked at. There was nothing to add for it: `speechSynthesis` is built
+into every browser, the voices come from the operating system, and there is
+nothing to download and nothing to pay for. `V` turns it off.
+
+What had to be written is not the speaking but the *when*, because a game
+that reads every change of state aloud is unbearable inside two minutes.
+Three rules, in `src/render/voice.ts`, and each of them exists because of a
+particular way it would otherwise be intolerable. Say a thing once when it
+appears, not once a frame — the panel is told what to show sixty times a
+second. Say nothing more while it is still on screen: twenty seconds of one
+caution is one thing being true for twenty seconds, not three things
+happening. And wait eight seconds before repeating it, since "pull up" comes
+on and off as the bird crosses ten metres and would otherwise be said four
+times in one straight line. A new instruction cuts off the one being spoken
+rather than queueing behind it: an instruction is about *now*, and a queue
+would be a voice describing a flight that has already happened.
+
+The speaking itself is one small adapter around the browser, so the rules are
+plain functions and every one of them is a test.
+
 They live under the bird, in the slot the landing cue used to have. That is
 the one place on the screen the eye is already looking — at the pigeon, and at
 what is in front of it — where a corner is somewhere you have to look away to.
