@@ -732,9 +732,9 @@ describe('the ground the layers are drawn on', () => {
     // road and railway on the map for every bird near the ground, every
     // frame. It cost 0.18 ms a call.
     //
-    // What separates the layers now is what always did most of the work: a
-    // polygon offset per layer, no depth writing, and a fixed draw order.
-    // None of those has a height.
+    // What separates the layers now is the draw order and nothing else: they
+    // are drawn in their order, and none of them writes depth. Neither of
+    // those has a height.
     const world = buildWorld(
       buildLayoutFromMap(map, { ...defaultMapWorldOptions, landmarks: [TOWER, SLAB] }),
       {},
@@ -744,7 +744,54 @@ describe('the ground the layers are drawn on', () => {
     expect(highestFlatSurface(world.group)).toBeLessThan(1e-9);
     world.dispose();
   });
+
+  it('lets none of them write depth, the ground they lie on included', () => {
+    // The bug this is here for: everything flat is drawn at exactly the same
+    // height, so what settles which of them shows is the order they are drawn
+    // in -- and that only works while none of them writes a depth for the
+    // next one to be tested against. The ground plane used to be the
+    // exception, on the grounds that something has to. Nothing has to: the
+    // world stands on this plane, so there is nothing under it to hide.
+    //
+    // With the exception in place the roads flickered like mad -- present one
+    // frame, gone the next, a whole street at a time. The offset that was
+    // supposed to prevent it does nothing, because a logarithmic depth buffer
+    // has every fragment write `gl_FragDepth` and a depth the shader writes
+    // replaces the one the rasteriser offset.
+    const world = buildWorld(
+      buildLayoutFromMap(map, { ...defaultMapWorldOptions, landmarks: [TOWER, SLAB] }),
+      {},
+    );
+
+    const flat = flatSurfaces(world.group);
+    // The ground, the parkland, the roads, the railways and the concrete.
+    expect(flat.length).toBeGreaterThanOrEqual(5);
+    for (const mesh of flat) {
+      const material = mesh.material as THREE.Material;
+      expect(material.depthWrite, `${mesh.type} at ${mesh.renderOrder}`).toBe(false);
+    }
+
+    // And they are ordered, because with no depth writing that is all there
+    // is: parkland under concrete under roads under rails.
+    const orders = flat.map((mesh) => mesh.renderOrder);
+    expect(new Set(orders).size).toBe(orders.length);
+    world.dispose();
+  });
 });
+
+/** Everything drawn flat: one height all over, so it lies on the ground. */
+function flatSurfaces(group: THREE.Object3D): THREE.Mesh[] {
+  group.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  const found: THREE.Mesh[] = [];
+  group.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    box.setFromObject(object);
+    if (box.isEmpty()) return;
+    if (box.max.y - box.min.y < 1e-6) found.push(object);
+  });
+  return found;
+}
 
 /**
  * The highest anything drawn flat sits above the ground plane, in world

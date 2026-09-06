@@ -430,7 +430,13 @@ export function buildWorld(
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
-  // Drawn first, and the only one of the three flat layers that writes depth.
+  // Drawn first, and -- like every other flat layer -- it does not write
+  // depth. It used to be the one that did, on the grounds that something has
+  // to; nothing has to. Everything in the world stands *on* this plane, so
+  // there is nothing underneath for it to hide, and a flat layer that writes
+  // depth at exactly the height of the flat layers drawn after it is a fight
+  // those layers lose about half the pixels of.
+  ground.material.depthWrite = false;
   ground.renderOrder = 0;
   group.add(ground);
   disposables.push(groundGeometry, groundMaterial, groundTexture);
@@ -549,7 +555,7 @@ export function buildWorld(
     });
     disposables.push(slab, concrete);
 
-    const mesh = new THREE.Mesh(slab, asDecal(concrete, PATCH_ORDER));
+    const mesh = new THREE.Mesh(slab, asDecal(concrete));
     mesh.position.set(landmark.x, 0, landmark.z);
     mesh.rotation.y = landmark.yaw ?? 0;
     mesh.receiveShadow = true;
@@ -690,7 +696,7 @@ export function buildWorld(
   if (layout.areas?.length) {
     for (const { geometry, material } of buildAreas(layout.areas)) {
       disposables.push(geometry, material);
-      const patch = new THREE.Mesh(geometry, asDecal(material, AREA_ORDER));
+      const patch = new THREE.Mesh(geometry, asDecal(material));
       patch.receiveShadow = true;
       patch.renderOrder = AREA_ORDER;
       group.add(patch);
@@ -801,7 +807,7 @@ export function buildWorld(
   if (layout.rails?.length) {
     const { geometry, material } = buildRails(layout.rails);
     disposables.push(geometry, material);
-    const track = new THREE.Mesh(geometry, asDecal(material, RAIL_ORDER));
+    const track = new THREE.Mesh(geometry, asDecal(material));
     track.receiveShadow = true;
     track.renderOrder = RAIL_ORDER;
     group.add(track);
@@ -811,7 +817,7 @@ export function buildWorld(
   if (layout.roads?.length) {
     const { geometry, material } = buildRoads(layout.roads);
     disposables.push(geometry, material);
-    const surface = new THREE.Mesh(geometry, asDecal(material, ROAD_ORDER));
+    const surface = new THREE.Mesh(geometry, asDecal(material));
     surface.receiveShadow = true;
     surface.renderOrder = ROAD_ORDER;
     group.add(surface);
@@ -1116,18 +1122,24 @@ function treeShapes(): { geometry: THREE.BufferGeometry; color: number }[] {
  * them at ground level, none of them lifted above it.
  *
  * Depth alone cannot separate them -- roads cross each other and overlap at
- * every junction, and coplanar quads fight for the same pixels. Three things
- * settle it and none of them is height: a polygon offset pulls each layer
- * towards the camera by its order, none of them writes depth, and they are
- * drawn in that same order, so an overlap is settled by which was drawn last.
+ * every junction, and coplanar quads fight for the same pixels. Two things
+ * settle it and neither is height: none of them writes depth, and they are
+ * drawn in a fixed order, so an overlap is settled by which was drawn last.
+ * The ground plane they all lie on is one of them and follows the same rule.
  *
- * They used to be lifted as well -- parkland 5 cm, concrete 7, roads 12,
- * railways 18 -- and that fourth mechanism was the only one that cost
- * anything. It made the drawn ground a different height from the simulated
- * ground, so a bird standing on a railway stood *in* it, and the fix for that
- * was to ask, every frame and for every bird near the ground, which of the
- * map's several thousand road and railway segments it happened to be over.
- * That question took 0.18 ms to answer. Flat, there is no question.
+ * There used to be a third, a polygon offset per layer, and it was doing
+ * nothing at all: the renderer runs a logarithmic depth buffer, so every
+ * fragment writes `gl_FragDepth`, and a depth the shader writes replaces the
+ * one the rasteriser offset. It went unnoticed while the layers were also
+ * lifted -- parkland 5 cm, concrete 7, roads 12, railways 18 -- and turned up
+ * the moment they were flattened, as roads flickering a street at a time.
+ *
+ * The lift was the one mechanism that cost anything. It made the drawn ground
+ * a different height from the simulated ground, so a bird standing on a
+ * railway stood *in* it, and the fix for that was to ask, every frame and for
+ * every bird near the ground, which of the map's several thousand road and
+ * railway segments it happened to be over. That question took 0.18 ms to
+ * answer. Flat, there is no question.
  */
 /** Poured concrete, a bit paler than the roads. */
 const PATCH_COLOR = 0x9a9a94;
@@ -1257,11 +1269,22 @@ const PATCH_ORDER = 2;
 const ROAD_ORDER = 3;
 const RAIL_ORDER = 4;
 
-/** Pull a ground decal towards the camera, out of the surface it lies on. */
-function asDecal(material: THREE.Material, order: number): THREE.Material {
-  material.polygonOffset = true;
-  material.polygonOffsetFactor = -4 - order;
-  material.polygonOffsetUnits = -4 - order;
+/**
+ * Mark a material as a ground decal: drawn in its order, over whatever was
+ * drawn before it, writing no depth of its own.
+ *
+ * It used to pull the decal towards the camera with a polygon offset as well.
+ * That did nothing, and had done nothing for as long as the offset had been
+ * there: the renderer runs a **logarithmic depth buffer**, so every fragment
+ * writes `gl_FragDepth` itself, and a depth the shader writes replaces the
+ * one the rasteriser offset. Cranking the offset a thousandfold changes not a
+ * pixel, which is how this was finally established rather than assumed.
+ *
+ * So the ordering is the whole mechanism, and it only works if *nothing* flat
+ * writes depth -- including the ground the rest of them lie on. Which layer
+ * goes over which is said once, by the mesh's own `renderOrder`.
+ */
+function asDecal(material: THREE.Material): THREE.Material {
   material.depthWrite = false;
   return material;
 }

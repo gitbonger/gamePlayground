@@ -1916,14 +1916,36 @@ which is why a level would start smooth and get choppy at exactly the point
 you were trying to put down.
 
 So the lift is gone. It was the fourth of four mechanisms separating those
-layers, and the only one with a height: a polygon offset per layer, no depth
-writing, and a fixed draw order were already doing the work, and the ground
-renders identically without it — checked flat out along a railway two metres
-up, which is the worst case there is for coplanar quads. With every layer at
-zero the drawn ground *is* the simulated ground, so there is nothing to ask.
-`surfaceAt`, `groundSurfaceAt`, `onRibbon` and the rig's surface argument all
-went with it, and a test states the thing the whole edifice existed to work
-around: nothing drawn flat sits above the plane.
+layers, and the only one with a height. With every layer at zero the drawn
+ground *is* the simulated ground, so there is nothing to ask. `surfaceAt`,
+`groundSurfaceAt`, `onRibbon` and the rig's surface argument all went with it,
+and a test states the thing the whole edifice existed to work around: nothing
+drawn flat sits above the plane.
+
+**Then the roads began to flicker like mad** — whole streets present one frame
+and gone the next, seen from the air. Removing the lift had left three
+mechanisms, and one of the three had never worked: **a polygon offset does
+nothing under a logarithmic depth buffer**. The buffer is on because the view
+runs from under a metre to twelve kilometres, and it works by having every
+fragment write `gl_FragDepth` itself — which replaces the depth the rasteriser
+had offset. Established rather than reasoned about: cranking the offset a
+thousandfold changes not one pixel.
+
+That left two mechanisms, which are enough — no depth writing and a fixed draw
+order settle any number of coplanar layers. But they only work while *nothing*
+flat writes depth, and the ground plane was the exception, on the grounds that
+something has to. Nothing has to. Everything in the world stands on that
+plane, so there is nothing underneath for it to hide, and a flat layer writing
+depth at exactly the height of the flat layers drawn after it is a fight those
+layers lose about half the pixels of. One property, and the streets hold
+still.
+
+The earlier check — flat out along a railway two metres up, on the grounds
+that a rail beside a road is the worst case for coplanar quads — was the wrong
+worst case. The fight was never between two ribbons; it was between every
+ribbon and the ground under it, and it shows from the air rather than from
+two metres up. A test now states the rule that was missing rather than the one
+that was already kept: nothing drawn flat writes depth, the ground included.
 
 What keeps the feet visible now is only that the bird is tracked by its middle
 and hangs less far below that than its middle stands above the ground.
