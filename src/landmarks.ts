@@ -152,4 +152,41 @@ export const HOME_TREE: LandmarkSpec = {
   nest: { along: -0.85, across: 0.3 },
 };
 
-export const LANDMARKS: readonly LandmarkSpec[] = [HOME_TREE, LOFT, PARK_PATCH, WEST_PATCH];
+/**
+ * A petrol station: a hut, a pump and a car on a forecourt, set back from the
+ * road in the block between the home tree and the concrete.
+ *
+ * Small, and worth having for exactly that reason. Everything else described
+ * in this file is something a level is *about*; this is the first thing that
+ * is only there, and a city where the only landmarks are the ones you are
+ * being sent to is a city that reads as a set of targets. It also keeps its
+ * own ground: like every described thing, no house is built and no tree
+ * planted inside its forecourt.
+ */
+export const PETROL_STATION: LandmarkSpec = {
+  name: 'The Petrol Station',
+  at: [47.493674, 19.085555],
+  // The forecourt, which is the ground it takes rather than anything solid.
+  width: 18,
+  depth: 13,
+  // The hut's own height, so the marker hangs at the top of the tallest thing
+  // on the site rather than in the air over an empty rectangle.
+  height: 3.1,
+  margin: 6,
+  station: {
+    // The office along the back edge, turned to face out over the forecourt.
+    hut: { along: -5.6, across: -3.4, facing: 0, width: 6, depth: 4.2, height: 3.1 },
+    // The pump island in the middle, where a car can get at it from either
+    // side, and a car at it -- pulled up alongside rather than parked on it.
+    pump: { along: 2.2, across: 0.4, facing: 0 },
+    car: { along: 2.6, across: 3.1, facing: 0 },
+  },
+};
+
+export const LANDMARKS: readonly LandmarkSpec[] = [
+  HOME_TREE,
+  LOFT,
+  PARK_PATCH,
+  WEST_PATCH,
+  PETROL_STATION,
+];

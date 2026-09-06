@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
-import { nestOn, penthouseOf, terraceOf, type Landmark } from './layout';
+import { CAR, nestOn, penthouseOf, pointOn, PUMP, terraceOf, type Landmark } from './layout';
 import { indexStreets, type MapData, type Rail, type Road } from './streets';
 import { footprintSamples, type Area } from './areas';
 import { distanceToEdges, pointInPolygon } from './polygon';
@@ -348,6 +348,23 @@ describe('describing a thing into the world', () => {
     nest: { along: -1.6, across: 0.75 },
   };
 
+  // A petrol station: the one described thing that is not one solid shape but
+  // a piece of reserved ground with three things standing on it.
+  const STATION: Landmark = {
+    name: 'The Petrol Station',
+    x: 100,
+    z: 22,
+    width: 18,
+    depth: 13,
+    height: 3.1,
+    margin: 6,
+    station: {
+      hut: { along: -5.6, across: -3.4, facing: 0, width: 6, depth: 4.2, height: 3.1 },
+      pump: { along: 2.2, across: 0.4, facing: 0 },
+      car: { along: 2.6, across: 3.1, facing: 0 },
+    },
+  };
+
   const withLandmark = (landmark: Landmark) =>
     buildLayoutFromMap(mapOf(BLOCK), { ...defaultMapWorldOptions, landmarks: [landmark] });
 
@@ -614,6 +631,44 @@ describe('describing a thing into the world', () => {
     const { penthouse: _, ...plain } = TOWER;
     expect(withLandmark(plain).bushes).toEqual([]);
     expect(terraceOf(plain)).toBeNull();
+  });
+
+  it('reserves a forecourt without making it solid', () => {
+    // The two halves of what a petrol station is. It keeps its ground like
+    // every other described thing -- no house built through it, no tree
+    // planted on it -- but the ground itself is somewhere to fly: what you
+    // cannot fly through is the hut, the pump and the car standing on it.
+    const built = withLandmark(STATION);
+    const field = createColliderField(built.boxes);
+    const spot = (along: number, across: number) => pointOn(STATION, along, across);
+    const { hut, pump, car } = STATION.station!;
+
+    const shed = spot(hut.along, hut.across);
+    expect(field.heightAt(shed.x, shed.z)).toBeCloseTo(hut.height, 6);
+    const island = spot(pump.along, pump.across);
+    expect(field.heightAt(island.x, island.z)).toBeCloseTo(PUMP.height, 6);
+    const parked = spot(car.along, car.across);
+    expect(field.heightAt(parked.x, parked.z)).toBeCloseTo(CAR.height, 6);
+
+    // And the open forecourt, which a bird can fly the length of at head
+    // height. The lane is inside the site on purpose: what is being asserted
+    // is that the reserved ground is empty, not that the district is.
+    const open = spot(-7, 5);
+    expect(field.heightAt(open.x, open.z)).toBe(-Infinity);
+    const from = spot(-8.5, 5.5);
+    const to = spot(8.5, 5.5);
+    expect(field.sweep(vec(from.x, 1.2, from.z), vec(to.x, 1.2, to.z), 0.22)).toBeNull();
+
+    // Reserved all the same: the generator builds here without it.
+    const bare = buildLayoutFromMap(mapOf(BLOCK, [PARK]), defaultMapWorldOptions);
+    const inside = (things: readonly { x: number; z: number }[]) =>
+      things.filter((thing) => taken(STATION, thing.x, thing.z));
+    expect(inside([...bare.buildings, ...bare.trees]).length).toBeGreaterThan(0);
+    const kept = buildLayoutFromMap(mapOf(BLOCK, [PARK]), {
+      ...defaultMapWorldOptions,
+      landmarks: [STATION],
+    });
+    expect(inside([...kept.buildings, ...kept.trees])).toEqual([]);
   });
 
   it('describes nothing when no landmarks are given', () => {

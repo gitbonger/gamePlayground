@@ -25,9 +25,12 @@ import {
   type Point2,
 } from './polygon';
 import {
+  CAR,
   penthouseOf,
   peopleOn,
   plantTerrace,
+  pointOn,
+  PUMP,
   PERSON_HEIGHT,
   PERSON_WIDTH,
   SPECIES,
@@ -298,6 +301,27 @@ export function buildLayoutFromMap(
           person.z + PERSON_WIDTH / 2,
         ),
       );
+    }
+
+    // A petrol station is reserved ground with things standing on it rather
+    // than one solid thing filling it: the forecourt is somewhere to fly
+    // through, and the hut, the pump and the car are what you cannot.
+    if (landmark.station) {
+      const { hut, pump, car } = landmark.station;
+      const turn = landmark.yaw ?? 0;
+      const shed = pointOn(landmark, hut.along, hut.across);
+      boxes.push(turnedBox(shed.x, shed.z, hut.width, hut.height, hut.depth, turn + hut.facing));
+
+      const island = pointOn(landmark, pump.along, pump.across);
+      boxes.push(
+        turnedBox(island.x, island.z, PUMP.width, PUMP.height, PUMP.depth, turn + pump.facing),
+      );
+
+      const parked = pointOn(landmark, car.along, car.across);
+      boxes.push(
+        turnedBox(parked.x, parked.z, CAR.length, CAR.height, CAR.width, turn + car.facing),
+      );
+      continue;
     }
 
     if (landmark.height <= 0) continue;

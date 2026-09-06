@@ -107,6 +107,37 @@ export interface Canopy {
 }
 
 /**
+ * What makes a landmark a petrol station.
+ *
+ * Three things on a forecourt, which is the least that reads as one from the
+ * air: a hut, a pump, and a car at the pump. The landmark's own width and
+ * depth are the forecourt -- the ground it takes and keeps clear of houses
+ * and trees -- and none of that ground is solid. What is solid is the three
+ * things standing on it.
+ *
+ * Each is placed along and across the forecourt and turned to face, in the
+ * same words as everything else that stands on a landmark.
+ */
+export interface Station {
+  /** The hut: the office, and the only building on the site. */
+  hut: Standing & { width: number; depth: number; height: number };
+  /** The pump island. */
+  pump: Standing;
+  /** A car, filling up. */
+  car: Standing;
+}
+
+/**
+ * A petrol pump and a car, at the sizes they are built.
+ *
+ * Here rather than in the renderer because both the drawing and the collision
+ * boxes need them, and a pump that is one size to look at and another to fly
+ * into is the kind of disagreement nobody finds by reading.
+ */
+export const PUMP = { width: 0.9, depth: 0.6, height: 1.9 };
+export const CAR = { length: 4, width: 1.75, height: 1.45 };
+
+/**
  * A described thing, placed before the city is generated around it.
  *
  * Everything else in the world is worked out from the map: where the streets
@@ -153,6 +184,13 @@ export interface Landmark {
   canopy?: Canopy;
   /** A nest on top, in metres along and across the flat top. */
   nest?: { along: number; across: number };
+  /**
+   * Drawn as a petrol station rather than a building, if it has one.
+   *
+   * The landmark is then the forecourt: reserved ground with three solid
+   * things standing on it, rather than one solid thing filling it.
+   */
+  station?: Station;
   /** What is planted on the terrace, if anything. */
   planting?: Planting;
   /** Anybody standing on the terrace. */

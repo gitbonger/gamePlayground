@@ -14,14 +14,17 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 import { createColliderField, type Box, type Collider } from '../sim/collision';
 import {
+  CAR,
   generateCityLayout,
   nestOn,
+  PUMP,
   penthouseOf,
   PERSON_HEIGHT,
   terraceOf,
   type Building,
   type CityLayout,
   type Landmark,
+  type Station,
 } from './layout';
 import type { Rail, Road } from './streets';
 import { CARRIAGE, ENGINE, TRAM, WAGON, type Train, type Vehicle } from './train';
@@ -476,6 +479,49 @@ export function buildWorld(
    * it there.
    */
   for (const landmark of layout.landmarks) {
+    if (landmark.station) {
+      // The forecourt itself, which is the ground the landmark reserves: laid
+      // flat and drawn like every other flat thing, under the roads and level
+      // with the grass. Without it the hut, the pump and the car stand on a
+      // lawn, and three objects on a lawn are three objects rather than a
+      // petrol station.
+      const yard = new THREE.PlaneGeometry(landmark.width, landmark.depth);
+      yard.rotateX(-Math.PI / 2);
+      const tarmac = new THREE.MeshLambertMaterial({
+        color: FORECOURT,
+        side: THREE.DoubleSide,
+      });
+      disposables.push(yard, tarmac);
+      const apron = new THREE.Mesh(yard, asDecal(tarmac));
+      apron.position.set(landmark.x, 0, landmark.z);
+      apron.rotation.y = landmark.yaw ?? 0;
+      apron.receiveShadow = true;
+      apron.renderOrder = PATCH_ORDER;
+      group.add(apron);
+
+      const geometry = buildStation(landmark.station);
+      const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+      disposables.push(geometry, material);
+
+      const site = new THREE.Mesh(geometry, material);
+      site.position.set(landmark.x, 0, landmark.z);
+      site.rotation.y = landmark.yaw ?? 0;
+      site.castShadow = true;
+      site.receiveShadow = true;
+      group.add(site);
+
+      markers.push(
+        createMarker(
+          landmark.name,
+          material,
+          new THREE.Vector3(landmark.x, landmark.height, landmark.z),
+          disposables,
+          overlay,
+        ),
+      );
+      continue;
+    }
+
     if (landmark.canopy) {
       markers.push(growTree(landmark, group, disposables, overlay));
       continue;
@@ -1147,6 +1193,78 @@ const PATCH_COLOR = 0x9a9a94;
 const LANDMARK_COLOR = 0x8d8477;
 /** The paving of a roof terrace: pale, and plainly not roof tiles. */
 const TERRACE_COLOR = 0xb0aaa0;
+/**
+ * A petrol station: a hut, a pump and a car, on ground nothing else may use.
+ *
+ * One mesh of many colours rather than a mesh per part, the way the vehicles
+ * and the people are built -- the whole site is a couple of hundred triangles
+ * and there is no reason for it to be more than one draw call.
+ *
+ * Everything is modelled in the forecourt's own frame and turned with it, so
+ * the station is described the way a level describes a pigeon on a roof:
+ * along it, across it, and facing.
+ */
+function buildStation(station: Station): THREE.BufferGeometry {
+  const parts: { geometry: THREE.BufferGeometry; color: number }[] = [];
+
+  /** A box, in the frame of a thing standing on the forecourt. */
+  const box = (
+    spot: { along: number; across: number; facing: number },
+    colour: number,
+    length: number,
+    height: number,
+    width: number,
+    lift: number,
+    along = 0,
+    across = 0,
+  ) => {
+    const shape = new THREE.BoxGeometry(length, height, width);
+    shape.translate(along, lift + height / 2, across);
+    shape.rotateY(spot.facing);
+    shape.translate(spot.along, 0, spot.across);
+    parts.push({ geometry: shape, color: colour });
+  };
+
+  const { hut, pump, car } = station;
+
+  // The office: rendered walls, a flat white fascia band under the eaves, and
+  // a shallow canopy over the door. Squat, because the whole thing has to
+  // read at a glance from a hundred metres up as "small building, not house".
+  box(hut, HUT_WALL, hut.width, hut.height - 0.35, hut.depth, 0);
+  box(hut, HUT_TRIM, hut.width + 0.12, 0.35, hut.depth + 0.12, hut.height - 0.35);
+  box(hut, GLASS_HUT, hut.width * 0.62, 1.3, 0.08, 0.9, 0, -hut.depth / 2);
+
+  // The pump: an island kerb, the dispenser standing on it, and a dark head
+  // where the nozzles and the display are.
+  box(pump, FORECOURT, 3.4, 0.12, 1.4, 0);
+  box(pump, PUMP_BODY, PUMP.width, PUMP.height - 0.4, PUMP.depth, 0.12);
+  box(pump, PUMP_HEAD, PUMP.width * 0.92, 0.4, PUMP.depth * 0.92, PUMP.height - 0.28);
+
+  // The car: a body, a cabin set in from it, and four wheels. A basic car,
+  // which at this size is all a car can be -- what has to read is the shape
+  // of one, not the make.
+  box(car, CAR_BODY, CAR.length, CAR.height - 0.55, CAR.width, 0.28);
+  box(car, CAR_GLASS, CAR.length * 0.52, 0.55, CAR.width * 0.86, CAR.height - 0.55 + 0.28, -0.15);
+  for (const along of [CAR.length * 0.3, -CAR.length * 0.3]) {
+    for (const across of [CAR.width / 2 - 0.06, -(CAR.width / 2 - 0.06)]) {
+      box(car, TYRE, 0.62, 0.56, 0.2, 0, along, across);
+    }
+  }
+
+  return painted(parts);
+}
+
+/** A petrol station: rendered hut, its fascia, the pump, and a car. */
+const HUT_WALL = 0xd8d3c6;
+const HUT_TRIM = 0xf2f4f6;
+const GLASS_HUT = 0x2b3a44;
+const FORECOURT = 0x9d9a94;
+const PUMP_BODY = 0xe4e6e8;
+const PUMP_HEAD = 0x2f3338;
+const CAR_BODY = 0x9c3b34;
+const CAR_GLASS = 0x2b3138;
+const TYRE = 0x1b1b1d;
+
 /** A described tree: its leaves, the crown seen from above, and its bark. */
 const CANOPY_COLOR = 0x4e7538;
 const CROWN_TOP_COLOR = 0x6f9450;

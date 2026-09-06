@@ -235,6 +235,25 @@ only egg in the game. Neither is solid to fly into: a nest you could walk into
 would be the game arguing with the player at the one moment it should be
 getting out of the way.
 
+**A petrol station is the first described thing that is not a target.** A hut,
+a pump and a car on a forecourt, in the block between the home tree and the
+concrete. Everything else in `landmarks.ts` is something a level is *about*;
+this is only there — and a city whose only landmarks are the places you are
+being sent to is a city that reads as a list of targets.
+
+It is also the first one whose shape is not one shape. The landmark is the
+forecourt: eighteen metres by thirteen of reserved ground, which keeps houses
+and trees out of it exactly the way every described thing does, and which is
+not solid at all. What is solid is the three things standing on it. So a bird
+can fly across the forecourt at head height and cannot fly through the hut,
+and both halves of that are asserted, because "reserved" and "solid" had been
+the same thing about a landmark until now.
+
+The forecourt is drawn as a flat decal like the patches of concrete are —
+under the roads, level with the grass. Without it the three things stand on a
+lawn, and three things on a lawn are three things rather than a petrol
+station.
+
 **The Loft has a shape rather than a size.** It is a ninety by forty-two metre
 block of flats — about three times the plan of anything around it, at the same
 thirty-one metres to the top — and half of it is one storey higher than the
