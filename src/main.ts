@@ -34,6 +34,7 @@ import {
 } from './render/bird';
 import { createFlock } from './flock';
 import {
+  bellyOnEntry,
   crossed,
   crossingLine,
   LEVELS,
@@ -123,16 +124,6 @@ const MAX_FRAME_TIME = 0.25;
 const HOME_POINT: [number, number] = HOME_TREE.at;
 
 const SPAWN_SPEED = 16;
-
-/**
- * How full a belly is when the story starts, and after every respawn.
- *
- * A fifth. The two of them on the home tree are hungry -- that is the whole
- * reason anybody is flying anywhere -- and a fifth of a belly is about six
- * hundred metres of the nine hundred to the food. He arrives on what is left
- * of it, which is the level.
- */
-const STARTING_HEALTH = 0.2;
 
 /**
  * How near a bird has to be for its own bar to be worth drawing, in metres.
@@ -676,9 +667,10 @@ for (const spec of LEVELS) {
   if (!stood) continue;
 
   const state = createBird(stood.at, 0, stood.facing);
-  // The one on the home tree is as hungry as he is; she is in the same story
-  // and it is the same morning. The rest are somebody else's afternoon.
-  if (spec.begins === 'perched') state.health = STARTING_HEALTH;
+  // Whoever waits on a level the hero starts *on* is in the same story and
+  // the same morning as he is, and is as hungry. The rest are standing about
+  // in somebody else's afternoon.
+  if (spec.begins === 'perched') state.health = spec.health;
   standStill(state);
   state.restingOn = stood.on;
   const morph = CHARACTER_MORPHS[(spec.person?.morph ?? 0) % CHARACTER_MORPHS.length]!;
@@ -783,7 +775,9 @@ function respawn() {
   }
 
   bird = createBird(start.at, start.perched ? 0 : SPAWN_SPEED, start.heading);
-  bird.health = STARTING_HEALTH;
+  // Put here rather than arrived here, so the level's own figure is the
+  // figure: what the last flight left is gone with the last flight.
+  if (here) bird.health = here.health;
   if (start.perched) standStill(bird);
   previousPosition = { ...bird.position };
   previousOrientation = { ...bird.orientation };
@@ -847,6 +841,9 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
           opens: spec.crossing.opens,
         }
       : null;
+  // Walked into rather than put down in: keep whatever the last level left,
+  // unless this one needs more than that to be flyable at all.
+  if (where === 'in place') bird.health = bellyOnEntry(spec, bird.health);
   if (where === 'released') respawn();
 }
 

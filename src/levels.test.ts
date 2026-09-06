@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { crossed, crossingLine, LEVELS, targetName } from './levels';
+import { bellyOnEntry, crossed, crossingLine, LEVELS, targetName } from './levels';
 import { HOME_TREE, LANDMARKS, LOFT } from './landmarks';
 import { nestOn, penthouseOf, peopleOn, plantTerrace, pointOn, terraceOf } from './world/layout';
 import { CHARACTER_MORPHS, HERO_MORPH, PIGEON_MORPHS, PINK_MORPH } from './render/bird';
@@ -428,6 +428,54 @@ describe('what the levels aim at', () => {
     );
     const at = project(second.start[0], second.start[1], centre);
     expect(Math.hypot(at.x - line.x, at.z - line.z)).toBeLessThan(20);
+  });
+
+  it('gives the belly it takes to fly each level', () => {
+    // Every level says how full the bird is on arriving, because the belly is
+    // the one thing that carries between them and a level nobody can finish
+    // is worse than one nobody can lose.
+    for (const level of LEVELS) {
+      expect(level.health, level.name).toBeGreaterThan(0);
+      expect(level.health, level.name).toBeLessThanOrEqual(1);
+    }
+
+    // And enough of it to fly the level: three kilometres is a full belly, so
+    // whatever a level asks the bird to cover has to fit in what it starts
+    // with. Measured against the flight itself rather than restated.
+    const centre = HOME_MAP.centre as [number, number];
+    for (const level of LEVELS) {
+      if (level.begins === 'perched') continue;
+      const described = LANDMARKS.find((l) => l.name === level.target.name);
+      if (!described) continue;
+      const from = project(level.start[0], level.start[1], centre);
+      const to = project(described.at[0], described.at[1], centre);
+      const toGo = Math.hypot(to.x - from.x, to.z - from.z) - (level.crossing?.at ?? 0);
+      // A full belly is three kilometres of level flight.
+      expect(level.health * 3000, `${level.name} has ${toGo.toFixed(0)} m to fly`).toBeGreaterThan(
+        toGo,
+      );
+    }
+  });
+
+  it('tells the story with the bellies: hungry until the food, full after', () => {
+    // The data says what the levels are. Everything up to and including the
+    // errand is flown on a fraction of a belly, because that is the errand;
+    // everything after it is flown on a full one, because he has eaten.
+    const upTo = LEVELS.slice(0, 3).map((level) => level.health);
+    const after = LEVELS.slice(3).map((level) => level.health);
+    for (const belly of upTo) expect(belly).toBeLessThan(0.5);
+    for (const belly of after) expect(belly).toBe(1);
+  });
+
+  it('never takes a belly away, and never leaves one too empty to fly', () => {
+    // The rule for a level walked into out of the one before. It is a floor
+    // rather than a setting: a player who flew the last level well keeps what
+    // they earned, and a player who limped in on nothing is given a level
+    // they can still fly rather than one they have already lost.
+    const errand = LEVELS[2]!;
+    expect(bellyOnEntry(errand, 0.9)).toBe(0.9);
+    expect(bellyOnEntry(errand, 0.01)).toBe(errand.health);
+    expect(bellyOnEntry(errand, errand.health)).toBe(errand.health);
   });
 
   it('flies every level but the first', () => {

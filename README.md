@@ -2586,6 +2586,28 @@ Both of them start at a fifth. That is where the story starts: two hungry
 birds on a branch, and the food nine hundred metres away, which is more than a
 fifth of a belly covers.
 
+### The belly carries, so every level states one
+
+A position does not survive a level change; a belly does. So each level says
+how full the bird is on arriving, and the figure means two different things
+depending on how you got there.
+
+Put here by the menu or by a death, it is exactly that figure: what the last
+flight left is gone with the last flight. **Walked into out of the level
+before, it is a floor** — that figure or what you carried, whichever is more.
+Which takes nothing from a player who flew the last one well, and makes sure
+one who limped in on nothing is handed a level they can still fly rather than
+one they have already lost. Without it, crossing the yellow line at three per
+cent of a belly would be a checkpoint into a level that cannot be finished,
+which is worse than no checkpoint.
+
+The numbers tell the story on their own: a fifth, a fifth, a quarter, then
+full, full, full. Hungry until the food and fed after it, because the errand
+was food. Two tests hold that: one that the bellies read that way, and one
+that measures each level's flight against its belly at three kilometres to a
+full one — a level that cannot be flown on what it starts with is a failing
+test rather than a discovery.
+
 ## Walking
 
 A landed pigeon is not stuck where it came down. `src/sim/walk.ts` is a second

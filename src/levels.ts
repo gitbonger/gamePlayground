@@ -91,6 +91,22 @@ export interface Level {
    */
   release: number;
   /**
+   * How full the belly is on arriving, 0 to 1.
+   *
+   * Stated by every level for the same reason the release height is: there is
+   * no figure that is right twice. What makes this one different is that the
+   * belly, unlike a position, *carries* -- a level walked into out of the one
+   * before it starts with whatever the last one left.
+   *
+   * So it is a floor rather than a setting. Put here by the menu or by a
+   * death, it is exactly this; arrived at from the level before, it is this
+   * or what you brought, whichever is more. That takes nothing away from a
+   * player who flew the last one well, and it makes sure a player who limped
+   * in on nothing is given a level they can still fly rather than one they
+   * have already lost.
+   */
+  health: number;
+  /**
    * The moment it is flown at, as an ISO instant.
    *
    * Which is to say where the sun is: the light is worked out from the real
@@ -179,6 +195,16 @@ export interface Line {
   uz: number;
 }
 
+/**
+ * The belly to start a level with, given what was carried into it.
+ *
+ * The whole rule in one line, and it is a maximum rather than an assignment
+ * on purpose: never less than the level can be flown on, never less than what
+ * was earned.
+ */
+export const bellyOnEntry = (level: Level, carried: number): number =>
+  Math.max(carried, level.health);
+
 /** The line `at` metres along the way from `from` to `to`. */
 export function crossingLine(
   from: { x: number; z: number },
@@ -212,6 +238,9 @@ export const LEVELS: readonly Level[] = [
     // on, so that taking `begins: 'perched'` away would leave a level that
     // still makes sense rather than one with a hole in it.
     release: HOME_TREE.height,
+    // Hungry, which is the reason for everything that follows. The two of
+    // them have been on this branch all night.
+    health: 0.2,
     when: EVENING,
     target: { kind: 'landmark', name: HOME_TREE.name },
     // The pink one, and the only bird in the game wearing her colours. She
@@ -241,6 +270,9 @@ export const LEVELS: readonly Level[] = [
     // cannot be glided -- from twenty-three metres a pigeon covers about a
     // hundred and forty of the nine hundred.
     release: HOME_TREE.height + 5,
+    // The same morning and nothing eaten yet: a fifth of a belly is about
+    // six hundred metres, and this half is five.
+    health: 0.2,
     when: EVENING,
     // The same slab the next level is about: the arrow points at the food for
     // the whole way there, because that is what he is doing. This half is
@@ -260,6 +292,11 @@ export const LEVELS: readonly Level[] = [
     // Forty metres: about what a bird has under it after half a kilometre of
     // flapping, and well clear of the park's own trees.
     release: 40,
+    // Arrived on what is left, which by rights is almost nothing. A quarter
+    // is what makes the last four hundred metres flyable when this level is
+    // picked out of the menu -- and a floor, so flying the first half well
+    // still counts for something.
+    health: 0.25,
     when: EVENING,
     target: { kind: 'landmark', name: PARK_PATCH.name },
     person: { morph: 0, along: 2.4, across: 0 },
@@ -275,6 +312,9 @@ export const LEVELS: readonly Level[] = [
     start: [47.494610, 19.086245],
     // High enough to see the whole approach and to reach it gliding.
     release: 100,
+    // After the errand, and the errand was food. These three are flown on a
+    // full belly because the story says he has eaten.
+    health: 1,
     when: EVENING,
     target: { kind: 'landmark', name: LOFT.name },
     person: { morph: 1, along: 2.6, across: 0 },
@@ -287,6 +327,7 @@ export const LEVELS: readonly Level[] = [
     start: [47.503261, 19.091374],
     // High enough to see the whole approach and to reach it gliding.
     release: 100,
+    health: 1,
     when: EVENING,
     target: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' },
     person: { morph: 2, along: 2.5, across: 0 },
@@ -300,6 +341,7 @@ export const LEVELS: readonly Level[] = [
     start: [47.494106, 19.071122],
     // High enough to see the whole approach and to reach it gliding.
     release: 100,
+    health: 1,
     when: EVENING,
     target: { kind: 'landmark', name: WEST_PATCH.name },
     person: { morph: 3, along: 2.4, across: 0 },
