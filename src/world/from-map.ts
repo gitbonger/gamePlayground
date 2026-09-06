@@ -676,7 +676,13 @@ export function buildLayoutFromMap(
             // stones at scattered angles read as a graveyard from the air,
             // and a grid of them would read as a car park.
             yaw: rand() * Math.PI * 2,
-            height: 0.7 + rand() * 0.6,
+            // Two to four metres, which is three times the stone anybody is
+            // actually buried under. At life size they are a metre of grey in
+            // grass seen from twenty metres up by something moving at sixty:
+            // present in the data and absent from the game. Tall rather than
+            // broad, so what grows is the part that reads against the sky --
+            // three times wider as well would be a row of sheds.
+            height: 2.1 + rand() * 1.8,
           });
           continue;
         }

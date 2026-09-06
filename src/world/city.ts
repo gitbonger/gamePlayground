@@ -739,8 +739,11 @@ export function buildWorld(
     layout.graves.forEach((grave, i) => {
       rotation.setFromAxisAngle(up, grave.yaw);
       position.set(grave.x, 0, grave.z);
-      // Modelled one metre tall, so the scale is the height it stands.
-      scale.setScalar(grave.height);
+      // Modelled one metre tall and at the width a stone is, so the height is
+      // the only thing scaled. A taller stone is a taller stone, not a
+      // bigger one: scaling all three axes would make a four-metre marker two
+      // metres wide, which is a wall.
+      scale.set(1, grave.height, 1);
       matrix.compose(position, rotation, scale);
       yard.setMatrixAt(i, matrix);
     });

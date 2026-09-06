@@ -382,8 +382,11 @@ describe('a park that is a cemetery', () => {
     const yaws = yard.graves.map((grave) => grave.yaw);
     expect(new Set(yaws.map((yaw) => Math.round(yaw * 10))).size).toBeGreaterThan(10);
     for (const grave of yard.graves) {
-      expect(grave.height, 'a stone is about a metre').toBeGreaterThan(0.5);
-      expect(grave.height).toBeLessThan(1.5);
+      // Three times the stone anybody is actually buried under, for the same
+      // reason the nest is three times a nest: a metre of grey in grass is
+      // not there at all from twenty metres up.
+      expect(grave.height, 'a stone stands two to four metres').toBeGreaterThan(2);
+      expect(grave.height).toBeLessThan(4);
     }
   });
 

@@ -198,9 +198,13 @@ The map has no idea. Its areas come off OpenStreetMap as park, wood, water or
 pitch, and which of the parks is a burial ground is a decision about this
 story, so the world is told by a point: the home tree's own coordinate. The
 area containing it is the cemetery, and there is nothing to keep in step if
-the tree moves again. The stones are scenery like the trees they stand among —
-no bird has ever been stopped by a headstone — and they are scattered at
-random angles, because real ones face east in rows and rows are a thing this
+the tree moves again. They stand two to four metres, which is three times the stone anybody is
+actually buried under and is there for the same reason the nest is three times
+a nest: a metre of grey in grass is not there at all seen from twenty metres
+up by something moving at sixty. Taller rather than broader, so what grows is
+the part that reads against the sky — three times wider as well would be a row
+of sheds. The stones are scenery like the trees they stand among — no bird has
+ever been stopped by a headstone — and they are scattered at random angles, because real ones face east in rows and rows are a thing this
 generator has no way of laying. Scattered reads as a graveyard; a grid would
 read as a car park.
 
