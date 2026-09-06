@@ -867,12 +867,24 @@ train is part of the world rather than a prop, and one that stopped while your
 back was turned would be in the wrong place when you came back. That half is
 also nearly free: a step along a line and a reflection at the ends.
 
-What is skipped beyond 300 m is the presentation — laying the rake out in
-world coordinates, boxing it for collision, and interpolating it between
-ticks. A distant train is put back where it has got to once a second, which at
-a kilometre is less than a pixel of error.
+What is skipped beyond 300 m is the expensive half of the presentation:
+boxing the rake for collision, building a field over the boxes, and
+interpolating it between ticks. It is *not* the layout, and for a while it
+was. A distant train used to be put back where it had got to once a second,
+on the grounds that at a kilometre a second of travel is less than a pixel —
+which is true, and which missed that most distant trams are not a kilometre
+away. They lurched, visibly, across a whole city.
 
-**And the coarse step costs nothing in accuracy**, which is the part worth
+That rule was made when laying a rake out in world coordinates was most of the
+simulation. It has not been since the cumulative-distance tables turned
+`pointAlong` from a walk along a polyline into a binary search over one, and
+since the boxes stopped being rebuilt from scratch. Measured now: one pass
+over all thirty-eight trains and their hundred and sixty-eight vehicles is
+**0.017 ms**, so once a second cost 0.02 ms/s and thirty times a second costs
+0.5. Every frame would cost 1.0 and would also be affordable; thirty is where
+more stops being visible, at a third of a metre of tram per step.
+
+**And a coarse step costs nothing in accuracy**, which is the part worth
 stating: a train advanced once a second ends up in exactly the same place as
 one advanced 120 times a second — to the last decimal, over an hour of play
 and several reversals. Position along the line is linear in time and the

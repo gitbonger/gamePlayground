@@ -873,8 +873,24 @@ const previousAlong = layout.trains.map((train) => train.along);
  * arrive somewhere before the rake there has been boxed.
  */
 const TRAIN_REACH = 300;
-/** How often one out of reach is put back where it has got to, in seconds. */
-const DISTANT_REDRAW = 1;
+/**
+ * How often one out of reach is put back where it has got to, in seconds.
+ *
+ * Thirty times a second, which is a third of a metre of tram. It was once a
+ * second, and that was a rule made when laying a rake out in world
+ * coordinates was most of the simulation -- before the cumulative-distance
+ * tables turned `pointAlong` from a walk along a polyline into a binary
+ * search over one, and before the collision boxes stopped being rebuilt from
+ * scratch. It is not that any more, and the leftover rule was visible: a tram
+ * a kilometre off does not blur into invisibility, it lurches, and the eye
+ * finds a lurch across a whole city.
+ *
+ * Measured rather than guessed. One pass over all thirty-eight trains and
+ * their hundred and sixty-eight vehicles is 0.017 ms, so this costs 0.5 ms a
+ * second. Every frame would cost 1.0, which is also affordable; thirty is
+ * where more stops being visible.
+ */
+const DISTANT_REDRAW = 1 / 30;
 /** When each train was last laid out in world coordinates. */
 const laidOut = layout.trains.map(() => Number.NEGATIVE_INFINITY);
 /**
@@ -962,9 +978,10 @@ function moveTrains(dt: number) {
     // 96% of the whole simulation, and six of the seven trains are usually
     // kilometres away.
     if (!rakeNear(train, bird.position.x, bird.position.z, TRAIN_REACH)) {
-      // Still put back where it has got to now and then, so that a train seen
-      // from a distance is where it should be rather than where it was. At
-      // a kilometre, a second of travel is less than a pixel.
+      // Still put back where it has got to, often enough that a distant train
+      // moves rather than lurches. What is skipped out here is the expensive
+      // half -- the collision boxes and the field built over them -- not the
+      // layout, which is cheap.
       if (clock - laidOut[index]! >= DISTANT_REDRAW) {
         moveTrain(train.vehicles, train.line, train.along, train.cars, train.stock);
         laidOut[index] = clock;
