@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { createBirdRig, FOOT_DROP, type WingPose } from './bird';
+import { createBirdRig, FOOT_DROP, PINK_MORPH, type WingPose } from './bird';
 import { createBird, defaultParams } from '../sim/flight';
 import { vec } from '../sim/math3';
 
@@ -20,14 +20,11 @@ function posed(pose: WingPose, stridePhase: number) {
   let head: THREE.Object3D | undefined;
   rig.object.traverse((part) => {
     if (part.name === 'leg') legs.push(part);
-    // The head group is the one holding the beak cone.
-    if (part instanceof THREE.Group && part.getObjectByProperty('type', 'Mesh')) {
-      const cone = part.children.find(
-        (child) => child instanceof THREE.Mesh && child.geometry.type === 'ConeGeometry',
-      );
-      if (cone) head = part;
-    }
+    // The joints the walk cycle drives are named, because that is the only
+    // thing about the model's insides anything outside it relies on.
+    if (part.name === 'head') head = part;
   });
+  expect(head, 'the model has a head joint to measure').toBeDefined();
   rig.dispose();
   return { legs, head: head! };
 }
@@ -143,5 +140,88 @@ describe('the walk cycle', () => {
     const flying = posed('gliding', 0.25);
     expect(flying.head.position.z).toBeCloseTo(0, 9);
     expect(flying.legs[0]!.position.z).toBeCloseTo(flying.legs[1]!.position.z, 9);
+  });
+});
+
+describe('what the bird is built out of', () => {
+  /** Every mesh in the model, which is every draw call it costs. */
+  const meshes = (rig = createBirdRig()) => {
+    const found: THREE.Mesh[] = [];
+    rig.object.traverse((part) => {
+      if (part instanceof THREE.Mesh) found.push(part);
+    });
+    return found;
+  };
+
+  it('is one mesh per joint, and nothing more', () => {
+    // The model is thirty-three lumps. Drawn as thirty-three meshes -- which
+    // is how it started -- a flock, five residents and the hero cost more
+    // draw calls than the entire city. Fused, a bird costs one per joint: the
+    // body, the head, the tail, two shoulders, two wrists and two hips.
+    const parts = meshes();
+    expect(parts).toHaveLength(9);
+    // And one material for the lot, so a bird is one lot of shader state
+    // rather than twenty.
+    expect(new Set(parts.map((part) => part.material)).size).toBe(1);
+  });
+
+  it('carries each lump\'s colour in its vertices', () => {
+    // The colours used to be materials, one per lump, which is what made a
+    // bird twenty materials. Now they ride in the geometry -- so this is the
+    // check that a morph still reaches the model at all.
+    const colourOf = (rig: ReturnType<typeof createBirdRig>) => {
+      const body = meshes(rig)[0]!;
+      const colours = body.geometry.getAttribute('color');
+      return [colours.getX(0), colours.getY(0), colours.getZ(0)];
+    };
+
+    const feral = colourOf(createBirdRig());
+    const pink = colourOf(createBirdRig(PINK_MORPH));
+    expect(pink).not.toEqual(feral);
+    // The pink one is pinker, which is the whole of what a morph is for.
+    expect(pink[0]! - pink[2]!).toBeGreaterThan(feral[0]! - feral[2]!);
+  });
+
+  it('washes the whole bird red from one uniform, in the shader three ships', () => {
+    // The marker wash used to be a colour written into twenty materials every
+    // frame. It is one uniform now, which means it depends on a patch to the
+    // stock lambert shader -- so the patch is applied here to the real source
+    // three ships, and a release that renames the chunk fails this rather
+    // than shipping a bird that cannot be found.
+    const rig = createBirdRig();
+    const material = meshes(rig)[0]!.material as THREE.MeshLambertMaterial;
+    const shader = {
+      uniforms: {} as Record<string, { value: unknown }>,
+      vertexShader: THREE.ShaderLib['lambert']!.vertexShader,
+      fragmentShader: THREE.ShaderLib['lambert']!.fragmentShader,
+    };
+    material.onBeforeCompile(shader as never, null as never);
+
+    // The glow rides from the vertex to the fragment, and the emissive is set
+    // after the vertex colour has been folded in rather than before it.
+    expect(shader.vertexShader).toContain('vGlow = glow;');
+    const folded = shader.fragmentShader.indexOf('#include <color_fragment>');
+    expect(folded).toBeGreaterThan(-1);
+    expect(shader.fragmentShader.indexOf('totalEmissiveRadiance = mix(')).toBeGreaterThan(folded);
+
+    // And the wash is that uniform, moving when the rig is told to glow.
+    expect(shader.uniforms['washed']!.value).toBe(0);
+    rig.glow(0.75);
+    expect(shader.uniforms['washed']!.value).toBe(0.75);
+    rig.dispose();
+  });
+
+  it('keeps each lump lighting itself differently', () => {
+    // A pupil gives off almost nothing and an eye gives off half its own
+    // orange. That used to be a number on each material; it is a vertex
+    // attribute now, and a single value for the whole bird would flatten the
+    // face without changing its shape -- which is exactly the sort of loss
+    // that goes unnoticed.
+    const glow = meshes()[0]!.geometry.getAttribute('glow');
+    const values = new Set<number>();
+    for (let i = 0; i < glow.count; i += 1) values.add(Math.round(glow.getX(i) * 100));
+    expect(values.size).toBeGreaterThan(3);
+    expect(Math.min(...values)).toBeLessThan(10);
+    expect(Math.max(...values)).toBeGreaterThan(50);
   });
 });

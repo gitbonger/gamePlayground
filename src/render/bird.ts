@@ -8,6 +8,7 @@
  */
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { BirdState } from '../sim/flight';
 
 /**
@@ -188,6 +189,10 @@ export type WingPose = 'tucked' | 'gliding' | 'braking' | 'perched';
 /** The red a marked bird is washed with when it is the one to go and see. */
 const MARKED = new THREE.Color(0xd0281c);
 
+/** Scratch constants for laying out the tail: the axis it fans about, and no scale. */
+const UP = new THREE.Vector3(0, 1, 0);
+const ONE = new THREE.Vector3(1, 1, 1);
+
 export interface BirdRig {
   object: THREE.Object3D;
   /**
@@ -206,122 +211,219 @@ export interface BirdRig {
 
 const mix = (from: number, to: number, t: number): number => from + (to - from) * t;
 
+/**
+ * A shape of the bird, its colour, and how much of that colour it gives off.
+ *
+ * The bird used to be thirty-three meshes of twenty-odd materials, one per
+ * lump. Every one of those was a draw call, and with a flock, five residents
+ * and the hero on screen that was most of the frame's draw calls -- for an
+ * object a couple of hundred pixels across. So the lumps are the same lumps,
+ * modelled to the same numbers, but they are fused into one geometry per
+ * joint and their colours ride along in the vertices.
+ */
+interface Piece {
+  geometry: THREE.BufferGeometry;
+  color: number;
+  /** How much of its own colour it gives off. */
+  glow: number;
+}
+
+/**
+ * Put a shape where it belongs in the frame of the joint that carries it.
+ *
+ * The position goes into the vertices rather than onto a mesh, which is the
+ * whole trick: a lump that does not move relative to its joint does not need
+ * a transform of its own, and a lump without a transform of its own can be
+ * fused with its neighbours.
+ */
+function at(
+  geometry: THREE.BufferGeometry,
+  color: number,
+  x: number,
+  y: number,
+  z: number,
+  glow = GLOW,
+): Piece {
+  geometry.translate(x, y, z);
+  return { geometry, color, glow };
+}
+
+/**
+ * Fuse pieces into one geometry, carrying their colours in the vertices.
+ *
+ * Two attributes rather than one: the colour, which the standard vertex-colour
+ * path multiplies into the diffuse, and the glow, which the patched shader
+ * multiplies into the emissive. The glow is what a per-lump material used to
+ * carry -- a pupil gives off almost nothing, an eye gives off half its own
+ * orange -- and losing it would flatten the face.
+ */
+function fuse(pieces: readonly Piece[]): THREE.BufferGeometry {
+  const tint = new THREE.Color();
+  for (const piece of pieces) {
+    tint.set(piece.color);
+    const count = piece.geometry.getAttribute('position').count;
+    const colours = new Float32Array(count * 3);
+    const glows = new Float32Array(count);
+    for (let i = 0; i < count; i += 1) {
+      colours[i * 3] = tint.r;
+      colours[i * 3 + 1] = tint.g;
+      colours[i * 3 + 2] = tint.b;
+      glows[i] = piece.glow;
+    }
+    piece.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
+    piece.geometry.setAttribute('glow', new THREE.Float32BufferAttribute(glows, 1));
+  }
+
+  const one = mergeGeometries(pieces.map((piece) => piece.geometry));
+  // The sources are copied into the merged buffer, so they are finished with
+  // the moment it exists.
+  for (const piece of pieces) piece.geometry.dispose();
+  if (!one) throw new Error('bird parts do not share a set of attributes');
+  return one;
+}
+
+/**
+ * The one material a whole bird is made of.
+ *
+ * Lambert with vertex colours, plus two lines of patched shader: the emissive
+ * comes from the vertex rather than from a uniform, so one material can hold
+ * a bird whose parts each light themselves differently, and the marker wash
+ * is a single uniform rather than a colour written into twenty materials
+ * every frame.
+ */
+function birdSkin(): { material: THREE.MeshLambertMaterial; wash(amount: number): void } {
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  const washed = { value: 0 };
+  const marked = { value: MARKED.clone() };
+
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms['washed'] = washed;
+    shader.uniforms['marked'] = marked;
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', 'attribute float glow;\nvarying float vGlow;\nvoid main() {')
+      .replace('#include <color_vertex>', '#include <color_vertex>\n\tvGlow = glow;');
+
+    // Set after the vertex colour has been folded into the diffuse rather
+    // than from the varying itself: `diffuseColor.rgb` is a vec3 whatever
+    // three decides the colour attribute is, and the material carries no
+    // colour of its own for it to be multiplied by.
+    const colour = '#include <color_fragment>';
+    // Stated rather than hoped for: a `replace` that matches nothing is a
+    // silent no-op, and the failure it makes -- a bird with no emissive at
+    // all -- looks like a lighting decision rather than like a bug.
+    if (!shader.fragmentShader.includes(colour)) {
+      throw new Error('the lambert shader no longer folds in the vertex colour as expected');
+    }
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        'void main() {',
+        'uniform float washed;\nuniform vec3 marked;\nvarying float vGlow;\nvoid main() {',
+      )
+      .replace(
+        colour,
+        `${colour}\n\ttotalEmissiveRadiance = mix( diffuseColor.rgb * vGlow, marked, washed );`,
+      );
+  };
+  // A patched program is not the stock program, and the cache is keyed by
+  // what the renderer knows about rather than by what we did to the source.
+  material.customProgramCacheKey = () => 'pigeon';
+
+  return { material, wash: (amount: number) => (washed.value = amount) };
+}
+
 export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
   const disposables: { dispose(): void }[] = [];
-  /** Every material the bird is made of, with the emissive it rests at. */
-  const skin: { material: THREE.MeshLambertMaterial; rest: THREE.Color }[] = [];
-
-  const material = (color: number, glow = GLOW) => {
-    const m = new THREE.MeshLambertMaterial({
-      color,
-      flatShading: true,
-      // Lifts the bird off the background and stops shadow swallowing it.
-      emissive: new THREE.Color(color).multiplyScalar(glow),
-    });
-    disposables.push(m);
-    skin.push({ material: m, rest: m.emissive.clone() });
-    return m;
-  };
+  const skin = birdSkin();
+  disposables.push(skin.material);
 
   let washed = -1;
   function glow(amount: number) {
-    // Every material of the bird, every frame, is a few dozen colour writes.
-    // Skipped when nothing has changed, which is almost always.
+    // One uniform, and only when it has changed -- which is almost never.
     if (amount === washed) return;
     washed = amount;
-    for (const { material: m, rest } of skin) m.emissive.copy(rest).lerp(MARKED, amount);
+    skin.wash(amount);
   }
-  const geometry = <T extends THREE.BufferGeometry>(g: T): T => {
-    disposables.push(g);
-    return g;
-  };
-  const part = (g: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number) => {
-    const mesh = new THREE.Mesh(g, m);
-    mesh.position.set(x, y, z);
+
+  /** A fused joint: one mesh, one material, one draw call. */
+  const limb = (pieces: readonly Piece[]) => {
+    const geometry = fuse(pieces);
+    disposables.push(geometry);
+    const mesh = new THREE.Mesh(geometry, skin.material);
     mesh.castShadow = true;
     return mesh;
   };
+  const box = (width: number, height: number, depth: number) =>
+    new THREE.BoxGeometry(width, height, depth);
 
   const object = new THREE.Group();
 
-  const bodyMaterial = material(morph.body);
-  const wingMaterial = material(morph.wing);
-  const barMaterial = material(morph.bar, 0.2);
-  const headMaterial = material(morph.head);
-
   // --- Body ---------------------------------------------------------------
   // Three tapering blocks rather than one: a pigeon is deepest at the breast
-  // and narrows to the tail, and that taper is most of its silhouette.
-  object.add(part(geometry(new THREE.BoxGeometry(0.115, 0.125, 0.14)), bodyMaterial, 0, 0, -0.06));
-  object.add(part(geometry(new THREE.BoxGeometry(0.1, 0.105, 0.13)), bodyMaterial, 0, -0.004, 0.06));
-  object.add(part(geometry(new THREE.BoxGeometry(0.07, 0.075, 0.07)), bodyMaterial, 0, -0.005, 0.15));
-
-  // Fuller breast, low and forward, where the flight muscle sits.
-  object.add(part(geometry(new THREE.BoxGeometry(0.105, 0.085, 0.12)), bodyMaterial, 0, -0.035, -0.085));
-
-  // --- Head ---------------------------------------------------------------
-  // A group of its own, because a walking pigeon's head does not travel with
-  // its body: it is thrust forward and then held still in the air while the
-  // body catches up. That is the whole of what makes a pigeon walk read as a
-  // pigeon walking, and it cannot be done to parts bolted to the body.
-  const head = new THREE.Group();
-  object.add(head);
-
-  head.add(part(geometry(new THREE.BoxGeometry(0.078, 0.076, 0.086)), headMaterial, 0, 0.052, -0.172));
-  // Rounder crown, so the head is not a plain cube.
-  head.add(part(geometry(new THREE.BoxGeometry(0.058, 0.03, 0.066)), headMaterial, 0, 0.084, -0.174));
-
-  // Iridescent throat, between the head and the shoulders. Stays on the body:
-  // it is the neck the head slides on, so it does not slide with it.
+  // and narrows to the tail, and that taper is most of its silhouette. The
+  // eyes are on the body rather than on the head, which is a liberty the walk
+  // cycle takes and not an oversight: the head slides forward under them.
   object.add(
-    part(geometry(new THREE.BoxGeometry(0.09, 0.082, 0.075)), material(morph.neck, 0.3), 0, 0.03, -0.125),
+    limb([
+      at(box(0.115, 0.125, 0.14), morph.body, 0, 0, -0.06),
+      at(box(0.1, 0.105, 0.13), morph.body, 0, -0.004, 0.06),
+      at(box(0.07, 0.075, 0.07), morph.body, 0, -0.005, 0.15),
+      // Fuller breast, low and forward, where the flight muscle sits.
+      at(box(0.105, 0.085, 0.12), morph.body, 0, -0.035, -0.085),
+      // Iridescent throat, between the head and the shoulders. Stays on the
+      // body: it is the neck the head slides on, so it does not slide with it.
+      at(box(0.09, 0.082, 0.075), morph.neck, 0, 0.03, -0.125, 0.3),
+      // Pale rump over the base of the tail: the part the chase camera sees
+      // most.
+      at(box(0.098, 0.036, 0.1), morph.rump, 0, 0.05, 0.115, 0.5),
+      // Orange eyes, which is the detail that makes it look back at you.
+      at(box(0.016, 0.016, 0.014), 0xd9772e, -0.036, 0.062, -0.192, 0.55),
+      at(box(0.016, 0.016, 0.014), 0xd9772e, 0.036, 0.062, -0.192, 0.55),
+      at(box(0.009, 0.009, 0.008), 0x1a1a1e, -0.043, 0.062, -0.194, 0.05),
+      at(box(0.009, 0.009, 0.008), 0x1a1a1e, 0.043, 0.062, -0.194, 0.05),
+    ]),
   );
 
-  const beakMaterial = material(morph.beak);
-  const beak = new THREE.Mesh(geometry(new THREE.ConeGeometry(0.016, 0.055, 6)), beakMaterial);
-  beak.rotation.x = -Math.PI / 2;
-  beak.position.set(0, 0.045, -0.238);
-  head.add(beak);
-  // The cere: the pale wattle over a pigeon's bill.
-  head.add(part(geometry(new THREE.BoxGeometry(0.03, 0.018, 0.02)), material(0xf0f4f8), 0, 0.058, -0.213));
+  // --- Head ---------------------------------------------------------------
+  // A joint of its own, because a walking pigeon's head does not travel with
+  // its body: it is thrust forward and then held still in the air while the
+  // body catches up. That is the whole of what makes a pigeon walk read as a
+  // pigeon walking, and it cannot be done to lumps fused to the body.
+  const head = new THREE.Group();
+  // Named so a test can find it without going looking for the beak.
+  head.name = 'head';
+  object.add(head);
 
-  // Orange eyes, which is the detail that makes it look back at you.
-  const eyeGeometry = geometry(new THREE.BoxGeometry(0.016, 0.016, 0.014));
-  const eyeMaterial = material(0xd9772e, 0.55);
-  const pupilGeometry = geometry(new THREE.BoxGeometry(0.009, 0.009, 0.008));
-  const pupilMaterial = material(0x1a1a1e, 0.05);
-  for (const side of [-1, 1] as const) {
-    object.add(part(eyeGeometry, eyeMaterial, side * 0.036, 0.062, -0.192));
-    object.add(part(pupilGeometry, pupilMaterial, side * 0.043, 0.062, -0.194));
-  }
-
-  // Pale rump over the base of the tail: the part the chase camera sees most.
-  object.add(part(geometry(new THREE.BoxGeometry(0.098, 0.036, 0.1)), material(morph.rump, 0.5), 0, 0.05, 0.115));
+  const beak = new THREE.ConeGeometry(0.016, 0.055, 6);
+  beak.rotateX(-Math.PI / 2);
+  head.add(
+    limb([
+      at(box(0.078, 0.076, 0.086), morph.head, 0, 0.052, -0.172),
+      // Rounder crown, so the head is not a plain cube.
+      at(box(0.058, 0.03, 0.066), morph.head, 0, 0.084, -0.174),
+      at(beak, morph.beak, 0, 0.045, -0.238),
+      // The cere: the pale wattle over a pigeon's bill.
+      at(box(0.03, 0.018, 0.02), 0xf0f4f8, 0, 0.058, -0.213),
+    ]),
+  );
 
   // --- Tail ---------------------------------------------------------------
-  // Separate feathers on a shared pivot, so it can fan as well as tilt.
+  // Five feathers on a shared pivot, so it can fan as well as tilt -- and one
+  // instanced mesh rather than five, because a fan is exactly five copies of
+  // one feather at five transforms, which is what instancing is for.
   const tail = new THREE.Group();
   tail.position.set(0, 0.012, 0.19);
-  const featherGeometry = geometry(new THREE.BoxGeometry(0.028, 0.008, 0.15));
-  const feathers: THREE.Mesh[] = [];
-  for (let i = -2; i <= 2; i += 1) {
-    const feather = new THREE.Mesh(featherGeometry, wingMaterial);
-    feather.position.set(i * 0.025, 0, 0.07);
-    feather.castShadow = true;
-    feather.userData['fan'] = i;
-    tail.add(feather);
-    feathers.push(feather);
-  }
+  const featherGeometry = fuse([at(box(0.028, 0.008, 0.15), morph.wing, 0, 0, 0)]);
+  disposables.push(featherGeometry);
+  const FEATHERS = 5;
+  const feathers = new THREE.InstancedMesh(featherGeometry, skin.material, FEATHERS);
+  feathers.castShadow = true;
+  tail.add(feathers);
   object.add(tail);
 
   // --- Wings --------------------------------------------------------------
   // Two sections with a wrist between them. The outer half trails the inner
   // through the beat, which is what a wingbeat actually looks like and what a
   // single rigid plank never will.
-  const innerGeometry = geometry(new THREE.BoxGeometry(0.17, 0.015, 0.175));
-  const outerGeometry = geometry(new THREE.BoxGeometry(0.17, 0.011, 0.125));
-  const barGeometry = geometry(new THREE.BoxGeometry(0.15, 0.008, 0.02));
-
   interface Wing {
     shoulder: THREE.Group;
     wrist: THREE.Group;
@@ -330,19 +432,25 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
   const makeWing = (side: 1 | -1): Wing => {
     const shoulder = new THREE.Group();
     shoulder.position.set(side * 0.048, 0.032, -0.02);
-
-    shoulder.add(part(innerGeometry, wingMaterial, side * 0.085, 0, 0.005));
-    // Two dark bars across a pale wing: real, and they give the wing a shape
-    // to read at a distance instead of a flat slab.
-    for (const z of [0.032, 0.062]) {
-      shoulder.add(part(barGeometry, barMaterial, side * 0.085, 0.01, z));
-    }
+    shoulder.add(
+      limb([
+        at(box(0.17, 0.015, 0.175), morph.wing, side * 0.085, 0, 0.005),
+        // Two dark bars across a pale wing: real, and they give the wing a
+        // shape to read at a distance instead of a flat slab.
+        at(box(0.15, 0.008, 0.02), morph.bar, side * 0.085, 0.01, 0.032, 0.2),
+        at(box(0.15, 0.008, 0.02), morph.bar, side * 0.085, 0.01, 0.062, 0.2),
+      ]),
+    );
 
     const wrist = new THREE.Group();
     wrist.position.set(side * 0.17, 0, 0);
-    // Primaries, swept a little back from the arm.
-    wrist.add(part(outerGeometry, wingMaterial, side * 0.086, 0, 0.022));
-    wrist.add(part(barGeometry, barMaterial, side * 0.086, 0.008, 0.055));
+    wrist.add(
+      limb([
+        // Primaries, swept a little back from the arm.
+        at(box(0.17, 0.011, 0.125), morph.wing, side * 0.086, 0, 0.022),
+        at(box(0.15, 0.008, 0.02), morph.bar, side * 0.086, 0.008, 0.055, 0.2),
+      ]),
+    );
     shoulder.add(wrist);
 
     object.add(shoulder);
@@ -352,15 +460,16 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
   const wings = { left: makeWing(-1), right: makeWing(1) };
 
   // --- Legs ---------------------------------------------------------------
-  const legGeometry = geometry(new THREE.BoxGeometry(0.013, 0.075, 0.013));
-  const footGeometry = geometry(new THREE.BoxGeometry(0.022, 0.008, 0.042));
-  const legMaterial = material(morph.leg);
   const legs: THREE.Group[] = [];
   for (const side of [-1, 1] as const) {
     const hip = new THREE.Group();
     hip.position.set(side * 0.026, -0.05, 0.012);
-    hip.add(part(legGeometry, legMaterial, 0, -0.038, 0));
-    hip.add(part(footGeometry, legMaterial, 0, -0.077, -0.008));
+    hip.add(
+      limb([
+        at(box(0.013, 0.075, 0.013), morph.leg, 0, -0.038, 0),
+        at(box(0.022, 0.008, 0.042), morph.leg, 0, -0.077, -0.008),
+      ]),
+    );
     // Named so the test that measures FOOT_DROP can find the feet rather
     // than the whole bird: braking wings hang far lower than any leg, and
     // a wingtip brushing the ground is not the thing being guarded.
@@ -372,6 +481,11 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
   // swings either side of.
   const hipRest = legs.map((hip) => hip.position.z);
   const hipHeight = legs.map((hip) => hip.position.y);
+
+  // Scratch for laying the tail out, kept rather than made every frame.
+  const feather = new THREE.Matrix4();
+  const splay = new THREE.Vector3();
+  const turn = new THREE.Quaternion();
 
   // Smoothed wing pose on one axis: -1 folded, 0 gliding, +1 braking.
   let pose = 0;
@@ -438,11 +552,17 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
     }
 
     tail.rotation.x = tailPitch;
-    for (const feather of feathers) {
-      const index = feather.userData['fan'] as number;
-      feather.rotation.y = -index * 0.09 * tailFan;
-      feather.position.x = index * 0.025 * tailFan;
+    // The fan, as five transforms of one feather. Each turns about its own
+    // middle and slides out from the next, which is what a tail opening
+    // actually does -- and what scaling the whole tail sideways would not.
+    for (let i = 0; i < FEATHERS; i += 1) {
+      const index = i - (FEATHERS - 1) / 2;
+      splay.set(index * 0.025 * tailFan, 0, 0.07);
+      turn.setFromAxisAngle(UP, -index * 0.09 * tailFan);
+      feather.compose(splay, turn, ONE);
+      feathers.setMatrixAt(i, feather);
     }
+    feathers.instanceMatrix.needsUpdate = true;
 
     // Legs swing down to stand and tuck back up in flight.
     for (const hip of legs) {

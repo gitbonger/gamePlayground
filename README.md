@@ -804,9 +804,11 @@ map would change that either.
 objects. Roads are one merged mesh, railways another, green areas one per
 kind, roofs one, and the buildings and trees are instanced — so twice the city
 is a bigger number in an instance buffer, not more work per frame. Of the 780
-calls, the great majority are *pigeons*: a bird rig is about forty small
-meshes, there are a dozen rigs, and a shadow pass draws everything twice. The
-birds cost more draw calls than the entire city does.
+calls, the great majority were *pigeons*: a bird rig was thirty-three small
+meshes, there are a dozen rigs, and a shadow pass drew everything twice. The
+birds cost more draw calls than the entire city did. (Both of those have since
+been dealt with — the shadow pass is gone, and the rig is fused; see **One
+bird, nine meshes** below.)
 
 **The load-time layout build is the number to watch.** 451 ms of blocking work
 before the first frame, and it is the only figure here that grew faster than
@@ -1930,6 +1932,51 @@ The 7 cm the feet hang below the tracked point is measured off the built model
 in a test rather than written down twice: lengthen a leg and the test fails.
 The first version of that constant was 14 cm, taken from two poses instead of
 four, and it would have held the bird a clear 7 cm above the rail.
+
+### One bird, nine meshes
+
+The model is thirty-three lumps: four for the tapering body, two for the head,
+a beak, a cere, two eyes and two pupils, a neck, a rump, five tail feathers,
+ten between the two wings and four between the two legs. Every one of them
+used to be a mesh with a material of its own — so a bird was thirty-three draw
+calls and twenty-odd materials, for an object a couple of hundred pixels
+across. With a flock, five residents and the hero on screen, the pigeons cost
+more draw calls than the entire city.
+
+The lumps are the same lumps. What changed is that a lump which does not move
+relative to its joint no longer needs a transform of its own, and a lump
+without a transform can be fused with its neighbours: the position goes into
+the vertices instead of onto a mesh. What is left is one mesh per joint — the
+body, the head, the tail, two shoulders, two wrists, two hips. Nine, and one
+material for the lot.
+
+The colours ride in the vertices, which is how one material can hold a bird of
+twenty colours. Two attributes rather than one: `color`, which the standard
+vertex-colour path multiplies into the diffuse, and `glow`, which two patched
+lines of the lambert shader multiply into the emissive. The glow is what the
+per-lump materials used to carry — a pupil gives off almost nothing, an eye
+gives off half its own orange, the wing bars a fifth — and dropping it for a
+single figure would have flattened the face without changing its shape, which
+is exactly the sort of loss nobody notices in a screenshot.
+
+The marker wash comes free of the same arrangement. Turning a bird red was
+twenty emissive colours written every frame it changed; it is one uniform now.
+
+The tail is the one place instancing beat fusing. Five feathers that each turn
+about their own middle and slide out from the next cannot be one rigid
+geometry — but a fan is exactly five copies of one feather at five transforms,
+which is what an `InstancedMesh` is. So the tail keeps its splay and still
+costs one call.
+
+Measured in the browser, on the same views before and after: the opening level,
+where two birds fill the frame, went from 43 draw calls a frame to 27; the
+release over the park, with only the hero drawn, from 60 to 52.
+
+The patch itself is the risky part, since a `String.replace` that matches
+nothing is a silent no-op and the bird it leaves — one with no emissive at all
+— looks like a lighting decision rather than a bug. So the patch is applied in
+a test to the real shader source three ships, and a release that renames the
+chunk fails there instead of shipping a pigeon nobody can find.
 
 ## Walking
 
