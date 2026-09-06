@@ -498,9 +498,46 @@ export function layOutTrain(
   cars: number,
   stock: Stock = 'wagon',
 ): Vehicle[] {
-  const vehicles: Vehicle[] = [];
+  const vehicles: Vehicle[] = Array.from({ length: vehicleCount(cars, stock) }, () => ({
+    kind: 'wagon' as Vehicle['kind'],
+    x: 0,
+    z: 0,
+    yaw: 0,
+    length: 0,
+    width: 0,
+  }));
+  return moveTrain(vehicles, line, along, cars, stock) ? vehicles : [];
+}
+
+/** How many vehicles a rake of this many cars comes to, engine included. */
+export const vehicleCount = (cars: number, stock: Stock): number =>
+  cars + (stockIsHauled(stock) ? 1 : 0);
+
+/**
+ * Put an existing rake where it has got to, without building a new one.
+ *
+ * A train never changes: the same locomotive and the same twelve wagons, the
+ * same shape, for as long as the game is open. Only where they are changes.
+ * So the vehicles are made once and written over in place, which is the
+ * difference between allocating forty-six objects a tick and none.
+ *
+ * Returns false and leaves the rake untouched if it will not fit on the line,
+ * which is the same promise `layOutTrain` makes: half a train hanging off the
+ * end of a siding is worse than none.
+ */
+export function moveTrain(
+  vehicles: Vehicle[],
+  line: Rail,
+  along: number,
+  cars: number,
+  stock: Stock = 'wagon',
+): boolean {
+  if (vehicles.length !== vehicleCount(cars, stock)) return false;
+
   const gap = stockGap(stock);
+  const size = stockSize(stock);
   let front = along;
+  let at = 0;
 
   const place = (kind: Vehicle['kind'], length: number, width: number): boolean => {
     const centre = front - length / 2;
@@ -509,26 +546,25 @@ export function layOutTrain(
     const trail = pointAlong(line.points, centre - length * 0.35);
     if (!lead || !trail) return false;
 
-    vehicles.push({
-      kind,
-      length,
-      width,
-      x: (lead.x + trail.x) / 2,
-      z: (lead.z + trail.z) / 2,
-      yaw: Math.atan2(-(lead.z - trail.z), lead.x - trail.x),
-    });
+    const vehicle = vehicles[at]!;
+    at += 1;
+    vehicle.kind = kind;
+    vehicle.length = length;
+    vehicle.width = width;
+    vehicle.x = (lead.x + trail.x) / 2;
+    vehicle.z = (lead.z + trail.z) / 2;
+    vehicle.yaw = Math.atan2(-(lead.z - trail.z), lead.x - trail.x);
     front = centre - length / 2 - gap;
     return true;
   };
 
   // A hauled rake is a locomotive and then its cars. A tram is neither: every
   // section is powered, so four cars means four cars.
-  if (stockIsHauled(stock) && !place('engine', ENGINE.length, ENGINE.width)) return [];
-  const size = stockSize(stock);
+  if (stockIsHauled(stock) && !place('engine', ENGINE.length, ENGINE.width)) return false;
   for (let i = 0; i < cars; i += 1) {
-    if (!place(stock, size.length, size.width)) return [];
+    if (!place(stock, size.length, size.width)) return false;
   }
-  return vehicles;
+  return true;
 }
 
 /**
@@ -572,14 +608,83 @@ export function onVehicle(
 }
 
 /**
- * The solid parts of a train.
+ * The solid parts of a train: one box a vehicle, and two for a locomotive.
  *
- * A wagon is its deck and its stakes and nothing else: the deck stops at
- * 1.25 m while the stakes carry on to 2.4, so what is between them is an open
- * box a metre deep with a floor to land on. Every box stands on the ground,
- * the collider having no notion of one that floats, which costs nothing here
- * because the space under a wagon is not somewhere to fly.
+ * A wagon is its deck and nothing else. The stakes along its sides are drawn
+ * and are not solid -- a pigeon flies between them the way it flies through a
+ * tree, and the deck it lands on is the same deck either way. They used to be
+ * boxed, all fourteen of them, which made a rake of twelve into 182 boxes
+ * rebuilt 120 times a second for the chance of clipping a post.
+ *
+ * Every box stands on the ground, the collider having no notion of one that
+ * floats, which costs nothing here because the space under a wagon is not
+ * somewhere to fly.
  */
+/** How many collision boxes a rake of this many cars comes to. */
+export const boxCount = (cars: number, stock: Stock): number =>
+  cars + (stockIsHauled(stock) ? 2 : 0);
+
+/**
+ * Put an existing rake's collision boxes where the rake has got to.
+ *
+ * The counterpart of `moveTrain`, and there for the same reason: the boxes
+ * are the same boxes for as long as the game is open, so they are written
+ * over rather than built again. A rake of twelve was 182 boxes a tick before
+ * the stakes stopped being solid, and even fourteen is 1,680 objects a second
+ * that need not exist.
+ */
+export function moveTrainBoxes(
+  boxes: Box[],
+  vehicles: readonly Vehicle[],
+  /** The tag the first vehicle's boxes carry; the rest follow it in order. */
+  base: number,
+  /** How fast the rake is running, which is what makes a touch fatal. */
+  speed: number,
+): boolean {
+  let at = 0;
+  const put = (
+    x: number,
+    z: number,
+    width: number,
+    height: number,
+    depth: number,
+    yaw: number,
+    index: number,
+  ) => {
+    const box = boxes[at];
+    if (!box) return;
+    at += 1;
+    box.minX = x - width / 2;
+    box.maxX = x + width / 2;
+    box.minY = 0;
+    box.maxY = height;
+    box.minZ = z - depth / 2;
+    box.maxZ = z + depth / 2;
+    box.yaw = yaw;
+    box.carrier = base + index;
+    box.speed = speed;
+  };
+
+  for (const [index, vehicle] of vehicles.entries()) {
+    if (vehicle.kind === 'engine') {
+      put(vehicle.x, vehicle.z, vehicle.length, ENGINE.body, vehicle.width, vehicle.yaw, index);
+      const cab = onVehicle(vehicle, vehicle.length / 2 - ENGINE.cabLength / 2, 0);
+      put(cab.x, cab.z, ENGINE.cabLength, ENGINE.cab, vehicle.width, vehicle.yaw, index);
+      continue;
+    }
+    put(
+      vehicle.x,
+      vehicle.z,
+      vehicle.length,
+      stockTop(vehicle.kind),
+      vehicle.width,
+      vehicle.yaw,
+      index,
+    );
+  }
+  return at === boxes.length;
+}
+
 export function trainBoxes(
   vehicles: readonly Vehicle[],
   carrierOf?: (vehicle: number) => number,
@@ -632,31 +737,14 @@ export function trainBoxes(
       continue;
     }
 
+    // One box, up to the deck. The stakes are drawn but not solid: fourteen
+    // posts a wagon came to 168 boxes on a rake of twelve, rebuilt 120 times
+    // a second, and what they bought was the chance of clipping a post. A
+    // pigeon already flies through a tree's foliage, and a wagon that is
+    // moving kills on contact with the deck alone.
     boxes.push(
       tag(turnedBox(vehicle.x, vehicle.z, vehicle.length, WAGON.deck, vehicle.width, vehicle.yaw), index),
     );
-
-    const across = vehicle.width / 2 - WAGON.stakeThickness / 2;
-    const spacing = (vehicle.length - WAGON.stakeThickness) / (WAGON.stakesPerSide - 1);
-    for (let i = 0; i < WAGON.stakesPerSide; i += 1) {
-      const along = -(vehicle.length - WAGON.stakeThickness) / 2 + i * spacing;
-      for (const side of [across, -across]) {
-        const post = onVehicle(vehicle, along, side);
-        boxes.push(
-          tag(
-            turnedBox(
-              post.x,
-              post.z,
-              WAGON.stakeThickness,
-              WAGON.deck + WAGON.stake,
-              WAGON.stakeThickness,
-              vehicle.yaw,
-            ),
-            index,
-          ),
-        );
-      }
-    }
   }
 
   return boxes;

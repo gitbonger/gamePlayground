@@ -17,6 +17,7 @@ import {
   stockIsHauled,
   stockRuns,
   stockTop,
+  moveTrain,
   traceRoute,
   tweenAlong,
   TRAM,
@@ -134,13 +135,18 @@ describe('what a train is made of', () => {
   const vehicles = layOutTrain(STRAIGHT, 300, 3);
   const boxes = trainBoxes(vehicles);
 
-  it('leaves the wagon open, with a deck to land on below the stakes', () => {
-    // The whole point of a stake wagon standing empty: a floor at 1.25 m with
-    // the posts carrying on above it, so what is between them is air.
-    const tops = boxes.map((b) => b.maxY);
-    expect(tops).toContain(WAGON.deck);
-    expect(tops).toContain(WAGON.deck + WAGON.stake);
-    expect(WAGON.deck + WAGON.stake).toBeGreaterThan(WAGON.deck);
+  it('is one box a wagon, up to the deck, and the stakes are not solid', () => {
+    // A stake wagon standing empty is a floor at 1.25 m with posts drawn
+    // above it. The posts are scenery: a pigeon goes between them the way it
+    // goes through a tree, and the deck it lands on is the same deck either
+    // way. Boxing all fourteen made a rake of twelve into 182 boxes, rebuilt
+    // 120 times a second, for the chance of clipping a post.
+    const wagons = boxes.filter((b) => b.maxY === WAGON.deck);
+    expect(wagons).toHaveLength(3);
+    expect(boxes.map((b) => b.maxY)).not.toContain(WAGON.deck + WAGON.stake);
+    // An engine and three wagons: two boxes for the locomotive, one each for
+    // the rest.
+    expect(boxes).toHaveLength(5);
   });
 
   it('stands every part on the ground the collider expects', () => {
@@ -1006,5 +1012,48 @@ describe('how near a rake is', () => {
     // being wrong that way is a collider nobody needed, and the cost of the
     // other way is a train you can fly through.
     expect(rakeNear(rake(99999), 0, 0, 1)).toBe(true);
+  });
+});
+
+/**
+ * A rake is made once and moved ever after.
+ *
+ * The same locomotive and the same twelve wagons for as long as the game is
+ * open: only where they are changes, so they are written over rather than
+ * built again.
+ */
+describe('moving a rake that already exists', () => {
+  const LINE: Rail = { kind: 'rail', width: 8, points: [[0, 0], [900, 0]] };
+
+  it('puts the same objects somewhere else', () => {
+    const rake = layOutTrain(LINE, 300, 6, 'carriage');
+    const before = rake.map((v) => v);
+
+    expect(moveTrain(rake, LINE, 500, 6, 'carriage')).toBe(true);
+    // The very same objects, moved -- not a new array of new vehicles.
+    rake.forEach((v, i) => expect(v).toBe(before[i]));
+    expect(rake[0]!.x).toBeCloseTo(500 - ENGINE.length / 2, 6);
+  });
+
+  it('agrees with building a fresh one', () => {
+    const moved = layOutTrain(LINE, 300, 6, 'carriage');
+    moveTrain(moved, LINE, 640, 6, 'carriage');
+    expect(moved).toEqual(layOutTrain(LINE, 640, 6, 'carriage'));
+  });
+
+  it('refuses a rake of the wrong length rather than half filling it', () => {
+    // The promise `layOutTrain` makes: half a train hanging off the end of a
+    // siding is worse than none. A rake handed the wrong number of vehicles
+    // would otherwise be laid out as far as it went and left mixed.
+    const four = layOutTrain(LINE, 300, 4, 'carriage');
+    const before = four.map((v) => ({ ...v }));
+
+    expect(moveTrain(four, LINE, 500, 6, 'carriage')).toBe(false);
+    expect(four.map((v) => ({ ...v }))).toEqual(before);
+  });
+
+  it('will not run a rake off the end of its line', () => {
+    const rake = layOutTrain(LINE, 300, 6, 'carriage');
+    expect(moveTrain(rake, LINE, 10, 6, 'carriage')).toBe(false);
   });
 });

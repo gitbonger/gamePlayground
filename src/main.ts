@@ -38,12 +38,14 @@ import { createDialoguePanel } from './render/dialogue';
 import { loadProgress, saveProgress } from './progress';
 import { createLevelMenu } from './render/menu';
 import {
+  aabb,
   combineColliders,
   createColliderField,
   type Collider,
 } from './sim/collision';
 import { createChaseCamera, defaultCameraParams, defaultWatchParams } from './render/camera';
 import { createHud } from './render/hud';
+import { defaultSight, sighted } from './render/sighted';
 import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
 import { buildWorld, targetFlash } from './world/city';
@@ -54,13 +56,15 @@ import {
   consistLength,
   layOutTrain,
   lineLength,
+  boxCount,
+  moveTrain,
+  moveTrainBoxes,
   onVehicle,
   rakeNear,
   shuttle,
   stackTop,
   stockIsHauled,
   stockTop,
-  trainBoxes,
   turnedBetween,
   tweenAlong,
 } from './world/train';
@@ -347,6 +351,14 @@ scene.add(rig.object);
 // an autopilot that is not especially good at it.
 
 const chase = createChaseCamera(camera);
+
+/**
+ * Which birds are worth drawing, reused rather than rebuilt every frame.
+ *
+ * The hero is never asked -- it is the thing the camera is pointed at.
+ */
+const sightForward = new THREE.Vector3();
+const sight = { ...defaultSight, eye: camera.position, forward: sightForward };
 const hud = createHud(overlay, map.attribution);
 const outcome = createOutcomePanel(overlay);
 const input = createInput();
@@ -639,6 +651,20 @@ const TRAIN_REACH = 300;
 const DISTANT_REDRAW = 1;
 /** When each train was last laid out in world coordinates. */
 const laidOut = layout.trains.map(() => Number.NEGATIVE_INFINITY);
+/**
+ * Each rake's collision boxes, made once and moved ever after.
+ *
+ * A train never changes -- the same locomotive and the same twelve wagons,
+ * the same shape, for as long as the game is open. Only where they are
+ * changes, so these are written over rather than built again.
+ */
+const trainBoxSets = layout.trains.map((train) =>
+  Array.from({ length: boxCount(train.cars, train.stock) }, () => aabb(0, 0, 0, 0, 0, 0)),
+);
+/** And the pose each is drawn in, between one tick and the next. */
+const drawnVehicles = layout.trains.map((train) =>
+  layOutTrain(train.line, train.along, train.cars, train.stock),
+);
 /** And which of them were near enough to be worth it, this tick. */
 const near = layout.trains.map(() => false);
 
@@ -686,22 +712,20 @@ function moveTrains(dt: number) {
       // from a distance is where it should be rather than where it was. At
       // a kilometre, a second of travel is less than a pixel.
       if (clock - laidOut[index]! >= DISTANT_REDRAW) {
-        train.vehicles = layOutTrain(train.line, train.along, train.cars, train.stock);
+        moveTrain(train.vehicles, train.line, train.along, train.cars, train.stock);
         laidOut[index] = clock;
       }
       return;
     }
 
-    train.vehicles = layOutTrain(train.line, train.along, train.cars, train.stock);
+    moveTrain(train.vehicles, train.line, train.along, train.cars, train.stock);
     laidOut[index] = clock;
     near[index] = true;
     // Every box knows how fast the rake is running, which is what makes
     // being touched by one fatal rather than merely blocking.
-    fields.push(
-      createColliderField(
-        trainBoxes(train.vehicles, (vehicle) => base + vehicle, train.speed),
-      ),
-    );
+    const boxes = trainBoxSets[index]!;
+    moveTrainBoxes(boxes, train.vehicles, base, train.speed);
+    fields.push(createColliderField(boxes));
   });
 
   // Anything standing on a wagon goes where the wagon goes. Without this a
@@ -918,19 +942,19 @@ function frame(nowMs: number) {
   // enough to shimmer if you take it in steps. Only for the ones near enough
   // for that to show -- a distant rake keeps whatever pose it was last laid
   // out in, which is a second old at worst and a fraction of a pixel wrong.
+  for (const [index, train] of layout.trains.entries()) {
+    if (!near[index]) continue;
+    moveTrain(
+      drawnVehicles[index]!,
+      train.line,
+      tweenAlong(previousAlong[index]!, train.along, alpha),
+      train.cars,
+      train.stock,
+    );
+  }
   world.updateTrains(
     layout.trains.map((train, index) =>
-      near[index]
-        ? {
-            ...train,
-            vehicles: layOutTrain(
-              train.line,
-              tweenAlong(previousAlong[index]!, train.along, alpha),
-              train.cars,
-              train.stock,
-            ),
-          }
-        : train,
+      near[index] ? { ...train, vehicles: drawnVehicles[index]! } : train,
     ),
   );
   talkPanel.show(talkingTo ? talk : null);
@@ -965,11 +989,21 @@ function frame(nowMs: number) {
         : null,
   );
 
+  // One judgement a bird, made on its middle: a pigeon that cannot be seen is
+  // not posed at all. Wings, tail, legs and head are forty small meshes, and
+  // most of the fifteen birds in the world are behind the camera, too far to
+  // read, or standing on the target of a level nobody is playing.
+  camera.getWorldDirection(sightForward);
+  sight.eye = camera.position;
+  sight.forward = sightForward;
+
   // The flock is far enough away that the raw tick pose is smooth enough.
   flock.members.forEach((member, i) => {
     // A bird waiting its turn to be let out is not in the air, and should not
     // be standing on the wagon either.
-    flockRigs[i]!.object.visible = member.down <= 0;
+    const shown = member.down <= 0 && sighted(member.state.position, sight);
+    flockRigs[i]!.object.visible = shown;
+    if (!shown) return;
     flockRigs[i]!.update(
       member.state,
       isPerched(member.state) ? 'perched' : 'gliding',
@@ -978,6 +1012,9 @@ function frame(nowMs: number) {
   });
 
   for (const resident of residents) {
+    const shown = sighted(resident.state.position, sight);
+    resident.rig.object.visible = shown;
+    if (!shown) continue;
     resident.rig.update(resident.state, 'perched', frameTime);
     resident.rig.glow(resident.glowing);
   }

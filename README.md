@@ -650,6 +650,39 @@ is and how far it has risen, but not which plume it belongs to. Giving one
 engine a shorter reach made its smoke vanish at full strength instead of
 thinning away, which is a test now.
 
+**A wagon is one cube, and a rake is made once.** Boxing the fourteen stake
+posts on every wagon made a rake of twelve into **182 collision boxes**,
+rebuilt 120 times a second, and what they bought was the chance of clipping a
+post. A pigeon already flies through a tree's foliage. The stakes are drawn
+and are not solid; a wagon is its deck, which is the thing you land on either
+way, and a wagon that is moving kills on contact with that. **182 boxes to
+14.**
+
+And the rake itself never changes — the same locomotive and the same twelve
+wagons, the same shape, for as long as the game is open. Only where they are
+changes. So the vehicles and their boxes are built once and written over
+(`moveTrain`, `moveTrainBoxes`) instead of being rebuilt, which is the
+difference between allocating some forty vehicles and two hundred boxes every
+tick and allocating none. Rebuilding rakes: **10.4 ms of every second of play
+down to 5.7**.
+
+**And a pigeon is judged once, on its middle.** A bird is about forty small
+meshes and there are fifteen birds; posing them is wings, tail, legs and head
+for every one, every frame, whether or not anybody can see it. `sighted` asks
+one question per bird — is it in front of the camera, and near enough to read
+— and a bird that fails is neither posed nor drawn.
+
+The cone is opened out to ninety degrees off the axis, well past the
+fifty-five of the frame's corners, because a bird appearing from nothing at
+the edge of the screen is worse than a few drawn needlessly. The range is
+250 m, where a pigeon subtends about a fifth of a degree — a pixel and a half
+on a 1080-line display.
+
+| draw calls a frame | before | after |
+| --- | --- | --- |
+| Flock out, at the yard | ~700 | **252** |
+| Flock not yet released | ~240 | **49** |
+
 ### What it costs (the map)### What it costs (the map)
 
 Measured, not estimated, on the shipped 4.2 km square. The numbers either side
