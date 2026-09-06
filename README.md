@@ -793,11 +793,12 @@ the difference is invisible on a straight line: with the wagon's yaw at zero,
 arithmetic. The test for it runs on a line laid diagonally for exactly that
 reason — on an axis-aligned one it passes either way.
 
-**And a tram, which is not a small train.** Four articulated cars in Budapest
-yellow on the tramway out west, beside the fourth level's patch of concrete,
-with 3,169 m of route once the switches are followed. Three things about it
-were each an assumption somewhere that a rake is a locomotive and some cars
-behind it:
+**And three trams, which are not small trains.** Four articulated cars each,
+in Budapest yellow, on the tramway out west by the fourth level's patch of
+concrete: one alone with 3,169 m of route once the switches are followed, and
+a pair further down where the line is double track, with 5,439 m and 3,052 m.
+Three things about a tram were each an assumption somewhere that a rake is a
+locomotive and some cars behind it:
 
 - **It has no engine.** Every section is powered, so four cars means four
   cars, not an engine and three. `stockIsHauled` is the only question laying a
@@ -824,6 +825,18 @@ other way would send it north. So a spec gives a compass bearing and
 `directionFor` takes the tangent where the train is standing and picks the
 sign. Measured in the running game: 40 m of travel moves it +42 m in Z, and
 north is −Z.
+
+**The pair work their two tracks against each other**, at 113° and 284°, the
+way a double-track line is worked. They are asked for at the same point and
+one road each is what "the roomiest line nothing else has taken" already gave
+them — measured, the two roads come out 3 to 6 m apart, which is a pair of
+tracks rather than two lines that happen to run near each other. Their
+*directions* are pinned rather than left to come out right: on this map the
+two roads happen to be traced in opposite orders, so they would oppose each
+other by accident, and that is a fact about the map's editing history rather
+than about the tramway. The test runs the fixture both ways round — the two
+roads drawn in the same order and in opposite orders — because a version that
+ignores the bearing entirely passes the second and fails the first.
 
 **There are four trains, and all four move.** A rake of stake wagons
 shuttling up and down the yard, and three passenger trains of six, four and

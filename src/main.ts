@@ -148,6 +148,17 @@ const train = project(TRAIN_POINT[0], TRAIN_POINT[1], map.centre);
 const TRAM_POINT: [number, number] = [47.496648, 19.070644];
 const tram = project(TRAM_POINT[0], TRAM_POINT[1], map.centre);
 
+/**
+ * Further down the same tramway, where it is double track.
+ *
+ * One point for the pair of them: a tram takes the tramway nearest it that
+ * nothing else has taken, so the second ends up on the other road. Measured,
+ * the two come out 3 to 6 m apart, which is a pair of tracks and not two
+ * lines that happen to run near each other.
+ */
+const TRAM_PAIR: [number, number] = [47.495932, 19.072042];
+const trams = project(TRAM_PAIR[0], TRAM_PAIR[1], map.centre);
+
 const layout = buildLayoutFromMap(map, {
   ...defaultMapWorldOptions,
   // Described first, and everything generated afterwards gives way to them.
@@ -180,6 +191,13 @@ const layout = buildLayoutFromMap(map, {
     // polyline is drawn in whatever order somebody traced it -- so it is
     // asked for as a bearing and worked out from the tangent.
     { near: tram, cars: 4, stock: 'tram', speed: 10, runsOut: true, setOff: 180 },
+    // Two more where the line is double track, one on each road, set off
+    // against each other the way a pair of tracks is worked. They would come
+    // out opposed anyway, the two roads having been traced in opposite
+    // orders -- which is exactly the thing not to rely on, since it is a fact
+    // about the map's editing history rather than about the tramway.
+    { near: trams, cars: 4, stock: 'tram', speed: 10, runsOut: true, setOff: 110 },
+    { near: trams, cars: 4, stock: 'tram', speed: 10, runsOut: true, setOff: 290 },
   ],
 });
 /**

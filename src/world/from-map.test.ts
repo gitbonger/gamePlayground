@@ -913,6 +913,57 @@ describe('two trains in one yard', () => {
     }
   });
 
+  it('works a pair of tracks as a pair, one tram each and opposed', () => {
+    // A double-track tramway. Its two roads are tried both ways round --
+    // traced in the same order and in opposite orders -- because the order
+    // somebody traced them into OpenStreetMap is the thing that must not be
+    // what decides which way a tram goes. Both trams are asked for at the
+    // same point and told which way to go; each takes a road, and they run
+    // against each other either way the map happens to be drawn.
+    const east: [number, number][] = [[-300, 120], [300, 120]];
+    const tracings: Record<string, Rail[]> = {
+      'drawn the same way': [
+        { kind: 'tram', width: 6, points: east },
+        { kind: 'tram', width: 6, points: east.map(([x, z]) => [x, z + 4]) },
+      ],
+      'drawn against each other': [
+        { kind: 'tram', width: 6, points: east },
+        { kind: 'tram', width: 6, points: [...east].reverse().map(([x, z]) => [x, z + 4]) },
+      ],
+    };
+
+    for (const [how, rails] of Object.entries(tracings)) {
+      const world = buildLayoutFromMap(mapOf(BLOCK, [], rails), {
+        ...defaultMapWorldOptions,
+        trains: [
+          { near: { x: 0, z: 122 }, cars: 4, stock: 'tram', speed: 10, setOff: 90 },
+          { near: { x: 0, z: 122 }, cars: 4, stock: 'tram', speed: 10, setOff: 270 },
+        ],
+      });
+
+      expect(world.trains, how).toHaveLength(2);
+      // One road each, and the roads are a pair rather than the same one
+      // twice.
+      const [up, down] = world.trains as [(typeof world.trains)[0], (typeof world.trains)[0]];
+      expect(Math.abs(up.vehicles[0]!.z - down.vehicles[0]!.z), how).toBeCloseTo(4, 6);
+
+      /** How far east the front of a tram moves over a step. */
+      const travel = (tram: (typeof world.trains)[0]) => {
+        const run = shuttle(
+          lineLength(tram.line.points),
+          consistLength(tram.cars, tram.stock),
+          tram.along,
+          tram.direction,
+          20,
+        );
+        const after = layOutTrain(tram.line, run.along, tram.cars, tram.stock)[0]!;
+        return after.x - tram.vehicles[0]!.x;
+      };
+      expect(travel(up), how).toBeGreaterThan(0);
+      expect(travel(down), how).toBeLessThan(0);
+    }
+  });
+
   it('asks for only as many as there are tracks', () => {
     // A third train with nowhere to go is left out rather than stacked on
     // top of one of the others.
