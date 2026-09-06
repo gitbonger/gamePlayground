@@ -131,10 +131,16 @@ export const LEVELS: readonly Level[] = [
     begins: 'perched',
   },
   {
-    // A short hop onto a concrete patch in the park, in the flattest light
-    // there is. Nothing to fly round, nothing that moves, and the whole
-    // approach visible from the start.
+    // A short hop onto a concrete patch in the park: nothing to fly round,
+    // nothing that moves, and the target in front of him before he has
+    // finished climbing. That is the flight the level is -- a hundred and
+    // thirty-six metres, straight on from the branch he leaves.
     name: 'The Park',
+    // But only when it is *entered* by leaving the home tree, which is how it
+    // is entered when the game is played through. This is where it puts you
+    // instead -- from the menu, or after a death -- and it has not been moved
+    // to follow the target: it is 684 m out, over a different park, and it is
+    // a glide across the whole district rather than a hop.
     start: [47.495944, 19.093122],
     // Midday, so the shadows are short and the ground reads plainly.
     when: '2025-06-21T10:00:00Z',

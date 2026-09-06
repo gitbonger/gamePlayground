@@ -75,9 +75,18 @@ export const LOFT: LandmarkSpec = {
  * *inside* is a much harder level than one you land near and walk onto. The
  * margin keeps the trees off it, and off the approach to it.
  */
+/**
+ * The first thing the hero is asked to land on: a slab of concrete in the
+ * park a hundred and thirty-six metres from the home tree.
+ *
+ * Close, because it is the first flight of the game and it follows straight
+ * on from leaving the tree -- he takes off from the branch and it is already
+ * in front of him. Well inside the park, too: thirty-two metres from the
+ * nearest kerb, so nothing about the approach is about avoiding anything.
+ */
 export const PARK_PATCH: LandmarkSpec = {
   name: 'The Concrete',
-  at: [47.494297, 19.090454],
+  at: [47.494099, 19.084403],
   width: 9,
   depth: 9,
   height: 0,
