@@ -1386,7 +1386,7 @@ function buildAreas(
  * mesh and a transform, which is thirteen draw calls for a rake and the only
  * arrangement where moving one is free.
  */
-function buildVehicle(vehicle: Vehicle): {
+export function buildVehicle(vehicle: Vehicle): {
   geometry: THREE.BufferGeometry;
   material: THREE.Material;
 } {
@@ -1610,8 +1610,24 @@ function buildVehicle(vehicle: Vehicle): {
     }
     // The concertina: a dark band across each end, so a four-car set reads as
     // one articulated vehicle rather than four short ones in a row.
-    for (const end of [half - 0.12, -(half - 0.12)]) {
-      part(0x2a2c2f, end, 0, TRAM.floor, 0.24, vehicle.width * 0.94, TRAM.body - TRAM.floor);
+    //
+    // Standing two centimetres proud of the end and a centimetre under the
+    // roofline, for the same reason the glass stands proud of the side: it
+    // used to end exactly where the body ends, which is two faces at one
+    // depth arguing over every pixel of the front of the tram. Yellow, black,
+    // yellow, black, all the way down a moving rake. Nothing is coplanar with
+    // anything here now, and the two centimetres go into the twenty-five of
+    // articulation gap, where there is nothing to foul.
+    for (const end of [half - 0.11, -(half - 0.11)]) {
+      part(
+        0x2a2c2f,
+        end,
+        0,
+        TRAM.floor,
+        0.26,
+        vehicle.width * 0.94,
+        TRAM.body - TRAM.floor - 0.01,
+      );
     }
 
     // A shallow roof, and the pantograph that says it is electric.

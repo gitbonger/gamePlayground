@@ -2183,6 +2183,17 @@ rather than as bare ground.
 The same trick was already being used across the track's width — that is what
 the `soft` term is — and the length had simply never been given it.
 
+**The trams themselves were flickering too**, and for a different reason
+entirely: the dark concertina band at each end of a car ended at exactly the
+depth the yellow body ends at. Two faces in one plane, arguing over every
+pixel of the front of a tram — yellow, black, yellow, black, all the way down
+a moving rake. Nothing about that can be fixed by sorting or by a depth
+function; the only fix is for the two faces not to be in the same place. The
+band now stands two centimetres proud of the end and a centimetre under the
+roofline, which is what the glass down the side had been doing all along. A
+test asserts the two no longer end at the same depth, because it is the sort
+of thing a later tidy-up would helpfully round back off.
+
 ## Walking
 
 A landed pigeon is not stuck where it came down. `src/sim/walk.ts` is a second

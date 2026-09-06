@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   arrowFade,
+  buildVehicle,
   arrowScale,
   buildRoofs,
   buildWorld,
@@ -9,7 +10,7 @@ import {
 } from './city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
 import { penthouseOf, terraceOf, type Landmark } from './layout';
-import { consistLength, layOutTrain, lineLength, shuttle, WAGON } from './train';
+import { consistLength, layOutTrain, lineLength, shuttle, TRAM, WAGON } from './train';
 import type { Puff } from './smoke';
 import * as THREE from 'three';
 import { createColliderField } from '../sim/collision';
@@ -597,6 +598,49 @@ describe('drawing the smoke', () => {
     world.updateSmoke(aged([2, 6, 10]).concat(aged([-1, -1])), new THREE.Quaternion());
     expect(mesh.count).toBe(3);
     world.dispose();
+  });
+});
+
+describe('a tram, which is one shape made of many boxes', () => {
+  /** The furthest either way along the vehicle that a given colour reaches. */
+  const reachOf = (geometry: THREE.BufferGeometry, colour: number) => {
+    const tint = new THREE.Color(colour);
+    const point = geometry.getAttribute('position');
+    const paint = geometry.getAttribute('color');
+    let far = -Infinity;
+    for (let i = 0; i < point.count; i += 1) {
+      const same =
+        Math.abs(paint.getX(i) - tint.r) < 1e-4 &&
+        Math.abs(paint.getY(i) - tint.g) < 1e-4 &&
+        Math.abs(paint.getZ(i) - tint.b) < 1e-4;
+      if (same) far = Math.max(far, Math.abs(point.getX(i)));
+    }
+    return far;
+  };
+
+  it('ends the body and the concertina at different depths', () => {
+    // They used to end at exactly the same one, which is two faces at one
+    // depth arguing over every pixel of the front of a tram: yellow, black,
+    // yellow, black, all the way down a moving rake. Nothing here can be
+    // fixed by sorting or by a depth function -- the only fix is for the two
+    // faces not to be in the same place, so that is what is asserted.
+    const { geometry } = buildVehicle({
+      kind: 'tram',
+      x: 0,
+      z: 0,
+      yaw: 0,
+      length: TRAM.length,
+      width: TRAM.width,
+    });
+
+    const body = reachOf(geometry, 0xe8b62a);
+    const concertina = reachOf(geometry, 0x2a2c2f);
+    expect(body).toBeGreaterThan(0);
+    expect(concertina).toBeGreaterThan(0);
+    // A centimetre is plenty: the depth buffer is logarithmic and this is a
+    // metre from the camera at worst.
+    expect(Math.abs(concertina - body)).toBeGreaterThan(0.01);
+    geometry.dispose();
   });
 });
 
