@@ -32,8 +32,17 @@ export interface Seed {
   thrown: number;
 }
 
-/** How big a seed is, in metres across -- a tenth of the pigeon. */
-export const SEED_SIZE = 0.022;
+/**
+ * How big a seed is, in metres across: a fifth of the pigeon.
+ *
+ * Four and a half centimetres, which is twenty times life and a grain of
+ * maize the size of a small plum. It started at a tenth of the pigeon, on the
+ * grounds that a tenth is already absurd; a tenth is three pixels from
+ * standing height and gone entirely from the air, and a thing you are meant
+ * to walk over has to be a thing you can see from further away than your own
+ * beak.
+ */
+export const SEED_SIZE = 0.045;
 /** The ground the seeds land on, and the height they rest at. */
 const REST = SEED_SIZE / 2;
 /** Metres a second squared, downwards. The same gravity as everything else. */
@@ -129,7 +138,11 @@ export function createScatter(spec: Scattering): Scatter {
     const away = Math.sqrt(spec.random()) * spec.spread;
     const to = {
       x: spec.onto.x + Math.cos(angle) * away,
-      y: 0,
+      // Aimed at where the seed will sit rather than at the ground under it.
+      // A seed comes to rest on its own radius, so a throw solved to y=0
+      // touches down early and lands short by half its own width -- which is
+      // nothing at three millimetres and visible at four centimetres.
+      y: REST,
       z: spec.onto.z + Math.sin(angle) * away,
     };
     // A little under a second in the air: a lob rather than a bowl.

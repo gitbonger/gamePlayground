@@ -348,8 +348,15 @@ const gates = LEVELS.flatMap((spec) => {
  * handful and it is never the same handful.
  */
 const SEEDS_AT_ONCE = 8;
-/** How much of a belly one seed is worth. Eight of them is three kilometres. */
-const SEED_VALUE = 1 / SEEDS_AT_ONCE;
+/**
+ * How much of a belly one seed is worth: a tenth.
+ *
+ * Ten seeds for a full belly, against eight on the ground at a time, so a
+ * meal is a scatter and a bit rather than a long patient job. Grain this size
+ * is already ten times life; a bird that had to eat forty of them would be a
+ * bird doing paperwork.
+ */
+const SEED_VALUE = 0.1;
 /** How near a standing bird's beak gets to the ground around it, in metres. */
 const BEAK_REACH = 0.35;
 
@@ -1319,6 +1326,11 @@ function frame(nowMs: number) {
   interpolatedState.velocity = bird.velocity;
   interpolatedState.flapPhase = bird.flapPhase;
   interpolatedState.stamina = bird.stamina;
+  // And the belly. It was missing, and the bar in the corner spent the whole
+  // game showing whatever the bird had when this object was first made -- a
+  // copy taken once at startup and then never told anything again, disagreeing
+  // with the bar over the bird's own head, which reads the bird.
+  interpolatedState.health = bird.health;
   interpolatedState.ending = bird.ending;
   // Carried over too, or anything reading the drawn state is told the bird is
   // still standing on whatever it was riding when the run started.

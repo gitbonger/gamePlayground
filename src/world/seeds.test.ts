@@ -14,13 +14,16 @@ describe('throwing a seed', () => {
   it('lands it where it was aimed', () => {
     // The thrower knows where the seed is to land; the arc follows from that
     // and the time given, rather than from a guess at an angle.
-    const to = { x: 2, y: 0, z: 1.5 };
+    // Aimed at where it will sit, which is its own radius above the ground:
+    // solved to y=0 it touches down early and lands short by half its width.
+    const to = { x: 2, y: SEED_SIZE / 2, z: 1.5 };
     const speed = throwAt(HAND, to, 0.8);
     const seed: Seed = { ...HAND, ...speed, landed: false, thrown: 0 };
 
     for (let t = 0; t < 300 && !seed.landed; t += 1) flySeeds([seed], 1 / 120);
     expect(seed.landed).toBe(true);
-    expect(Math.hypot(seed.x - to.x, seed.z - to.z)).toBeLessThan(0.05);
+    // Within its own width, at a hundred and twenty ticks a second.
+    expect(Math.hypot(seed.x - to.x, seed.z - to.z)).toBeLessThan(SEED_SIZE);
   });
 
   it('throws an arc rather than a straight line', () => {
