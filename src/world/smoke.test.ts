@@ -162,3 +162,79 @@ describe('smoke', () => {
     expect(maxY - minY).toBeGreaterThan(20);
   });
 });
+
+/**
+ * A step is a stretch of track, not a point.
+ *
+ * A plume far from the bird is worked out a second at a time rather than a
+ * hundred and twentieth, which is what makes it nearly free. That only works
+ * if what a second buys is a second's worth of plume laid along the way the
+ * engine came -- otherwise it is eighty puffs stacked on one spot, sixteen
+ * metres from the last eighty, and when the train comes into view it is
+ * trailing a string of beads.
+ */
+describe('a plume laid down in one long step', () => {
+  /** Where the live puffs are, along the axis the stack moved down. */
+  const spread = (smoke: ReturnType<typeof createSmoke>) => {
+    const live = smoke.puffs.filter((p) => p.age >= 0).map((p) => p.x);
+    return { count: live.length, low: Math.min(...live), high: Math.max(...live) };
+  };
+
+  it('lays the puffs along the way the stack came, not all where it got to', () => {
+    const smoke = createSmoke();
+    // One second of travel at 16 m/s, in a single step.
+    smoke.update(1 / 120, { ...stack, x: 0 }, nowhere, still);
+    smoke.update(1, { ...stack, x: 16 }, nowhere, still);
+
+    const laid = spread(smoke);
+    expect(laid.count).toBeGreaterThan(50);
+    // Spread down the sixteen metres rather than piled at the end of them.
+    expect(laid.low).toBeLessThan(2);
+    expect(laid.high).toBeGreaterThan(14);
+  });
+
+  it('leaves no gap where one step ends and the next begins', () => {
+    const smoke = createSmoke();
+    smoke.update(1 / 120, { ...stack, x: 0 }, nowhere, still);
+    for (let step = 1; step <= 3; step += 1) {
+      smoke.update(1, { ...stack, x: step * 16 }, nowhere, still);
+    }
+    // Sorted, no two consecutive puffs further apart than a puff is wide.
+    const along = smoke.puffs.filter((p) => p.age >= 0).map((p) => p.x).sort((a, b) => a - b);
+    let widest = 0;
+    for (let i = 1; i < along.length; i += 1) widest = Math.max(widest, along[i]! - along[i - 1]!);
+    expect(widest).toBeLessThan(defaultSmokeOptions.size);
+  });
+
+  it('starts again when the stack has plainly been moved rather than driven', () => {
+    // A level change puts the engine kilometres away. Smeared, that is a line
+    // of smoke across the whole map; the plume should simply begin again.
+    const smoke = createSmoke();
+    smoke.update(1, { ...stack, x: 0 }, nowhere, still);
+    smoke.update(1, { ...stack, x: 4000 }, nowhere, still);
+
+    const along = smoke.puffs.filter((p) => p.age >= 0).map((p) => p.x);
+    expect(along.length).toBeGreaterThan(100);
+    // Smoke at both ends, and none of it in between.
+    expect(along.filter((x) => x < 100).length).toBeGreaterThan(50);
+    expect(along.filter((x) => x > 3900).length).toBeGreaterThan(50);
+    expect(along.filter((x) => x > 500 && x < 3500)).toEqual([]);
+  });
+
+  it('gives the same plume in one step as in many, near enough', () => {
+    // Not identical -- this is an integration, not a straight line, so a
+    // coarse step really does come out a little different. The claim is only
+    // that it is the same plume: the same amount of smoke, in the same place,
+    // going the same way.
+    const fine = createSmoke();
+    for (let t = 0; t < 1; t += DT) fine.update(DT, stack, nowhere, still);
+    const coarse = createSmoke();
+    coarse.update(1, stack, nowhere, still);
+
+    expect(coarse.living).toBeCloseTo(fine.living, -1);
+    const top = (smoke: ReturnType<typeof createSmoke>) =>
+      Math.max(...smoke.puffs.filter((p) => p.age >= 0).map((p) => p.y));
+    // Within a couple of metres of the same height after a second of climb.
+    expect(Math.abs(top(coarse) - top(fine))).toBeLessThan(2.5);
+  });
+});

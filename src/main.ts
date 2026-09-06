@@ -230,17 +230,19 @@ const smokes = layout.trains
     train.speed > 0 && stockIsHauled(train.stock)
       ? {
           index,
+          /** Seconds of plume owed since it was last worked out. */
+          owed: 0,
           puffs: createSmoke(
             train.stock === 'wagon'
               ? defaultSmokeOptions
-              : { ...defaultSmokeOptions, rate: 60, life: 7, lifeSpread: 1.8 },
+              : { ...defaultSmokeOptions, rate: 34, life: 7, lifeSpread: 1.8 },
             // A seed each, or every chimney billows in step.
             99 + index * 17,
           ),
         }
       : null,
   )
-  .filter((each): each is { index: number; puffs: Smoke } => each !== null);
+  .filter((each): each is { index: number; owed: number; puffs: Smoke } => each !== null);
 
 /** Every puff in the world, in one array the renderer can be given as is. */
 const allPuffs: Puff[] = smokes.flatMap((each) => each.puffs.puffs);
@@ -634,6 +636,8 @@ const previousAlong = layout.trains.map((train) => train.along);
 const TRAIN_REACH = 300;
 /** How often one out of reach is put back where it has got to, in seconds. */
 const DISTANT_REDRAW = 1;
+/** And how often its plume is moved on. */
+const DISTANT_SMOKE = 1;
 /** When each train was last laid out in world coordinates. */
 const laidOut = layout.trains.map(() => Number.NEGATIVE_INFINITY);
 /** And which of them were near enough to be worth it, this tick. */
@@ -729,17 +733,32 @@ function moveTrains(dt: number) {
   // is doing so the plume trails behind rather than standing over the
   // chimney. An engine standing in a platform is shut down and has none,
   // which needs no rule of its own: it has no emitter.
-  for (const { index, puffs } of smokes) {
-    const train = layout.trains[index];
+  for (const plume of smokes) {
+    const train = layout.trains[plume.index];
     const engine = train?.vehicles[0];
     if (!train || !engine) continue;
+
+    // A plume nobody is near is still a plume: it goes on being made, drifting
+    // and thinning, so that arriving at a train does not mean arriving at a
+    // cloud that has been standing still since you last looked. It is just
+    // worked out a second at a time rather than a hundred and twentieth.
+    //
+    // The arithmetic is an integration rather than a straight line, so unlike
+    // the train underneath it this really does come out different at a coarse
+    // step -- a little more lift and a little less drift. At three hundred
+    // metres a puff is under a pixel, and by the time it is not, the plume has
+    // been running at full rate for the ten seconds a puff lives.
+    plume.owed += dt;
+    if (!near[plume.index] && plume.owed < DISTANT_SMOKE) continue;
+    const owed = plume.owed;
+    plume.owed = 0;
 
     const stack = stackTop();
     const at = onVehicle(engine, stack.along, stack.across);
     const heading = onVehicle(engine, 1, 0);
     const speed = train.speed * train.direction;
-    puffs.update(
-      dt,
+    plume.puffs.update(
+      owed,
       { x: at.x, y: stack.height, z: at.z },
       {
         x: (heading.x - engine.x) * speed,

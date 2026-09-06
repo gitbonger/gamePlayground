@@ -51,14 +51,19 @@ export interface SmokeOptions {
 /**
  * Far more smoke than a locomotive has any business making.
  *
- * Measured rather than eyeballed: at these numbers the plume's puffs add up to
- * about fifteen times the area of the plume itself, so it is thoroughly opaque
- * -- at the rate it started on it was 1.8 times, and you could see the yard
- * through it. Fifteen hundred puffs over sixty-five metres, for 0.013 ms a
- * tick, which is the sort of thing instancing is for.
+ * Measured rather than eyeballed. What makes a plume opaque is its puffs
+ * adding up to several times its own area, and there is more than one way to
+ * buy that: many small ones or fewer larger ones. It used to be 150 a second
+ * at 1.1 m, which came to about fifteen times over and cost a thousand
+ * puff-updates a tick per engine. It is now 80 a second at 1.4 m, which comes
+ * to about thirteen times over -- the same wall of smoke, drawn with 45%
+ * fewer of them.
+ *
+ * The floor is known: at the rate this started on the overlap was 1.8 times
+ * and you could see the yard through it.
  */
 export const defaultSmokeOptions: SmokeOptions = {
-  rate: 150,
+  rate: 80,
   life: 10,
   lifeSpread: 2.5,
   exhaust: 6,
@@ -66,7 +71,7 @@ export const defaultSmokeOptions: SmokeOptions = {
   rise: 3.2,
   cooling: 0.55,
   drag: 0.55,
-  size: 1.1,
+  size: 1.4,
   growth: 1.3,
 };
 
@@ -120,6 +125,16 @@ export function puffOpacity(puff: Puff): number {
   return rising * fading * fading;
 }
 
+/**
+ * How far the stack may move in one update before it counts as having been
+ * moved rather than driven, in metres.
+ *
+ * Generous against the fastest thing that smokes: an engine at 16 m/s covers
+ * 16 m in the longest step it will ever be given. A level change moves it
+ * kilometres.
+ */
+const TELEPORT = 120;
+
 export function createSmoke(
   options: SmokeOptions = defaultSmokeOptions,
   seed = 99,
@@ -135,6 +150,16 @@ export function createSmoke(
   let next = 0;
   let owed = 0;
   let living = 0;
+  /**
+   * Where the stack was at the end of the last update.
+   *
+   * Kept so that the puffs owed for a step can be laid down *along* the way
+   * the engine came rather than all at the point it has reached. At a 120 Hz
+   * tick the two are five centimetres apart and it makes no difference; at
+   * one update a second they are sixteen metres apart, and without this the
+   * plume is a string of blobs with gaps between them.
+   */
+  let came: { x: number; y: number; z: number } | null = null;
 
   const light = (from: { x: number; y: number; z: number }, carried: { x: number; y: number; z: number }) => {
     const puff = puffs[next]!;
@@ -161,13 +186,34 @@ export function createSmoke(
     update(dt, from, carried, air) {
       if (dt <= 0) return;
 
+      // A step is a stretch of track, not a point. Anything owed is spread
+      // back along it, unless the stack has plainly been picked up and put
+      // somewhere else -- a level change moves it kilometres, and a plume
+      // smeared across the map is worse than one that starts again.
+      const jumped =
+        came === null ||
+        Math.hypot(from.x - came.x, from.y - came.y, from.z - came.z) > TELEPORT;
+      const trail = jumped ? from : came!;
+
       // Emit at a steady rate, carrying the fraction over rather than losing
       // it: at 55 a second and a 120 Hz tick, less than one is due each time.
       owed += options.rate * dt;
-      while (owed >= 1) {
+      const due = Math.floor(owed);
+      for (let i = 0; i < due; i += 1) {
         owed -= 1;
-        light(from, carried);
+        // Oldest first, so the one lit furthest back is the one that has been
+        // out longest -- which is what the ageing below then assumes.
+        const t = due === 1 ? 1 : (i + 1) / due;
+        light(
+          {
+            x: trail.x + (from.x - trail.x) * t,
+            y: trail.y + (from.y - trail.y) * t,
+            z: trail.z + (from.z - trail.z) * t,
+          },
+          carried,
+        );
       }
+      came = { x: from.x, y: from.y, z: from.z };
 
       living = 0;
       for (const puff of puffs) {

@@ -606,10 +606,41 @@ front of it is doing.
 | Triangles per frame | 4.81 M | **3.08 M** |
 | CPU per frame | 4.6 ms | **3.3 ms** |
 
-Which leaves **smoke as the largest thing in the simulation**: 3,491 puffs
-advected 120 times a second, 419,000 puff-updates a second, for four plumes.
-It was hidden inside the rake figure until the rakes got cheap enough to see
-past.
+**The smoke got the same two treatments**, and needed a third thing to make
+them safe. It was the largest item left in the simulation: 3,491 puffs
+advected 120 times a second for four plumes.
+
+*Fewer of them.* What makes a plume opaque is its puffs adding up to several
+times its own area, and there is more than one way to buy that. 150 a second
+at 1.1 m came to about fifteen times over; 80 a second at 1.4 m comes to about
+thirteen, which is the same wall of smoke out of **45% fewer puffs** — 3,491
+down to 1,930.
+
+*Worked out a second at a time when far off.* Unlike the train underneath it,
+this really is different at a coarse step: advection is an integration, not a
+straight line, so a second in one go gives a little more lift and a little
+less drift. It is close enough — the same amount of smoke, in the same place,
+going the same way, which is what the test states rather than claiming they
+are identical.
+
+*But a plume is never simply stopped.* A distant one goes on being made,
+drifting and thinning, so that arriving at a train does not mean arriving at a
+cloud that has been standing still since you last looked.
+
+And the third thing, without which the other two are no good: **a step is a
+stretch of track, not a point.** Eighty puffs owed for a second are laid along
+the way the engine came, not stacked at the point it reached — otherwise a
+train updated once a second trails a string of beads sixteen metres apart, and
+they are still in the air when you get there. The stack remembers where it was
+and the owed puffs are spread back along that line, oldest furthest back.
+Except when it has plainly been *moved* rather than driven — a level change
+puts it kilometres away, and a plume smeared across the map is worse than one
+that begins again.
+
+| smoke, per second of play | before | after |
+| --- | --- | --- |
+| At the yard, four engines in view | 10.7 ms | **6.0 ms** |
+| Anywhere else | 10.7 ms | **~0 ms** |
 
 ### What it costs (the map)
 
