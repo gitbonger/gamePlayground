@@ -491,9 +491,20 @@ does nothing rather than something wrong:
 A level ends in a conversation, so a conversation is where the next one can
 begin. An ending — hers if she has the last word, yours if you do — may carry
 the name of a level, and reaching that ending hands it over: the target
-changes, the sun moves, the progress is saved, and **the bird does not move at
-all**. It is standing on the branch it walked up to somebody on, and it flies
-out of there under its own power.
+changes, the progress is saved, and **the bird does not move at all**. It is
+standing on the branch it walked up to somebody on, and it flies out of there
+under its own power.
+
+Nor does the light. A level's hour belongs to its start point and travels with
+it: both say what happens when you are *put* at a level, so a level you are
+never put at imposes neither. You carry on from the branch you were on, at the
+hour you were standing there. That is not a special case bolted on — the hour
+is applied in `respawn`, the one function whose job is putting the bird at the
+start, so a hand-over that does not respawn cannot move the sun. Which is the
+only thing that could sensibly happen: an hour arriving on its own would cut
+the whole sky in a frame while the bird had not so much as opened its wings.
+Press `R` after a hand-over and you get the level's own start *and* its own
+light, together, as always.
 
 That is the whole of the mechanism, and the point of it is how little there is
 to it. There is no travelling state, no cutscene, nothing new for the rest of

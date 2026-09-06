@@ -627,7 +627,27 @@ const run = createRunTracker(bird);
 let previousPosition: Vec3 = { ...bird.position };
 let previousOrientation: Quat = { ...bird.orientation };
 
+/**
+ * Put the bird at the start of the level being flown, in the light of it.
+ *
+ * The hour and the start point are one thing, and this is the one place
+ * either of them is applied. A level says where you are released and what
+ * time it is when you are, so a level you are never released into never
+ * imposes either: walk out of a conversation into the next level and you
+ * carry on from the branch you were standing on, at the hour you were
+ * standing there. Which is the only thing that could happen -- an hour that
+ * arrived on its own would cut the whole sky in a frame while the bird had
+ * not so much as opened its wings.
+ */
 function respawn() {
+  const here = LEVELS[level];
+  if (here) {
+    // Where the sun really was over this map at that hour, rather than
+    // wherever looked all right.
+    setSun(sunVector(map.centre[0], map.centre[1], new Date(here.when)));
+    sunOffset.copy(sunDirection).multiplyScalar(SUN_RANGE);
+  }
+
   bird = createBird(start.at, start.perched ? 0 : SPAWN_SPEED, start.heading);
   if (start.perched) standStill(bird);
   previousPosition = { ...bird.position };
@@ -652,10 +672,6 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   saveProgress(storage(), at);
 
   for (const marker of world.markers) marker.setActive(marker.name === targetName(spec));
-  // Where the sun really was over this map at that hour, rather than wherever
-  // looked all right.
-  setSun(sunVector(map.centre[0], map.centre[1], new Date(spec.when)));
-  sunOffset.copy(sunDirection).multiplyScalar(SUN_RANGE);
 
   finished = false;
   talk = null;
@@ -664,7 +680,8 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   talkingTo = null;
   // Where the level would put you if you asked for it again -- from the menu,
   // or by pressing R after making a mess of it. Worked out either way; it is
-  // only the *going* there that a level taken up in place skips.
+  // only the *going* there that a level taken up in place skips, and with it
+  // the level's own hour, which `respawn` is the only thing that applies.
   start = releaseFor(spec);
   if (where === 'released') respawn();
 }

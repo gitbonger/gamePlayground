@@ -81,6 +81,12 @@ export interface Level {
    * Which is to say where the sun is: the light is worked out from the real
    * solar position at this time over the map's own coordinates, so an hour is
    * a lighting decision that cannot be wrong for the place.
+   *
+   * It belongs to `start` and travels with it. Both say what happens when you
+   * are *put* at this level -- from the menu, on a respawn, or by flying on
+   * from the level before -- and a level taken up where you stand, handed over
+   * by a conversation, applies neither. You carry on from the branch you were
+   * on, at the hour you were standing there.
    */
   when: string;
   target: LevelTarget;
