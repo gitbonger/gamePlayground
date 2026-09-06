@@ -2233,6 +2233,32 @@ somebody had just said to you. It is `SPACE` and **Take off!** now, in the
 corner, and the rest of the reference card is going the same way one line at a
 time.
 
+**The rest are given by distance flown**, not by time and not by state.
+Distance is the only measure of the flight that is also a measure of the
+player: twenty metres of flying is twenty metres of flying whether it took two
+seconds or twenty, and somebody still working out which way is up has not
+covered it yet. Five metres in, `SPACE` **Keep flapping** — he is off the
+branch and sinking, which is the moment the answer matters and the moment
+nobody reads a reference card. Twenty metres in, `↑` `↓` **Aim up or down**,
+which is the one control with no natural gesture, since the key says up and
+the nose goes up.
+
+Each is given once per flight and **forgotten on a death**: the player who has
+just flown into a building is the one who most wants to be told again, and the
+one who never crashes never sees a repeat. They come one at a time and the
+corner empties between them — two instructions that never share the screen but
+never leave it either read as one instruction changing its mind. All of that
+is a small state machine that knows nothing about the clock or the DOM, told
+how far and how long, which is what makes it something to state as tests
+rather than to watch for.
+
+**The `HOME` readout is the distance to the home tree**, and to nothing else.
+It used to follow whichever target was lit, which made it a second
+distance-to-go beside the arrow that already says so. It is no use at all for
+flying the level, and that is the point: a homing pigeon's one instrument is
+the direction of home, and the story is about leaving it and getting back to
+it. It reads 1 m while he is still on the branch.
+
 ### What the screen does not say any more
 
 Three things came off it, and all three for the same reason: a number nobody

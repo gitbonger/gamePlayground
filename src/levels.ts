@@ -159,11 +159,12 @@ export const LEVELS: readonly Level[] = [
     // learn flying and landing at the same time. Nine hundred metres of
     // flapping first, and the slab is still there when he arrives.
     name: 'Grabbing food',
-    // Over the home tree, which is where the flight begins when the game
-    // is played through -- so being put here from the menu, or after a
-    // death, is being put back at the top of the same flight rather than
-    // somewhere else that happens to face the same way.
-    start: [47.494002, 19.096376],
+    // Twenty metres the far side of the home tree, so that the tree is the
+    // first thing in front of him: he is released facing his target, the
+    // target is most of a kilometre west, and the tree stands between. Being
+    // put here from the menu or after a death is being put back at the top of
+    // the same flight, looking at the same thing he looked at on leaving it.
+    start: [47.494019, 19.096828],
     // Five metres over the crest he has just left, which is the whole
     // difference between this level and every other one: he is not dropped
     // into it from the sky, he is leaving a tree. It also means the flight

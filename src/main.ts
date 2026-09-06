@@ -35,10 +35,10 @@ import {
 } from './render/bird';
 import { createFlock } from './flock';
 import { LEVELS, targetName, type Level, type LevelTarget } from './levels';
-import { LANDMARKS } from './landmarks';
+import { HOME_TREE, LANDMARKS } from './landmarks';
 import { begin, isOver, reply, type Exchange } from './dialogue';
 import { createDialoguePanel, speechColour } from './render/dialogue';
-import { createTipPanel, type Tip } from './render/tips';
+import { createTipPanel, createTutor, type Tip } from './render/tips';
 import { loadProgress, saveProgress } from './progress';
 import { createLevelMenu } from './render/menu';
 import {
@@ -94,13 +94,16 @@ const TICK = 1 / 120;
 const MAX_FRAME_TIME = 0.25;
 
 /**
- * Where the pigeon is trying to get back to, when a level does not say.
+ * Where home is.
  *
- * The loft, which is what a homing pigeon means by home. Every level names a
- * target of its own and the HUD counts down to that; this is what the
- * distance is measured to before there is one.
+ * The tree, not the loft and not whatever this level happens to be about. The
+ * readout in the corner counts the distance to it and nothing else, which is
+ * no use at all for flying the level and is exactly the point: a homing
+ * pigeon's one instrument is the direction of home, and the story is about
+ * leaving it and getting back. It used to follow the lit target, which made
+ * it a second distance-to-go readout beside the arrow that already says so.
  */
-const HOME_POINT: [number, number] = [47.494953, 19.081954];
+const HOME_POINT: [number, number] = HOME_TREE.at;
 
 const SPAWN_SPEED = 16;
 /**
@@ -662,6 +665,10 @@ function respawn() {
   previousPosition = { ...bird.position };
   previousOrientation = { ...bird.orientation };
   run.reset(bird);
+  // A flight starting again is a player starting again: the lessons come back
+  // with the distance, which is the whole reason they are measured in metres
+  // flown rather than remembered for good.
+  tutor.reset();
   outcome.hide();
   chase.snap(bird, cameraParams);
 }
@@ -706,6 +713,8 @@ createDebugGui(flightParams, cameraParams, windParams, pictureParams, {
 const menu = createLevelMenu(overlay, LEVELS);
 const talkPanel = createDialoguePanel(overlay);
 const tipPanel = createTipPanel(overlay);
+/** Hands out the flying lessons, by how far this flight has gone. */
+const tutor = createTutor();
 /** The hero's own colour, which is what his half of a conversation is set in. */
 const hero = speechColour(HERO_MORPH.body);
 // The level being flown is the one remembered, applied through the same path
@@ -1102,7 +1111,11 @@ function frame(nowMs: number) {
     talkingTo ? talk : null,
     talkingTo ? { them: talkingTo.voice, you: hero } : undefined,
   );
-  tipPanel.show(nextThing());
+  // The tutor is asked every frame whether or not anything is showing, so its
+  // own clock runs; a state tip takes the corner while it has something to
+  // say, because what to do now outranks what to learn.
+  const lesson = tutor.update(run.stats.distance, frameTime);
+  tipPanel.show(nextThing() ?? lesson);
   world.updateSmoke(allPuffs, camera.quaternion);
   rig.update(interpolatedState, wings, frameTime);
 
@@ -1221,7 +1234,7 @@ function frame(nowMs: number) {
     interpolatedState,
     telemetry,
     landing,
-    distance(interpolatedState.position, activeMarker()?.position ?? home),
+    distance(interpolatedState.position, home),
     smoothedFps,
     onFoot,
     banner(),
