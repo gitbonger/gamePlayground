@@ -266,15 +266,20 @@ describe('talking an approach down', () => {
     // Higher up there is room to fly out of it, and the general instruction
     // stands.
     expect(approachFor({ ...near, altitude: 30, toGo: 120, sinking: true })?.text).toBe(
-      'Brake, then nose up',
+      'Brake, then pull up',
     );
   });
 
   it('ends on the nose coming up, which is the last thing you do', () => {
-    // And says it in words rather than in the word for it: "flare" is what a
-    // pilot calls this and is no use to somebody who has never landed
-    // anything. Every instruction here names a key and a thing to do with it.
-    expect(approachFor({ ...near, toGo: 20, altitude: 5 })?.text).toBe('Nose up to settle');
+    // And says it in the same three words the caution says, on purpose: the
+    // same key doing the same thing to the same bird. "Flare" is what a pilot
+    // calls this and is no use to somebody who has never landed anything --
+    // asked what it meant, the first player to read it guessed it was the
+    // part of a wing that opens to brake.
+    expect(approachFor({ ...near, toGo: 20, altitude: 5 })?.text).toBe('Pull up!');
+    expect(cautionFor(true, { altitude: 8, airspeed: 16, stamina: 1, stalled: false, climb: -2 })?.text).toBe(
+      'Pull up!',
+    );
   });
 
   it('draws every one of them with a key that does something', () => {

@@ -288,14 +288,15 @@ export const approachFor = (flight: Approaching): Tip | null => {
   if (flight.sinking && flight.altitude < 12) return { keys: ['SPACE'], text: 'Beat to soften it' };
   // Low, slow and settling: the last thing, and a moment rather than a state.
   //
-  // "Flare" is the word for it and the word is no use here. It is aviation
+  // "Flare" is the word for it and the word is no use here: it is aviation
   // vocabulary, this game teaches nobody any, and an instruction whose verb
-  // has to be looked up is an instruction that arrives too late. What the
-  // player does is pull the nose up, so that is what it says -- and it says
-  // it in the same words as the stall caution, which is the same control the
-  // other way round.
-  if (flight.altitude < 6) return { keys: ['↓'], text: 'Nose up to settle' };
-  return { keys: ['B'], text: 'Brake, then nose up' };
+  // has to be looked up arrives too late. It says "Pull up!" -- the same
+  // three words the caution uses, on purpose. It is the same key doing the
+  // same thing to the same bird, and one phrase learned once is worth more
+  // than two phrases distinguishing an emergency from a landing that the
+  // player is equally busy in either way.
+  if (flight.altitude < 6) return { keys: ['↓'], text: 'Pull up!' };
+  return { keys: ['B'], text: 'Brake, then pull up' };
 };
 
 /**
