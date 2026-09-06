@@ -8,7 +8,8 @@ import { begin, isOver, reply, type Turn } from './dialogue';
 import { project } from './world/geo';
 import HOME_MAP from './world/data/home.json';
 import { indexStreets, type Road } from './world/streets';
-import { footprintSamples } from './world/areas';
+import { footprintSamples, type Area } from './world/areas';
+import { pointInPolygon } from './world/polygon';
 import { defaultMapWorldOptions } from './world/from-map';
 
 describe('what the levels aim at', () => {
@@ -279,6 +280,36 @@ describe('what the levels aim at', () => {
         talk = reply(talk, step === 0 ? index + 1 : 1);
       }
       expect(talk.opens, `reply ${index + 1}`).toBe(LEVELS[1]!.name);
+    }
+  });
+
+  it('lets him off the tree rather than dropping him over it', () => {
+    // The errand starts five metres above the crest he has just been standing
+    // on, and takes that height from the tree rather than restating it: move
+    // the tree and the release moves with it. Every other level is a hundred
+    // metres up, which is a different kind of level -- a sky drop with the
+    // whole approach laid out beneath you.
+    const errand = LEVELS[1]!;
+    expect(errand.release).toBe(HOME_TREE.height + 5);
+    for (const level of LEVELS.slice(2)) expect(level.release, level.name).toBe(100);
+  });
+
+  it('releases nobody into a roof', () => {
+    // A level released below the roofline has to be released over ground
+    // nothing is built on, and the generator builds nowhere green. The bird is
+    // raised clear of anything solid underneath it as a backstop, but a level
+    // that needs the backstop every time is a level released inside a
+    // building, which is not a difficulty -- it is a bug that reads as one.
+    const centre = HOME_MAP.centre as [number, number];
+    const green = (HOME_MAP.areas ?? []) as Area[];
+
+    for (const level of LEVELS) {
+      if (level.begins === 'perched') continue;
+      if (level.release > defaultMapWorldOptions.maxHeight) continue;
+
+      const at = project(level.start[0], level.start[1], centre);
+      const over = green.some((area) => pointInPolygon(at.x, at.z, area.points));
+      expect(over, `${level.name} at ${level.release} m`).toBe(true);
     }
   });
 

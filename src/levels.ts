@@ -76,6 +76,21 @@ export interface Level {
   /** Where the pigeon is released, in degrees. */
   start: [number, number];
   /**
+   * How high it is released, in metres above the ground.
+   *
+   * Stated by every level and defaulted by none, because there is no height
+   * that is right twice: a hundred metres is a sky drop with the whole
+   * approach laid out beneath you, and twenty-three is leaving a tree. Which
+   * of those a level is, is the level's own business, and a default would let
+   * one be written without anybody deciding.
+   *
+   * The ground is flat, so this is both a height and an altitude. The one
+   * thing that overrides it is something solid underneath -- a release point
+   * over a roof is raised clear of the roof, since being released inside a
+   * building is not a difficulty, it is a bug.
+   */
+  release: number;
+  /**
    * The moment it is flown at, as an ISO instant.
    *
    * Which is to say where the sun is: the light is worked out from the real
@@ -120,6 +135,11 @@ export const LEVELS: readonly Level[] = [
     // The tree itself. Unused for a perched start, which stands him on the
     // platform, but written down because a level without a place is not one.
     start: [47.492101, 19.087960],
+    // Never used: a perched level puts him on the crest rather than in the
+    // air over it. Stated anyway, at the height of the thing he is standing
+    // on, so that taking `begins: 'perched'` away would leave a level that
+    // still makes sense rather than one with a hole in it.
+    release: HOME_TREE.height,
     // First light, which is when a homing pigeon is actually let go, and the
     // only level in the game flown out of a sunrise.
     when: '2025-06-21T03:10:00Z',
@@ -142,6 +162,12 @@ export const LEVELS: readonly Level[] = [
     // death, is being put back at the top of the same flight rather than
     // somewhere else that happens to face the same way.
     start: [47.492242, 19.087661],
+    // Five metres over the crest he has just left, which is the whole
+    // difference between this level and every other one: he is not dropped
+    // into it from the sky, he is leaving a tree. It also means the flight
+    // cannot be glided -- from twenty-three metres a pigeon covers about a
+    // hundred and forty of the three hundred and fifty.
+    release: HOME_TREE.height + 5,
     // Midday, so the shadows are short and the ground reads plainly.
     when: '2025-06-21T10:00:00Z',
     target: { kind: 'landmark', name: PARK_PATCH.name },
@@ -156,6 +182,8 @@ export const LEVELS: readonly Level[] = [
     // deal steeper than a pigeon glides: 1:2.5 against a best glide of 1:6.2,
     // so the height has to be got rid of rather than merely flown off.
     start: [47.494610, 19.086245],
+    // High enough to see the whole approach and to reach it gliding.
+    release: 100,
     // Late afternoon in midsummer: 24 degrees up and a little north of due
     // west, which hangs the sun over the rooftops instead of above the top of
     // the frame, and makes the shadows long enough to read from the air.
@@ -169,6 +197,8 @@ export const LEVELS: readonly Level[] = [
     // wait for you.
     name: 'The Yard',
     start: [47.503261, 19.091374],
+    // High enough to see the whole approach and to reach it gliding.
+    release: 100,
     // Low evening sun, straight down the yard.
     when: '2025-06-21T17:30:00Z',
     target: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' },
@@ -181,6 +211,8 @@ export const LEVELS: readonly Level[] = [
     // other way from every level before it.
     name: 'The Crossing',
     start: [47.494106, 19.071122],
+    // High enough to see the whole approach and to reach it gliding.
+    release: 100,
     // Half past seven in the morning, local. Four degrees north of due east
     // and eleven degrees up, which is the sun of the evening levels seen from
     // the other side.

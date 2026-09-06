@@ -393,9 +393,26 @@ level should have.
 **A level is data, in `src/levels.ts`.** The map is settled, so a coordinate
 written there means the same place for good — which is what makes a level
 something you can describe rather than something you have to build. Each one
-carries five things: a name, a point to be released at, an hour to fly it at,
-a thing to land on, and somebody standing on it — plus what it says when you
-get there.
+carries a name, a point to be released at, a height to be released from, an
+hour to fly it at, a thing to land on, somebody standing on it, and what they
+say when you get there.
+
+**The release height is stated by every level and defaulted by none.** There
+is no height that is right twice: a hundred metres is a sky drop with the
+whole approach laid out beneath you, and twenty-three is leaving a tree.
+*Grabbing food* takes its height from the home tree — five metres above the
+crest he has just been standing on, so moving the tree moves the release with
+it — and that one number is most of what makes the level what it is: from
+twenty-three metres a pigeon glides about a hundred and forty of the three
+hundred and fifty, so the rest has to be flown. The other four are a hundred.
+A default would have let a level be written without anybody deciding, which is
+exactly the decision that should not be inherited.
+
+The one thing that overrides it is something solid underneath: a release point
+over a roof is raised clear of the roof. Being let go inside a building is not
+a hard level, it is a bug, and no level should have to know what the generator
+happened to build under it. A level released below the roofline is also
+checked to be over green space, where nothing is built at all.
 
 The hour is the interesting one. It is an instant rather than a light
 direction, and the sun is worked out from the real solar position over the

@@ -93,23 +93,22 @@ const TICK = 1 / 120;
 const MAX_FRAME_TIME = 0.25;
 
 /**
- * Where the pigeon is released, and where it is trying to get back to.
+ * Where the pigeon is trying to get back to, when a level does not say.
  *
- * The release point sits on the line from the loft through the train, 400 m
- * short of it, so the pigeon is let go facing both: the rake of wagons is dead
- * ahead and home is directly beyond it. From 120 m the bird glides 515 m, so
- * the train is comfortably in reach and wants braking to settle on.
- *
- * The baked map is centred between release and loft rather than on either, so
- * the flight stays inside it with room to wander. The bird is raised clear of
- * whatever stands at the release point by SPAWN_CLEARANCE.
+ * The loft, which is what a homing pigeon means by home. Every level names a
+ * target of its own and the HUD counts down to that; this is what the
+ * distance is measured to before there is one.
  */
-const RELEASE_POINT: [number, number] = [47.503261, 19.091374];
 const HOME_POINT: [number, number] = [47.494953, 19.081954];
 
-const SPAWN_ALTITUDE = 120;
 const SPAWN_SPEED = 16;
-/** Clearance kept above anything standing at the spawn point. */
+/**
+ * Clearance kept above anything standing at the release point.
+ *
+ * The one thing that overrides a level's stated release height. Being let go
+ * inside a roof is not a hard level, it is a bug, and no level should have to
+ * know what the generator happened to build under it.
+ */
 const SPAWN_CLEARANCE = 40;
 /** Altitude below which the HUD starts showing the approach cue, in metres. */
 const APPROACH_ALTITUDE = 45;
@@ -134,7 +133,6 @@ const { renderer, scene, camera, sun, sunDirection, setSun, setPixelRatio } = cr
  */
 const sunOffset = sunDirection.clone().multiplyScalar(SUN_RANGE);
 
-const release = project(RELEASE_POINT[0], RELEASE_POINT[1], map.centre);
 const home = project(HOME_POINT[0], HOME_POINT[1], map.centre);
 
 /**
@@ -395,10 +393,10 @@ const rebuildWind = () => {
  * Pointed at whatever the level is about, which is the direction a homing
  * pigeon leaves in and saves the player a search before they have started.
  */
-function releaseFor(spec: Level | undefined): { at: Vec3; heading: number; perched: boolean } {
-  const point = spec ? project(spec.start[0], spec.start[1], map.centre) : release;
+function releaseFor(spec: Level): { at: Vec3; heading: number; perched: boolean } {
+  const point = project(spec.start[0], spec.start[1], map.centre);
   const floor = world.collider.heightAt(point.x, point.z);
-  const marker = spec ? objective(targetName(spec)) : null;
+  const marker = objective(targetName(spec));
   const aim = marker ? { x: marker.position.x, z: marker.position.z } : home;
 
   // A perched level does not release the bird at all: it stands him on the
@@ -407,9 +405,9 @@ function releaseFor(spec: Level | undefined): { at: Vec3; heading: number; perch
   // platform not much wider than the two of them it puts him on top of her.
   // Mirrored, they face each other across it, and the level is complete
   // before the player has touched anything, which is the whole idea of it.
-  const stood = spec?.begins === 'perched' ? standingSpot(spec) : null;
-  const described = spec ? LANDMARKS.find((l) => l.name === spec.target.name) : null;
-  if (spec && marker && stood) {
+  const stood = spec.begins === 'perched' ? standingSpot(spec) : null;
+  const described = LANDMARKS.find((l) => l.name === spec.target.name);
+  if (marker && stood) {
     const across = pointOn(
       { x: marker.position.x, z: marker.position.z, yaw: described?.yaw ?? 0 },
       -spec.person.along,
@@ -423,8 +421,8 @@ function releaseFor(spec: Level | undefined): { at: Vec3; heading: number; perch
     at: vec(
       point.x,
       Number.isFinite(floor)
-        ? Math.max(SPAWN_ALTITUDE, floor + SPAWN_CLEARANCE)
-        : SPAWN_ALTITUDE,
+        ? Math.max(spec.release, floor + SPAWN_CLEARANCE)
+        : spec.release,
       point.z,
     ),
     heading: bearing(point, aim),
@@ -454,7 +452,9 @@ function standStill(state: BirdState): void {
   };
 }
 
-let start = releaseFor(LEVELS[level]);
+// The level being flown, which `loadProgress` has already made sure is one
+// the game has. The fallback is for the type rather than for the case.
+let start = releaseFor(LEVELS[level] ?? LEVELS[0]!);
 
 let bird: BirdState = createBird(start.at, start.perched ? 0 : SPAWN_SPEED, start.heading);
 if (start.perched) standStill(bird);
