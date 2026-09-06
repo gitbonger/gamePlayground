@@ -2433,11 +2433,21 @@ glide: every glide is nose-high and losing height, which is what gliding is.
 The stamina bar goes red at the same mark the "slow down" instruction appears
 at, so the words and the picture say it together.
 
-**And they are said out loud.** Reading is the one thing a player three
+**And the critical ones are said out loud.** Reading is the one thing a player three
 seconds from a rooftop cannot spare attention for, and speech arrives without
 being looked at. There was nothing to add for it: `speechSynthesis` is built
 into every browser, the voices come from the operating system, and there is
 nothing to download and nothing to pay for. `V` turns it off.
+
+**Only the critical ones**, which took one round of hearing it to learn: a
+voice that reads every instruction is a voice you turn off, and then it is not
+there for the one that mattered. So it says what is about to go wrong and what
+the flight cannot continue without — the stall, the sink, the approach, the
+take-off that ends a conversation — and nothing else. The turn lessons, the
+name of the market, the advice about trees: all of those are on the screen,
+where something can be ignored without being silenced. Even among the
+cautions, *slow down* stays quiet: it is the only one you can put off, and the
+only one that can be true for a whole flight.
 
 What had to be written is not the speaking but the *when*, because a game
 that reads every change of state aloud is unbearable inside two minutes.
@@ -2514,6 +2524,67 @@ height your airspeed is worth, which is genuinely the number that says whether
 you can clear the roofline ahead — and which nobody reads that way while
 flying a pigeon into a park. Airspeed, altitude and climb are the three you
 fly on.
+
+## Food
+
+The bird eats. There is a second bar under the stamina one, and what it holds
+is not health in the usual sense: nothing takes it away but flying, and
+nothing puts it back but grain on the ground.
+
+**Stamina is paid for out of the belly.** Recovering the wings is what costs —
+which is the honest way round, since a pigeon that has flown all afternoon is
+not tired, it is hungry, and sitting on a roof does not fix that. The rate is
+measured rather than picked: level flight, beating when sinking and gliding
+when climbing, covers three kilometres in 218 seconds and cycles 1.96 bars of
+stamina through recovery, so 0.51 of a belly per bar is one full belly for
+three kilometres. There is a test that flies exactly that and fails if the
+wing is ever retuned without the belly being retuned with it.
+
+Two details fall out of doing it properly rather than approximately. The cost
+is taken from what actually goes *back into* the wings, not from what was
+offered — so a bird resting at full stamina eats nothing, and sitting on a
+branch is free. And an empty belly stops the recovery rather than killing the
+bird: what is left in the wings is still there to be spent; what is gone is
+the getting of any more.
+
+**The flock does not eat.** They are a visual effect, and a visual effect that
+starves comes down in the middle of somebody's level. The belly is the hero's
+problem, because it is the reason to go and find grain, and there is no grain
+in a level for the scenery to find.
+
+### Grain
+
+Somebody stands by the concrete and throws seed onto it, one piece at a time,
+at no particular spot. It is a physical object rather than a number going up:
+thrown out of a hand, an arc, a landing, and then it sits there until it is
+eaten. The throw is solved rather than aimed — the thrower knows where the
+seed is to land, and the arc follows from that and the time given.
+
+It is deliberately too big. A seed a bird would actually eat is three or four
+millimetres, which at any altitude worth flying at is nothing at all:
+invisible, and impossible to aim a landing at. A tenth of the pigeon is about
+two centimetres, a grain of maize the size of a plum. The nest and the
+headstones make the same trade — life size is the truth and is not there.
+
+**Eight down at a time**, and at the limit the oldest is picked up and thrown
+somewhere else, so the ground keeps a handful and it is never the same
+handful. Which is, conveniently, exactly what somebody with a bag of grain
+looks like from thirty metres up. Eating is walking over one: nothing to
+press, since a key for it would be a key for the thing the player is already
+doing. Each is worth an eighth of a belly, so clearing the patch is a full
+belly, which is three kilometres, which is the next errand.
+
+### And a bar over each bird
+
+The one in the corner belongs to whoever the camera is following. Birds on
+their feet get one over their heads as well — the hero while he walks, and
+whoever he has walked up to — because once the belly is what the story turns
+on, a conversation about being hungry reads differently with two nearly-empty
+bars standing in it.
+
+Both of them start at a fifth. That is where the story starts: two hungry
+birds on a branch, and the food nine hundred metres away, which is more than a
+fifth of a belly covers.
 
 ## Walking
 

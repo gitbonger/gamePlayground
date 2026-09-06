@@ -42,10 +42,11 @@ import {
   type LevelTarget,
   type Line,
 } from './levels';
-import { HOME_TREE, LANDMARKS } from './landmarks';
+import { HOME_TREE, LANDMARKS, PARK_PATCH } from './landmarks';
 import { begin, isOver, reply, type Exchange } from './dialogue';
 import { createDialoguePanel, speechColour } from './render/dialogue';
 import { browserSpeaker, createVoice } from './render/voice';
+import { createVitals, type Vital } from './render/vitals';
 import {
   approachFor,
   cautionFor,
@@ -68,7 +69,8 @@ import { defaultSight, sighted } from './render/sighted';
 import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
 import { buildWorld, targetFlash } from './world/city';
-import { pointOn } from './world/layout';
+import { peopleOn, PERSON_HEIGHT, pointOn } from './world/layout';
+import { createScatter, seedWithin } from './world/seeds';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
 import {
   carryPassengers,
@@ -121,6 +123,25 @@ const MAX_FRAME_TIME = 0.25;
 const HOME_POINT: [number, number] = HOME_TREE.at;
 
 const SPAWN_SPEED = 16;
+
+/**
+ * How full a belly is when the story starts, and after every respawn.
+ *
+ * A fifth. The two of them on the home tree are hungry -- that is the whole
+ * reason anybody is flying anywhere -- and a fifth of a belly is about six
+ * hundred metres of the nine hundred to the food. He arrives on what is left
+ * of it, which is the level.
+ */
+const STARTING_HEALTH = 0.2;
+
+/**
+ * How near a bird has to be for its own bar to be worth drawing, in metres.
+ *
+ * Close enough that it is a bird you are dealing with rather than one of the
+ * dots on a roof three streets away.
+ */
+const VITALS_REACH = 40;
+
 /**
  * Clearance kept above anything standing at the release point.
  *
@@ -327,7 +348,39 @@ const gates = LEVELS.flatMap((spec) => {
   ];
 });
 
+/**
+ * The grain, and the person throwing it.
+ *
+ * One scatter, at the patch of concrete the food level is about, thrown by
+ * the person already standing beside it. Eight down at a time: at the limit
+ * the oldest is picked up and thrown somewhere else, so the ground keeps a
+ * handful and it is never the same handful.
+ */
+const SEEDS_AT_ONCE = 8;
+/** How much of a belly one seed is worth. Eight of them is three kilometres. */
+const SEED_VALUE = 1 / SEEDS_AT_ONCE;
+/** How near a standing bird's beak gets to the ground around it, in metres. */
+const BEAK_REACH = 0.35;
+
+const feeder = layout.landmarks.find((landmark) => landmark.name === PARK_PATCH.name);
+const hand = feeder ? peopleOn(feeder)[0] : undefined;
+const scatter =
+  feeder && hand
+    ? createScatter({
+        // Out of a hand rather than off the ground: chest height on somebody
+        // two metres tall.
+        from: { x: hand.x, y: hand.base + PERSON_HEIGHT * 0.7, z: hand.z },
+        onto: { x: feeder.x, z: feeder.z },
+        // Onto the slab and not over its edge, a seed's width in from it.
+        spread: Math.min(feeder.width, feeder.depth) / 2 - 0.3,
+        most: SEEDS_AT_ONCE,
+        every: 1.6,
+        random: Math.random,
+      })
+    : null;
+
 const world = buildWorld(layout, {
+  seeds: SEEDS_AT_ONCE,
   gates,
   // The described things need no list here: they arrive on the layout already
   // named, having been put there on purpose. Only the wagons do, because
@@ -623,6 +676,9 @@ for (const spec of LEVELS) {
   if (!stood) continue;
 
   const state = createBird(stood.at, 0, stood.facing);
+  // The one on the home tree is as hungry as he is; she is in the same story
+  // and it is the same morning. The rest are somebody else's afternoon.
+  if (spec.begins === 'perched') state.health = STARTING_HEALTH;
   standStill(state);
   state.restingOn = stood.on;
   const morph = CHARACTER_MORPHS[(spec.person?.morph ?? 0) % CHARACTER_MORPHS.length]!;
@@ -727,6 +783,7 @@ function respawn() {
   }
 
   bird = createBird(start.at, start.perched ? 0 : SPAWN_SPEED, start.heading);
+  bird.health = STARTING_HEALTH;
   if (start.perched) standStill(bird);
   previousPosition = { ...bird.position };
   previousOrientation = { ...bird.orientation };
@@ -824,6 +881,8 @@ createDebugGui(flightParams, cameraParams, windParams, pictureParams, {
 const menu = createLevelMenu(overlay, LEVELS);
 const talkPanel = createDialoguePanel(overlay);
 const tipPanel = createTipPanel(overlay);
+/** The bars over the heads of the birds you are looking at. */
+const vitals = createVitals(overlay);
 /**
  * The same instructions, said out loud.
  *
@@ -1141,9 +1200,13 @@ const NOTICE = 2;
 function command(): Tip | null {
   // A setting confirming itself outranks everything for a moment, because
   // the player has just pressed a key and is owed an answer about it.
-  if (voiceNote && clock - voiceNote.at < NOTICE) return { keys: ['V'], text: voiceNote.text };
+  if (voiceNote && clock - voiceNote.at < NOTICE)
+    // Spoken, so that turning it on is answered in the voice being turned on.
+    return { keys: ['V'], text: voiceNote.text, spoken: true };
 
-  if (finished && talkingTo && !midSentence()) return { keys: ['SPACE'], text: 'Take off!' };
+  if (finished && talkingTo && !midSentence())
+    // Said aloud: without it the flight does not continue at all.
+    return { keys: ['SPACE'], text: 'Take off!', spoken: true };
 
   // On foot, where the controls are a different set entirely and the player
   // has just arrived in them. These used to be the line above the bird, which
@@ -1224,6 +1287,19 @@ function frame(nowMs: number) {
     walkControls.turn = allowed.turn;
     walkControls.launch = allowed.launch;
     onFoot = walk(bird, walkControls, flightParams, TICK, solid);
+    if (scatter) {
+      scatter.update(TICK, clock);
+      // A bird on its feet eats what is under its beak. Nothing to press:
+      // walking onto grain is what eating grain looks like, and a key for it
+      // would be a key for the one thing the player is already doing.
+      if (isPerched(bird)) {
+        const found = seedWithin(scatter.seeds, bird.position.x, bird.position.z, BEAK_REACH);
+        if (found >= 0) {
+          scatter.take(found);
+          bird.health = Math.min(1, bird.health + SEED_VALUE);
+        }
+      }
+    }
     telemetry = step(bird, input.controls, flightParams, TICK, solid, wind);
     flock.update(TICK, solid, wind);
     if (bird.ending === null) run.update(bird, TICK);
@@ -1334,8 +1410,37 @@ function frame(nowMs: number) {
   // arrival is the harder half.
   const saying = urgent ?? tutor.update({ flown: run.stats.distance, toGo }, frameTime, input.anyDown);
   tipPanel.show(saying);
-  voice.update(saying, clock);
+  // Only the critical ones are said aloud. A voice that reads every
+  // instruction is a voice that gets turned off, and then it is not there for
+  // the one that mattered.
+  voice.update(saying?.spoken ? saying : null, clock);
   world.updateSmoke(allPuffs, camera.quaternion);
+  if (scatter) world.updateSeeds(scatter.seeds);
+
+  // A bar over every bird on its feet nearby: the hero while he is walking,
+  // and whoever he has walked up to. Standing still is when the belly is
+  // worth looking at -- flying, the one in the corner is the one that matters.
+  const standing: Vital[] = [];
+  if (isPerched(bird)) {
+    standing.push({
+      at: new THREE.Vector3(bird.position.x, bird.position.y + 0.32, bird.position.z),
+      health: bird.health,
+    });
+  }
+  for (const resident of residents) {
+    if (!resident.rig.object.visible) continue;
+    const away = distance(interpolatedState.position, resident.state.position);
+    if (away > VITALS_REACH) continue;
+    standing.push({
+      at: new THREE.Vector3(
+        resident.state.position.x,
+        resident.state.position.y + 0.32,
+        resident.state.position.z,
+      ),
+      health: resident.state.health,
+    });
+  }
+  vitals.show(standing, camera, canvas);
   rig.update(interpolatedState, wings, frameTime);
 
   // --- What is being pointed at -------------------------------------------

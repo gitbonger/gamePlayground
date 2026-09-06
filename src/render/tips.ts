@@ -48,6 +48,16 @@ export interface Tip {
   keys: readonly string[];
   /** What pressing them does, as an instruction rather than a description. */
   text: string;
+  /**
+   * Whether this one is worth saying out loud.
+   *
+   * Most are not. A voice that reads every instruction is a voice you turn
+   * off, and then it is not there for the one that mattered -- so it says
+   * only what is about to go wrong or what the flight cannot continue
+   * without. Everything else is on the screen, where something can be
+   * ignored without being silenced.
+   */
+  spoken?: boolean;
 }
 
 /**
@@ -218,6 +228,7 @@ export const CAUTIONS: readonly Caution[] = [
     keys: ['↑'],
     text: 'Nose down!',
     always: true,
+    spoken: true,
     when: (flight) => flight.stalled,
   },
   // Then slow, and this is the whole reason there is an order. Low *and*
@@ -233,6 +244,7 @@ export const CAUTIONS: readonly Caution[] = [
   {
     keys: ['SPACE'],
     text: 'Keep flapping!',
+    spoken: true,
     when: (flight) =>
       flight.airspeed < SLOW || (flight.noseUp && flight.altitude < LOW && flight.climb < 0),
   },
@@ -243,6 +255,7 @@ export const CAUTIONS: readonly Caution[] = [
   {
     keys: ['↓'],
     text: 'Pull up!',
+    spoken: true,
     when: (flight) => flight.altitude < LOW && flight.climb < 0,
   },
   // Last, because it is the only one you can put off. Out of wing is a slow
@@ -297,13 +310,15 @@ export const approachFor = (flight: Approaching): Tip | null => {
   // Too high to get down in the room that is left. A pigeon glides about six
   // to one, so a third of the distance is a steep but flyable slope, and more
   // than that has to be lost rather than flown off.
-  if (flight.altitude > flight.toGo / 3) return { keys: ['↑'], text: 'Lose some height' };
+  if (flight.altitude > flight.toGo / 3)
+    return { keys: ['↑'], text: 'Lose some height', spoken: true };
   // Too fast to put down, which is what the brake is for: wings spread and a
   // backwards beat.
-  if (flight.fast) return { keys: ['B'], text: 'Brake to slow down' };
+  if (flight.fast) return { keys: ['B'], text: 'Brake to slow down', spoken: true };
   // Down to roof height and still coming down hard. Beating arrests a sink in
   // a way that pulling the nose up at this height does not.
-  if (flight.sinking && flight.altitude < 12) return { keys: ['SPACE'], text: 'Beat to soften it' };
+  if (flight.sinking && flight.altitude < 12)
+    return { keys: ['SPACE'], text: 'Beat to soften it', spoken: true };
   // Low, slow and settling: the last thing, and a moment rather than a state.
   //
   // "Flare" is the word for it and the word is no use here: it is aviation
@@ -313,8 +328,8 @@ export const approachFor = (flight: Approaching): Tip | null => {
   // same thing to the same bird, and one phrase learned once is worth more
   // than two phrases distinguishing an emergency from a landing that the
   // player is equally busy in either way.
-  if (flight.altitude < 6) return { keys: ['↓'], text: 'Pull up!' };
-  return { keys: ['B'], text: 'Brake, then pull up' };
+  if (flight.altitude < 6) return { keys: ['↓'], text: 'Pull up!', spoken: true };
+  return { keys: ['B'], text: 'Brake, then pull up', spoken: true };
 };
 
 /**

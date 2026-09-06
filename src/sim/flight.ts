@@ -134,6 +134,21 @@ export interface FlightParams {
   flapStaminaCost: number;
   /** Stamina recovered per second while gliding. */
   staminaRecovery: number;
+  /**
+   * How much of a full belly it costs to recover one bar of stamina.
+   *
+   * Food is what stamina is made of. Resting gets the wings back and eats
+   * into what the bird had for breakfast, which is the honest way round: a
+   * pigeon that has flown all afternoon is not tired, it is hungry, and
+   * resting on a roof does not fix that.
+   *
+   * Measured rather than picked. Level flight -- beating when sinking,
+   * gliding when climbing -- covers three kilometres in 218 seconds and
+   * cycles 1.96 bars of stamina through recovery. At 0.51 of a belly per bar
+   * that is one full belly for three kilometres, which is the figure this was
+   * asked to hit.
+   */
+  bellyPerStamina: number;
 
   /** Maximum commanded body rates in rad/s. */
   pitchRate: number;
@@ -250,6 +265,7 @@ export const defaultParams: FlightParams = {
   flapSlowBoost: 13,
   flapStaminaCost: 0.07,
   staminaRecovery: 0.14,
+  bellyPerStamina: 0.51,
 
   pitchRate: 1.9,
   rollRate: 3.6,
@@ -360,6 +376,15 @@ export interface BirdState {
   angularVelocity: Vec3;
   /** 0..1, drains while flapping. */
   stamina: number;
+  /**
+   * What is left in the belly, 1 to 0.
+   *
+   * Not a health bar in the usual sense: nothing takes it away but flying,
+   * and nothing puts it back but eating. At zero the wings stop recovering --
+   * a starving bird can still beat what it has left, and cannot get any of it
+   * back.
+   */
+  health: number;
   /** 0..1 position within the current wingbeat, for animation. */
   flapPhase: number;
   /** 0..1 position within the current stride, for animation on foot. */
@@ -418,6 +443,7 @@ export function createBird(
     orientation,
     angularVelocity: vec(),
     stamina: 1,
+    health: 1,
     flapPhase: 0,
     stridePhase: 0,
     age: 0,
@@ -600,7 +626,14 @@ export function step(
   } else {
     // Settle the wings back to the neutral, mid-glide pose.
     state.flapPhase = damp(state.flapPhase, 0, 0.15, dt);
-    state.stamina = clamp(state.stamina + p.staminaRecovery * dt, 0, 1);
+    // Recovery is paid for out of the belly, and an empty one buys nothing.
+    // Measured from what actually goes back into the wings rather than from
+    // what was offered, so a bird resting at full stamina eats nothing --
+    // sitting on a branch is free, and only the recovering costs.
+    const wanted = state.health > 0 ? p.staminaRecovery * dt : 0;
+    const gained = clamp(state.stamina + wanted, 0, 1) - state.stamina;
+    state.stamina += gained;
+    state.health = clamp(state.health - gained * p.bellyPerStamina, 0, 1);
   }
 
   // --- Wing configuration -------------------------------------------------

@@ -93,12 +93,21 @@ export function createVoice(speaker: Speaker, repeatAfter = REPEAT_AFTER): Voice
 export function browserSpeaker(synth: SpeechSynthesis): Speaker {
   return {
     say(words) {
+      // Cancelled here as well as by the caller, and not as a belt-and-braces
+      // flourish: `speak` queues rather than replaces, and `cancel` clears
+      // the queue. Anything that reaches this without a cancel first is a
+      // second voice talking over the first, which is worse than silence --
+      // two instructions at once are no instructions at all.
+      synth.cancel();
+
       const utterance = new SpeechSynthesisUtterance(words);
       const english = synth.getVoices().find((voice) => voice.lang.startsWith('en'));
       if (english) utterance.voice = english;
-      // A shade quick and a shade high: these are called out rather than
-      // read, and a calm reading voice arrives after the roof does.
-      utterance.rate = 1.15;
+      // Slower than reading pace rather than faster. The first version was at
+      // 1.15 on the theory that these are called out rather than read; said
+      // aloud over a wingbeat, that is a voice you have to concentrate on,
+      // and concentrating is what the speech was there to save.
+      utterance.rate = 0.8;
       utterance.pitch = 1.05;
       synth.speak(utterance);
     },

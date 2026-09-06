@@ -129,7 +129,16 @@ body {
   transition: background-color 0.25s ease;
 }
 
+/* The belly, which is a different thing from the wings and reads as one. */
+.bar-fill.health {
+  background: #e0a34b;
+}
+
 .bar-fill.low {
+  background: #e0533f;
+}
+
+.bar-fill.health.low {
   background: #e0533f;
 }
 
@@ -248,6 +257,40 @@ body {
   text-align: center;
   font-size: 12px;
   color: var(--dim);
+}
+
+/* --- Vitals --------------------------------------------------------------- */
+/* A bar of health over the head of a bird you are looking at. */
+
+.vitals {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.vital {
+  position: absolute;
+  width: 64px;
+  height: 8px;
+  /* The projected point is the bird's head; the bar sits above and on it. */
+  transform: translate(-50%, -160%);
+  /* A pale edge rather than a dark one: this is read against foliage, which
+     is dark, and a dark bar on dark leaves is a bar nobody finds. */
+  border: 1px solid rgba(242, 245, 248, 0.55);
+  border-radius: 4px;
+  background: rgba(6, 10, 15, 0.66);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.vital-fill {
+  height: 100%;
+  background: #e0a34b;
+  transition: width 0.2s ease;
+}
+
+.vital-fill.low {
+  background: #e0533f;
 }
 
 /* --- Tips ----------------------------------------------------------------- */

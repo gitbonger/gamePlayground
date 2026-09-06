@@ -27,6 +27,8 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
   root.innerHTML = `
     <div class="hud-column">
       <div class="hud-stamina">
+        <span class="label">health</span>
+        <div class="bar"><div class="bar-fill health" data-field="health"></div></div>
         <span class="label">stamina</span>
         <div class="bar"><div class="bar-fill" data-field="stamina"></div></div>
       </div>
@@ -53,6 +55,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
   const homeEl = field('home');
   const headwindEl = field('headwind');
   const staminaEl = field('stamina');
+  const healthEl = field('health');
   const warningEl = field('warning');
   const fpsEl = field('fps');
   const whereEl = field('where');
@@ -86,6 +89,11 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     // Red at the same mark the "slow down" instruction appears at, so the
     // words and the picture say the same thing at the same moment.
     staminaEl.classList.toggle('low', state.stamina < TIRED_STAMINA);
+
+    // What is left in the belly. It only ever falls, and only by flying: this
+    // is the bar that says the errand has a cost.
+    healthEl.style.width = `${state.health * 100}%`;
+    healthEl.classList.toggle('low', state.health < TIRED_STAMINA);
 
     // The line over the bird is the story's, and only the story's: what level
     // is being flown, and that it has been finished. Everything that was

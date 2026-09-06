@@ -366,6 +366,14 @@ export function createFlock(
 
       steer(member.state, member.aiming, pilot.memory, pilot.controls, flying);
       step(member.state, pilot.controls, flight, dt, collider, wind);
+      // The flock does not eat. The belly is the hero's problem: it is the
+      // reason to go and find grain, and there is no grain in a level for
+      // these ones to find. A scenery bird with an empty belly stops
+      // recovering, stops holding height, and comes down in the middle of
+      // somebody's level -- which is the flock failing at the one thing it
+      // is for. They are a visual effect, and a visual effect does not
+      // starve.
+      member.state.health = 1;
 
       if (member.state.ending) {
         member.down = options.respawnDelay;

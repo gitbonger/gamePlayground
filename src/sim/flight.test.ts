@@ -1018,3 +1018,63 @@ describe('rooftops', () => {
     expect(flyIntoTheWall().ending!.speed).toBeGreaterThan(defaultParams.crashSpeed);
   });
 });
+
+describe('what the flying is paid for with', () => {
+  const TICK = 1 / 120;
+
+  /** Fly level -- beat when sinking, glide when climbing -- for this far. */
+  const errand = (metres: number, belly = 1) => {
+    const bird = createBird(vec(0, 40, 0), 16, 0);
+    bird.health = belly;
+    let flown = 0;
+    for (let t = 0; t < 120 * 60 * 30 && flown < metres; t += 1) {
+      const was = { ...bird.position };
+      const flap = bird.velocity.y <= 0 && bird.stamina > 0.05;
+      step(bird, { ...neutralControls(), flap }, defaultParams, TICK);
+      flown += Math.hypot(bird.position.x - was.x, bird.position.z - was.z);
+      if (bird.ending) break;
+    }
+    return { bird, flown };
+  };
+
+  it('empties a full belly over about three kilometres', () => {
+    // The figure the whole thing is calibrated to, and it is a measurement
+    // rather than a setting: `bellyPerStamina` was chosen by flying this and
+    // dividing. If the wing is retuned, this is the test that says the belly
+    // no longer means what it says.
+    const { bird, flown } = errand(3000);
+    expect(flown).toBeGreaterThan(2900);
+    expect(bird.health).toBeLessThan(0.12);
+    expect(bird.health).toBeGreaterThanOrEqual(0);
+  });
+
+  it('costs nothing to sit still with the wings already rested', () => {
+    // Recovery is measured from what actually goes back into the wings, not
+    // from what was offered. A bird on a branch at full stamina is not
+    // digesting anything.
+    const bird = createBird(vec(0, 40, 0), 16, 0);
+    for (let t = 0; t < 600; t += 1) {
+      step(bird, neutralControls(), defaultParams, TICK);
+      bird.stamina = 1;
+    }
+    expect(bird.health).toBe(1);
+  });
+
+  it('stops giving the wings back once the belly is empty', () => {
+    // Starving is not death: what is left in the wings is still there to be
+    // spent. What is gone is the getting of any more.
+    const bird = createBird(vec(0, 40, 0), 16, 0);
+    bird.health = 0;
+    bird.stamina = 0.4;
+    for (let t = 0; t < 600; t += 1) step(bird, neutralControls(), defaultParams, TICK);
+    expect(bird.stamina).toBeCloseTo(0.4, 6);
+    expect(bird.health).toBe(0);
+  });
+
+  it('gets less far on a fifth of a belly, which is where the story starts', () => {
+    // Two of them are hungry on a branch and the food is nine hundred metres
+    // away. That is the level, and this is the arithmetic under it.
+    const { bird } = errand(600, 0.2);
+    expect(bird.health).toBeLessThan(0.05);
+  });
+});

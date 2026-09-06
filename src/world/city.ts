@@ -29,6 +29,7 @@ import {
 import type { Rail, Road } from './streets';
 import { CARRIAGE, ENGINE, TRAM, WAGON, type Train, type Vehicle } from './train';
 import { defaultSmokeOptions, puffOpacity, puffRadius, type Puff } from './smoke';
+import { SEED_SIZE } from './seeds';
 import type { Area, AreaKind } from './areas';
 
 export { defaultWorldOptions, type WorldOptions } from './layout';
@@ -78,6 +79,8 @@ export interface ObjectiveOptions {
    * layout already named, having been put there on purpose.
    */
   objectives?: { name: string; train: number; vehicle: number }[];
+  /** How many seeds the renderer must be ready to draw. */
+  seeds?: number;
   /**
    * Lines painted across the ground, one for each level that ends at one.
    *
@@ -103,6 +106,8 @@ export interface World {
   markers: TargetMarker[];
   /** The painted lines, by the name of the level each belongs to. */
   gates: { name: string; object: THREE.Object3D }[];
+  /** Put the thrown grain where the simulation says it has got to. */
+  updateSeeds(seeds: readonly { x: number; y: number; z: number }[]): void;
   /** Move the rolling stock to where the layout says the trains have got to. */
   updateTrains(trains: readonly Train[]): void;
   /**
@@ -655,6 +660,19 @@ export function buildWorld(
     gates.push({ name: gate.name, object: stripe });
   }
 
+  // --- Grain ----------------------------------------------------------------
+  // One instanced mesh, sized to the most that can ever be down at once, with
+  // the count moved rather than the instances: a seed being eaten is the
+  // count going down by one, and there are never more than a handful.
+  const grain = new THREE.SphereGeometry(SEED_SIZE / 2, 5, 4);
+  const husk = new THREE.MeshLambertMaterial({ color: SEED_COLOR, flatShading: true });
+  disposables.push(grain, husk);
+  const scattered = new THREE.InstancedMesh(grain, husk, options.seeds ?? 0);
+  scattered.name = 'seeds';
+  scattered.count = 0;
+  scattered.castShadow = true;
+  if (options.seeds) group.add(scattered);
+
   const roofGeometry = buildRoofs(layout.buildings);
   const roofMaterial = withTiles(new THREE.MeshLambertMaterial({ color: 0xffffff }));
   disposables.push(roofGeometry, roofMaterial);
@@ -942,6 +960,16 @@ export function buildWorld(
     collider: createColliderField(layout.boxes),
     markers,
     gates,
+    updateSeeds(seeds) {
+      scattered.count = Math.min(seeds.length, scattered.instanceMatrix.count);
+      for (let i = 0; i < scattered.count; i += 1) {
+        const seed = seeds[i]!;
+        position.set(seed.x, seed.y, seed.z);
+        matrix.compose(position, rotation.identity(), scale.setScalar(1));
+        scattered.setMatrixAt(i, matrix);
+      }
+      scattered.instanceMatrix.needsUpdate = true;
+    },
     overlay,
     updateTrains,
     updateSmoke,
@@ -1357,6 +1385,9 @@ const PUMP_HEAD = 0x2f3338;
 const CAR_BODY = 0x9c3b34;
 const CAR_GLASS = 0x2b3138;
 const TYRE = 0x1b1b1d;
+
+/** Grain: a pale maize yellow, which is what is thrown to pigeons. */
+const SEED_COLOR = 0xd9c26a;
 
 /** Weathered granite, and the paler kerb it stands on. */
 const GRAVE_STONE = 0x8d8f92;
