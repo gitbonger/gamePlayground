@@ -266,12 +266,15 @@ describe('talking an approach down', () => {
     // Higher up there is room to fly out of it, and the general instruction
     // stands.
     expect(approachFor({ ...near, altitude: 30, toGo: 120, sinking: true })?.text).toBe(
-      'Brake, then flare',
+      'Brake, then nose up',
     );
   });
 
-  it('ends on the flare, which is the last thing you do', () => {
-    expect(approachFor({ ...near, toGo: 20, altitude: 5 })?.text).toBe('Flare to settle');
+  it('ends on the nose coming up, which is the last thing you do', () => {
+    // And says it in words rather than in the word for it: "flare" is what a
+    // pilot calls this and is no use to somebody who has never landed
+    // anything. Every instruction here names a key and a thing to do with it.
+    expect(approachFor({ ...near, toGo: 20, altitude: 5 })?.text).toBe('Nose up to settle');
   });
 
   it('draws every one of them with a key that does something', () => {

@@ -269,7 +269,8 @@ const APPROACH = 150;
  * you have done enough of them.
  *
  * In order, and the order is the order the mistakes matter in: height cannot
- * be got rid of in the last twenty metres, speed can, and the flare is last
+ * be got rid of in the last twenty metres, speed can, and the nose comes up
+ * last
  * because it is the only one of them that is a moment rather than a state.
  */
 export const approachFor = (flight: Approaching): Tip | null => {
@@ -286,8 +287,15 @@ export const approachFor = (flight: Approaching): Tip | null => {
   // a way that pulling the nose up at this height does not.
   if (flight.sinking && flight.altitude < 12) return { keys: ['SPACE'], text: 'Beat to soften it' };
   // Low, slow and settling: the last thing, and a moment rather than a state.
-  if (flight.altitude < 6) return { keys: ['↓'], text: 'Flare to settle' };
-  return { keys: ['B'], text: 'Brake, then flare' };
+  //
+  // "Flare" is the word for it and the word is no use here. It is aviation
+  // vocabulary, this game teaches nobody any, and an instruction whose verb
+  // has to be looked up is an instruction that arrives too late. What the
+  // player does is pull the nose up, so that is what it says -- and it says
+  // it in the same words as the stall caution, which is the same control the
+  // other way round.
+  if (flight.altitude < 6) return { keys: ['↓'], text: 'Nose up to settle' };
+  return { keys: ['B'], text: 'Brake, then nose up' };
 };
 
 /**

@@ -29,7 +29,9 @@ const OUTCOMES: Record<string, { title: string; detail: (e: Ending) => string }>
   },
   'hard-impact': {
     title: 'Game over',
-    detail: (e) => `You hit the ground at ${speedText(e.sink)} km/h — flare later and harder`,
+    // "Flare later and harder" is what a pilot would say and no use to
+    // anybody else. The control is the down key and the verb is pull up.
+    detail: (e) => `You hit the ground at ${speedText(e.sink)} km/h — pull up later and harder`,
   },
   'too-fast': {
     title: 'Game over',
