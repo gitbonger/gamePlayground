@@ -1319,6 +1319,9 @@ function frame(nowMs: number) {
           climb: telemetry.climbRate,
           stamina: bird.stamina,
           stalled: telemetry.stalled,
+          // Two thirds of the way to the stall: enough of an angle that the
+          // wing is working hard and more of it would buy nothing.
+          noseUp: telemetry.angleOfAttack > flightParams.stallAngle * 0.65,
         })
       : null);
 

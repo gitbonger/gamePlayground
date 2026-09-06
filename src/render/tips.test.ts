@@ -162,7 +162,14 @@ describe('handing out the flying lessons', () => {
 
 describe('the cautions, which watch the flight', () => {
   /** A bird that is fine: high, fast, fresh and flying. */
-  const fine = { altitude: 120, airspeed: 16, stamina: 1, stalled: false, climb: 0 };
+  const fine = {
+    altitude: 120,
+    airspeed: 16,
+    stamina: 1,
+    stalled: false,
+    climb: 0,
+    noseUp: false,
+  };
 
   it('says nothing to a flight that is going well', () => {
     expect(cautionFor(true, fine)).toBeNull();
@@ -204,6 +211,24 @@ describe('the cautions, which watch the flight', () => {
     expect(cautionFor(true, { ...fine, altitude: 8, climb: 1 })).toBeNull();
     expect(cautionFor(true, { ...fine, altitude: 15, climb: -2 })).toBeNull();
     expect(cautionFor(true, { ...fine, altitude: 8, climb: -2 })?.text).toBe('Pull up!');
+  });
+
+  it('answers a sink with the wings once there is no nose left to give', () => {
+    // The reported miss, and it is a physics error rather than a missing
+    // message: a bird going down with its nose already up cannot pull up.
+    // There is no more nose to give, and asking for it takes the wing past
+    // working. So the same situation gets a different answer depending on
+    // what the wing is already doing.
+    const sinking = { ...fine, altitude: 8, climb: -2 };
+    expect(cautionFor(true, sinking)?.text).toBe('Pull up!');
+    expect(cautionFor(true, { ...sinking, noseUp: true })?.text).toBe('Keep flapping!');
+  });
+
+  it('does not nag a bird that is merely gliding nose-high', () => {
+    // Every glide is nose-up and sinking; that is what gliding is. The wings
+    // are only the answer when the sink is a problem -- low, or slow.
+    expect(cautionFor(true, { ...fine, noseUp: true, climb: -1 })).toBeNull();
+    expect(cautionFor(true, { ...fine, noseUp: true, climb: -1, altitude: 40 })).toBeNull();
   });
 
   it('keeps the stall for everyone and the lessons for the taught', () => {
@@ -277,9 +302,16 @@ describe('talking an approach down', () => {
     // asked what it meant, the first player to read it guessed it was the
     // part of a wing that opens to brake.
     expect(approachFor({ ...near, toGo: 20, altitude: 5 })?.text).toBe('Pull up!');
-    expect(cautionFor(true, { altitude: 8, airspeed: 16, stamina: 1, stalled: false, climb: -2 })?.text).toBe(
-      'Pull up!',
-    );
+    expect(
+      cautionFor(true, {
+        altitude: 8,
+        airspeed: 16,
+        stamina: 1,
+        stalled: false,
+        climb: -2,
+        noseUp: false,
+      })?.text,
+    ).toBe('Pull up!');
   });
 
   it('draws every one of them with a key that does something', () => {

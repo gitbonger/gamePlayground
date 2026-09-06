@@ -2417,6 +2417,19 @@ Low *and* slow looks like a case for pulling up, and pulling up with no speed
 is how a bird stalls into the ground it was trying to clear, so the wings come
 before the nose. Tired comes last because it is the only one you can put off.
 
+**And the sinking case splits by what the wing is already doing**, which was a
+real miss: a bird going down was told to pull up whatever its attitude, and a
+bird with the nose already up cannot. There is no more nose to give, and
+asking for it takes the wing past working rather than getting anything out of
+it — the very stall the next caution would then complain about. So sinking low
+with the nose down is *pull up*, and sinking low with the nose already up is
+*keep flapping*: pitch while there is pitch to spend, wings once there is not.
+"Nose already up" is two thirds of the way to the stall angle, taken from the
+flight model's own number rather than guessed at here.
+
+It has to be *low* as well as sinking, or the rule would talk over every
+glide: every glide is nose-high and losing height, which is what gliding is.
+
 The stamina bar goes red at the same mark the "slow down" instruction appears
 at, so the words and the picture say it together.
 

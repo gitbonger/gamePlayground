@@ -159,6 +159,16 @@ export interface Flying {
   stamina: number;
   /** Whether the wing has stopped working, which is not the same as slow. */
   stalled: boolean;
+  /**
+   * Whether the nose is already up as far as is any use.
+   *
+   * The angle of attack, near enough to the stall that asking for more of it
+   * would take the wing past working rather than get anything out of it. It
+   * is the difference between the two answers to sinking: a bird with the
+   * nose down still has pitch to spend, and a bird with the nose already up
+   * has only its wings.
+   */
+  noseUp: boolean;
 }
 
 /** Below this the bird is running out of air to fly on, in m/s -- 20 km/h. */
@@ -214,14 +224,22 @@ export const CAUTIONS: readonly Caution[] = [
   // slow looks like a case for pulling up, and pulling up with no speed is
   // how a bird stalls into the ground it was trying to clear. Wings first,
   // always: flapping is the only control that makes more of both.
+  //
+  // The second half of that clause is the same argument at the other end. A
+  // bird going down with its nose already up cannot pull up -- there is no
+  // more nose to give, and asking for it takes the wing past working. So the
+  // sinking case splits by what the wing is already doing: pitch while there
+  // is pitch to spend, wings once there is not.
   {
     keys: ['SPACE'],
     text: 'Keep flapping!',
-    when: (flight) => flight.airspeed < SLOW,
+    when: (flight) =>
+      flight.airspeed < SLOW || (flight.noseUp && flight.altitude < LOW && flight.climb < 0),
   },
   // The down key, because the nose follows the key rather than the horizon:
   // down on the keyboard is up in the air, which is the one control nobody
-  // guesses right.
+  // guesses right. Reached only with the nose still down, the clause above
+  // having taken the rest.
   {
     keys: ['↓'],
     text: 'Pull up!',
