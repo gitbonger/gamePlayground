@@ -12,20 +12,28 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { BirdState } from '../sim/flight';
 
 /**
- * A feral pigeon is pale blue-grey, which is lucky, because a dark one is
- * invisible against a grey city seen from above. The white rump is real too,
- * and it is the single most useful marking here: the chase camera watches the
- * bird from behind, so the rump is the part you are looking at most of the
- * time.
+ * The colour model, which is a legibility model rather than a taxonomy.
+ *
+ * A city of feral pigeons is a city of birds you cannot tell apart, and that
+ * is exactly right for a flock and exactly wrong for a cast. So there are two
+ * sets. The hero is blue and his mate is pink -- neither colour is in the
+ * crowd, so either of them is findable across a rooftop at a glance. The
+ * crowd comes in four: grey, black, white and ginger, which are the four
+ * feral pigeons anybody can actually name.
+ *
+ * Eight subtly different greys was the old set. It was more truthful and it
+ * read as one grey.
  */
-const BODY = 0x9fadbe;
-const WING = 0xb3bfcc;
-/** The two dark bars across a feral pigeon's wing, which give it shape. */
-const WING_BAR = 0x5b6675;
-const HEAD = 0xaebaca;
+const BODY = 0x7f92c0;
+const WING = 0x93a5cf;
+/** The two dark bars across a pigeon's wing, which give it shape. */
+const WING_BAR = 0x414c75;
+const HEAD = 0x8b9dc9;
 /** Iridescent neck, somewhere between green and violet depending on the light. */
 const NECK = 0x3f9e7c;
 const RUMP = 0xeef3f8;
+/** The dark band at the end of a pigeon's tail. Real, and it reads from above. */
+const TAIL = 0x3a4260;
 const BEAK = 0xe8a54b;
 const LEG = 0xd4735a;
 
@@ -48,10 +56,19 @@ export interface PigeonMorph {
   head: number;
   neck: number;
   rump: number;
+  /** The tail feathers, which are the part seen from behind and above. */
+  tail: number;
   beak: number;
   leg: number;
 }
 
+/**
+ * The hero: a blue bar, which is the wild type and here is properly blue.
+ *
+ * The one bird the player is always looking at, and the one they are never
+ * looking *for* -- so it is the colour nothing else in the world is, and the
+ * chase camera has something to hold on to against a grey city.
+ */
 const DEFAULT_MORPH: PigeonMorph = {
   body: BODY,
   wing: WING,
@@ -59,90 +76,94 @@ const DEFAULT_MORPH: PigeonMorph = {
   head: HEAD,
   neck: NECK,
   rump: RUMP,
+  tail: TAIL,
   beak: BEAK,
   leg: LEG,
 };
 
+/** The hero's colours, by the name the rest of the game knows them under. */
+export const HERO_MORPH = DEFAULT_MORPH;
+
 /**
- * Feral pigeons come in a small, well-known set of colour schemes, and these
- * are those rather than an arbitrary palette: blue-bar is the wild type, then
- * the checker, spread (near-black), red and mealy variants, plus the pieds and
- * whites that come of a few centuries of escaped domestic stock.
+ * The crowd: four birds you can name, told apart by body first and tail
+ * second.
+ *
+ * The tail is the second signal on purpose. From behind and above -- which is
+ * where a flying pigeon is seen from -- the tail is most of what there is, so
+ * a white bird with a black tail and a white bird with a ginger one are two
+ * birds rather than two of the same bird.
  */
 export const PIGEON_MORPHS: readonly PigeonMorph[] = [
-  // Blue bar, the wild type.
-  DEFAULT_MORPH,
-  // Dark checker.
-  { ...DEFAULT_MORPH, body: 0x77808f, wing: 0x8b95a3, bar: 0x3c4450, head: 0x848e9d },
-  // Spread, near-black with a strong sheen.
+  // Grey: the ordinary street pigeon.
   {
     ...DEFAULT_MORPH,
-    body: 0x555d6b,
-    wing: 0x616a78,
-    bar: 0x2f3540,
-    head: 0x5b6472,
+    body: 0x9aa2ad,
+    wing: 0xacb4be,
+    bar: 0x5e6673,
+    head: 0xa4acb7,
+    rump: 0xdfe4ea,
+    tail: 0x4b525d,
+  },
+  // Black: the spread, with the sheen that goes with it.
+  {
+    ...DEFAULT_MORPH,
+    body: 0x3f434b,
+    wing: 0x4a4f58,
+    bar: 0x24272d,
+    head: 0x44484f,
     neck: 0x6d4f96,
-    rump: 0x6f7886,
+    rump: 0x585d66,
+    tail: 0x24272d,
   },
-  // Red, the rufous morph.
-  {
-    ...DEFAULT_MORPH,
-    body: 0xb08a6e,
-    wing: 0xc4a184,
-    bar: 0x7d5b45,
-    head: 0xbb9678,
-    neck: 0x9c6a4e,
-    rump: 0xe8d8c6,
-  },
-  // Mealy: pale body, darker wings.
-  { ...DEFAULT_MORPH, body: 0xc3c8ce, wing: 0xa9b2bd, bar: 0x6b7482, head: 0xccd1d7 },
-  // Pied, white with grey markings.
-  {
-    ...DEFAULT_MORPH,
-    body: 0xe6ebf0,
-    wing: 0xd3dae2,
-    bar: 0x8b95a3,
-    head: 0xeef2f6,
-    neck: 0x4fa88a,
-    rump: 0xffffff,
-  },
-  // White, the dovecote sort.
+  // White: the dovecote sort, with a pale bill to match.
   {
     ...DEFAULT_MORPH,
     body: 0xf2f5f8,
-    wing: 0xe8edf2,
+    wing: 0xe6ebf1,
     bar: 0xc9d2da,
     head: 0xf6f8fa,
-    neck: 0xd8e2ea,
+    neck: 0xdbe4ec,
     rump: 0xffffff,
+    tail: 0xb9c4ce,
     beak: 0xe9b7a0,
   },
-  // Grizzle, grey flecked with white.
-  { ...DEFAULT_MORPH, body: 0xaeb6c1, wing: 0xc6cdd6, bar: 0x717b89, rump: 0xf4f8fb },
+  // Ginger: the red, which is the one that stands out in a grey street.
+  {
+    ...DEFAULT_MORPH,
+    body: 0xb87a45,
+    wing: 0xcb9560,
+    bar: 0x81512b,
+    head: 0xc08350,
+    neck: 0x9c6a4e,
+    rump: 0xe8d2b4,
+    tail: 0x7a4a26,
+  },
 ];
 
 /**
- * The pink pigeon, which is a real bird and not a recoloured one.
+ * The pink pigeon, which is a real bird before it is a signal.
  *
- * Nesoenas mayeri, of Mauritius: pale rose over the breast and head, a brown
- * back, and the dark rufous tail that tells it apart at any distance. Kept
- * out of `PIGEON_MORPHS` on purpose -- the flock draws from that list, and
- * she is somebody rather than one of the crowd. A city with thirty pink
- * pigeons in it has no pink pigeon in it.
+ * Nesoenas mayeri, of Mauritius: rose over the breast and head, with the dark
+ * rufous tail that tells it apart at any distance. The real one is subtler
+ * than this. This one has to be picked out across a terrace at a glance, by a
+ * player who has been told to go and find her and has never seen her before,
+ * so she is pushed well past life -- and she is kept out of the crowd's list
+ * on purpose. A city with thirty pink pigeons in it has no pink pigeon in it.
  */
 export const PINK_MORPH: PigeonMorph = {
-  body: 0xe3b9b4,
-  wing: 0xa8867a,
-  bar: 0x8a6a5e,
-  head: 0xf0d3cd,
-  neck: 0xc99a92,
-  rump: 0x8a4a34,
-  beak: 0xd9a892,
+  body: 0xef9ab8,
+  wing: 0xdb7599,
+  bar: 0xa8446e,
+  head: 0xf9bcd1,
+  neck: 0xc75d8c,
+  rump: 0xffd9e6,
+  tail: 0x8f3f2a,
+  beak: 0xd88ea6,
   leg: 0xc4626b,
 };
 
 /**
- * Every morph a named bird may wear: the feral set, then the ones that are
+ * Every morph a named bird may wear: the crowd's four, then the ones that are
  * somebody. Indexed by the levels, so the order of it is written down.
  */
 export const CHARACTER_MORPHS: readonly PigeonMorph[] = [...PIGEON_MORPHS, PINK_MORPH];
@@ -412,7 +433,7 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
   // one feather at five transforms, which is what instancing is for.
   const tail = new THREE.Group();
   tail.position.set(0, 0.012, 0.19);
-  const featherGeometry = fuse([at(box(0.028, 0.008, 0.15), morph.wing, 0, 0, 0)]);
+  const featherGeometry = fuse([at(box(0.028, 0.008, 0.15), morph.tail, 0, 0, 0)]);
   disposables.push(featherGeometry);
   const FEATHERS = 5;
   const feathers = new THREE.InstancedMesh(featherGeometry, skin.material, FEATHERS);

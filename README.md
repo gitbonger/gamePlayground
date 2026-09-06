@@ -191,12 +191,21 @@ off the roof pass without either of them having to remember to skip it.
 
 **The home tree is a landmark that is not a building.** A described thing has
 always been a box with a flat top; the tree is the same box with a trunk under
-it. Eleven metres across and eighteen up, in a small park east of the loft, and
-the top of it is a floor — the platform the story starts on, the thing the
-arrow points at, and the top of its collision box, so the bird's feet land on
-the surface it can see. What is solid is a crown seven metres deep and the
-trunk holding it up, and nothing in between: the space under a canopy is
-somewhere to fly, which one box from the ground would have walled off.
+it. Eighteen metres up, in a small park east of the loft, and the top of it is
+a floor — the platform the story starts on, the thing the arrow points at, and
+the top of its collision box, so the bird's feet land on the surface it can
+see. What is solid is a crown seven metres deep and the trunk holding it up,
+and nothing in between: the space under a canopy is somewhere to fly, which
+one box from the ground would have walled off.
+
+It carries two widths, and the difference between them is the shape of the
+tree. The landmark's own width is the **crest**: five and a half metres of
+flat top, which is room for two pigeons, a nest and a walk between them, and
+which is exactly what the collision box is. `spread` is where the leaves get
+to — eleven metres across, hanging out past the crest all the way round, drawn
+and not solid, like every other tree in the city. A crown that stopped at the
+crest would be a green table; a crest as wide as the crown would let a bird
+stand on the outermost leaf.
 
 It also gets the one exemption in the siting rules. Every other described
 thing has to stand clear of the carriageway *and* the pavement, because a
@@ -207,11 +216,16 @@ that its underside clears four metres, which is the legal height of a lorry.
 Overhanging a pavement is a plane tree; overhanging it at head height is a
 tree growing through the top deck of a bus.
 
-There is a nest on the platform with one egg in it, both built at the size the
-real bird builds them — a handspan across, 39 mm by 29 — rather than at a size
-that would read from the air. Finding the tree is the marker's job. Neither is
-solid: a nest you could walk into would be the game arguing with the player at
-the one moment it should be getting out of the way.
+There is a nest on the platform with one egg in it. Life size is a 26 cm nest
+holding a 39 mm egg, which is the truth and is also invisible: it is the thing
+this level is *about*, and at life size a bird standing beside it hides it
+completely. So both are three times over — the nest and the egg together, from
+one factor, so the picture stays a nest with an egg in it rather than a nest
+with a marble in it. The nest is a ring of stems with a hollow, not a disc: it
+was a disc, and the egg was inside the solid, which is a fine way to lose the
+only egg in the game. Neither is solid to fly into: a nest you could walk into
+would be the game arguing with the player at the one moment it should be
+getting out of the way.
 
 **The Loft has a shape rather than a size.** It is a ninety by forty-two metre
 block of flats — about three times the plan of anything around it, at the same
@@ -373,11 +387,27 @@ them: they are stationary birds on wagons that were going to be drawn anyway,
 and a level nobody is playing having somebody waiting on it reads, correctly,
 as a city with pigeons in it.
 
-They wear the feral colour schemes the flock wears, picked by index — all but
-one. The pink pigeon on the home tree is Nesoenas mayeri, of Mauritius, and
-she is kept out of the list the flock draws from: a city with thirty pink
-pigeons in it has no pink pigeon in it. So there are two lists, the feral
-morphs and the characters, and the difference between them is a test.
+**The colours are a legibility model, not a taxonomy.** A city of feral
+pigeons is a city of birds you cannot tell apart, which is right for a flock
+and wrong for a cast. So there are two sets. The hero is blue and his mate is
+pink, and neither colour is anywhere in the crowd, so either of them can be
+picked out across a terrace at a glance. The crowd comes in four — grey,
+black, white, ginger — which are the four feral pigeons anybody can name. It
+used to be eight subtly different greys: more truthful, and it read as one
+grey.
+
+The tail is the second signal, and it carries its own colour. From behind and
+above, which is where a flying pigeon is seen from, the tail is most of what
+there is — so a white bird with a black tail and a white bird with a ginger
+one are two birds rather than two of the same bird. The dark tail band is real
+on a feral pigeon anyway.
+
+The pink one is Nesoenas mayeri, of Mauritius, pushed well past life: the real
+bird is a subtle rose, and this one has to be found by a player who has been
+told to go and meet her and has never seen her before. She is kept out of the
+list the flock draws from, and a test keeps her off every level but her own —
+a second pink pigeon on a roof three levels later is the same mistake as
+thirty of them.
 
 `playLevel` is the single path in. Starting the game, picking one out of the
 menu and flying on from the one before are all the same thing happening: light

@@ -344,7 +344,7 @@ describe('describing a thing into the world', () => {
     depth: 12,
     height: 20,
     margin: 8,
-    canopy: { trunk: 1.5, skirt: 7 },
+    canopy: { trunk: 1.5, skirt: 7, spread: 6 },
     nest: { along: -1.6, across: 0.75 },
   };
 

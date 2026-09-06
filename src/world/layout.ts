@@ -94,6 +94,16 @@ export interface Canopy {
   trunk: number;
   /** How far below the platform the crown reaches. */
   skirt: number;
+  /**
+   * How far the foliage reaches from the trunk, in metres.
+   *
+   * Wider than the platform, which is the point of having both numbers: the
+   * landmark's own width is the flat crest you can stand on, and the crown
+   * bulges out past it below. A tree whose canopy stopped where its walkable
+   * top did would be a green table, and one whose whole canopy was walkable
+   * would let a bird stand on the outermost leaf.
+   */
+  spread: number;
 }
 
 /**
@@ -360,16 +370,18 @@ export interface Nest {
 }
 
 /**
- * How wide a pigeon's nest is built, and how big the egg in it is.
+ * How much bigger than life the nest and its egg are built.
  *
- * Both measured off the real bird rather than chosen to read well: a feral
- * pigeon's nest is a flimsy platform of stems about a handspan across, and
- * the egg is 39 mm by 29. Small, and deliberately left small -- a nest scaled
- * up until it was obvious from the air would be a prop, and the platform it
- * is on is what you are meant to see from the air.
+ * Life size is a handspan across with a 39 mm egg in it, which is the truth
+ * and is also invisible: it is the thing this level is *about*, and at life
+ * size a bird standing beside it hides it completely. So both are three times
+ * over -- the nest and the egg together, so the picture stays a nest with an
+ * egg in it rather than a nest with a marble in it.
  */
-const NEST_RADIUS = 0.13;
-const EGG_LENGTH = 0.039;
+const LIFE_SIZE = 3;
+/** A feral pigeon's nest is a flimsy platform of stems, and its egg 39 by 29 mm. */
+const NEST_RADIUS = 0.13 * LIFE_SIZE;
+const EGG_LENGTH = 0.039 * LIFE_SIZE;
 
 /**
  * The nest on a landmark, if it has one.

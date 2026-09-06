@@ -1177,7 +1177,11 @@ function growTree(
   overlay: THREE.Group,
 ): TargetMarker {
   const canopy = landmark.canopy!;
-  const radius = Math.min(landmark.width, landmark.depth) / 2;
+  // Two radii, and the difference between them is the shape of the tree: the
+  // crest is what you can stand on and what the collision box is, and the
+  // spread is where the leaves get to.
+  const crest = Math.min(landmark.width, landmark.depth) / 2;
+  const spread = canopy.spread;
   const clear = Math.max(0, landmark.height - canopy.skirt);
 
   const leaves = new THREE.MeshLambertMaterial({ color: CANOPY_COLOR, flatShading: true });
@@ -1196,18 +1200,28 @@ function growTree(
   stem.castShadow = true;
   group.add(stem);
 
-  // Narrower at the bottom than the top, which is how a crown grown out to
-  // the light actually stands -- and it puts the widest part of it at the
-  // height the platform is, so the platform reads as the top of the tree
-  // rather than as a lid on it.
-  const crown = new THREE.CylinderGeometry(radius, radius * 0.55, canopy.skirt, 11);
-  crown.translate(0, landmark.height - canopy.skirt / 2, 0);
+  // The crown is widest at the shoulder and draws in to the crest, which is
+  // how a broadleaf grown out to the light actually stands -- and it is what
+  // makes the flat top read as the top of a tree rather than as a lid on one.
+  // The shoulder is where the leaves reach furthest: below it the mass tapers
+  // back in towards the trunk.
+  const shoulder = landmark.height - canopy.skirt * 0.45;
+  const crown = new THREE.CylinderGeometry(crest, spread, landmark.height - shoulder, 11);
+  crown.translate(0, (landmark.height + shoulder) / 2, 0);
   disposables.push(crown);
-  const mass = new THREE.Mesh(crown, [leaves, crownTop, leaves]);
-  mass.position.set(landmark.x, 0, landmark.z);
-  mass.castShadow = true;
-  mass.receiveShadow = true;
-  group.add(mass);
+  const cap = new THREE.Mesh(crown, [leaves, crownTop, leaves]);
+  cap.position.set(landmark.x, 0, landmark.z);
+  cap.castShadow = true;
+  cap.receiveShadow = true;
+  group.add(cap);
+
+  const under = new THREE.CylinderGeometry(spread, spread * 0.45, shoulder - clear, 11);
+  under.translate(0, (shoulder + clear) / 2, 0);
+  disposables.push(under);
+  const skirt = new THREE.Mesh(under, leaves);
+  skirt.position.set(landmark.x, 0, landmark.z);
+  skirt.castShadow = true;
+  group.add(skirt);
 
   const lobe = new THREE.IcosahedronGeometry(1, 0);
   disposables.push(lobe);
@@ -1217,14 +1231,14 @@ function growTree(
   const matrix = new THREE.Matrix4();
   for (let i = 0; i < 7; i += 1) {
     const angle = (i / 7) * Math.PI * 2;
-    const size = radius * (0.3 + 0.08 * ((i * 3) % 4));
-    // Sunk by its own size, so the highest point of the lobe is the top face
-    // and not a hand's breadth above it.
+    const size = spread * (0.22 + 0.06 * ((i * 3) % 4));
+    // Round the shoulder rather than round the crest: a lobe standing proud
+    // of the flat top would be foliage the bird has to walk through.
     matrix.makeScale(size, size * 0.7, size);
     matrix.setPosition(
-      landmark.x + Math.cos(angle) * (radius - size * 0.55),
-      landmark.height - size * 0.7,
-      landmark.z + Math.sin(angle) * (radius - size * 0.55),
+      landmark.x + Math.cos(angle) * (spread - size * 0.5),
+      shoulder,
+      landmark.z + Math.sin(angle) * (spread - size * 0.5),
     );
     lobes.setMatrixAt(i, matrix);
   }
@@ -1233,25 +1247,44 @@ function growTree(
 
   const nest = nestOn(landmark);
   if (nest) {
-    const sticks = new THREE.CylinderGeometry(nest.radius, nest.radius * 0.7, 0.05, 9);
-    sticks.translate(0, 0.025, 0);
+    // A ring of stems with a hollow in it, not a disc. It was a disc, and the
+    // egg was inside the solid: the one thing the level is about, buried in
+    // the thing it was supposed to be lying in.
     const nestMaterial = new THREE.MeshLambertMaterial({
       color: NEST_COLOR,
       flatShading: true,
     });
-    disposables.push(sticks, nestMaterial);
-    const saucer = new THREE.Mesh(sticks, nestMaterial);
-    saucer.position.set(nest.x, nest.base, nest.z);
-    group.add(saucer);
+    // Shallow, because a pigeon's nest is a flimsy platform of stems rather
+    // than a bowl -- and because a rim deep enough to hold the egg is a rim
+    // that hides it. The egg's top sits a little proud of the stems, which is
+    // what it does in life.
+    const rim = new THREE.TorusGeometry(nest.radius * 0.84, nest.radius * 0.16, 5, 11);
+    rim.rotateX(Math.PI / 2);
+    rim.translate(0, nest.radius * 0.12, 0);
+    const floor = new THREE.CylinderGeometry(nest.radius * 0.85, nest.radius * 0.6, 0.03, 11);
+    floor.translate(0, 0.015, 0);
+    disposables.push(rim, floor, nestMaterial);
 
-    // One egg, lying on its side the way an egg lies.
-    const shell = new THREE.SphereGeometry(nest.egg / 2, 7, 5);
+    const sticks = new THREE.Mesh(rim, nestMaterial);
+    sticks.position.set(nest.x, nest.base, nest.z);
+    sticks.castShadow = true;
+    group.add(sticks);
+    const lining = new THREE.Mesh(floor, nestMaterial);
+    lining.position.set(nest.x, nest.base, nest.z);
+    group.add(lining);
+
+    // One egg, lying on its side in the hollow the way an egg lies. Its
+    // middle is half its own width above the lining, so it sits *in* the
+    // nest -- below the rim, above the floor, and visible over the rim from
+    // anywhere a bird could be standing.
+    const shell = new THREE.SphereGeometry(nest.egg / 2, 9, 6);
     shell.scale(1, 0.74, 0.74);
     const eggMaterial = new THREE.MeshLambertMaterial({ color: EGG_COLOR });
     disposables.push(shell, eggMaterial);
     const egg = new THREE.Mesh(shell, eggMaterial);
-    egg.position.set(nest.x, nest.base + nest.egg * 0.37, nest.z);
+    egg.position.set(nest.x, nest.base + 0.03 + (nest.egg * 0.74) / 2, nest.z);
     egg.rotation.y = 0.6;
+    egg.castShadow = true;
     group.add(egg);
   }
 

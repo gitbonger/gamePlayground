@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LEVELS, targetName } from './levels';
 import { HOME_TREE, LANDMARKS, LOFT } from './landmarks';
 import { nestOn, penthouseOf, plantTerrace, pointOn, terraceOf } from './world/layout';
-import { CHARACTER_MORPHS, PIGEON_MORPHS, PINK_MORPH } from './render/bird';
+import { CHARACTER_MORPHS, HERO_MORPH, PIGEON_MORPHS, PINK_MORPH } from './render/bird';
 import { MEET_RADIUS } from './sim/walk';
 import { project } from './world/geo';
 import HOME_MAP from './world/data/home.json';
@@ -168,20 +168,60 @@ describe('what the levels aim at', () => {
     expect(apart).toBeGreaterThan(nest.radius);
     expect(apart).toBeLessThan(1);
 
-    // And all of it on the platform, with room to stand: the crown is what
-    // holds them up and it ends where the landmark's footprint does.
-    for (const [x, z] of [[her.x, her.z], [nest.x, nest.z]] as const) {
-      expect(Math.abs(x)).toBeLessThan(HOME_TREE.width / 2 - 0.5);
-      expect(Math.abs(z)).toBeLessThan(HOME_TREE.depth / 2 - 0.5);
-    }
+    // And all of it on the platform, with room to stand -- the nest measured
+    // to its rim rather than to its middle, since the rim is the part that
+    // would be hanging over the edge.
+    expect(Math.abs(nest.x) + nest.radius).toBeLessThan(HOME_TREE.width / 2);
+    expect(Math.abs(nest.z) + nest.radius).toBeLessThan(HOME_TREE.depth / 2);
+    expect(Math.abs(her.x)).toBeLessThan(HOME_TREE.width / 2 - 0.5);
+    expect(Math.abs(her.z)).toBeLessThan(HOME_TREE.depth / 2 - 0.5);
   });
 
-  it('keeps the pink pigeon out of the flock', () => {
+  it('gives the tree a crest much smaller than the tree', () => {
+    // Two numbers, and the difference between them is the whole shape: the
+    // width is the flat crest you can stand on, `spread` is where the leaves
+    // get to. A crown that stopped at the crest would be a green table; a
+    // crest as wide as the crown would let a bird stand on the outermost
+    // leaf. The crown reaches at least half again past the crest.
+    // Both as radii from the trunk, which is the only way to compare them
+    // without getting a factor of two wrong.
+    const canopy = HOME_TREE.canopy!;
+    const crest = HOME_TREE.width / 2;
+    expect(canopy.spread).toBeGreaterThan(crest * 1.5);
+    // And the crest still holds a nest, a bird, and the bird that lands on
+    // it: two metres of reach between the two of them, with the nest beside.
+    expect(HOME_TREE.width / 2).toBeGreaterThan(MEET_RADIUS);
+  });
+
+  it('keeps the pink pigeon out of the flock, and off every level but hers', () => {
     // She is somebody, and the flock draws its colours from `PIGEON_MORPHS`.
-    // A city with thirty pink pigeons in it has no pink pigeon in it.
+    // A city with thirty pink pigeons in it has no pink pigeon in it -- and a
+    // second one standing on a roof three levels later is the same mistake
+    // made once instead of thirty times.
     expect(PIGEON_MORPHS).not.toContain(PINK_MORPH);
     expect(CHARACTER_MORPHS).toContain(PINK_MORPH);
-    expect(CHARACTER_MORPHS[LEVELS[0]!.person.morph]).toBe(PINK_MORPH);
+
+    const pink = LEVELS.filter(
+      (level) => CHARACTER_MORPHS[level.person.morph % CHARACTER_MORPHS.length] === PINK_MORPH,
+    );
+    expect(pink).toEqual([LEVELS[0]]);
+  });
+
+  it('dresses the crowd in four colours anybody could name', () => {
+    // Eight subtly different greys read as one grey, which is right for a
+    // flock and wrong for the birds a level asks you to walk up to. Told
+    // apart by body first and tail second -- the tail being most of what
+    // there is to see of a pigeon from behind and above.
+    expect(PIGEON_MORPHS).toHaveLength(4);
+    const bodies = new Set(PIGEON_MORPHS.map((morph) => morph.body));
+    expect(bodies.size).toBe(PIGEON_MORPHS.length);
+    for (const morph of PIGEON_MORPHS) {
+      expect(morph.tail, morph.body.toString(16)).not.toBe(morph.wing);
+    }
+
+    // And the hero is none of them, so the bird the camera follows is the one
+    // colour the city never wears.
+    expect(PIGEON_MORPHS).not.toContain(HERO_MORPH);
   });
 
   it('flies every level but the first', () => {

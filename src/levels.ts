@@ -44,7 +44,14 @@ export const targetName = (level: Level): string => level.target.name;
 
 /** Who is waiting there. */
 export interface LevelPerson {
-  /** Which colour scheme to wear, as an index into the morph list. */
+  /**
+   * Which colour scheme to wear, as an index into `CHARACTER_MORPHS`.
+   *
+   * The crowd's four come first and the ones who are somebody after, so an
+   * index past the crowd is a deliberate choice of a particular bird -- which
+   * is why the pink one being on exactly one level is a test rather than a
+   * convention.
+   */
   morph: number;
   /**
    * Where on the target they stand: metres along it and across it.
@@ -113,7 +120,7 @@ export const LEVELS: readonly Level[] = [
     target: { kind: 'landmark', name: HOME_TREE.name },
     // The pink one, and the only bird in the game wearing her colours. She
     // stands beside the nest rather than on it.
-    person: { morph: 8, along: -1.05, across: 0.5 },
+    person: { morph: 4, along: -1.05, across: 0.5 },
     dialogue: LEAVING,
     begins: 'perched',
   },
@@ -126,7 +133,7 @@ export const LEVELS: readonly Level[] = [
     // Midday, so the shadows are short and the ground reads plainly.
     when: '2025-06-21T10:00:00Z',
     target: { kind: 'landmark', name: PARK_PATCH.name },
-    person: { morph: 6, along: 2.4, across: 0 },
+    person: { morph: 0, along: 2.4, across: 0 },
     dialogue: GREETING,
   },
   {
@@ -153,7 +160,7 @@ export const LEVELS: readonly Level[] = [
     // Low evening sun, straight down the yard.
     when: '2025-06-21T17:30:00Z',
     target: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' },
-    person: { morph: 3, along: 2.5, across: 0 },
+    person: { morph: 2, along: 2.5, across: 0 },
     dialogue: GREETING,
   },
   {
@@ -167,7 +174,7 @@ export const LEVELS: readonly Level[] = [
     // the other side.
     when: '2025-06-21T05:30:00Z',
     target: { kind: 'landmark', name: WEST_PATCH.name },
-    person: { morph: 4, along: 2.4, across: 0 },
+    person: { morph: 3, along: 2.4, across: 0 },
     dialogue: GREETING,
   },
 ];

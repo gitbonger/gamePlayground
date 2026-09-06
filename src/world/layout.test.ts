@@ -134,21 +134,23 @@ describe('a nest on a described thing', () => {
     width: 11,
     depth: 11,
     height: 18,
-    canopy: { trunk: 1.5, skirt: 7 },
+    canopy: { trunk: 1.5, skirt: 7, spread: 6 },
     nest: { along: -1.6, across: 0.75 },
   };
 
-  it('sits on the flat top, at the size a pigeon builds one', () => {
+  it('sits on the flat top, three times the size it is in life', () => {
     const nest = nestOn(TREE)!;
     // On the top rather than at some height of its own: whatever the tree is
     // made, the nest is on it.
     expect(nest.base).toBe(TREE.height);
-    // A handspan across, holding an egg 39 mm long. Both are the real bird's
-    // measurements, and a nest that had quietly grown to the size of a bath
-    // would still look fine from the air, which is why it is asserted here.
-    expect(nest.radius).toBeGreaterThan(0.1);
-    expect(nest.radius).toBeLessThan(0.2);
-    expect(nest.egg).toBeCloseTo(0.039, 6);
+    // Life size is a 26 cm nest with a 39 mm egg in it, and at life size a
+    // bird standing beside the thing the level is about hides it completely.
+    // Both are three times over -- and, more to the point, three times the
+    // *same* over: an egg that stayed life size in a tripled nest would be a
+    // marble in a bath, which is exactly the sort of thing one scale factor
+    // for two numbers prevents.
+    expect(nest.radius / 0.13).toBeCloseTo(3, 6);
+    expect(nest.egg / 0.039).toBeCloseTo(3, 6);
   });
 
   it('turns with the thing it is on', () => {
