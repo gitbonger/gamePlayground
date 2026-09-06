@@ -1007,7 +1007,42 @@ than about the tramway. The test runs the fixture both ways round — the two
 roads drawn in the same order and in opposite orders — because a version that
 ignores the bearing entirely passes the second and fails the first.
 
-**There are four trains, and all four move.** A rake of stake wagons
+**Script and scenery are different things.** The rake of stake wagons in the
+yard is a level: something names it, lands on it, and finds a pigeon standing
+on it. Everything else on the rails is scenery — and a city with a hundred and
+thirty kilometres of tramway and three trams on it reads as a *model* of a
+city rather than a city.
+
+So scenery is asked for by the quantity rather than one at a time. `fill` says
+what sort of train, how long a route it needs and how many at most; where they
+go is nobody's decision. One train to a route, so no two can ever be found
+running the same rails, and each placed at a different fraction along its own
+— put at the same fraction they would all sit at the same end of their lines,
+and the network would read as a depot rather than a service. Directions
+alternate, so there is traffic both ways instead of a parade.
+
+That took **36 trains** where there were seven: the goods rake, ten more
+carriage trains and **24 trams**, 202 vehicles in all.
+
+**And it costs less than seven did**, because asking for thirty of something
+turned up three things that had been paid for all along and did not show at
+seven:
+
+- `allVehicles()` flattened every vehicle **twice a tick**, to compare where
+  they had been with where they are. The list never changes — the vehicles are
+  the same objects for the life of the game — so it is worked out once.
+  **22 ms of every second down to 9.**
+- `rakeNear` searched down a train's line every tick to find where its front
+  was, for every train on the map. The rake already knows where it is, and a
+  train too far away to draw is by definition one whose position may be a
+  second old: sixteen metres at the speed of the fastest of them, against a
+  reach of three hundred. **9 down to 7.1.**
+- `traceRoute` can now be told to trace *around* what is already spoken for
+  rather than running into it and being discarded whole. Without that a
+  network gets carved into a few long routes and a great deal of track that
+  nothing can be put on: 14 trams became 24 for nothing.
+
+**There are four trains that a level cares about, and all four move.** A rake of stake wagons
 shuttling up and down the yard, and three passenger trains of six, four and
 eight coaches that leave it — out of the platforms and away down whatever main
 line the switches lead them onto, at 16, 13 and 11 m/s. They come out with
