@@ -32,7 +32,15 @@ import {
   type WingPose,
 } from './render/bird';
 import { createFlock } from './flock';
-import { LEVELS, targetName, type Level, type LevelTarget } from './levels';
+import {
+  crossed,
+  crossingLine,
+  LEVELS,
+  targetName,
+  type Level,
+  type LevelTarget,
+  type Line,
+} from './levels';
 import { HOME_TREE, LANDMARKS } from './landmarks';
 import { begin, isOver, reply, type Exchange } from './dialogue';
 import { createDialoguePanel, speechColour } from './render/dialogue';
@@ -407,7 +415,7 @@ function releaseFor(spec: Level): { at: Vec3; heading: number; perched: boolean 
   // before the player has touched anything, which is the whole idea of it.
   const stood = spec.begins === 'perched' ? standingSpot(spec) : null;
   const described = LANDMARKS.find((l) => l.name === spec.target.name);
-  if (marker && stood) {
+  if (marker && stood && spec.person) {
     const across = pointOn(
       { x: marker.position.x, z: marker.position.z, yaw: described?.yaw ?? 0 },
       -spec.person.along,
@@ -559,7 +567,7 @@ for (const spec of LEVELS) {
   const state = createBird(stood.at, 0, stood.facing);
   standStill(state);
   state.restingOn = stood.on;
-  const morph = CHARACTER_MORPHS[spec.person.morph % CHARACTER_MORPHS.length]!;
+  const morph = CHARACTER_MORPHS[(spec.person?.morph ?? 0) % CHARACTER_MORPHS.length]!;
   const rig = createBirdRig(morph);
   scene.add(rig.object);
   residents.push({
@@ -581,6 +589,10 @@ for (const spec of LEVELS) {
  */
 function standingSpot(spec: Level): { at: Vec3; facing: number; on: number | null } | null {
   const person = spec.person;
+  // Nobody waits at a line. A level that ends by being crossed has no arrival
+  // to stand at, and a resident for it would be a second pigeon on the same
+  // slab as the next level's.
+  if (!person) return null;
 
   if (spec.target.kind === 'wagon') {
     const car = carOf(spec.target);
@@ -695,7 +707,44 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // only the *going* there that a level taken up in place skips, and with it
   // the level's own hour, which `respawn` is the only thing that applies.
   start = releaseFor(spec);
+  // The finishing line, if this level has one: square across the way to the
+  // target, so far along it. Worked out here, from the release point this
+  // level was given rather than from wherever the bird happens to be, so that
+  // arriving at the level in mid-air puts the line in the same place as
+  // taking off into it.
+  const marker = objective(targetName(spec));
+  finish =
+    spec.crossing && marker
+      ? {
+          line: crossingLine(
+            project(spec.start[0], spec.start[1], map.centre),
+            { x: marker.position.x, z: marker.position.z },
+            spec.crossing.at,
+          ),
+          opens: spec.crossing.opens,
+        }
+      : null;
   if (where === 'released') respawn();
+}
+
+/** The line this level ends at, and what it hands over to. */
+let finish: { line: Line; opens: string } | null = null;
+
+/**
+ * End the level if the bird has crossed its finishing line.
+ *
+ * The hand-over is the same one a conversation makes: the next level begins
+ * where the bird is, in the air, at the speed it was already going. What it
+ * changes is where a death puts you -- which is the whole point of it, and
+ * the reason this is a level rather than a checkpoint.
+ */
+function crossFinish(): void {
+  if (!finish) return;
+  if (!crossed(finish.line, bird.position.x, bird.position.z)) return;
+
+  const next = LEVELS.findIndex((spec) => spec.name === finish!.opens);
+  if (next < 0) return;
+  playLevel(next, 'in place');
 }
 
 /** What the picture is drawn at, so the panel can move it and see. */
@@ -915,7 +964,7 @@ function reachLevel(): void {
   // Meeting them finishes the level and nothing else. What happens next is
   // the player's move, not the game's: they are standing with somebody, and
   // the somebody says hello.
-  if (here && talkingTo?.completes === here.name && !finished) {
+  if (here?.dialogue && talkingTo?.completes === here.name && !finished) {
     finished = true;
     talk = begin(here.dialogue);
   }
@@ -1071,6 +1120,7 @@ function frame(nowMs: number) {
     telemetry = step(bird, input.controls, flightParams, TICK, solid, wind);
     flock.update(TICK, solid, wind);
     if (bird.ending === null) run.update(bird, TICK);
+    if (bird.ending === null) crossFinish();
     reachLevel();
     // Somebody you have walked up to looks at you.
     if (talkingTo) turnToFace(talkingTo.state, bird.position, flightParams, TICK);

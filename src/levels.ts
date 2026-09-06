@@ -69,10 +69,10 @@ export interface Level {
   /**
    * What is said when you reach the pigeon waiting there.
    *
-   * The same placeholder on every level for now. Each carries its own so
-   * that giving one a different conversation is changing one line here.
+   * Absent when nobody is waiting, which is the same levels that end at a
+   * line: there is nobody to say it to.
    */
-  dialogue: Turn;
+  dialogue?: Turn;
   /** Where the pigeon is released, in degrees. */
   start: [number, number];
   /**
@@ -105,7 +105,32 @@ export interface Level {
    */
   when: string;
   target: LevelTarget;
-  person: LevelPerson;
+  /**
+   * Who is waiting at the target, if anybody is.
+   *
+   * A level ends either by walking up to somebody or by crossing a line, and
+   * a level that ends at a line has nobody standing at the far end of it --
+   * it is the first half of a flight, not a place you arrive. Optional for
+   * that reason and not for convenience: two levels aiming at one landmark
+   * would otherwise stand two pigeons on the same square metre of it.
+   */
+  person?: LevelPerson;
+  /**
+   * A line across the flight that ends the level when it is crossed.
+   *
+   * `at` is metres from the release point, measured along the straight line
+   * to the target, and the line itself is square to that -- so any way of
+   * getting from here to there crosses it, however wide the detour.
+   *
+   * It exists to break a long flight into pieces you do not have to fly
+   * twice. Nothing new had to be invented for that: crossing hands the next
+   * level over where you are standing, exactly as the end of a conversation
+   * does, and a level already knows where it starts, already puts you back
+   * there when you die, and already remembers itself between sessions. A
+   * checkpoint would have been a fourth thing that does what three things
+   * already do.
+   */
+  crossing?: { at: number; opens: string };
   /**
    * How the level opens: in the air, or already on your feet on the target.
    *
@@ -139,6 +164,39 @@ export interface Level {
  */
 const EVENING = '2026-07-01T16:00:00Z';
 
+/**
+ * Where a level's finishing line lies, as a point on it and the way across.
+ *
+ * Square to the flight, so it is a line rather than a ring: any path from the
+ * near side to the far side crosses it, and a bird that wanders half a
+ * kilometre off course still gets there.
+ */
+export interface Line {
+  x: number;
+  z: number;
+  /** Unit vector from the release point towards the target. */
+  ux: number;
+  uz: number;
+}
+
+/** The line `at` metres along the way from `from` to `to`. */
+export function crossingLine(
+  from: { x: number; z: number },
+  to: { x: number; z: number },
+  at: number,
+): Line {
+  const dx = to.x - from.x;
+  const dz = to.z - from.z;
+  const span = Math.hypot(dx, dz) || 1;
+  const ux = dx / span;
+  const uz = dz / span;
+  return { x: from.x + ux * at, z: from.z + uz * at, ux, uz };
+}
+
+/** Whether a point is on the far side of the line. */
+export const crossed = (line: Line, x: number, z: number): boolean =>
+  (x - line.x) * line.ux + (z - line.z) * line.uz >= 0;
+
 export const LEVELS: readonly Level[] = [
   {
     // The story's first beat rather than a flight: the hero on the home tree
@@ -170,7 +228,7 @@ export const LEVELS: readonly Level[] = [
     // level that reaches the hard part twenty seconds in asks the player to
     // learn flying and landing at the same time. Nine hundred metres of
     // flapping first, and the slab is still there when he arrives.
-    name: 'Grabbing food',
+    name: 'Across the park',
     // Twenty metres the far side of the home tree, so that the tree is the
     // first thing in front of him: he is released facing his target, the
     // target is most of a kilometre west, and the tree stands between. Being
@@ -181,8 +239,27 @@ export const LEVELS: readonly Level[] = [
     // difference between this level and every other one: he is not dropped
     // into it from the sky, he is leaving a tree. It also means the flight
     // cannot be glided -- from twenty-three metres a pigeon covers about a
-    // hundred and forty of the three hundred and fifty.
+    // hundred and forty of the nine hundred.
     release: HOME_TREE.height + 5,
+    when: EVENING,
+    // The same slab the next level is about: the arrow points at the food for
+    // the whole way there, because that is what he is doing. This half is
+    // over when he is halfway, and nobody is standing on the line.
+    target: { kind: 'landmark', name: PARK_PATCH.name },
+    crossing: { at: 500, opens: 'Grabbing food' },
+  },
+  {
+    // The second half of the same errand, and the reason it is a level of its
+    // own: nine hundred metres is a long way to fly again because you misread
+    // the last twenty. Crossing the line hands this over in the air -- so it
+    // costs nothing while the flight is going well, and when it is not, this
+    // is where the flight starts again.
+    name: 'Grabbing food',
+    // On the line, which is where he was when this became his level.
+    start: [47.494062, 19.090192],
+    // Forty metres: about what a bird has under it after half a kilometre of
+    // flapping, and well clear of the park's own trees.
+    release: 40,
     when: EVENING,
     target: { kind: 'landmark', name: PARK_PATCH.name },
     person: { morph: 0, along: 2.4, across: 0 },

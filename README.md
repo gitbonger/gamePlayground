@@ -542,6 +542,35 @@ does nothing rather than something wrong:
   looks like. Nothing in between exists: by the time the wings open, this is
   simply the next level, being flown from wherever the last one ended.
 
+### A line across the flight
+
+The errand is nine hundred metres, and nine hundred metres is a long way to
+fly again because you misread the last twenty. So it is two levels, and what
+divides them is a line: five hundred metres along the straight line from the
+release point to the target, drawn square across it. Cross it and the second
+level begins where you are, in the air, at the speed you were already going.
+
+**The point of it is where a death puts you**, and the reason it is a level
+rather than a checkpoint is that a level already does all of this. It knows
+where it starts. It puts you back there when you die. It remembers itself
+between sessions. It knows how to begin where you are standing, because a
+conversation already hands one over that way. A checkpoint would have been a
+fourth idea doing the work of three that exist — and this way each half gets a
+name, which the story wanted anyway.
+
+A line rather than a ring, and the difference is load-bearing: a line has no
+ends, so any path from the near side to the far side crosses it and a bird
+half a kilometre off course still gets there. It is square to the *route*
+rather than to the world, which is the sort of thing that works by accident on
+an east-west flight and is therefore written down as a test.
+
+**It also turned up a bug in the level model.** Both halves aim at the same
+slab of concrete, and every level used to stand a pigeon on its target — so
+the first half would have put a second bird on the second half's landing spot.
+A level ends either by walking up to somebody or by crossing a line, and the
+ones that end at a line have nobody waiting: `person` and `dialogue` are
+absent on those, and a test keeps the two kinds apart.
+
 ### One level into the next
 
 A level ends in a conversation, so a conversation is where the next one can

@@ -159,10 +159,14 @@ describe('a conversation that hands over a level', () => {
   });
 });
 
-describe('every level has something to say', () => {
+describe('every level that has somebody waiting has something to say', () => {
+  /** A level ends at a person or at a line; only the first sort talks. */
+  const spoken = LEVELS.filter((level) => level.dialogue);
+
   it('opens with a line and at least one thing to say back', () => {
-    for (const level of LEVELS) {
-      const talk = begin(level.dialogue);
+    expect(spoken.length).toBeGreaterThan(0);
+    for (const level of spoken) {
+      const talk = begin(level.dialogue!);
       expect(talk.said[0]?.text.length, level.name).toBeGreaterThan(0);
       expect(talk.replies.length, level.name).toBeGreaterThan(0);
     }
@@ -170,9 +174,9 @@ describe('every level has something to say', () => {
 
   it('ends, whichever way you take it', () => {
     // A branch that never runs out is a level you can never leave.
-    for (const level of LEVELS) {
-      for (const [index] of level.dialogue.you!.entries()) {
-        let talk = begin(level.dialogue);
+    for (const level of spoken) {
+      for (const [index] of level.dialogue!.you!.entries()) {
+        let talk = begin(level.dialogue!);
         for (let step = 0; step < 20 && !isOver(talk); step += 1) {
           talk = reply(talk, step === 0 ? index + 1 : 1);
         }
