@@ -669,6 +669,37 @@ describe('tracing a route', () => {
     expect(route.over).not.toContain(diverging);
   });
 
+  it('follows its own branch into a through road, however sharp the join', () => {
+    // The shape that was getting trams wrong. A branch merges into a line
+    // that runs across it: there is exactly one way on, and it leaves at
+    // forty-five degrees because that is how a branch joins a road it is not
+    // parallel to. The route used to end here -- and a route that ends is a
+    // train that turns round, on the spot, in the middle of a street.
+    // Straight east, then away at forty-five degrees: the turn is what
+    // matters here, not the bearings, and the first version of this fixture
+    // had two ways thirteen degrees apart, which the old gate accepted
+    // happily and which therefore proved nothing at all.
+    const branch = way([0, 0], [100, 0]);
+    const through = way([100, 0], [200, 100]);
+    const route = traceRoute(railNetwork([branch, through]), branch);
+
+    expect(route.over).toContain(through);
+    expect(lineLength(route.points)).toBeGreaterThan(lineLength(branch.points));
+  });
+
+  it('still prefers the straight road when there is a choice of sharp ones', () => {
+    // Relaxing what counts as a continuation must not relax what counts as
+    // the *best* one: a diverging road that is merely allowed is not thereby
+    // preferred, and the through road still wins by being straighter.
+    const approach = way([0, 0], [100, 0]);
+    const diverging = way([100, 0], [180, 60]);
+    const through = way([100, 0], [300, 10]);
+    const route = traceRoute(railNetwork([approach, diverging, through]), approach);
+
+    expect(route.over).toContain(through);
+    expect(route.over).not.toContain(diverging);
+  });
+
   it('stops where the track really stops', () => {
     // Nothing leaves the far node in anything like the same direction, so
     // this is the end of the line and the train turns round here.

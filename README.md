@@ -1360,12 +1360,29 @@ pieces at every switch and every change of tagging, so a train handed one of
 the pieces shuffles up and down two hundred metres with the rest of the route
 lying there unused. `traceRoute` follows them: from each end of the way it starts on, through
 whichever unused way leaves that node *closest to straight ahead*, until
-nothing does. At a facing point the through road leaves within a few degrees
-of the way you came in and the diverging one at a few more, while a line
-merely crossing leaves at something near a right angle — a cosine of 0.8 tells
-them apart. Same kind only, so a train cannot find its way onto a tramway, and
-each way once, or a triangle would send it round for ever. Where the track
+nothing does. Same kind only, so a train cannot find its way onto a tramway,
+and each way once, or a triangle would send it round for ever. Where the track
 really ends, the route ends, and the train turns round there.
+
+**Straightest is a preference; the cutoff is a separate question**, and
+running them together was a bug. It used to refuse anything turning more than
+thirty-seven degrees, which is right for *choosing* between roads at a facing
+point and wrong for deciding whether a road is a road at all: a tram arriving
+where its own branch merges into a through line has exactly one way to go, and
+where that way leaves at forty-five degrees the route ended there and the tram
+turned round on the spot in the middle of a street.
+
+Four arrivals out of four hundred and sixty on this map — few enough to have
+been missed, unmistakable when it happens. The cutoff is seventy degrees now.
+Not ninety, because ninety is the other thing that happens at a node: a
+different line crossing. A tramway turning a street corner is mapped as a
+curve, so the first segment off the node is nothing like a right angle, and a
+way that does leave at one is not this line continuing. The gap between
+forty-five and ninety is where the difference lives.
+
+Measured over the whole tram network, the change is small and in the right
+direction: 96 routes become 94, and the third-longest run grows from 3,491 m
+to 3,943 m. The same track, joined up in fewer, longer pieces.
 
 On the real network that turns 255 m of siding into a **3,687 m** run, from
 one side of the map to the other and back, against the 389 m the goods train

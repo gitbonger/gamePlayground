@@ -390,16 +390,29 @@ export function chainageOf(points: readonly Point2[], x: number, z: number): num
 }
 
 /**
- * How straight a join has to be to be taken as the same road, as a cosine.
+ * How sharply a route may turn at a node and still be the same road, as a
+ * cosine. Seventy degrees.
  *
  * A switch puts three or four track ends on one node and the map says nothing
  * about which of them is the continuation -- it is a shared coordinate and
- * that is all. So the route takes the straightest: at a facing point the
- * through road leaves within a few degrees of the way you came in and the
- * diverging one at a few more, and a line merely crossing at that node leaves
- * at something near a right angle, which this rules out.
+ * that is all. So the route takes the straightest of them, and this says only
+ * what is too sharp to be a continuation at all.
+ *
+ * It was 0.8 -- within thirty-seven degrees -- and that was wrong in a way
+ * that showed. A tram arriving where its own branch merges into a through
+ * track has exactly *one* way to go, and where that way leaves at forty-five
+ * degrees the route ended there and the tram turned round on the spot in the
+ * middle of a street. Four arrivals out of four hundred and sixty on this
+ * map: few enough to have been missed, unmistakable when it happens.
+ *
+ * Seventy rather than ninety because ninety is the other thing that happens
+ * at a node -- a different line crossing. A tramway turning a street corner
+ * is mapped as a curve, so the first segment off the node is nothing like a
+ * right angle; a way that does leave at one is not this line continuing, it
+ * is another line passing through. The gap between forty-five and ninety is
+ * where the difference lives, and this sits in the middle of it.
  */
-const SAME_ROAD = 0.8;
+const SAME_ROAD = 0.35;
 
 /**
  * A rail end, as a coordinate rounded to the centimetre.
@@ -517,6 +530,10 @@ export function traceRoute(
           ? heading(on[0]!, on[1]!)
           : heading(on[on.length - 1]!, on[on.length - 2]!);
         const straightness = leaving[0] * going[0] + leaving[1] * going[1];
+        // Straightest wins, and the only thing refused outright is a way that
+        // doubles back: taking that would be the route turning round rather
+        // than carrying on, which is the same thing as stopping and worse to
+        // look at.
         if (straightness < SAME_ROAD) continue;
         if (!best || straightness > best.straightness) best = { end, straightness };
       }
