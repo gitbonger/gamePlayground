@@ -11,6 +11,7 @@ import {
   onVehicle,
   pointAlong,
   trainBoxes,
+  railNetwork,
   traceRoute,
   tweenAlong,
   CARRIAGE,
@@ -551,6 +552,66 @@ describe('a passenger train', () => {
  * coordinates, and a train handed one of them shuttles up and down a fragment
  * with the rest of the line lying there unused.
  */
+/**
+ * The map's railway as something connected.
+ *
+ * The data has no junctions in it. A `Rail` is a bare polyline and a switch is
+ * two or three of them writing down the same coordinate, with nothing saying
+ * so -- the connection is a coincidence, and this is that coincidence indexed.
+ */
+describe('the rail network', () => {
+  const way = (...points: [number, number][]): Rail => ({ kind: 'rail', width: 8, points });
+
+  it('reports both ends of a way, and says which end each is', () => {
+    const only = way([0, 0], [100, 0]);
+    const network = railNetwork([only]);
+
+    expect(network.at([0, 0])).toEqual([{ rail: only, fromHead: true }]);
+    expect(network.at([100, 0])).toEqual([{ rail: only, fromHead: false }]);
+    // Which end matters: a way joined at its tail is travelled backwards, and
+    // not knowing that is the difference between following the track and
+    // jumping the length of a way sideways.
+    expect(network.at([50, 0])).toEqual([]);
+  });
+
+  it('puts every way meeting at a switch on the same node', () => {
+    const approach = way([0, 0], [100, 0]);
+    const through = way([100, 0], [300, 0]);
+    const diverging = way([100, 0], [260, 90]);
+    const network = railNetwork([approach, through, diverging]);
+
+    expect(network.at([100, 0])).toHaveLength(3);
+    expect(network.at([100, 0]).map((end) => end.rail)).toEqual(
+      expect.arrayContaining([approach, through, diverging]),
+    );
+  });
+
+  it('matches ends to the centimetre, on both sides of zero', () => {
+    // Rounded rather than written to two places: `toFixed` keeps the sign of
+    // a very small negative, so 4 mm reads as "0.00" and -4 mm as "-0.00" and
+    // a switch quietly stops being one.
+    const above = way([-100, 0.004], [0, 0.004]);
+    const below = way([0, -0.004], [100, -0.004]);
+    expect(railNetwork([above, below]).at([0, 0])).toHaveLength(2);
+  });
+
+  it('counts the ways it holds, which is what bounds a walk over it', () => {
+    // A way of one point is not a way: it has no direction and no length, and
+    // indexing one end of it as two would make a node that joins to itself.
+    const network = railNetwork([way([0, 0], [1, 0]), way([5, 5], [6, 5]), { kind: 'rail', width: 8, points: [[9, 9]] }]);
+    expect(network.ways).toBe(2);
+  });
+
+  it('holds every sort of line, and leaves the telling apart to the walk', () => {
+    // A tramway is in the index -- it is a thing that is there. Whether a
+    // train may follow it onto is a decision about the train.
+    const rail = way([0, 0], [100, 0]);
+    const tram: Rail = { kind: 'tram', width: 6, points: [[100, 0], [300, 0]] };
+    expect(railNetwork([rail, tram]).at([100, 0])).toHaveLength(2);
+    expect(traceRoute(railNetwork([rail, tram]), rail).over).toEqual([rail]);
+  });
+});
+
 describe('tracing a route', () => {
   /** A way, given as its points. */
   const way = (...points: [number, number][]): Rail => ({ kind: 'rail', width: 8, points });
@@ -558,7 +619,7 @@ describe('tracing a route', () => {
   it('joins ways that share an end, in the order they run', () => {
     const first = way([0, 0], [100, 0]);
     const second = way([100, 0], [250, 0]);
-    const route = traceRoute([first, second], first);
+    const route = traceRoute(railNetwork([first, second]), first);
 
     expect(route.points).toEqual([[0, 0], [100, 0], [250, 0]]);
     // The shared node once, not twice: a repeated point is a zero-length
@@ -572,7 +633,7 @@ describe('tracing a route', () => {
     const middle = way([100, 0], [250, 0]);
     const before = way([0, 0], [100, 0]);
     const after = way([250, 0], [400, 0]);
-    const route = traceRoute([before, middle, after], middle);
+    const route = traceRoute(railNetwork([before, middle, after]), middle);
 
     expect(route.points[0]).toEqual([0, 0]);
     expect(route.points[route.points.length - 1]).toEqual([400, 0]);
@@ -588,7 +649,7 @@ describe('tracing a route', () => {
     const diverging = way([100, 0], [260, 90]);
     // The diverging road offered first, so taking the first thing on offer
     // is the wrong answer rather than accidentally the right one.
-    const route = traceRoute([approach, diverging, through], approach);
+    const route = traceRoute(railNetwork([approach, diverging, through]), approach);
 
     expect(route.over).toContain(through);
     expect(route.over).not.toContain(diverging);
@@ -599,7 +660,7 @@ describe('tracing a route', () => {
     // this is the end of the line and the train turns round here.
     const approach = way([0, 0], [100, 0]);
     const crossing = way([100, 0], [100, 200]);
-    const route = traceRoute([approach, crossing], approach);
+    const route = traceRoute(railNetwork([approach, crossing]), approach);
 
     expect(route.points).toEqual(approach.points);
     expect(route.over).toEqual([approach]);
@@ -608,7 +669,7 @@ describe('tracing a route', () => {
   it('will not find its way onto a tramway', () => {
     const approach = way([0, 0], [100, 0]);
     const tram: Rail = { kind: 'tram', width: 6, points: [[100, 0], [300, 0]] };
-    expect(traceRoute([approach, tram], approach).over).toEqual([approach]);
+    expect(traceRoute(railNetwork([approach, tram]), approach).over).toEqual([approach]);
   });
 
   it('goes round a loop once rather than for ever', () => {
@@ -626,7 +687,7 @@ describe('tracing a route', () => {
     const a = way(...ring.slice(0, 5));
     const b = way(...ring.slice(4, 9));
     const c = way(...ring.slice(8, 13));
-    const route = traceRoute([a, b, c], a);
+    const route = traceRoute(railNetwork([a, b, c]), a);
 
     expect(route.over).toHaveLength(3);
     // Once round and no more: twelve nodes and the one it started from
@@ -647,7 +708,7 @@ describe('tracing a route', () => {
       way([200, 0], [300, 0]),
       way([300, 0], [400, 0]),
     ];
-    const route = traceRoute(pieces, pieces[1]!);
+    const route = traceRoute(railNetwork(pieces), pieces[1]!);
     const line: Rail = { kind: 'rail', width: 8, points: route.points };
 
     expect(lineLength(line.points)).toBeCloseTo(400, 9);
@@ -666,7 +727,7 @@ describe('tracing a route', () => {
     // "-0.00" and the other as "0.00", and a switch quietly stops being one.
     const first = way([-100, 0.004], [0, 0.004]);
     const second = way([0, -0.004], [100, -0.004]);
-    expect(traceRoute([first, second], first).over).toHaveLength(2);
+    expect(traceRoute(railNetwork([first, second]), first).over).toHaveLength(2);
   });
 
   it('comes out continuous on the real railway, not in jumps', () => {
@@ -686,7 +747,8 @@ describe('tracing a route', () => {
     });
     expect(near.length).toBeGreaterThan(4);
 
-    const routes = near.map((rail) => traceRoute(rails, rail));
+    const network = railNetwork(rails);
+    const routes = near.map((rail) => traceRoute(network, rail));
     const longest = routes.reduce((best, route) =>
       lineLength(route.points) > lineLength(best.points) ? route : best,
     );
@@ -711,7 +773,7 @@ describe('tracing a route', () => {
   it('leaves a way it was given alone', () => {
     const first = way([0, 0], [100, 0]);
     const second = way([100, 0], [250, 0]);
-    traceRoute([first, second], first);
+    traceRoute(railNetwork([first, second]), first);
     expect(first.points).toEqual([[0, 0], [100, 0]]);
     expect(second.points).toEqual([[100, 0], [250, 0]]);
   });

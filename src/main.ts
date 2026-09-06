@@ -62,7 +62,7 @@ import {
   turnedBetween,
   tweenAlong,
 } from './world/train';
-import { createSmoke } from './world/smoke';
+import { createSmoke, defaultSmokeOptions, type Puff, type Smoke } from './world/smoke';
 import {
   asStance,
   meeting,
@@ -150,18 +150,20 @@ const layout = buildLayoutFromMap(map, {
     // The rake of stake wagons, shuttling up and down the yard. First in the
     // list because a level names it by its place in this one.
     { near: train, cars: 12 },
-    // The one that leaves: six carriages out of the station and away down the
-    // main line, following the switches to wherever the track really stops --
-    // three and a half kilometres, against the two hundred metres of the way
-    // it starts on -- and then all the way back.
+    // And three passenger trains, all of which leave: out of the platforms
+    // and away down whatever main line the switches lead them onto, to
+    // wherever the track really stops, and back. They come out with 3,687 m,
+    // 3,004 m and 899 m to run, against the two or three hundred metres of
+    // the ways they start on.
+    //
+    // No two of them share a way -- a route marks everything it runs over as
+    // spoken for -- so each is asked for after the last has taken its road
+    // and gets the best of what is left. Different lengths and different
+    // speeds so the yard reads as a station with several trains working out
+    // of it rather than as one train drawn three times.
     { near: train, cars: 6, stock: 'carriage', speed: 16, runsOut: true },
-    // And two more standing in the platforms: the same engine each, going
-    // nowhere. A roof four metres up to land on, and being stationary they
-    // are things to bump into rather than things that run you over. Different
-    // lengths so the yard reads as a station with several trains in it rather
-    // than as one train drawn twice.
-    { near: train, cars: 4, stock: 'carriage', speed: 0 },
-    { near: train, cars: 8, stock: 'carriage', speed: 0 },
+    { near: train, cars: 4, stock: 'carriage', speed: 13, runsOut: true },
+    { near: train, cars: 8, stock: 'carriage', speed: 11, runsOut: true },
   ],
 });
 /**
@@ -173,7 +175,39 @@ const carOf = (target: Extract<LevelTarget, { kind: 'wagon' }>): number =>
     ? Math.floor((layout.trains[target.train]?.vehicles.length ?? 1) / 2)
     : target.car;
 
-const smoke = createSmoke();
+/**
+ * A plume per working engine, and none for anything standing still.
+ *
+ * One `Smoke` is one emitter with a pool sized for its own rate, so several
+ * chimneys are several of them rather than one called several times -- called
+ * twice in a tick it would advect every puff it owns twice. The pools are
+ * concatenated once here and the same array handed to the renderer every
+ * frame, because the puffs are stable objects that get written in place.
+ *
+ * The goods engine works hard up and down the yard; the passenger engines are
+ * running easily on the main line, so they get a thinner plume, which costs
+ * proportionally less to keep as well as looking like less effort.
+ */
+const smokes = layout.trains
+  .map((train, index) =>
+    train.speed > 0
+      ? {
+          index,
+          puffs: createSmoke(
+            train.stock === 'wagon'
+              ? defaultSmokeOptions
+              : { ...defaultSmokeOptions, rate: 60, life: 7, lifeSpread: 1.8 },
+            // A seed each, or every chimney billows in step.
+            99 + index * 17,
+          ),
+        }
+      : null,
+  )
+  .filter((each): each is { index: number; puffs: Smoke } => each !== null);
+
+/** Every puff in the world, in one array the renderer can be given as is. */
+const allPuffs: Puff[] = smokes.flatMap((each) => each.puffs.puffs);
+
 const world = buildWorld(layout, {
   // The described things need no list here: they arrive on the layout already
   // named, having been put there on purpose. Only the wagons do, because
@@ -183,7 +217,7 @@ const world = buildWorld(layout, {
     const on = spec.target as Extract<LevelTarget, { kind: 'wagon' }>;
     return { name: on.name, train: on.train, vehicle: carOf(on) };
   }),
-  smoke: smoke.puffs.length,
+  smoke: allPuffs.length,
 });
 
 /**
@@ -606,19 +640,20 @@ function moveTrains(dt: number) {
     }
   }
 
-  // Smoke off a working locomotive's stack, carried at the speed the train is
-  // doing so it trails behind rather than standing over the chimney. The one
-  // standing in the platform is shut down, which is why it has none: the
-  // engine that smokes is the engine that is running, rather than whichever
-  // train happens to be first in the list.
-  const train = layout.trains.find((each) => each.speed > 0);
-  const engine = train?.vehicles[0];
-  if (train && engine) {
+  // Smoke off each working locomotive's stack, carried at the speed its train
+  // is doing so the plume trails behind rather than standing over the
+  // chimney. An engine standing in a platform is shut down and has none,
+  // which needs no rule of its own: it has no emitter.
+  for (const { index, puffs } of smokes) {
+    const train = layout.trains[index];
+    const engine = train?.vehicles[0];
+    if (!train || !engine) continue;
+
     const stack = stackTop();
     const at = onVehicle(engine, stack.along, stack.across);
     const heading = onVehicle(engine, 1, 0);
     const speed = train.speed * train.direction;
-    smoke.update(
+    puffs.update(
       dt,
       { x: at.x, y: stack.height, z: at.z },
       {
@@ -821,7 +856,7 @@ function frame(nowMs: number) {
     })),
   );
   talkPanel.show(talkingTo ? talk : null);
-  world.updateSmoke(smoke.puffs, camera.quaternion);
+  world.updateSmoke(allPuffs, camera.quaternion);
   rig.update(interpolatedState, wings, frameTime, surfaceUnder(interpolatedState));
 
   // --- What is being pointed at -------------------------------------------

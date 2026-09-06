@@ -262,6 +262,55 @@ function heading(a: Point2, b: Point2): Point2 {
   return span < 1e-9 ? [0, 0] : [(b[0] - a[0]) / span, (b[1] - a[1]) / span];
 }
 
+/**
+ * One end of one way, where it meets the network.
+ *
+ * Which end matters: a way joined at its tail is travelled backwards, and
+ * knowing that is the difference between following the track and jumping the
+ * length of a way sideways.
+ */
+export interface RailEnd {
+  rail: Rail;
+  /** Whether it is the head of that way that is here, or the tail. */
+  fromHead: boolean;
+}
+
+/**
+ * Which ways meet where: the map's railway as something connected.
+ *
+ * The map itself has no notion of this. A `Rail` is a bare polyline, a switch
+ * is two or three of them writing down the same coordinate, and nothing says
+ * so -- there is no junction in the data, only a coincidence. This is that
+ * coincidence made into an index, built once and asked many times.
+ *
+ * It is a junction index and not a route planner. It answers "what else is
+ * here?", which is all that following a line needs; it knows nothing about
+ * where anything leads, what is shortest, or what is occupied.
+ */
+export interface RailNetwork {
+  /** Every way end at a point, including any belonging to the way asking. */
+  at(point: Point2): readonly RailEnd[];
+  /** How many ways are in it, which bounds any walk over it. */
+  readonly ways: number;
+}
+
+/** Index the ends of every way, so the network can be walked. */
+export function railNetwork(rails: readonly Rail[]): RailNetwork {
+  const ends = new Map<string, RailEnd[]>();
+  let ways = 0;
+  for (const rail of rails) {
+    if (rail.points.length < 2) continue;
+    ways += 1;
+    for (const fromHead of [true, false]) {
+      const end = (fromHead ? rail.points[0] : rail.points[rail.points.length - 1]) as Point2;
+      const at = ends.get(nodeAt(end));
+      if (at) at.push({ rail, fromHead });
+      else ends.set(nodeAt(end), [{ rail, fromHead }]);
+    }
+  }
+  return { at: (point) => ends.get(nodeAt(point)) ?? [], ways };
+}
+
 /** A run of track: the shape of it, and every way it is made of. */
 export interface Route {
   points: Point2[];
@@ -275,36 +324,9 @@ export interface Route {
   over: Rail[];
 }
 
-/**
- * The whole run of track a line is part of, as one polyline.
- *
- * A railway in the map is not a railway, it is a heap of ways: the line out
- * of the yard is cut into a dozen pieces at every switch and every change of
- * tagging, and a train given one of the pieces shuffles up and down two
- * hundred metres of it with the rest of the route lying there unused. What
- * makes them one line is that the pieces share their end coordinates, so this
- * follows them: from each end, on through whichever unused way leaves that
- * node closest to straight ahead, until nothing does. Where the track really
- * ends, the route ends, and the train turns round there instead.
- *
- * Only ways of the same kind, so a train cannot find its way onto a tramway.
- * Each way is used once, which is what stops a triangle or a loop coming back
- * round and running for ever.
- */
-export function traceRoute(rails: readonly Rail[], from: Rail): Route {
+export function traceRoute(network: RailNetwork, from: Rail): Route {
   const points = from.points.map((point) => [...point] as Point2);
   if (points.length < 2) return { points, over: [from] };
-
-  const ends = new Map<string, { rail: Rail; fromHead: boolean }[]>();
-  for (const rail of rails) {
-    if (rail.kind !== from.kind || rail.points.length < 2) continue;
-    for (const fromHead of [true, false]) {
-      const end = (fromHead ? rail.points[0] : rail.points[rail.points.length - 1]) as Point2;
-      const at = ends.get(nodeAt(end));
-      if (at) at.push({ rail, fromHead });
-      else ends.set(nodeAt(end), [{ rail, fromHead }]);
-    }
-  }
 
   const used = new Set<Rail>([from]);
   /** Grow the route off one end of itself until the track runs out. */
@@ -315,27 +337,28 @@ export function traceRoute(rails: readonly Rail[], from: Rail): Route {
     let tip = (forward ? points[points.length - 1] : points[0]) as Point2;
     let back = (forward ? points[points.length - 2] : points[1]) as Point2;
 
-    for (let guard = 0; guard < rails.length; guard += 1) {
+    for (let guard = 0; guard < network.ways; guard += 1) {
       const going = heading(back, tip);
-      let best: { rail: Rail; fromHead: boolean; straightness: number } | null = null;
+      let best: { end: RailEnd; straightness: number } | null = null;
 
-      for (const join of ends.get(nodeAt(tip)) ?? []) {
-        if (used.has(join.rail)) continue;
-        const on = join.rail.points as readonly Point2[];
-        const leaving = join.fromHead
+      for (const end of network.at(tip)) {
+        // Same sort of line only, so nothing finds its way onto a tramway.
+        if (end.rail.kind !== from.kind || used.has(end.rail)) continue;
+        const on = end.rail.points as readonly Point2[];
+        const leaving = end.fromHead
           ? heading(on[0]!, on[1]!)
           : heading(on[on.length - 1]!, on[on.length - 2]!);
         const straightness = leaving[0] * going[0] + leaving[1] * going[1];
         if (straightness < SAME_ROAD) continue;
-        if (!best || straightness > best.straightness) best = { ...join, straightness };
+        if (!best || straightness > best.straightness) best = { end, straightness };
       }
       if (!best) break;
 
-      used.add(best.rail);
-      const on = (best.rail.points as readonly Point2[]).map((point) => [...point] as Point2);
+      used.add(best.end.rail);
+      const on = (best.end.rail.points as readonly Point2[]).map((point) => [...point] as Point2);
       // Laid the way the route is travelling, and without repeating the node
       // it was joined at.
-      const laid = best.fromHead ? on.slice(1) : on.slice(0, -1).reverse();
+      const laid = best.end.fromHead ? on.slice(1) : on.slice(0, -1).reverse();
       run.push(...laid);
       back = laid.length > 1 ? laid[laid.length - 2]! : tip;
       tip = laid[laid.length - 1]!;

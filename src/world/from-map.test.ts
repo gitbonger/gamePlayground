@@ -787,6 +787,66 @@ describe('two trains in one yard', () => {
     expect(lineLength(world.trains[1]!.line.points)).toBeCloseTo(600, 6);
   });
 
+  it('gives several roaming trains a road each, and no road twice', () => {
+    // All of them out on the network at once. What keeps them apart is that
+    // a route marks every way it runs over: the next train is choosing from
+    // what is left, so two trains cannot end up running the same rails in
+    // opposite directions.
+    const world = buildLayoutFromMap(mapOf(BLOCK, [], STATION), {
+      ...defaultMapWorldOptions,
+      trains: [
+        { near: { x: 40, z: 118 }, cars: 3, stock: 'carriage', speed: 15, runsOut: true },
+        { near: { x: 40, z: 118 }, cars: 3, stock: 'carriage', speed: 11, runsOut: true },
+      ],
+    });
+
+    expect(world.trains).toHaveLength(2);
+    for (const train of world.trains) {
+      expect(train.speed).toBeGreaterThan(0);
+      expect(lineLength(train.line.points)).toBeGreaterThan(consistLength(3, 'carriage'));
+    }
+
+    // The main line to the first, the siding to the second, and the two of
+    // them nowhere near each other: no point of one is within a track's
+    // width of any point of the other.
+    const [out, other] = world.trains as [(typeof world.trains)[0], (typeof world.trains)[0]];
+    expect(lineLength(out.line.points)).toBeCloseTo(1600, 6);
+    expect(lineLength(other.line.points)).toBeCloseTo(600, 6);
+    for (const here of other.line.points) {
+      for (const there of out.line.points) {
+        expect(Math.hypot(here[0] - there[0], here[1] - there[1])).toBeGreaterThan(4);
+      }
+    }
+  });
+
+  it('will not route a train through one already standing on the line', () => {
+    // The platform, two pieces of main line beyond it, and a siding off on
+    // its own. A train standing in the middle piece is not on the way the
+    // roamer starts from -- it is on the third way along the route -- so
+    // nothing but the route knows it is in the road.
+    const SHARED: Rail[] = [
+      { kind: 'rail', width: 8, points: [[-300, 120], [60, 120]] },
+      { kind: 'rail', width: 8, points: [[60, 120], [700, 120]] },
+      { kind: 'rail', width: 8, points: [[700, 120], [1500, 120]] },
+      { kind: 'rail', width: 8, points: [[-300, 104], [200, 104]] },
+    ];
+    const world = buildLayoutFromMap(mapOf(BLOCK, [], SHARED), {
+      ...defaultMapWorldOptions,
+      trains: [
+        { near: { x: 40, z: 118 }, cars: 3, stock: 'carriage', speed: 0 },
+        { near: { x: 40, z: 118 }, cars: 3, stock: 'carriage', speed: 12, runsOut: true },
+      ],
+    });
+
+    expect(world.trains).toHaveLength(2);
+    // The one standing takes the roomiest way it can reach, which is a piece
+    // of the main line.
+    expect(lineLength(world.trains[0]!.line.points)).toBeCloseTo(640, 6);
+    // So the roamer takes the siding and its 500 m rather than the platform
+    // and the 1,800 m run that goes straight through the other train.
+    expect(lineLength(world.trains[1]!.line.points)).toBeCloseTo(500, 6);
+  });
+
   it('asks for only as many as there are tracks', () => {
     // A third train with nowhere to go is left out rather than stacked on
     // top of one of the others.

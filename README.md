@@ -735,28 +735,37 @@ the difference is invisible on a straight line: with the wagon's yaw at zero,
 arithmetic. The test for it runs on a line laid diagonally for exactly that
 reason — on an axis-aligned one it passes either way.
 
-**There are four of them.** A rake of stake wagons shuttling up and down the
-yard, a six-coach train that leaves it, and two more standing in the platforms
-— the same engine each, of four and eight coaches, neither going anywhere.
-Different lengths so the yard reads as a station with several trains in it
-rather than as one train drawn three times.
+**There are four of them, and all four move.** A rake of stake wagons
+shuttling up and down the yard, and three passenger trains of six, four and
+eight coaches that leave it — out of the platforms and away down whatever main
+line the switches lead them onto, at 16, 13 and 11 m/s. They come out with
+**3,687 m, 3,004 m and 899 m** to run, against the two or three hundred metres
+of the ways they start on.
 
 All four are asked for at the same point, and a train takes the roomiest line
 near it *that nothing else has taken* — so each ends up on the next track
 over, which is what a station looks like. Without that rule they would all
-take the roomiest siding and stand in one another. Measured on the real map,
-the passenger trains come out on adjacent tracks 19 to 44 m apart, which
-against a coach 2.95 m wide is a platform between each pair.
+take the roomiest siding and stand in one another.
 
-**And one of them leaves.** A railway in the map is not a railway, it is a
-heap of ways: the line out of this yard is cut into pieces at every switch and
-every change of tagging, so a train handed one of the pieces shuffles up and
-down two hundred metres with the rest of the route lying there unused. What
-makes the pieces one line is that they share their end coordinates — a switch
-is a shared node and nothing else, with no word about which of the three or
-four roads meeting there is the continuation.
+**The railway is now something connected, rather than a heap of lines.** The
+map has no junctions in it: a `Rail` is a bare polyline, a switch is two or
+three of them writing down the same coordinate, and nothing says so. The
+connection is a coincidence. `railNetwork` is that coincidence indexed —
+which way ends meet at which node, and for each of them whether it is that
+way's head or its tail that is there, since a way joined at its tail is
+travelled backwards and not knowing that is the difference between following
+the track and jumping a way's length sideways.
 
-So `traceRoute` follows them: from each end of the way it starts on, through
+It is a junction index and not a route planner. It answers "what else is
+here?", which is all that following a line needs; it knows nothing about where
+anything leads, what is shortest, or what is occupied. It is built once per
+map and asked many times, which is what makes four trains each weighing up a
+dozen roads cheap.
+
+**And that is what lets a train leave.** The line out of this yard is cut into
+pieces at every switch and every change of tagging, so a train handed one of
+the pieces shuffles up and down two hundred metres with the rest of the route
+lying there unused. `traceRoute` follows them: from each end of the way it starts on, through
 whichever unused way leaves that node *closest to straight ahead*, until
 nothing does. At a facing point the through road leaves within a few degrees
 of the way you came in and the diverging one at a few more, while a line
@@ -770,9 +779,21 @@ one side of the map to the other and back, against the 389 m the goods train
 has. A train that leaves has to be told to (`runsOut`), because following the
 network changes which line is worth taking: the piece that starts the longest
 *run* is a short piece, so the choice is made on the route rather than on the
-way. And every way the route runs over is marked as spoken for, not just the
-one it was seeded from — otherwise the next train parks itself on a stretch of
-main line this one comes through at 58 km/h.
+way.
+
+**Every way a route runs over is marked as spoken for**, not just the one it
+was seeded from, and a route that would run over a way already spoken for is
+not taken at all. Both halves are needed and they fail differently. Without
+the first, the next train parks itself on a stretch of main line this one
+comes through at 58 km/h. Without the second, a train that leaves plots its
+run straight through one already standing in a platform three ways down the
+route — which is why the roamers are asked for in turn and each takes the best
+of what is left rather than all three taking the same main line.
+
+There is no signalling and none is wanted. The routes are disjoint by
+construction, so two trains cannot meet head-on; what they can still do is
+cross at a shared node, which nothing prevents and which no two of them have
+been observed to do at the same moment.
 
 What comes back is a polyline, so nothing else changed: `layOutTrain`,
 `shuttle` and the marker all work on a line and this is a longer one.
@@ -786,12 +807,23 @@ never exercise a way appended back to front or the backwards half of the walk
 put back in the wrong order; only tracing the real network does, so that is a
 test too.
 
-The standing one is not a special case anywhere, which is the point of the
+A standing train is not a special case anywhere, which is the point of the
 speed being a number rather than a flag. It shuttles nowhere because its step
-is zero. It smokes not at all because the engine that smokes is the one that
-is running rather than whichever train is first in the list. And it is a thing
-to bump into rather than a thing that runs you over, because being touched by
-a solid is only fatal above `struckSpeed`.
+is zero. It has no plume because a plume belongs to an engine that is running
+and it never gets one. And it is a thing to bump into rather than a thing that
+runs you over, because being touched by a solid is only fatal above
+`struckSpeed`. Nothing in the yard is standing any more, but none of that
+changed to make them go.
+
+**A plume per working engine.** One `Smoke` is one emitter with a pool sized
+for its own rate, so four chimneys are four of them rather than one called
+four times — called twice in a tick it would advect every puff it owns twice.
+The pools are concatenated once and the same array handed to the renderer
+every frame, which works because the puffs are stable objects written in
+place. The goods engine works hard up and down the yard and keeps the thick
+plume; the passenger engines are running easily on the main line and get a
+thinner one, which costs proportionally less to keep as well as looking like
+less effort. 3,491 puffs in all, against 1,883 for the one.
 
 A coach is the opposite problem to a stake wagon. A wagon's whole point is an
 open deck a metre and a quarter up; a coach is closed, so there is nothing to

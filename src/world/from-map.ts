@@ -44,6 +44,7 @@ import {
   layOutTrain,
   lineLength,
   pointAlong,
+  railNetwork,
   traceRoute,
   type Train,
   type Stock,
@@ -625,6 +626,10 @@ export function buildLayoutFromMap(
    * looks like.
    */
   const taken = new Set<Rail>();
+  // Which ways meet where, indexed once. Several trains each weighing up a
+  // dozen roads is fifty walks of the network, and the junctions are a fact
+  // about the map rather than about any one of them.
+  const network = railNetwork(map.rails ?? []);
   for (const spec of options.trains ?? []) {
     const stock = spec.stock ?? 'wagon';
     const length = consistLength(spec.cars, stock);
@@ -643,7 +648,7 @@ export function buildLayoutFromMap(
       // One that leaves is judged on where the whole route gets to, not on
       // how long its own way happens to be: the way out of this yard is cut
       // into pieces and the piece that starts the longest run is a short one.
-      const route = spec.runsOut ? traceRoute(map.rails ?? [], rail) : null;
+      const route = spec.runsOut ? traceRoute(network, rail) : null;
       const laid = route ? route.over : [rail];
       if (laid.some((part) => taken.has(part))) continue;
 
