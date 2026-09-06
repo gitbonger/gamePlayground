@@ -292,6 +292,28 @@ function groundUnder(
 }
 
 /**
+ * Put a bird on its feet where it already is, standing still.
+ *
+ * The residents are made this way and so is the hero of a perched level, and
+ * it has to be the same way for both: `meeting` asks whether both birds are
+ * perched and on the same solid, so a hero who was merely at the right
+ * coordinates with no ending on him would be a hero standing next to somebody
+ * he can never say hello to.
+ */
+export function standStill(state: BirdState): void {
+  state.velocity = vec(0, 0, 0);
+  state.restingOn = null;
+  state.ending = {
+    kind: 'landed',
+    cause: null,
+    speed: 0,
+    sink: 0,
+    bank: 0,
+    position: state.position,
+  };
+}
+
+/**
  * Leave the ground under your own power.
  *
  * Up and forward at once, at a speed the wing can actually fly at: a bird put

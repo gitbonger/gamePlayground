@@ -803,9 +803,21 @@ function finish(
   airVelocity: Vec3,
 ): FlightTelemetry {
   // Touching down always ends the flight; the only question is how well.
-  if (state.position.y <= p.groundHeight) {
+  //
+  // A body radius above the ground, not on it. To everything that sweeps, a
+  // bird is a sphere of `bodyRadius`, and a sphere resting on a surface has
+  // its centre a radius clear of it -- which is where the collider leaves a
+  // bird that lands on a roof, and where the walk model puts one that is on
+  // its feet. The ground plane used to be the exception, and both halves of
+  // that exception showed: a bird put down on the grass by hand stood a
+  // radius higher than the player, who was left half-buried by his own
+  // landing and, on his first stride, found no footing at all -- caught each
+  // tick by landing again, so what looked like walking on grass was falling a
+  // hundred and twenty times a second.
+  const resting = p.groundHeight + p.bodyRadius;
+  if (state.position.y <= resting) {
     const settled = state.position.y;
-    const ground = vec(state.position.x, p.groundHeight, state.position.z);
+    const ground = vec(state.position.x, resting, state.position.z);
     work.collision += p.mass * p.gravity * (ground.y - settled);
     settle(state, p, work, ground);
   }

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { bellyOnEntry, crossed, crossingLine, LEVELS, targetName } from './levels';
+import {
+  bellyOnEntry,
+  crossed,
+  crossingLine,
+  dialogueOf,
+  LEVELS,
+  opensOf,
+  personOf,
+  targetName,
+} from './levels';
 import { HOME_TREE, LANDMARKS, LOFT } from './landmarks';
 import { nestOn, penthouseOf, peopleOn, plantTerrace, pointOn, terraceOf } from './world/layout';
 import { CHARACTER_MORPHS, HERO_MORPH, PIGEON_MORPHS, PINK_MORPH } from './render/bird';
@@ -53,7 +62,8 @@ describe('what the levels aim at', () => {
     const level = LEVELS.find((l) => l.target.name === LOFT.name)!;
     const here = { ...LOFT, x: 0, z: 0 };
     const terrace = terraceOf(here)!;
-    const person = pointOn(terrace, level.person!.along, level.person!.across);
+    const waiting = personOf(level)!;
+    const person = pointOn(terrace, waiting.along, waiting.across);
 
     // On the terrace: measured back in the terrace's own frame, because the
     // terrace is turned too.
@@ -151,7 +161,7 @@ describe('what the levels aim at', () => {
     // is standing a stride away. If she drifts further off than a bird can
     // reach, the opening level silently becomes one you have to walk.
     const leaving = LEVELS[0]!;
-    expect(leaving.person).toBeDefined();
+    expect(personOf(leaving)).toBeDefined();
     expect(leaving.begins).toBe('perched');
     expect(leaving.target).toEqual({ kind: 'landmark', name: HOME_TREE.name });
 
@@ -159,8 +169,8 @@ describe('what the levels aim at', () => {
     // of them are twice her offset apart, and that has to be inside a bird's
     // reach or the opening level quietly becomes one you have to walk.
     const middle = { x: 0, z: 0, yaw: HOME_TREE.yaw ?? 0 };
-    const her = pointOn(middle, leaving.person!.along, leaving.person!.across);
-    const him = pointOn(middle, -leaving.person!.along, -leaving.person!.across);
+    const her = pointOn(middle, personOf(leaving)!.along, personOf(leaving)!.across);
+    const him = pointOn(middle, -personOf(leaving)!.along, -personOf(leaving)!.across);
     expect(Math.hypot(her.x - him.x, her.z - him.z)).toBeLessThan(MEET_RADIUS);
     // And far enough apart to be two birds rather than one: a pigeon is about
     // a fifth of a metre across.
@@ -173,10 +183,10 @@ describe('what the levels aim at', () => {
     // egg, which is what the picture would be if the two coordinates were
     // written independently and left to drift.
     const leaving = LEVELS[0]!;
-    expect(leaving.person).toBeDefined();
+    expect(personOf(leaving)).toBeDefined();
     const here = { ...HOME_TREE, x: 0, z: 0 };
     const nest = nestOn(here)!;
-    const her = pointOn(here, leaving.person!.along, leaving.person!.across);
+    const her = pointOn(here, personOf(leaving)!.along, personOf(leaving)!.across);
     const apart = Math.hypot(her.x - nest.x, her.z - nest.z);
     expect(apart).toBeGreaterThan(nest.radius);
     expect(apart).toBeLessThan(1);
@@ -212,12 +222,12 @@ describe('what the levels aim at', () => {
     // at a screenshot. Both birds and the whole rim of the nest, measured
     // from the middle, inside the edge.
     const leaving = LEVELS[0]!;
-    expect(leaving.person).toBeDefined();
+    expect(personOf(leaving)).toBeDefined();
     const here = { ...HOME_TREE, x: 0, z: 0 };
     const crest = HOME_TREE.width / 2;
     const nest = nestOn(here)!;
-    const her = pointOn(here, leaving.person!.along, leaving.person!.across);
-    const him = pointOn(here, -leaving.person!.along, -leaving.person!.across);
+    const her = pointOn(here, personOf(leaving)!.along, personOf(leaving)!.across);
+    const him = pointOn(here, -personOf(leaving)!.along, -personOf(leaving)!.across);
 
     expect(Math.hypot(nest.x, nest.z) + nest.radius).toBeLessThan(crest);
     for (const bird of [her, him]) {
@@ -235,11 +245,10 @@ describe('what the levels aim at', () => {
     expect(PIGEON_MORPHS).not.toContain(PINK_MORPH);
     expect(CHARACTER_MORPHS).toContain(PINK_MORPH);
 
-    const pink = LEVELS.filter(
-      (level) =>
-        level.person &&
-        CHARACTER_MORPHS[level.person.morph % CHARACTER_MORPHS.length] === PINK_MORPH,
-    );
+    const pink = LEVELS.filter((level) => {
+      const waiting = personOf(level);
+      return waiting && CHARACTER_MORPHS[waiting.morph % CHARACTER_MORPHS.length] === PINK_MORPH;
+    });
     expect(pink).toEqual([LEVELS[0]]);
   });
 
@@ -267,8 +276,9 @@ describe('what the levels aim at', () => {
     // somebody looks, which is this.
     const names = new Set(LEVELS.map((level) => level.name));
     for (const level of LEVELS) {
-      if (!level.dialogue) continue;
-      for (const opens of handovers(level.dialogue)) {
+      const said = dialogueOf(level);
+      if (!said) continue;
+      for (const opens of handovers(said)) {
         expect(names, `${level.name} opens ${opens}`).toContain(opens);
       }
     }
@@ -280,9 +290,9 @@ describe('what the levels aim at', () => {
     // nothing would leave the player standing on a branch eighteen metres up
     // with a finished conversation and no level to fly.
     const leaving = LEVELS[0]!;
-    expect(leaving.person).toBeDefined();
-    for (const [index] of leaving.dialogue!.you!.entries()) {
-      let talk = begin(leaving.dialogue!);
+    expect(personOf(leaving)).toBeDefined();
+    for (const [index] of dialogueOf(leaving)!.you!.entries()) {
+      let talk = begin(dialogueOf(leaving)!);
       for (let step = 0; step < 20 && !isOver(talk); step += 1) {
         talk = reply(talk, step === 0 ? index + 1 : 1);
       }
@@ -362,21 +372,36 @@ describe('what the levels aim at', () => {
     expect(crossed(line, 250 - 0.8, 300 + 0.6)).toBe(true);
   });
 
-  it('ends the errand at a line and the rest at somebody', () => {
-    // The two ways a level can end, and the one rule that keeps them apart:
-    // nobody stands at a line. Two levels aim at the concrete slab, and if
-    // the first of them had a pigeon waiting it would be standing on the
-    // second one's.
+  it('puts a bird at the end of a level only when the level ends in a meeting', () => {
+    // The rule that keeps the three finishes apart: nobody stands at a line,
+    // and nobody stands in the grain. Two levels aim at the concrete slab, so
+    // a pigeon waiting on the first of them would be standing on the second
+    // one's -- and the feeding level would be somebody to talk to instead of
+    // a meal to eat.
     for (const level of LEVELS) {
-      const ends = level.crossing ? 'line' : 'person';
-      if (ends === 'line') {
-        expect(level.person, level.name).toBeUndefined();
-        expect(level.dialogue, level.name).toBeUndefined();
-      } else {
-        expect(level.person, level.name).toBeDefined();
-        expect(level.dialogue, level.name).toBeDefined();
-      }
+      const meets = level.finish.kind === 'meeting';
+      expect(personOf(level) !== undefined, level.name).toBe(meets);
+      expect(dialogueOf(level) !== undefined, level.name).toBe(meets);
+      // And the other way about: the two that finish by themselves say what
+      // they open, and the one that ends in a conversation leaves that to the
+      // conversation.
+      expect(opensOf(level) !== undefined, level.name).toBe(!meets);
     }
+  });
+
+  it('feeds the bird on the level that is about food, and nowhere else', () => {
+    // The level is the eating: no arrival, no conversation, and a condition
+    // met by walking about on the concrete picking things up. It is aimed at
+    // the same slab the level before it crosses towards, which is the reason
+    // nobody may be standing on it.
+    const eating = LEVELS.filter((level) => level.finish.kind === 'fed');
+    expect(eating).toHaveLength(1);
+    const level = eating[0]!;
+    expect(level.name).toBe('Grabbing food');
+    expect(level.target.kind).toBe('landmark');
+    // Arrived at hungry: a level won by filling the belly has to begin with
+    // it unfilled, or it is won on the tick it opens.
+    expect(level.health).toBeLessThan(1);
   });
 
   it('hands the crossing over to a level that exists, short of the target', () => {
@@ -386,15 +411,16 @@ describe('what the levels aim at', () => {
     const centre = HOME_MAP.centre as [number, number];
     const names = new Set(LEVELS.map((level) => level.name));
     for (const level of LEVELS) {
-      if (!level.crossing) continue;
-      expect(names, level.name).toContain(level.crossing.opens);
+      const ends = level.finish;
+      if (ends.kind !== 'crossing') continue;
+      expect(names, level.name).toContain(ends.opens);
 
       const described = LANDMARKS.find((l) => l.name === level.target.name)!;
       const from = project(level.start[0], level.start[1], centre);
       const to = project(described.at[0], described.at[1], centre);
       const span = Math.hypot(to.x - from.x, to.z - from.z);
-      expect(level.crossing.at, level.name).toBeGreaterThan(50);
-      expect(level.crossing.at, level.name).toBeLessThan(span - 50);
+      expect(ends.at, level.name).toBeGreaterThan(50);
+      expect(ends.at, level.name).toBeLessThan(span - 50);
     }
   });
 
@@ -406,7 +432,7 @@ describe('what the levels aim at', () => {
     // stop, so the shape that cannot be painted is refused here rather than
     // silently skipped there.
     for (const level of LEVELS) {
-      if (!level.crossing) continue;
+      if (level.finish.kind !== 'crossing') continue;
       expect(level.target.kind, level.name).toBe('landmark');
       expect(LANDMARKS.map((l) => l.name), level.name).toContain(level.target.name);
     }
@@ -417,14 +443,16 @@ describe('what the levels aim at', () => {
     // the bird somewhere it has never been, which is worse than starting the
     // flight again.
     const centre = HOME_MAP.centre as [number, number];
-    const first = LEVELS.find((level) => level.crossing)!;
-    const second = LEVELS.find((level) => level.name === first.crossing!.opens)!;
+    const first = LEVELS.find((level) => level.finish.kind === 'crossing')!;
+    const ends = first.finish;
+    if (ends.kind !== 'crossing') throw new Error('the crossing level has stopped crossing');
+    const second = LEVELS.find((level) => level.name === ends.opens)!;
     const described = LANDMARKS.find((l) => l.name === first.target.name)!;
 
     const line = crossingLine(
       project(first.start[0], first.start[1], centre),
       project(described.at[0], described.at[1], centre),
-      first.crossing!.at,
+      ends.at,
     );
     const at = project(second.start[0], second.start[1], centre);
     expect(Math.hypot(at.x - line.x, at.z - line.z)).toBeLessThan(20);
@@ -449,7 +477,8 @@ describe('what the levels aim at', () => {
       if (!described) continue;
       const from = project(level.start[0], level.start[1], centre);
       const to = project(described.at[0], described.at[1], centre);
-      const toGo = Math.hypot(to.x - from.x, to.z - from.z) - (level.crossing?.at ?? 0);
+      const short = level.finish.kind === 'crossing' ? level.finish.at : 0;
+      const toGo = Math.hypot(to.x - from.x, to.z - from.z) - short;
       // A full belly is three kilometres of level flight.
       expect(level.health * 3000, `${level.name} has ${toGo.toFixed(0)} m to fly`).toBeGreaterThan(
         toGo,
@@ -486,6 +515,31 @@ describe('what the levels aim at', () => {
     expect(perched).toEqual([LEVELS[0]]);
   });
 
+  it('turns whoever stands beside a flat thing to look at it', () => {
+    // The thrower is the reason this matters: somebody throwing grain onto a
+    // patch of concrete with their back to it is a person the scene cannot
+    // explain. The figure faces -Z at a facing of zero, the same convention
+    // the bird uses, so this is arithmetic rather than a look at the model.
+    //
+    // Written down as an angle in the description, which is why it is checked
+    // here: an angle is the one part of a position that can be wrong without
+    // looking wrong until somebody stands next to it.
+    for (const described of LANDMARKS) {
+      if (!described.people || described.height > 0) continue;
+      const here = { ...described, x: 0, z: 0 };
+      for (const standing of peopleOn(here)) {
+        // Where they are looking, and where the middle of the slab is from
+        // where they stand.
+        const look = { x: -Math.sin(standing.facing), z: -Math.cos(standing.facing) };
+        const away = Math.hypot(standing.x, standing.z);
+        const at = { x: -standing.x / away, z: -standing.z / away };
+        // Within a handful of degrees of straight at it.
+        const off = Math.acos(look.x * at.x + look.z * at.z);
+        expect(off, `${described.name} is looking ${off.toFixed(2)} rad off`).toBeLessThan(0.2);
+      }
+    }
+  });
+
   it('stands nobody in the way of the landing they are standing there for', () => {
     // A person is two metres of solid, and the landmarks they stand on are
     // the things levels ask you to land on. On a roof terrace that is fine --
@@ -498,8 +552,9 @@ describe('what the levels aim at', () => {
       if (!described?.people) continue;
 
       const here = { ...described, x: 0, z: 0 };
-      if (!level.person) continue;
-      const waiting = pointOn(here, level.person.along, level.person.across);
+      const stands = personOf(level);
+      if (!stands) continue;
+      const waiting = pointOn(here, stands.along, stands.across);
       for (const standing of peopleOn(here)) {
         // Off a flat target altogether: beside it, not on it.
         if (described.height === 0) {

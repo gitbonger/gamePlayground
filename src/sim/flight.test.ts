@@ -175,10 +175,17 @@ describe('stability', () => {
 });
 
 describe('ground', () => {
-  it('stops at the ground plane instead of sinking through it', () => {
+  it('comes to rest on the ground plane instead of sinking through it', () => {
+    // On it, in the sense everything that sweeps means: a bird is a sphere of
+    // `bodyRadius` to the collider, and a sphere at rest on a surface has its
+    // centre a radius clear of it. That is where a landing on a roof leaves
+    // one and where the walk model stands one up, so it is where a landing on
+    // the grass has to leave one too -- otherwise a bird put down by hand
+    // floats a radius above the player, and the player has no footing to walk
+    // on.
     const bird = createBird(vec(0, 3, 0), 2);
     const { bird: end } = fly(6, {}, {}, bird);
-    expect(end.position.y).toBe(defaultParams.groundHeight);
+    expect(end.position.y).toBe(defaultParams.groundHeight + defaultParams.bodyRadius);
     expect(end.ending).not.toBeNull();
   });
 });
@@ -317,13 +324,13 @@ describe('landing', () => {
     expect(ending.sink).toBeLessThanOrEqual(defaultParams.landingSink);
     expect(ending.speed).toBeLessThanOrEqual(defaultParams.landingSpeed);
     expect(ending.bank).toBeLessThanOrEqual(defaultParams.landingBank);
-    expect(ending.position.y).toBe(defaultParams.groundHeight);
+    expect(ending.position.y).toBe(defaultParams.groundHeight + defaultParams.bodyRadius);
   });
 
   it('leaves the bird stopped where it landed', () => {
     const bird = approach(5, 0.7);
     expect(length(bird.velocity)).toBe(0);
-    expect(bird.position.y).toBe(defaultParams.groundHeight);
+    expect(bird.position.y).toBe(defaultParams.groundHeight + defaultParams.bodyRadius);
   });
 });
 

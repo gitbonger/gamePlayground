@@ -671,6 +671,14 @@ export function buildWorld(
   scattered.name = 'seeds';
   scattered.count = 0;
   scattered.castShadow = true;
+  // Never culled, and this is a bug fix rather than a preference. An instanced
+  // mesh is culled as one object against a bounding sphere worked out from its
+  // instance matrices -- once, the first time anything asks, and never again.
+  // The seeds are thrown after that and land nine hundred metres from where
+  // that sphere was drawn, so the whole scatter blinked in and out depending
+  // on where the camera was pointed. Eight spheres in one draw call are not
+  // worth a frustum test anyway.
+  scattered.frustumCulled = false;
   if (options.seeds) group.add(scattered);
 
   const roofGeometry = buildRoofs(layout.buildings);
@@ -1152,9 +1160,10 @@ function personShape(): THREE.BufferGeometry {
     depth: number,
     x: number,
     y: number,
+    z = 0,
   ) => {
     const part = new THREE.BoxGeometry(width, height, depth);
-    part.translate(x, y + height / 2, 0);
+    part.translate(x, y + height / 2, z);
     return { geometry: part, color };
   };
 
@@ -1180,8 +1189,13 @@ function personShape(): THREE.BufferGeometry {
     box(TROUSERS, 0.07, 0.43, 0.08, -0.046, 0),
     box(TROUSERS, 0.07, 0.43, 0.08, 0.046, 0),
     box(COAT, 0.2, 0.36, 0.12, 0, 0.43),
-    box(COAT, 0.05, 0.33, 0.09, -0.135, 0.45),
-    box(COAT, 0.05, 0.33, 0.09, 0.135, 0.45),
+    // The arms out in front rather than hanging at the sides, which is the
+    // one thing that gives the figure a front. Every other part of it is
+    // symmetrical about both axes, so until this it could be turned to face
+    // anywhere and look identical -- and a person throwing grain who might as
+    // well have their back to the birds is a person the scene cannot explain.
+    box(COAT, 0.05, 0.33, 0.09, -0.135, 0.45, -0.05),
+    box(COAT, 0.05, 0.33, 0.09, 0.135, 0.45, -0.05),
     box(SKIN, 0.05, 0.06, 0.05, 0, 0.79),
     { geometry: head, color: SKIN },
     { geometry: cap, color: HAIR },

@@ -60,12 +60,18 @@ describe('how far the model hangs below the point the simulation tracks', () => 
     expect(FOOT_DROP - Math.max(...drops)).toBeLessThan(0.005);
   });
 
-  it('holds the feet clear of the tracked point once it is standing', () => {
-    // Perched, the model is lifted by its own standing height, so the feet
-    // come to rest just above the point the simulation stopped -- which is
-    // why plain ground never showed the bug that a railway did.
-    expect(lowestPoint('perched', 10)).toBeGreaterThan(10);
-    expect(lowestPoint('gliding', 10)).toBeLessThan(10);
+  it('reaches the feet down to the surface the tracked point rests over', () => {
+    // Standing, the point the simulation tracks is the centre of the bird's
+    // collision sphere, which rests a body radius above whatever it is
+    // standing on. So the feet have to hang below that point -- nearly the
+    // whole radius, or the bird hovers -- and never past it, or it sinks.
+    const drop = 10 - lowestPoint('perched', 10);
+    expect(drop).toBeGreaterThan(defaultParams.bodyRadius - 0.02);
+    expect(drop).toBeLessThan(defaultParams.bodyRadius);
+
+    // Flying, nothing is lifted or dropped and the legs are tucked away, so
+    // the model hangs by much less.
+    expect(10 - lowestPoint('gliding', 10)).toBeLessThan(drop / 2);
   });
 });
 

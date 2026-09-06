@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { begin, GREETING, isOver, reply, type Turn } from './dialogue';
-import { LEVELS } from './levels';
+import { dialogueOf, LEVELS } from './levels';
 
 /** What is on screen, as plain strings, for comparing against. */
 const lines = (exchange: ReturnType<typeof begin>) =>
@@ -161,12 +161,12 @@ describe('a conversation that hands over a level', () => {
 
 describe('every level that has somebody waiting has something to say', () => {
   /** A level ends at a person or at a line; only the first sort talks. */
-  const spoken = LEVELS.filter((level) => level.dialogue);
+  const spoken = LEVELS.filter((level) => dialogueOf(level));
 
   it('opens with a line and at least one thing to say back', () => {
     expect(spoken.length).toBeGreaterThan(0);
     for (const level of spoken) {
-      const talk = begin(level.dialogue!);
+      const talk = begin(dialogueOf(level)!);
       expect(talk.said[0]?.text.length, level.name).toBeGreaterThan(0);
       expect(talk.replies.length, level.name).toBeGreaterThan(0);
     }
@@ -175,8 +175,8 @@ describe('every level that has somebody waiting has something to say', () => {
   it('ends, whichever way you take it', () => {
     // A branch that never runs out is a level you can never leave.
     for (const level of spoken) {
-      for (const [index] of level.dialogue!.you!.entries()) {
-        let talk = begin(level.dialogue!);
+      for (const [index] of dialogueOf(level)!.you!.entries()) {
+        let talk = begin(dialogueOf(level)!);
         for (let step = 0; step < 20 && !isOver(talk); step += 1) {
           talk = reply(talk, step === 0 ? index + 1 : 1);
         }

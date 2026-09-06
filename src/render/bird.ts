@@ -9,7 +9,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { BirdState } from '../sim/flight';
+import { defaultParams, type BirdState } from '../sim/flight';
 
 /**
  * The colour model, which is a legibility model rather than a taxonomy.
@@ -169,14 +169,26 @@ export const PINK_MORPH: PigeonMorph = {
 export const CHARACTER_MORPHS: readonly PigeonMorph[] = [...PIGEON_MORPHS, PINK_MORPH];
 
 /**
- * How far the body sits above the feet when standing, in metres.
+ * How far the body sits above the surface when standing, in metres.
  *
- * The simulation tracks a point at the bird's centre and stops it at ground
- * level, which would bury half the model. This is the offset from that point
- * to where the body actually belongs -- a rendering concern, not a physical
- * one, so it lives here rather than in the flight model.
+ * A rendering concern rather than a physical one, so it lives here rather
+ * than in the flight model.
  */
 const STANDING_HEIGHT = 0.14;
+
+/**
+ * How far the drawn bird sits below the point the simulation tracks, standing.
+ *
+ * The simulation tracks the centre of a sphere of `bodyRadius`, and a sphere
+ * at rest on a surface has its centre a radius clear of it -- so the tracked
+ * point when a bird is standing is 22 cm above whatever it is standing on,
+ * while the body belongs 14 cm above it. The difference is the drop.
+ *
+ * It is worked out from the physical radius rather than written down, because
+ * the two have to agree: taken as a fixed number it would be right on the
+ * grass and eight centimetres out on every roof.
+ */
+const STANDING_DROP = defaultParams.bodyRadius - STANDING_HEIGHT;
 
 /**
  * How far the feet hang below the point the simulation tracks, in metres.
@@ -185,8 +197,14 @@ const STANDING_HEIGHT = 0.14;
  * nearly 30 cm, and a wingtip touching the ground is a bird braking, while a
  * foot under the ground is a bug. Measured off the built model rather than
  * asserted -- there is a test that fails if a leg grows past it.
+ *
+ * Standing is the deepest of the poses, and has to be: the tracked point is a
+ * body radius above whatever the bird is standing on, so feet that did not
+ * reach that far down would be a bird hovering. It comes to nine millimetres
+ * short of the radius, which on a bird a quarter of a metre long is the
+ * thickness of the paint.
  */
-export const FOOT_DROP = 0.07;
+export const FOOT_DROP = 0.212;
 
 /**
  * How far forward the head is thrust over a stride, in metres, and how much of
@@ -519,7 +537,7 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
 
     object.position.set(
       state.position.x,
-      state.position.y + STANDING_HEIGHT * stand,
+      state.position.y - STANDING_DROP * stand,
       state.position.z,
     );
     object.quaternion.set(
@@ -618,6 +636,20 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
       ? phase / HEAD_THRUST
       : 1 - (phase - HEAD_THRUST) / (1 - HEAD_THRUST);
   }
+
+  // A bird is drawn whole or not at all, and the decision is made once, about
+  // the bird, by whoever owns it -- `sighted` on its position, which is one
+  // test against one point.
+  //
+  // Left to itself the renderer tests every mesh in the rig separately against
+  // its own bounding sphere, which is both wasteful and wrong to look at: the
+  // parts are small and spread out, so a bird near the camera loses a wing, a
+  // tail and half its legs one at a time as they cross the edge of the frame,
+  // and what is left is a pigeon with pieces missing. The wings also move, and
+  // a bounding sphere worked out once does not.
+  object.traverse((part) => {
+    part.frustumCulled = false;
+  });
 
   return {
     object,

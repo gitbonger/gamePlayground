@@ -63,16 +63,53 @@ export interface LevelPerson {
   across: number;
 }
 
+/**
+ * What finishes a level: the one thing a level cannot be without.
+ *
+ * There are three ways, and they used to be three optional fields that were
+ * understood not to appear together -- which is a shape that says "any of
+ * these, or none, or all three" when what is meant is "exactly one of these".
+ * A level with a person *and* a crossing was a sentence the types were happy
+ * to let anybody write.
+ *
+ * Two of the three hand the next level over where you stand, so they carry
+ * the name of it; the third ends in a conversation, and what happens after a
+ * conversation is the conversation's business.
+ */
+export type Finish =
+  /** Walk up to the pigeon waiting at the target and talk to it. */
+  | { kind: 'meeting'; person: LevelPerson; dialogue: Turn }
+  /**
+   * Cross a line drawn square across the route, so far along it.
+   *
+   * `at` is metres from the release point. It exists to break a long flight
+   * into pieces you do not have to fly twice.
+   */
+  | { kind: 'crossing'; at: number; opens: string }
+  /**
+   * Eat until the belly is full.
+   *
+   * The one that is not about arriving anywhere: the level is the eating.
+   * There is nobody standing on the concrete to talk to, because a pigeon
+   * that has flown nine hundred metres for food has come for the food.
+   */
+  | { kind: 'fed'; opens: string };
+
+/** Who is waiting at the target, if the level ends by meeting somebody. */
+export const personOf = (level: Level): LevelPerson | undefined =>
+  level.finish.kind === 'meeting' ? level.finish.person : undefined;
+
+/** What they say, likewise. */
+export const dialogueOf = (level: Level): Turn | undefined =>
+  level.finish.kind === 'meeting' ? level.finish.dialogue : undefined;
+
+/** The level this one hands over to without being asked, if it does. */
+export const opensOf = (level: Level): string | undefined =>
+  level.finish.kind === 'meeting' ? undefined : level.finish.opens;
+
 export interface Level {
   /** What it is called, on the marker and in the menu. */
   name: string;
-  /**
-   * What is said when you reach the pigeon waiting there.
-   *
-   * Absent when nobody is waiting, which is the same levels that end at a
-   * line: there is nobody to say it to.
-   */
-  dialogue?: Turn;
   /** Where the pigeon is released, in degrees. */
   start: [number, number];
   /**
@@ -122,47 +159,13 @@ export interface Level {
   when: string;
   target: LevelTarget;
   /**
-   * Who is waiting at the target, if anybody is.
+   * How this one is finished: met, crossed, or eaten.
    *
-   * A level ends either by walking up to somebody or by crossing a line, and
-   * a level that ends at a line has nobody standing at the far end of it --
-   * it is the first half of a flight, not a place you arrive. Optional for
-   * that reason and not for convenience: two levels aiming at one landmark
-   * would otherwise stand two pigeons on the same square metre of it.
+   * Exactly one of the three, which is the point of its being a union rather
+   * than three optional fields -- a level with a person and a crossing was a
+   * sentence the old shape was happy to let anybody write.
    */
-  person?: LevelPerson;
-  /**
-   * A line across the flight that ends the level when it is crossed.
-   *
-   * `at` is metres from the release point, measured along the straight line
-   * to the target, and the line itself is square to that -- so any way of
-   * getting from here to there crosses it, however wide the detour.
-   *
-   * It exists to break a long flight into pieces you do not have to fly
-   * twice. Nothing new had to be invented for that: crossing hands the next
-   * level over where you are standing, exactly as the end of a conversation
-   * does, and a level already knows where it starts, already puts you back
-   * there when you die, and already remembers itself between sessions. A
-   * checkpoint would have been a fourth thing that does what three things
-   * already do.
-   */
-  crossing?: { at: number; opens: string };
-  /**
-   * How the level opens: in the air, or already on your feet on the target.
-   *
-   * Flight is the ordinary case and the default. Perched is for a level that
-   * is a conversation rather than a flight -- the hero starts standing on the
-   * thing the level is about, an arm's length from whoever is waiting there,
-   * so it is complete the moment it begins and the only thing left to do is
-   * talk and go.
-   *
-   * It is a hack in the sense that a story beat is being told through the
-   * level-completion machinery rather than through anything of its own. It is
-   * not a hack in the sense that matters: nothing downstream is special-cased
-   * for it. The bird is standing, the resident is standing, they are within
-   * reach, and the same rule that finishes every other level finishes this
-   * one.
-   */
+  finish: Finish;
   begins?: 'flight' | 'perched';
 }
 
@@ -245,8 +248,11 @@ export const LEVELS: readonly Level[] = [
     target: { kind: 'landmark', name: HOME_TREE.name },
     // The pink one, and the only bird in the game wearing her colours. She
     // stands beside the nest rather than on it.
-    person: { morph: 4, along: -0.4, across: 0.08 },
-    dialogue: HEADING_OUT,
+    finish: {
+      kind: 'meeting',
+      person: { morph: 4, along: -0.4, across: 0.08 },
+      dialogue: HEADING_OUT,
+    },
     begins: 'perched',
   },
   {
@@ -278,7 +284,7 @@ export const LEVELS: readonly Level[] = [
     // the whole way there, because that is what he is doing. This half is
     // over when he is halfway, and nobody is standing on the line.
     target: { kind: 'landmark', name: PARK_PATCH.name },
-    crossing: { at: 500, opens: 'Grabbing food' },
+    finish: { kind: 'crossing', at: 500, opens: 'Grabbing food' },
   },
   {
     // The second half of the same errand, and the reason it is a level of its
@@ -299,8 +305,11 @@ export const LEVELS: readonly Level[] = [
     health: 0.25,
     when: EVENING,
     target: { kind: 'landmark', name: PARK_PATCH.name },
-    person: { morph: 0, along: 2.4, across: 0 },
-    dialogue: GREETING,
+    // Nobody is waiting on the concrete. A pigeon that has flown nine hundred
+    // metres for food has come for the food, so the level is the eating: over
+    // when the belly is full, and handed on from the middle of a patch of
+    // grain, standing up.
+    finish: { kind: 'fed', opens: 'The Loft' },
   },
   {
     // Twenty-four metres up, on a roof among other roofs. Still nothing
@@ -317,8 +326,11 @@ export const LEVELS: readonly Level[] = [
     health: 1,
     when: EVENING,
     target: { kind: 'landmark', name: LOFT.name },
-    person: { morph: 1, along: 2.6, across: 0 },
-    dialogue: GREETING,
+    finish: {
+      kind: 'meeting',
+      person: { morph: 1, along: 2.6, across: 0 },
+      dialogue: GREETING,
+    },
   },
   {
     // A wagon of a running train, which is the first target that will not
@@ -330,8 +342,11 @@ export const LEVELS: readonly Level[] = [
     health: 1,
     when: EVENING,
     target: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' },
-    person: { morph: 2, along: 2.5, across: 0 },
-    dialogue: GREETING,
+    finish: {
+      kind: 'meeting',
+      person: { morph: 2, along: 2.5, across: 0 },
+      dialogue: GREETING,
+    },
   },
   {
     // Across the city to the west, and the first level flown in the morning:
@@ -344,7 +359,10 @@ export const LEVELS: readonly Level[] = [
     health: 1,
     when: EVENING,
     target: { kind: 'landmark', name: WEST_PATCH.name },
-    person: { morph: 3, along: 2.4, across: 0 },
-    dialogue: GREETING,
+    finish: {
+      kind: 'meeting',
+      person: { morph: 3, along: 2.4, across: 0 },
+      dialogue: GREETING,
+    },
   },
 ];

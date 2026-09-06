@@ -107,12 +107,24 @@ export interface Lesson extends Tip {
    * landing is the second sort however long the flight was.
    */
   within?: number;
+  /**
+   * Or once the bird is on its feet, whatever distance either end says.
+   *
+   * The third way a lesson comes round, and it is not a distance at all: some
+   * things are worth saying at the moment the flying stops. Landing is a
+   * place in the level rather than a point along it -- a player who overshot
+   * and came back has flown further than one who got it right, and both have
+   * just landed.
+   */
+  landed?: boolean;
 }
 
 /** How far this flight has come, and how far it has left. */
 export interface Progress {
   flown: number;
   toGo: number;
+  /** Whether the bird is on its feet, for the lessons that wait for that. */
+  landed?: boolean;
 }
 
 /**
@@ -148,6 +160,11 @@ export const COURSES: Record<string, readonly Lesson[]> = {
     // hard part of this game is arriving, and this is the sentence that says
     // the arriving has started.
     { within: 200, keys: [], text: 'Land near the arrow!' },
+    // And the point of the whole errand, said once the feet are down. No key,
+    // because there is nothing to press: walking onto grain is what eating
+    // grain looks like. Said aloud as well, which most lessons are not --
+    // this is the one thing the level cannot be finished without.
+    { landed: true, keys: [], text: 'Eat the seeds to restore your health!', spoken: true },
   ],
 };
 
@@ -348,7 +365,8 @@ export const cautionFor = (teaching: boolean, flight: Flying): Tip | null =>
  */
 const dueAt = (lesson: Lesson, progress: Progress, zero: number): boolean =>
   (lesson.at !== undefined && progress.flown - zero >= lesson.at) ||
-  (lesson.within !== undefined && progress.toGo <= lesson.within);
+  (lesson.within !== undefined && progress.toGo <= lesson.within) ||
+  (lesson.landed === true && progress.landed === true);
 
 /** How long a lesson stays on screen once it has been given, in seconds. */
 const LINGER = 7;

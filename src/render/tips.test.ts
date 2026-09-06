@@ -111,11 +111,11 @@ describe('handing out the flying lessons', () => {
       expect([...order].sort((a, b) => a - b)).toEqual(order);
 
       for (const lesson of course) {
-        // One trigger or the other, never both and never neither: a lesson
-        // with no trigger is never given, and a lesson with two is a lesson
-        // whose moment depends on which end of the flight you ask from.
+        // One trigger of the three, never two and never none: a lesson with
+        // no trigger is never given, and a lesson with two is a lesson whose
+        // moment depends on which of them you ask.
         expect(
-          [lesson.at, lesson.within].filter((trigger) => trigger !== undefined),
+          [lesson.at, lesson.within, lesson.landed].filter((trigger) => trigger !== undefined),
           lesson.text,
         ).toHaveLength(1);
         // Short enough to take in at a glance, since it is read while flying.
@@ -146,6 +146,21 @@ describe('handing out the flying lessons', () => {
       expect(tutor.update({ flown: travelled, toGo: 9999 }, 1 / 60), `${travelled} m`).toBeNull();
     }
     expect(courseFor('The Yard')).toEqual([]);
+  });
+
+  it('holds a landing lesson back until the feet are down', () => {
+    // The third way a lesson comes round, and the reason it is not a
+    // distance: a player who overshot the concrete and came back has flown
+    // further than one who got it right, and both have just landed. Neither
+    // end of the flight can express that.
+    const eating = [{ landed: true, keys: [], text: 'eat' }];
+    const tutor = createTutor(eating, 7, 1.5);
+
+    // Nine hundred metres of flying is not a landing.
+    for (const flown of [0, 30, 900]) {
+      expect(tutor.update({ flown, toGo: 0.5 }, 1 / 60), `${flown} m`).toBeNull();
+    }
+    expect(tutor.update({ flown: 900, toGo: 0.5, landed: true }, 1 / 60)?.text).toBe('eat');
   });
 
   it('counts a level taken up in mid-air from where it was taken up', () => {

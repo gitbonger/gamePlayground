@@ -33,15 +33,17 @@ import {
   type WingPose,
 } from './render/bird';
 import { createFlock } from './flock';
+import { createAmbient } from './ambient';
 import {
   bellyOnEntry,
   crossed,
   crossingLine,
+  dialogueOf,
   LEVELS,
+  personOf,
   targetName,
   type Level,
   type LevelTarget,
-  type Line,
 } from './levels';
 import { HOME_TREE, LANDMARKS, PARK_PATCH } from './landmarks';
 import { begin, isOver, reply, type Exchange } from './dialogue';
@@ -69,7 +71,7 @@ import { createHud } from './render/hud';
 import { defaultSight, sighted } from './render/sighted';
 import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
-import { buildWorld, targetFlash } from './world/city';
+import { buildWorld, targetFlash, type TargetMarker } from './world/city';
 import { peopleOn, PERSON_HEIGHT, pointOn } from './world/layout';
 import { createScatter, seedWithin } from './world/seeds';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
@@ -94,6 +96,7 @@ import { createSmoke, defaultSmokeOptions, type Puff, type Smoke } from './world
 import {
   asStance,
   meeting,
+  standStill,
   stanceOf,
   turnToFace,
   walk,
@@ -317,14 +320,15 @@ const GATE_SPAN = map.radius * 2;
  * the same place or the paint is a lie.
  */
 const gates = LEVELS.flatMap((spec) => {
-  if (!spec.crossing || spec.target.kind !== 'landmark') return [];
+  const finish = spec.finish;
+  if (finish.kind !== 'crossing' || spec.target.kind !== 'landmark') return [];
   const described = LANDMARKS.find((landmark) => landmark.name === spec.target.name);
   if (!described) return [];
 
   const line = crossingLine(
     project(spec.start[0], spec.start[1], map.centre),
     project(described.at[0], described.at[1], map.centre),
-    spec.crossing.at,
+    finish.at,
   );
   // The band is modelled along its own x, so it is turned to lie along the
   // route: the same convention everything else on this map is turned in.
@@ -372,7 +376,11 @@ const scatter =
         // Onto the slab and not over its edge, a seed's width in from it.
         spread: Math.min(feeder.width, feeder.depth) / 2 - 0.3,
         most: SEEDS_AT_ONCE,
-        every: 1.6,
+        // One piece every three seconds. It was 1.6, and at the limit the
+        // oldest is picked up and thrown again -- so a seed was vanishing off
+        // the concrete every 1.6 seconds, often the one being walked towards.
+        // Three is slow enough that the ground looks settled between throws.
+        every: 3,
         random: Math.random,
       })
     : null;
@@ -524,11 +532,12 @@ function releaseFor(spec: Level): { at: Vec3; heading: number; perched: boolean 
   // before the player has touched anything, which is the whole idea of it.
   const stood = spec.begins === 'perched' ? standingSpot(spec) : null;
   const described = LANDMARKS.find((l) => l.name === spec.target.name);
-  if (marker && stood && spec.person) {
+  const waiting = personOf(spec);
+  if (marker && stood && waiting) {
     const across = pointOn(
       { x: marker.position.x, z: marker.position.z, yaw: described?.yaw ?? 0 },
-      -spec.person.along,
-      -spec.person.across,
+      -waiting.along,
+      -waiting.across,
     );
     const at = vec(across.x, stood.at.y, across.z);
     return { at, heading: bearing(at, stood.at), perched: true };
@@ -544,28 +553,6 @@ function releaseFor(spec: Level): { at: Vec3; heading: number; perched: boolean 
     ),
     heading: bearing(point, aim),
     perched: false,
-  };
-}
-
-/**
- * Put a bird on its feet where it already is, standing still.
- *
- * The residents are made this way and so is the hero of a perched level, and
- * it has to be the same way for both: `meeting` asks whether both birds are
- * perched and on the same solid, so a hero who was merely at the right
- * coordinates with no ending on him would be a hero standing next to somebody
- * he can never say hello to.
- */
-function standStill(state: BirdState): void {
-  state.velocity = vec(0, 0, 0);
-  state.restingOn = null;
-  state.ending = {
-    kind: 'landed',
-    cause: null,
-    speed: 0,
-    sink: 0,
-    bank: 0,
-    position: state.position,
   };
 }
 
@@ -609,6 +596,44 @@ const flock = createFlock(PIGEON_MORPHS.length, () => ({
 }));
 const flockRigs = flock.members.map((member) => {
   const rig = createBirdRig(PIGEON_MORPHS[member.morph]);
+  scene.add(rig.object);
+  return rig;
+});
+
+/**
+ * The other pigeons on the concrete: four of them, ambient.
+ *
+ * They are here because of the person throwing grain. Somebody feeding
+ * pigeons with no pigeons in front of them is somebody throwing food on the
+ * ground, and the level asks the player to walk into that scene and eat --
+ * which reads as joining a crowd rather than as scavenging alone only if
+ * there is a crowd.
+ *
+ * Ambient, in the sense the module sets out: nothing they do changes the
+ * game. They are not the birds a level is finished by walking up to, they do
+ * not eat the grain, and the level's condition is the player's belly and
+ * nothing else.
+ */
+const AMBIENT_PIGEONS = 4;
+const ambient = feeder
+  ? createAmbient({
+      count: AMBIENT_PIGEONS,
+      ground: {
+        x: feeder.x,
+        z: feeder.z,
+        yaw: feeder.yaw ?? 0,
+        width: feeder.width,
+        depth: feeder.depth,
+        // A flat thing has no top of its own, so it is the ground's.
+        top: feeder.height > 0 ? feeder.height : defaultParams.groundHeight,
+      },
+      morphs: PIGEON_MORPHS.length,
+      flight: flightParams,
+    })
+  : null;
+
+const ambientRigs = (ambient?.birds ?? []).map((pigeon) => {
+  const rig = createBirdRig(PIGEON_MORPHS[pigeon.morph]);
   scene.add(rig.object);
   return rig;
 });
@@ -680,7 +705,7 @@ for (const spec of LEVELS) {
   if (spec.begins === 'perched') state.health = spec.health;
   standStill(state);
   state.restingOn = stood.on;
-  const morph = CHARACTER_MORPHS[(spec.person?.morph ?? 0) % CHARACTER_MORPHS.length]!;
+  const morph = CHARACTER_MORPHS[(personOf(spec)?.morph ?? 0) % CHARACTER_MORPHS.length]!;
   const rig = createBirdRig(morph);
   scene.add(rig.object);
   residents.push({
@@ -701,7 +726,7 @@ for (const spec of LEVELS) {
  * one is standing on nothing in particular, exactly as it is on the grass.
  */
 function standingSpot(spec: Level): { at: Vec3; facing: number; on: number | null } | null {
-  const person = spec.person;
+  const person = personOf(spec);
   // Nobody waits at a line. A level that ends by being crossed has no arrival
   // to stand at, and a resident for it would be a second pigeon on the same
   // slab as the next level's.
@@ -837,39 +862,56 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // arriving at the level in mid-air puts the line in the same place as
   // taking off into it.
   const marker = objective(targetName(spec));
-  finish =
-    spec.crossing && marker
-      ? {
-          line: crossingLine(
-            project(spec.start[0], spec.start[1], map.centre),
-            { x: marker.position.x, z: marker.position.z },
-            spec.crossing.at,
-          ),
-          opens: spec.crossing.opens,
-        }
-      : null;
+  handover = handoverFor(spec, marker);
   // Walked into rather than put down in: keep whatever the last level left,
   // unless this one needs more than that to be flyable at all.
   if (where === 'in place') bird.health = bellyOnEntry(spec, bird.health);
   if (where === 'released') respawn();
 }
 
-/** The line this level ends at, and what it hands over to. */
-let finish: { line: Line; opens: string } | null = null;
+/**
+ * How this level ends of its own accord, if it does, and what it opens.
+ *
+ * Two of the three finishes hand the next level over where the bird already
+ * is: a line to cross, and a belly to fill. They differ only in the question
+ * being asked, so they are one thing here with the question kept as a
+ * closure -- adding a fourth is writing a fourth question. The third ends in
+ * a conversation, which is nobody's business but the conversation's, and
+ * gives back nothing.
+ */
+let handover: { done: () => boolean; opens: string } | null = null;
+
+function handoverFor(spec: Level, marker: TargetMarker | null) {
+  const ends = spec.finish;
+  if (ends.kind === 'meeting') return null;
+  // Eaten. There is no arrival to test, only a bird that has had enough --
+  // which it can reach standing still in one spot, and usually does.
+  if (ends.kind === 'fed') return { done: () => bird.health >= 1, opens: ends.opens };
+  if (!marker) return null;
+  // Crossed. Square across the way to the target, so far along it. Worked out
+  // from the release point this level was given rather than from wherever the
+  // bird happens to be, so that arriving in mid-air puts the line in the same
+  // place as taking off into it does.
+  const line = crossingLine(
+    project(spec.start[0], spec.start[1], map.centre),
+    { x: marker.position.x, z: marker.position.z },
+    ends.at,
+  );
+  return { done: () => crossed(line, bird.position.x, bird.position.z), opens: ends.opens };
+}
 
 /**
- * End the level if the bird has crossed its finishing line.
+ * End the level if whatever it is waiting for has happened.
  *
  * The hand-over is the same one a conversation makes: the next level begins
- * where the bird is, in the air, at the speed it was already going. What it
- * changes is where a death puts you -- which is the whole point of it, and
- * the reason this is a level rather than a checkpoint.
+ * where the bird is, at the speed it was already going. What it changes is
+ * where a death puts you -- which is the whole point of it, and the reason
+ * this is a level rather than a checkpoint.
  */
-function crossFinish(): void {
-  if (!finish) return;
-  if (!crossed(finish.line, bird.position.x, bird.position.z)) return;
+function handOver(): void {
+  if (!handover?.done()) return;
 
-  const next = LEVELS.findIndex((spec) => spec.name === finish!.opens);
+  const next = LEVELS.findIndex((spec) => spec.name === handover!.opens);
   if (next < 0) return;
   playLevel(next, 'in place');
 }
@@ -1118,9 +1160,10 @@ function reachLevel(): void {
   // Meeting them finishes the level and nothing else. What happens next is
   // the player's move, not the game's: they are standing with somebody, and
   // the somebody says hello.
-  if (here?.dialogue && talkingTo?.completes === here.name && !finished) {
+  const said = here ? dialogueOf(here) : undefined;
+  if (said && talkingTo?.completes === here!.name && !finished) {
     finished = true;
-    talk = begin(here.dialogue);
+    talk = begin(said);
   }
 }
 
@@ -1219,6 +1262,12 @@ function command(): Tip | null {
     if (talkingTo) return null;
     if (onFoot.blocked) return { keys: ['←', '→'], text: 'Turn and walk round it' };
     if (onFoot.travelled > 0) return { keys: [], text: 'Mind the edge' };
+    // On a level that is won by eating, walking about *is* the level, and the
+    // thing to do on foot is not "walk, or take off" -- it is the lesson the
+    // level has waiting for the moment the feet are down. A command outranks
+    // a lesson and the corner holds one thing, so a standing prompt here
+    // would be the game talking over its own instructions.
+    if (LEVELS[level]?.finish.kind === 'fed') return null;
     return { keys: ['↑', 'SPACE'], text: 'Walk, or take off' };
   }
   return null;
@@ -1290,7 +1339,16 @@ function frame(nowMs: number) {
     walkControls.forward = allowed.forward;
     walkControls.turn = allowed.turn;
     walkControls.launch = allowed.launch;
+    const wasDown = isPerched(bird);
     onFoot = walk(bird, walkControls, flightParams, TICK, solid);
+    // Contagious fear. One bird leaving is the only warning the rest of them
+    // get, and they go with it -- so a player who takes off in the middle of
+    // the crowd scatters the crowd. By the wing rather than by walking off an
+    // edge: stepping off a kerb is not an alarm, and the birds on the
+    // concrete would not have noticed it.
+    if (ambient && wasDown && walkControls.launch && !isPerched(bird)) {
+      ambient.startle(bird.position.x, bird.position.z);
+    }
     if (scatter) {
       scatter.update(TICK, clock);
       // A bird on its feet eats what is under its beak. Nothing to press:
@@ -1306,8 +1364,13 @@ function frame(nowMs: number) {
     }
     telemetry = step(bird, input.controls, flightParams, TICK, solid, wind);
     flock.update(TICK, solid, wind);
+    ambient?.update(TICK, solid, wind);
     if (bird.ending === null) run.update(bird, TICK);
-    if (bird.ending === null) crossFinish();
+    // Alive rather than airborne. A crossing is flown over and a belly is
+    // filled standing on the concrete, so testing for flight here would have
+    // been the food level never finishing at all: the bird is on its feet the
+    // whole time it is eating.
+    if (!hasCrashed(bird)) handOver();
     reachLevel();
     // Somebody you have walked up to looks at you.
     if (talkingTo) turnToFace(talkingTo.state, bird.position, flightParams, TICK);
@@ -1417,7 +1480,13 @@ function frame(nowMs: number) {
   // entirely below the "pull up" mark would have taught nothing.
   // Some lessons count from the take-off and some from the arrival, and the
   // arrival is the harder half.
-  const saying = urgent ?? tutor.update({ flown: run.stats.distance, toGo }, frameTime, input.anyDown);
+  const saying =
+    urgent ??
+    tutor.update(
+      { flown: run.stats.distance, toGo, landed: isPerched(bird) },
+      frameTime,
+      input.anyDown,
+    );
   tipPanel.show(saying);
   // Only the critical ones are said aloud. A voice that reads every
   // instruction is a voice that gets turned off, and then it is not there for
@@ -1500,6 +1569,15 @@ function frame(nowMs: number) {
       isPerched(member.state) ? 'perched' : 'gliding',
       frameTime,
     );
+  });
+
+  (ambient?.birds ?? []).forEach((pigeon, i) => {
+    const rig = ambientRigs[i];
+    if (!rig) return;
+    const shown = sighted(pigeon.state.position, sight);
+    rig.object.visible = shown;
+    if (!shown) return;
+    rig.update(pigeon.state, isPerched(pigeon.state) ? 'perched' : 'gliding', frameTime);
   });
 
   for (const resident of residents) {
