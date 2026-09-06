@@ -36,6 +36,7 @@ import {
   SPECIES,
   type Building,
   type Bush,
+  type Grave,
   type CityLayout,
   type Landmark,
   type Person,
@@ -126,6 +127,16 @@ export interface MapWorldOptions {
    * there and being that shape.
    */
   landmarks?: Landmark[];
+  /**
+   * A point inside the green area that is a cemetery, if one of them is.
+   *
+   * Named by a point rather than by a name, because the map has no idea: the
+   * areas come off OpenStreetMap as park, wood, water or pitch, and which of
+   * the parks is a cemetery is a decision about this story. The home tree
+   * stands in it, so the home tree's own coordinate is what identifies it,
+   * and there is nothing to keep in step.
+   */
+  cemetery?: { x: number; z: number };
   /** Trains to run on the track, each asked for by name of a place. */
   trains?: TrainSpec[];
   /**
@@ -251,6 +262,13 @@ export function buildLayoutFromMap(
   // different question.
   const tracks = indexStreets(map.rails ?? []);
   const green = indexAreas(map.areas ?? []);
+  /** How many of a cemetery's plantings are a stone rather than a tree. */
+  const GRAVE_SHARE = 1 / 3;
+  // The one green area that is a cemetery, found once by the point that says
+  // so. Identity rather than geometry from here on: a tree is in the
+  // cemetery when the ground under it is *that* area.
+  const burial = options.cemetery ? green.at(options.cemetery.x, options.cemetery.z) : null;
+  const graves: Grave[] = [];
 
   /**
    * Does anything here sit on the railway?
@@ -645,6 +663,23 @@ export function buildLayoutFromMap(
         // Not on the water, and not in the middle of a five-a-side pitch.
         const ground = green.at(px, pz);
         if (ground && ground.kind !== 'park' && ground.kind !== 'wood') continue;
+        // In the cemetery, one planting in three is a headstone instead. Not
+        // a stone *and* a tree: a cemetery reads as a cemetery because the
+        // stones stand in the gaps between the trees, which is what taking
+        // the tree's place gives you for nothing.
+        if (burial && ground === burial && rand() < GRAVE_SHARE) {
+          graves.push({
+            x: px,
+            z: pz,
+            // Turned every which way. Real ones face east in rows, and rows
+            // are a thing this generator has no way of laying: scattered
+            // stones at scattered angles read as a graveyard from the air,
+            // and a grid of them would read as a car park.
+            yaw: rand() * Math.PI * 2,
+            height: 0.7 + rand() * 0.6,
+          });
+          continue;
+        }
         trees.push({
           x: px,
           z: pz,
@@ -834,6 +869,7 @@ export function buildLayoutFromMap(
   return {
     buildings,
     trees,
+    graves,
     landmarks,
     bushes,
     people,

@@ -184,6 +184,12 @@ const trams = project(TRAM_PAIR[0], TRAM_PAIR[1], map.centre);
 const layout = buildLayoutFromMap(map, {
   ...defaultMapWorldOptions,
   // Described first, and everything generated afterwards gives way to them.
+  // The park the home tree stands in is a cemetery, which the map has no idea
+  // about: its areas are park, wood, water and pitch, and which of the parks
+  // is a burial ground is a decision about this story rather than a fact off
+  // OpenStreetMap. Named by the tree's own coordinate, so there is nothing to
+  // keep in step if the tree moves again.
+  cemetery: project(HOME_TREE.at[0], HOME_TREE.at[1], map.centre),
   landmarks: LANDMARKS.map((landmark) => {
     const at = project(landmark.at[0], landmark.at[1], map.centre);
     const { at: _degrees, ...rest } = landmark;

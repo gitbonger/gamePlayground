@@ -719,6 +719,34 @@ export function buildWorld(
   }
   for (const stand of stands) stand.instanceMatrix.needsUpdate = true;
 
+  // --- Headstones -----------------------------------------------------------
+  // One instanced mesh for the lot, like the trees they stand among. A stone
+  // is two boxes -- the slab and the kerb it stands on -- fused into one
+  // vertex-coloured shape, so the whole cemetery is a single draw call.
+  if (layout.graves.length) {
+    const stone = graveShape();
+    const granite = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    disposables.push(stone, granite);
+
+    const yard = new THREE.InstancedMesh(stone, granite, layout.graves.length);
+    yard.castShadow = true;
+    yard.receiveShadow = true;
+    // Named for the same reason the stands of trees are: so a test counting
+    // them can tell them from every other instanced thing in the world.
+    yard.name = 'graves';
+    group.add(yard);
+
+    layout.graves.forEach((grave, i) => {
+      rotation.setFromAxisAngle(up, grave.yaw);
+      position.set(grave.x, 0, grave.z);
+      // Modelled one metre tall, so the scale is the height it stands.
+      scale.setScalar(grave.height);
+      matrix.compose(position, rotation, scale);
+      yard.setMatrixAt(i, matrix);
+    });
+    yard.instanceMatrix.needsUpdate = true;
+  }
+
   // --- Terrace planting -----------------------------------------------------
   // Bushes, which are trees that stand on something. One instanced mesh for
   // the lot, drawn even when there are none, because a landmark with a
@@ -1050,6 +1078,31 @@ function painted(parts: { geometry: THREE.BufferGeometry; color: number }[]): TH
 }
 
 /**
+ * A headstone: a slab on a kerb, modelled one metre tall on the origin.
+ *
+ * Scaled by height alone rather than by height and width, like everything
+ * else that stands on this ground: a taller stone is a taller stone, not a
+ * differently proportioned one.
+ */
+function graveShape(): THREE.BufferGeometry {
+  const slab = new THREE.BoxGeometry(0.62, 0.86, 0.14);
+  slab.translate(0, 0.51, 0);
+  // A rounded top, which is most of what says headstone rather than post.
+  const crown = new THREE.CylinderGeometry(0.31, 0.31, 0.14, 7, 1, false, 0, Math.PI);
+  crown.rotateX(Math.PI / 2);
+  crown.rotateY(Math.PI);
+  crown.translate(0, 0.94, 0);
+  const kerb = new THREE.BoxGeometry(0.78, 0.16, 0.4);
+  kerb.translate(0, 0.08, 0.06);
+
+  return painted([
+    { geometry: slab, color: GRAVE_STONE },
+    { geometry: crown, color: GRAVE_STONE },
+    { geometry: kerb, color: GRAVE_KERB },
+  ]);
+}
+
+/**
  * A person, standing.
  *
  * Modelled one unit tall on the origin like everything else that stands on
@@ -1301,6 +1354,10 @@ const PUMP_HEAD = 0x2f3338;
 const CAR_BODY = 0x9c3b34;
 const CAR_GLASS = 0x2b3138;
 const TYRE = 0x1b1b1d;
+
+/** Weathered granite, and the paler kerb it stands on. */
+const GRAVE_STONE = 0x8d8f92;
+const GRAVE_KERB = 0xa7a5a0;
 
 /** A described tree: its leaves, the crown seen from above, and its bark. */
 const CANOPY_COLOR = 0x4e7538;

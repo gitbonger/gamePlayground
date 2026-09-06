@@ -513,9 +513,28 @@ export interface Tree {
  */
 export const SPECIES = 4;
 
+/**
+ * A headstone, standing where a tree would otherwise have grown.
+ *
+ * The park the home tree stands in is a cemetery, and a cemetery from the air
+ * is not a different green -- it is the same trees with stones under them.
+ * They are scenery: no bird has ever been stopped by one, and neither is a
+ * pigeon here.
+ */
+export interface Grave {
+  x: number;
+  z: number;
+  /** Which way the stone faces, radians. */
+  yaw: number;
+  /** How tall it stands, in metres. */
+  height: number;
+}
+
 export interface CityLayout {
   buildings: Building[];
   trees: Tree[];
+  /** Headstones, where the ground that grows the trees is a cemetery. */
+  graves: Grave[];
   /** Described things, placed before the rest and avoided by it. */
   landmarks: Landmark[];
   /** Bushes on the terraces of those, if any of them has one. */
@@ -578,5 +597,5 @@ export function generateCityLayout(options: WorldOptions = defaultWorldOptions):
 
   // No landmarks: this layout describes nothing, it only generates. And so
   // nothing to plant a terrace on either.
-  return { buildings, trees, landmarks: [], bushes: [], people: [], boxes };
+  return { buildings, trees, graves: [], landmarks: [], bushes: [], people: [], boxes };
 }

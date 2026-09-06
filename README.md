@@ -188,6 +188,22 @@ target means being recoloured several times a second. It is not in the
 building list at all, which is what keeps it out of the instanced crowd and
 off the roof pass without either of them having to remember to skip it.
 
+**The park the home tree stands in is a cemetery**, and a cemetery from the
+air is not a different green — it is the same trees with stones under them. So
+one planting in three inside it is a headstone *instead of* a tree rather than
+as well as one: the stones end up standing in the gaps between the trees,
+which is what taking the tree's place gives for nothing.
+
+The map has no idea. Its areas come off OpenStreetMap as park, wood, water or
+pitch, and which of the parks is a burial ground is a decision about this
+story, so the world is told by a point: the home tree's own coordinate. The
+area containing it is the cemetery, and there is nothing to keep in step if
+the tree moves again. The stones are scenery like the trees they stand among —
+no bird has ever been stopped by a headstone — and they are scattered at
+random angles, because real ones face east in rows and rows are a thing this
+generator has no way of laying. Scattered reads as a graveyard; a grid would
+read as a car park.
+
 **The home tree is a landmark that is not a building.** A described thing has
 always been a box with a flat top; the tree is the same box with a trunk under
 it. Eighteen metres up, in a small park east of the loft, and the top of it is

@@ -309,6 +309,93 @@ describe('building a perimeter block', () => {
  * Loft" and mean a particular building of a particular shape, instead of
  * whichever house happened to come out nearest to a coordinate.
  */
+describe('a park that is a cemetery', () => {
+  /**
+   * A park over the whole block, so there are enough plantings in it for one
+   * in three to be a number rather than an anecdote.
+   */
+  const GRAVEYARD: Area = {
+    kind: 'park',
+    points: [
+      [10, 10],
+      [190, 10],
+      [190, 190],
+      [10, 190],
+    ],
+  };
+  /** The middle of it, which is what names it as a burial ground. */
+  const inside = { x: 100, z: 100 };
+  const withGraves = (cemetery?: { x: number; z: number }) =>
+    buildLayoutFromMap(mapOf(BLOCK, [GRAVEYARD]), {
+      ...defaultMapWorldOptions,
+      ...(cemetery ? { cemetery } : {}),
+    });
+
+  it('plants nothing but trees when no ground has been named', () => {
+    // The map has no idea: its areas are park, wood, water and pitch, and
+    // which of the parks is a cemetery is a decision about the story.
+    const plain = withGraves();
+    expect(plain.graves).toEqual([]);
+    expect(plain.trees.length).toBeGreaterThan(0);
+  });
+
+  it('puts a stone in the place of one planting in three, and only there', () => {
+    const yard = withGraves(inside);
+    expect(yard.graves.length).toBeGreaterThan(10);
+
+    // Every one of them inside the named ground, and none anywhere else --
+    // the rest of the map is planted exactly as it was.
+    for (const grave of yard.graves) {
+      expect(pointInPolygon(grave.x, grave.z, GRAVEYARD.points), `${grave.x}, ${grave.z}`).toBe(true);
+    }
+
+    // And a third of what grows there is a stone. Measured inside the one
+    // layout rather than against a layout without the cemetery: taking a
+    // stone instead of a tree draws a different number of random numbers, so
+    // the two worlds diverge from the first stone onwards and their counts
+    // are not comparable. What is comparable is the share.
+    const standing = yard.trees.filter((tree) =>
+      pointInPolygon(tree.x, tree.z, GRAVEYARD.points),
+    ).length;
+    const share = yard.graves.length / (yard.graves.length + standing);
+    expect(share).toBeGreaterThan(0.25);
+    expect(share).toBeLessThan(0.42);
+
+    // And *in the place of* a tree, not beside one. A cemetery reads as a
+    // cemetery because the stones stand in the gaps between the trees, which
+    // is what taking the tree's place gives for nothing -- and a stone with a
+    // trunk growing out of it would be the sort of thing a share alone would
+    // never notice.
+    for (const grave of yard.graves) {
+      const nearest = Math.min(
+        ...yard.trees.map((tree) => Math.hypot(tree.x - grave.x, tree.z - grave.z)),
+      );
+      expect(nearest, `${grave.x.toFixed(0)}, ${grave.z.toFixed(0)}`).toBeGreaterThan(1);
+    }
+  });
+
+  it('leaves them scattered rather than lined up', () => {
+    // Real ones face east in rows, and rows are a thing this generator has no
+    // way of laying. Scattered stones at scattered angles read as a graveyard
+    // from the air; a grid of them would read as a car park.
+    const yard = withGraves(inside);
+    const yaws = yard.graves.map((grave) => grave.yaw);
+    expect(new Set(yaws.map((yaw) => Math.round(yaw * 10))).size).toBeGreaterThan(10);
+    for (const grave of yard.graves) {
+      expect(grave.height, 'a stone is about a metre').toBeGreaterThan(0.5);
+      expect(grave.height).toBeLessThan(1.5);
+    }
+  });
+
+  it('is scenery, like the trees it stands among', () => {
+    // No bird has ever been stopped by a headstone, and neither is a pigeon
+    // here: the stones add nothing to the collision boxes.
+    const yard = withGraves(inside);
+    expect(yard.graves.length).toBeGreaterThan(0);
+    expect(withGraves().boxes.length).toBe(yard.boxes.length);
+  });
+});
+
 describe('describing a thing into the world', () => {
   const TOWER: Landmark = {
     name: 'The Loft',
