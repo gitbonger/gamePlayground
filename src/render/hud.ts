@@ -108,8 +108,12 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
 
     const warning = note
       ? note
-      : talking
-        ? 'meeting another pigeon'
+      : // Nothing at all while you are standing with somebody. The panel
+        // below is saying who and what, in their own words and colours, and
+        // a line over the top of it announcing that a conversation is
+        // happening is the game narrating what the player is reading.
+        talking
+        ? ''
         : isPerched(state)
       ? onFoot.blocked
         ? 'blocked — turn and walk round it'

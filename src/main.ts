@@ -644,7 +644,7 @@ function respawn() {
  * picking one out of the menu and finishing the one before are all the same
  * thing happening.
  */
-function playLevel(at: number): void {
+function playLevel(at: number, where: 'released' | 'in place' = 'released'): void {
   const spec = LEVELS[at];
   if (!spec) return;
 
@@ -662,8 +662,11 @@ function playLevel(at: number): void {
   started = spec.name;
   startedAt = clock;
   talkingTo = null;
+  // Where the level would put you if you asked for it again -- from the menu,
+  // or by pressing R after making a mess of it. Worked out either way; it is
+  // only the *going* there that a level taken up in place skips.
   start = releaseFor(spec);
-  respawn();
+  if (where === 'released') respawn();
 }
 
 /** What the picture is drawn at, so the panel can move it and see. */
@@ -896,6 +899,11 @@ function banner(): string | null {
 
   const here = LEVELS[level]?.name;
   if (finished && talkingTo) {
+    // Two ways on, and they ask for different things. Handed a level where
+    // you stand, the key is a take-off and the flying is yours to do; handed
+    // one the ordinary way, the key is the journey.
+    const handed = opened();
+    if (handed >= 0) return `${here} complete — SPACE to take off for ${LEVELS[handed]!.name}`;
     const next = LEVELS[level + 1]?.name;
     return next ? `${here} complete — SPACE to fly on to ${next}` : `${here} complete`;
   }
@@ -908,9 +916,28 @@ const midSentence = (): boolean => talkingTo !== null && talk !== null && !isOve
 
 function flyOn(): boolean {
   if (!finished || !talkingTo || midSentence()) return false;
+
+  // A conversation that named a level hands it over where you stand: the
+  // level changes, the bird does not move, and the key is not spent -- it
+  // goes on to the flight model as the ordinary take-off it looks like. That
+  // is the whole of it. There is no in-between state and nothing new for the
+  // rest of the game to know about: by the time the wings open, this is
+  // simply the next level, being flown from wherever the last one ended.
+  const handed = opened();
+  if (handed >= 0) {
+    playLevel(handed, 'in place');
+    return false;
+  }
+
   if (level + 1 >= LEVELS.length) return false;
   playLevel(level + 1);
   return true;
+}
+
+/** The level the conversation on screen has handed over, or -1. */
+function opened(): number {
+  const name = talk?.opens;
+  return name === undefined ? -1 : LEVELS.findIndex((spec) => spec.name === name);
 }
 
 /** The resident this level is about, if it has one. */
@@ -1028,7 +1055,13 @@ function frame(nowMs: number) {
       near[index] ? { ...train, vehicles: drawnVehicles[index]! } : train,
     ),
   );
-  talkPanel.show(talkingTo ? talk : null, talkingTo ? { them: talkingTo.voice, you: hero } : undefined);
+  talkPanel.show(
+    talkingTo ? talk : null,
+    talkingTo ? { them: talkingTo.voice, you: hero } : undefined,
+    // A handed-over level is flown out of where you are standing, so the key
+    // is the take-off it looks like rather than a journey.
+    opened() >= 0 ? 'press SPACE to take off' : undefined,
+  );
   world.updateSmoke(allPuffs, camera.quaternion);
   rig.update(interpolatedState, wings, frameTime);
 

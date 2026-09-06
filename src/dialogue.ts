@@ -9,11 +9,33 @@
  * It is written as data so that replacing it is writing different data.
  */
 
+/**
+ * The level an ending hands over, by name.
+ *
+ * A conversation is how one level becomes the next. An ending that carries a
+ * name says "you are on that level now" -- and says only that: the bird stays
+ * exactly where it is standing, on the roof or the branch it walked up to
+ * somebody on, and flies out of there under its own power. The alternative,
+ * which is what every other level still does, is to be picked up and released
+ * over the next one.
+ *
+ * Written as a name rather than an index, like everything else in this game
+ * that points at a level or a landmark: an index is a thing you can get wrong
+ * silently, and a name that matches nothing is a failing test.
+ *
+ * It is on the ending rather than on the level because different answers can
+ * lead different places. Nothing does that yet, and the shape is what makes
+ * it possible to.
+ */
+export type Opens = string;
+
 /** Something the player can say, and what it leads to. */
 export interface Reply {
   text: string;
   /** What they say to that. Absent ends the exchange on your word. */
   then?: Turn;
+  /** The level this hands over, if it is an ending that does. */
+  opens?: Opens;
 }
 
 /** Something the other pigeon says, and what you can say back. */
@@ -21,6 +43,8 @@ export interface Turn {
   them: string;
   /** Absent or empty ends the exchange on theirs. */
   you?: readonly Reply[];
+  /** The level this hands over, if it is an ending that does. */
+  opens?: Opens;
 }
 
 /** A line already said, for the panel to show. */
@@ -40,11 +64,33 @@ export interface Exchange {
   said: readonly Said[];
   /** What the player can say now. Empty when there is nothing left. */
   replies: readonly Reply[];
+  /**
+   * The level this conversation has handed over, once it is over.
+   *
+   * Taken off whichever line ended it -- hers if she had the last word, yours
+   * if you did -- so that where a branch *ends* decides, rather than which
+   * reply started it.
+   */
+  opens?: Opens;
 }
+
+/**
+ * Whether a set of replies is the end of it, and what that ending hands over.
+ *
+ * Spread rather than assigned, because an exchange that opens nothing has no
+ * `opens` at all rather than an `opens` that is undefined.
+ */
+const ending = (ends: boolean, opens: Opens | undefined) =>
+  ends && opens !== undefined ? { opens } : {};
 
 /** Open with their line. */
 export function begin(turn: Turn): Exchange {
-  return { said: [{ who: 'them', text: turn.them }], replies: turn.you ?? [] };
+  const replies = turn.you ?? [];
+  return {
+    said: [{ who: 'them', text: turn.them }],
+    replies,
+    ...ending(replies.length === 0, turn.opens),
+  };
 }
 
 /** Whether there is anything left to say. */
@@ -62,10 +108,11 @@ export function reply(exchange: Exchange, choice: number): Exchange {
   if (!said) return exchange;
 
   const spoken: Said[] = [...exchange.said, { who: 'you', text: said.text }];
-  if (!said.then) return { said: spoken, replies: [] };
+  if (!said.then) return { said: spoken, replies: [], ...ending(true, said.opens) };
 
   spoken.push({ who: 'them', text: said.then.them });
-  return { said: spoken, replies: said.then.you ?? [] };
+  const replies = said.then.you ?? [];
+  return { said: spoken, replies, ...ending(replies.length === 0, said.then.opens) };
 }
 
 /**
@@ -86,12 +133,12 @@ export function reply(exchange: Exchange, choice: number): Exchange {
 export const HEADING_OUT: Turn = {
   them: 'Could you get some food from Teleki tér?',
   you: [
-    { text: 'Yes, sure!', then: { them: 'See you!' } },
+    { text: 'Yes, sure!', then: { them: 'See you!', opens: 'The Park' } },
     {
       text: 'I would watch the egg, while you go!',
       then: {
         them: "I'd rather stay",
-        you: [{ text: 'Okay.' }],
+        you: [{ text: 'Okay.', opens: 'The Park' }],
       },
     },
   ],

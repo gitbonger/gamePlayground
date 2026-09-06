@@ -102,6 +102,63 @@ describe('holding a conversation', () => {
   });
 });
 
+describe('a conversation that hands over a level', () => {
+  const ERRAND: Turn = {
+    them: 'Could you go?',
+    you: [
+      { text: 'Yes.', then: { them: 'See you!', opens: 'The Park' } },
+      { text: 'No.', then: { them: 'Then I will.', you: [{ text: 'Fine.', opens: 'The Yard' }] } },
+      { text: 'Maybe.', then: { them: 'Make your mind up.', you: [{ text: 'Yes.' }] } },
+      // A line that names a level and still has something to say after it.
+      // Writing one is a mistake, but it is a mistake the types allow, and
+      // what it must not do is hand the level over with her mouth still open.
+      {
+        text: 'Where again?',
+        then: { them: 'Teleki tér.', opens: 'The Yard', you: [{ text: 'Right.' }] },
+      },
+    ],
+  };
+
+  it('takes the level off whichever line ended it, hers or yours', () => {
+    // Where a branch *ends* decides, not which reply started it -- so an
+    // exchange that finishes on her word and one that finishes on yours both
+    // hand over what they were written to hand over.
+    expect(reply(begin(ERRAND), 1).opens).toBe('The Park');
+    expect(reply(reply(begin(ERRAND), 2), 1).opens).toBe('The Yard');
+  });
+
+  it('hands over nothing until it is actually over', () => {
+    // The level changes when the conversation ends, and a conversation with
+    // something still to say has not ended. This is the difference between
+    // reading the last line and being moved on before you have read it.
+    const opening = begin(ERRAND);
+    expect(isOver(opening)).toBe(false);
+    expect(opening.opens).toBeUndefined();
+
+    // Two lines in and still mid-branch: her answer is on screen and the
+    // reply to it is not made yet.
+    const midway = reply(opening, 2);
+    expect(isOver(midway)).toBe(false);
+    expect(midway.opens).toBeUndefined();
+
+    // And the case that actually bites: a line that names a level and still
+    // has a reply waiting under it hands over nothing, because it has not
+    // ended anything. Handing over here would take the panel off the screen
+    // with her last line unread.
+    const talking = reply(opening, 4);
+    expect(isOver(talking)).toBe(false);
+    expect(talking.opens).toBeUndefined();
+  });
+
+  it('leaves an ending that opens nothing alone', () => {
+    // Most endings are just endings. The field is absent rather than
+    // undefined, so nothing downstream has to tell those two apart.
+    const over = reply(reply(begin(ERRAND), 3), 1);
+    expect(isOver(over)).toBe(true);
+    expect('opens' in over).toBe(false);
+  });
+});
+
 describe('every level has something to say', () => {
   it('opens with a line and at least one thing to say back', () => {
     for (const level of LEVELS) {

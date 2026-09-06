@@ -71,8 +71,14 @@ export function speechColour(hex: number): string {
 }
 
 export interface DialoguePanel {
-  /** Draw an exchange, or pass null to take the panel away. */
-  show(exchange: Exchange | null, voices?: Voices): void;
+  /**
+   * Draw an exchange, or pass null to take the panel away.
+   *
+   * The hint is what the key at the end of it does, which is not always the
+   * same thing: a conversation that hands over a level where you stand ends
+   * in a take-off rather than in being carried somewhere.
+   */
+  show(exchange: Exchange | null, voices?: Voices, hint?: string): void;
   dispose(): void;
 }
 
@@ -87,7 +93,7 @@ export function createDialoguePanel(container: HTMLElement): DialoguePanel {
    * the level menu is: the lines are ours today and are still going into the
    * page, and text set as text cannot be anything else.
    */
-  function draw(exchange: Exchange, voices: Voices | undefined) {
+  function draw(exchange: Exchange, voices: Voices | undefined, hint: string) {
     root.replaceChildren();
 
     const card = document.createElement('div');
@@ -104,7 +110,7 @@ export function createDialoguePanel(container: HTMLElement): DialoguePanel {
     if (isOver(exchange)) {
       const done = document.createElement('p');
       done.className = 'talk-hint';
-      done.textContent = 'press SPACE to fly on';
+      done.textContent = hint;
       card.appendChild(done);
     } else {
       exchange.replies.forEach((reply, index) => {
@@ -128,9 +134,9 @@ export function createDialoguePanel(container: HTMLElement): DialoguePanel {
   }
 
   return {
-    show(exchange, voices) {
+    show(exchange, voices, hint = 'press SPACE to fly on') {
       root.hidden = exchange === null;
-      if (exchange) draw(exchange, voices);
+      if (exchange) draw(exchange, voices, hint);
       else root.replaceChildren();
     },
     dispose() {

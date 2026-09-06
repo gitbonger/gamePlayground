@@ -478,11 +478,51 @@ does nothing rather than something wrong:
 - **`Space` mid-sentence is swallowed.** It is taken out of the input before
   the flight model can see it, so answering a question by flying off is not
   available either.
-- **`Space` once the conversation is done** is what starts the next level.
+- **`Space` once the conversation is done** is what moves you on — and there
+  are two ways on. Ordinarily it is the journey: the next level starts, and
+  you are picked up and released over it. But if the ending you reached names
+  a level, that level is taken up **where you are standing** and the key is
+  not spent on it — it goes on to the flight model as the ordinary take-off it
+  looks like. Nothing in between exists: by the time the wings open, this is
+  simply the next level, being flown from wherever the last one ended.
+
+### One level into the next
+
+A level ends in a conversation, so a conversation is where the next one can
+begin. An ending — hers if she has the last word, yours if you do — may carry
+the name of a level, and reaching that ending hands it over: the target
+changes, the sun moves, the progress is saved, and **the bird does not move at
+all**. It is standing on the branch it walked up to somebody on, and it flies
+out of there under its own power.
+
+That is the whole of the mechanism, and the point of it is how little there is
+to it. There is no travelling state, no cutscene, nothing new for the rest of
+the game to know about. The hand-over happens on the key rather than on the
+last line, so the player reads the end of the conversation before the panel
+goes; and because the key is not consumed, the take-off that follows is the
+same take-off as any other. *Heading out* ends this way on both its branches —
+he agrees to the errand, or offers to stay and is turned down — and either way
+the level is *The Park* before his wings open.
+
+It is on the ending rather than on the level because different answers can
+lead to different places. Nothing does that yet; the shape is what makes it
+possible to, and it cost nothing to leave the door open.
+
+Two things are worth stating about it, and both are tested. Only an *ending*
+hands over: a line that names a level and still has a reply waiting under it
+hands over nothing, or the panel would vanish with her last line unread. And
+the name has to be a level that exists — a conversation reaches for a level by
+name the way a level reaches for a landmark by name, and the cost of a name is
+that a typo is a level that silently never arrives, unless somebody looks.
 
 **The tuning panel starts hidden.** It is thirty numbers for whoever is
 working on the flight model, and for everyone else it is a wall of text over
 the corner of the sky. `H` brings it up and puts it away again.
+
+**The advisory line says nothing while you are talking.** It used to say
+"meeting another pigeon", over the top of a panel showing the conversation in
+the speakers' own colours — the game narrating what the player was already
+reading.
 
 **Which level you are on is remembered**, in local storage, and anything else
 found there is treated as the beginning — a number from a build with more

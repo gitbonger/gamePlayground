@@ -4,6 +4,7 @@ import { HOME_TREE, LANDMARKS, LOFT } from './landmarks';
 import { nestOn, penthouseOf, plantTerrace, pointOn, terraceOf } from './world/layout';
 import { CHARACTER_MORPHS, HERO_MORPH, PIGEON_MORPHS, PINK_MORPH } from './render/bird';
 import { MEET_RADIUS } from './sim/walk';
+import { begin, isOver, reply, type Turn } from './dialogue';
 import { project } from './world/geo';
 import HOME_MAP from './world/data/home.json';
 import { indexStreets, type Road } from './world/streets';
@@ -250,6 +251,34 @@ describe('what the levels aim at', () => {
     expect(PIGEON_MORPHS).not.toContain(HERO_MORPH);
   });
 
+  it('names a level that exists wherever a conversation hands one over', () => {
+    // The name is the whole check. A conversation reaches for a level by
+    // name, the way a level reaches for a landmark by name, and the cost of
+    // that is that a typo is a level that silently never arrives -- unless
+    // somebody looks, which is this.
+    const names = new Set(LEVELS.map((level) => level.name));
+    for (const level of LEVELS) {
+      for (const opens of handovers(level.dialogue)) {
+        expect(names, `${level.name} opens ${opens}`).toContain(opens);
+      }
+    }
+  });
+
+  it('lets no branch of the opening conversation strand you on the tree', () => {
+    // The first level is won by starting it and left by talking, so the
+    // conversation is the only way out of it. A branch that handed over
+    // nothing would leave the player standing on a branch eighteen metres up
+    // with a finished conversation and no level to fly.
+    const leaving = LEVELS[0]!;
+    for (const [index] of leaving.dialogue.you!.entries()) {
+      let talk = begin(leaving.dialogue);
+      for (let step = 0; step < 20 && !isOver(talk); step += 1) {
+        talk = reply(talk, step === 0 ? index + 1 : 1);
+      }
+      expect(talk.opens, `reply ${index + 1}`).toBe(LEVELS[1]!.name);
+    }
+  });
+
   it('flies every level but the first', () => {
     // The perched opening is a hack -- a story beat told through the
     // level-completion machinery -- and this is the fence round it. One level
@@ -266,3 +295,14 @@ describe('what the levels aim at', () => {
     }
   });
 });
+
+/** Every level a conversation hands over, down every branch of it. */
+function handovers(turn: Turn): string[] {
+  const found: string[] = [];
+  if (turn.opens !== undefined) found.push(turn.opens);
+  for (const said of turn.you ?? []) {
+    if (said.opens !== undefined) found.push(said.opens);
+    if (said.then) found.push(...handovers(said.then));
+  }
+  return found;
+}
