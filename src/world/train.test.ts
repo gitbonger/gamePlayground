@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   carriedBy,
+  carryPassengers,
   chainageOf,
   shuttle,
   turnedBetween,
@@ -24,6 +25,7 @@ import {
   CARRIAGE,
   COUPLING,
   WAGON,
+  type Vehicle,
 } from './train';
 import { worldBounds } from '../sim/collision';
 import { createColliderField } from '../sim/collision';
@@ -1150,5 +1152,79 @@ describe('finding a point on a line', () => {
   it('has nothing to say about a line of one point', () => {
     expect(pointAlong([[5, 5]], 0)).toBeNull();
     expect(lineLength([[5, 5]])).toBe(0);
+  });
+});
+
+/**
+ * Riding a train.
+ *
+ * The regression this exists for: rakes became reusable, so a vehicle is the
+ * same object from one tick to the next. Anything comparing "where it was" to
+ * "where it is" by holding the vehicles was suddenly comparing each with
+ * itself, and everything standing on a train stopped being carried by it. The
+ * whole suite passed, because the comparison lived in the main file.
+ */
+describe('carrying whatever is standing on a train', () => {
+  const LINE: Rail = { kind: 'rail', width: 8, points: [[0, 0], [900, 0]] };
+  const standing = (x: number, z: number, on: number | null) => ({
+    position: { x, y: 2, z },
+    orientation: { x: 0, y: 0, z: 0, w: 1 },
+    restingOn: on,
+  });
+  /** A copy of where each vehicle is, which is what a caller has to keep. */
+  const snapshot = (rake: readonly Vehicle[]) =>
+    rake.map((v) => ({ x: v.x, z: v.z, yaw: v.yaw }));
+
+  it('takes a passenger along when its wagon moves', () => {
+    const rake = layOutTrain(LINE, 300, 6, 'wagon');
+    const rider = standing(rake[3]!.x, rake[3]!.z, 3);
+
+    const was = snapshot(rake);
+    moveTrain(rake, LINE, 460, 6, 'wagon');
+    carryPassengers([rider], was, rake);
+
+    expect(rake[3]!.x - was[3]!.x).toBeCloseTo(160, 6);
+    expect(rider.position.x).toBeCloseTo(rake[3]!.x, 6);
+    expect(rider.position.z).toBeCloseTo(rake[3]!.z, 6);
+    // Height is left alone: rails are level.
+    expect(rider.position.y).toBe(2);
+  });
+
+  it('keeps it in its own place on the deck, not just near the wagon', () => {
+    const rake = layOutTrain(LINE, 300, 6, 'wagon');
+    const corner = onVehicle(rake[2]!, 4, 1.2);
+    const rider = standing(corner.x, corner.z, 2);
+
+    const was = snapshot(rake);
+    moveTrain(rake, LINE, 500, 6, 'wagon');
+    carryPassengers([rider], was, rake);
+
+    const moved = onVehicle(rake[2]!, 4, 1.2);
+    expect(rider.position.x).toBeCloseTo(moved.x, 6);
+    expect(rider.position.z).toBeCloseTo(moved.z, 6);
+  });
+
+  it('leaves alone anything that is not on a train', () => {
+    const rake = layOutTrain(LINE, 300, 6, 'wagon');
+    const flying = standing(50, 50, null);
+    const was = snapshot(rake);
+    moveTrain(rake, LINE, 500, 6, 'wagon');
+    carryPassengers([flying], was, rake);
+    expect(flying.position).toEqual({ x: 50, y: 2, z: 50 });
+  });
+
+  it('does nothing at all if handed the vehicles instead of a copy', () => {
+    // The bug itself, stated. `moveTrain` writes over the vehicles, so a
+    // caller that keeps references and passes them as "where they were" is
+    // asking how far each has moved from itself.
+    const rake = layOutTrain(LINE, 300, 6, 'wagon');
+    const rider = standing(rake[3]!.x, rake[3]!.z, 3);
+    const held = rake.map((v) => v);
+
+    moveTrain(rake, LINE, 460, 6, 'wagon');
+    carryPassengers([rider], held, rake);
+
+    // The wagon went 160 m and the passenger stayed exactly where it was.
+    expect(rider.position.x).toBeCloseTo(rake[3]!.x - 160, 6);
   });
 });

@@ -18,9 +18,6 @@ import {
 } from './sim/flight';
 import {
   quat,
-  quatFromAxisAngle,
-  quatMultiply,
-  quatNormalize,
   vec,
   type Quat,
   type Vec3,
@@ -52,7 +49,7 @@ import { buildWorld, targetFlash } from './world/city';
 import { pointOn } from './world/layout';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
 import {
-  carriedBy,
+  carryPassengers,
   consistLength,
   layOutTrain,
   lineLength,
@@ -65,7 +62,6 @@ import {
   stackTop,
   stockIsHauled,
   stockTop,
-  turnedBetween,
   tweenAlong,
 } from './world/train';
 import { createSmoke, defaultSmokeOptions, type Puff, type Smoke } from './world/smoke';
@@ -679,10 +675,35 @@ function allVehicles() {
   return layout.trains.flatMap((train) => train.vehicles);
 }
 
+/**
+ * Where every vehicle was before the trains were moved.
+ *
+ * A copy, not a list of the vehicles themselves. They are the same objects
+ * from one tick to the next now -- written over rather than rebuilt -- so
+ * holding references and comparing them afterwards compares each vehicle with
+ * itself, and everything riding on a train quietly stops being carried. That
+ * was a real bug: the pigeon standing on the middle wagon watched the train
+ * leave without it.
+ */
+const wasAt = allVehicles().map((vehicle) => ({ x: vehicle.x, z: vehicle.z, yaw: vehicle.yaw }));
+
+/** Take that copy. Called at the top of a tick, before anything has moved. */
+function rememberWhereTrainsWere() {
+  const now = allVehicles();
+  for (let i = 0; i < wasAt.length; i += 1) {
+    const vehicle = now[i];
+    const kept = wasAt[i]!;
+    if (!vehicle) continue;
+    kept.x = vehicle.x;
+    kept.z = vehicle.z;
+    kept.yaw = vehicle.yaw;
+  }
+}
+
 function moveTrains(dt: number) {
   clock += dt;
   const fields: Collider[] = [world.collider];
-  const before = allVehicles();
+  rememberWhereTrainsWere();
   let tagged = 0;
   near.fill(false);
 
@@ -734,39 +755,17 @@ function moveTrains(dt: number) {
     fields.push(createColliderField(boxes));
   });
 
-  // Anything standing on a wagon goes where the wagon goes. Without this a
-  // bird that has just landed watches the train slide out from under it.
-  const after = allVehicles();
-  for (const passenger of [
-    bird,
-    ...flock.members.map((member) => member.state),
-    ...residents.map((resident) => resident.state),
-  ]) {
-    const riding = passenger.restingOn;
-    if (riding === null) continue;
-    const was = before[riding];
-    const now = after[riding];
-    if (!was || !now) continue;
+  // Anything standing on a wagon goes where the wagon goes.
+  carryPassengers(
+    [
+      bird,
+      ...flock.members.map((member) => member.state),
+      ...residents.map((resident) => resident.state),
+    ],
+    wasAt,
+    allVehicles(),
+  );
 
-    passenger.position = carriedBy(passenger.position, was, now);
-    const turned = turnedBetween(was, now);
-    if (turned !== 0) {
-      // Turned about the world's vertical, the way the wagon turns.
-      passenger.orientation = quatNormalize(
-        quatMultiply(quatFromAxisAngle(vec(0, 1, 0), -turned), passenger.orientation),
-      );
-    }
-  }
-
-  // Smoke off each working locomotive's stack: one puff a second, straight up
-  // from wherever the chimney is at that moment, and nothing remembered about
-  // where it was. A train that has reversed since the last puff did not leave
-  // a trail through the place it used to be.
-  //
-  // One wind vector for every plume in the world, sampled where the bird is,
-  // which is the wind the player can feel. Asking the field at each puff was
-  // the single most expensive thing in the simulation and the answers were
-  // within a knot of each other.
   const air = wind.at(bird.position, clock);
   for (const plume of smokes) {
     const engine = layout.trains[plume.index]?.vehicles[0];

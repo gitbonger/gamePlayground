@@ -13,6 +13,7 @@
  */
 
 import { turnedBox, type Box } from '../sim/collision';
+import { quatFromAxisAngle, quatMultiply, quatNormalize, vec } from '../sim/math3';
 import type { Rail } from './streets';
 
 export type Point2 = [number, number];
@@ -155,13 +156,23 @@ export const stockTop = (kind: Vehicle['kind']): number =>
         ? WAGON.deck
         : ENGINE.cab;
 
-export interface Vehicle {
-  kind: 'engine' | 'wagon' | 'carriage' | 'tram';
-  /** Centre of the vehicle, in world metres. */
+/**
+ * Something standing at a place, facing a way.
+ *
+ * Named because the three functions that move a passenger with the thing it
+ * is standing on need only this, and saying so lets them be handed a record
+ * of where a vehicle *was* rather than the vehicle itself -- which matters,
+ * since a vehicle is now written over from one tick to the next.
+ */
+export interface Placed {
   x: number;
   z: number;
   /** Which way it points, in the collider's yaw convention. */
   yaw: number;
+}
+
+export interface Vehicle extends Placed {
+  kind: 'engine' | 'wagon' | 'carriage' | 'tram';
   /** Along the track, and across it. */
   length: number;
   width: number;
@@ -642,7 +653,7 @@ export function rakeNear(
 
 /** A point on a vehicle, given in metres along it and across it. */
 export function onVehicle(
-  vehicle: Vehicle,
+  vehicle: Placed,
   along: number,
   across: number,
 ): { x: number; z: number } {
@@ -808,8 +819,8 @@ export function trainBoxes(
  */
 export function carriedBy(
   point: { x: number; y: number; z: number },
-  from: Vehicle,
-  to: Vehicle,
+  from: Placed,
+  to: Placed,
 ): { x: number; y: number; z: number } {
   const cos = Math.cos(from.yaw);
   const sin = Math.sin(from.yaw);
@@ -827,7 +838,48 @@ export function carriedBy(
 }
 
 /** How far a vehicle has turned between two layouts, in radians. */
-export function turnedBetween(from: Vehicle, to: Vehicle): number {
+/**
+ * Anything standing on a vehicle goes where the vehicle goes.
+ *
+ * Without this, a bird that has just landed watches the train slide out from
+ * under it. `was` is where the vehicles were before they were moved and `now`
+ * is where they are, and the two must be *different records* -- vehicles are
+ * written over from one tick to the next rather than rebuilt, so a caller
+ * that hands the same objects for both is asking how far each has moved from
+ * itself, and the answer is always nothing.
+ *
+ * That happened. The pigeon standing on the middle wagon stopped riding it
+ * the day the rakes started being reused, and every test still passed,
+ * because this was a loop in the main file rather than a thing that could be
+ * asked a question.
+ */
+export function carryPassengers(
+  passengers: Iterable<{
+    position: { x: number; y: number; z: number };
+    orientation: { x: number; y: number; z: number; w: number };
+    restingOn: number | null;
+  }>,
+  was: readonly Placed[],
+  now: readonly Placed[],
+): void {
+  for (const passenger of passengers) {
+    const riding = passenger.restingOn;
+    if (riding === null) continue;
+    const from = was[riding];
+    const to = now[riding];
+    if (!from || !to) continue;
+
+    passenger.position = carriedBy(passenger.position, from, to);
+    const turned = turnedBetween(from, to);
+    if (turned === 0) continue;
+    // Turned about the world's vertical, the way the vehicle turns.
+    passenger.orientation = quatNormalize(
+      quatMultiply(quatFromAxisAngle(vec(0, 1, 0), -turned), passenger.orientation),
+    );
+  }
+}
+
+export function turnedBetween(from: Placed, to: Placed): number {
   const difference = (to.yaw - from.yaw + Math.PI) % (2 * Math.PI);
   return (difference < 0 ? difference + 2 * Math.PI : difference) - Math.PI;
 }
