@@ -506,6 +506,17 @@ the whole sky in a frame while the bird had not so much as opened its wings.
 Press `R` after a hand-over and you get the level's own start *and* its own
 light, together, as always.
 
+Which is the other half of why a level handed over in place still works out
+where its start is, having no intention of going there. **Dying** is the
+reason. A level entered by talking was entered once: a bird that flies into a
+wall two hundred metres later should come back at the start of the level it
+was flying, in that level's light, exactly as though it had been picked out of
+the menu — not standing on a branch being talked into it a second time. So the
+two transitions are not two ways of doing the same thing. One is how you
+*enter* a level, which happens once and can be a conversation ending on a
+branch eighteen metres up; the other is where the level *puts you*, which can
+happen any number of times and has to be somewhere a flight can begin.
+
 That is the whole of the mechanism, and the point of it is how little there is
 to it. There is no travelling state, no cutscene, nothing new for the rest of
 the game to know about. The hand-over happens on the key rather than on the

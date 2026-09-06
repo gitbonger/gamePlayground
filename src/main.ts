@@ -638,6 +638,14 @@ let previousOrientation: Quat = { ...bird.orientation };
  * standing there. Which is the only thing that could happen -- an hour that
  * arrived on its own would cut the whole sky in a frame while the bird had
  * not so much as opened its wings.
+ *
+ * This is also why a level handed over in place still works out where its
+ * start *is*, having no intention of going there. Dying is the reason. A
+ * level entered by talking was entered once, and a bird that flew into a wall
+ * two hundred metres later should not have to be talked into it again -- so
+ * what a death returns you to is the level's own start point, in the level's
+ * own light, exactly as though you had picked it out of the menu. The
+ * conversation happened. It is not going to happen twice.
  */
 function respawn() {
   const here = LEVELS[level];
