@@ -398,6 +398,20 @@ describe('what the levels aim at', () => {
     }
   });
 
+  it('aims a crossing level at something the line can be painted from', () => {
+    // The stripe on the ground is worked out from the same two points the
+    // rule is -- the release point and the thing the level is aimed at -- and
+    // a level aimed at a wagon has no second point until the trains have been
+    // laid out. A line nobody can see is the thing this paint is here to
+    // stop, so the shape that cannot be painted is refused here rather than
+    // silently skipped there.
+    for (const level of LEVELS) {
+      if (!level.crossing) continue;
+      expect(level.target.kind, level.name).toBe('landmark');
+      expect(LANDMARKS.map((l) => l.name), level.name).toContain(level.target.name);
+    }
+  });
+
   it('starts the second half of the errand on the line it hands over at', () => {
     // Otherwise the checkpoint is not one: dying after the crossing would put
     // the bird somewhere it has never been, which is worse than starting the

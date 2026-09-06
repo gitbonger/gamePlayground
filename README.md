@@ -564,6 +564,22 @@ half a kilometre off course still gets there. It is square to the *route*
 rather than to the world, which is the sort of thing that works by accident on
 an east-west flight and is therefore written down as a test.
 
+**And the line is painted on the ground**, in road-marking yellow, two
+hundred metres across the route. A flight that changes level in mid-air with
+nothing to see reads as a glitch rather than as an arrival — the banner says
+so, but the banner is a caption, and the thing itself should be in the world.
+It is a decal like the road markings and drawn over them, since a stripe a
+tram line could cover would be a stripe you cannot trust. Only the level being
+flown paints its own, the same arrangement the target markers have.
+
+The paint and the rule come off the same call: the release point, the target,
+and the distance along. Two calculations of one line would be one too many —
+paint that disagreed with the rule would be worse than no paint at all. Which
+also means a level that ends at a line has to be aimed at something whose
+position is known before the world is built, and there is a test saying so: a
+level aimed at a *wagon* would have a rule and no paint, because the trains
+have not been laid out yet.
+
 **It also turned up a bug in the level model.** Both halves aim at the same
 slab of concrete, and every level used to stand a pigeon on its target — so
 the first half would have put a second bird on the second half's landing spot.

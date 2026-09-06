@@ -78,6 +78,19 @@ export interface ObjectiveOptions {
    * layout already named, having been put there on purpose.
    */
   objectives?: { name: string; train: number; vehicle: number }[];
+  /**
+   * Lines painted across the ground, one for each level that ends at one.
+   *
+   * A level that finishes at a line finishes at an invisible one, and a
+   * flight that changes level in mid-air with nothing to see reads as a
+   * glitch rather than as an arrival. So the line gets painted: a band of
+   * yellow across the route, wide enough to be aimed at and long enough that
+   * leaving it to one side is a decision rather than an accident.
+   *
+   * Named by the level that owns it, because only the level being flown shows
+   * its own -- the same arrangement the target markers have.
+   */
+  gates?: { name: string; x: number; z: number; yaw: number; span: number }[];
 }
 
 export interface World {
@@ -88,6 +101,8 @@ export interface World {
   collider: Collider;
   /** Everything the pigeon can be sent to, in the order it was named. */
   markers: TargetMarker[];
+  /** The painted lines, by the name of the level each belongs to. */
+  gates: { name: string; object: THREE.Object3D }[];
   /** Move the rolling stock to where the layout says the trains have got to. */
   updateTrains(trains: readonly Train[]): void;
   /**
@@ -619,6 +634,27 @@ export function buildWorld(
     );
   }
 
+  // --- Finishing lines ------------------------------------------------------
+  // Painted like the road markings are, and over them: this is the one flat
+  // thing in the world that is not part of the city, and a stripe that a
+  // tram line could cover would be a stripe you cannot trust.
+  const gates: { name: string; object: THREE.Object3D }[] = [];
+  for (const gate of options.gates ?? []) {
+    const band = new THREE.PlaneGeometry(GATE_THICKNESS, gate.span);
+    band.rotateX(-Math.PI / 2);
+    const paint = new THREE.MeshLambertMaterial({ color: GATE_COLOR, side: THREE.DoubleSide });
+    disposables.push(band, paint);
+
+    const stripe = new THREE.Mesh(band, asDecal(paint));
+    stripe.position.set(gate.x, 0, gate.z);
+    stripe.rotation.y = gate.yaw;
+    stripe.renderOrder = GATE_ORDER;
+    // Shown only while the level it belongs to is the one being flown.
+    stripe.visible = false;
+    group.add(stripe);
+    gates.push({ name: gate.name, object: stripe });
+  }
+
   const roofGeometry = buildRoofs(layout.buildings);
   const roofMaterial = withTiles(new THREE.MeshLambertMaterial({ color: 0xffffff }));
   disposables.push(roofGeometry, roofMaterial);
@@ -874,6 +910,7 @@ export function buildWorld(
     boxes: layout.boxes,
     collider: createColliderField(layout.boxes),
     markers,
+    gates,
     overlay,
     updateTrains,
     updateSmoke,
@@ -1419,6 +1456,12 @@ const AREA_ORDER = 1;
 const PATCH_ORDER = 2;
 const ROAD_ORDER = 3;
 const RAIL_ORDER = 4;
+/** Over all of them: a finishing line is painted on the city, not in it. */
+const GATE_ORDER = 5;
+/** How deep the band is along the flight, in metres. */
+const GATE_THICKNESS = 8;
+/** Road-marking yellow, which is what it is. */
+const GATE_COLOR = 0xe8c53d;
 
 /**
  * Mark a material as a ground decal: drawn in its order, over whatever was

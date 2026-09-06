@@ -270,7 +270,50 @@ const smokes = layout.trains
 /** Every puff in the world, in one array the renderer can be given as is. */
 const allPuffs: Puff[] = smokes.flatMap((each) => each.puffs.puffs);
 
+/**
+ * How far a painted finishing line reaches either side of the route.
+ *
+ * Long enough that missing it is a decision. The flight it divides is nine
+ * hundred metres of open park, so a bird would have to be a hundred metres
+ * off course to pass outside the paint -- and the line it stands for has no
+ * ends at all, so being outside it changes nothing except that you did not
+ * see the thing you flew over.
+ */
+const GATE_SPAN = 200;
+
+/**
+ * The finishing lines to paint, one for every level that ends at one.
+ *
+ * Worked out from the same two points the crossing itself is: the level's
+ * release point and the thing it is aimed at. Two calculations of one line
+ * would be one calculation too many -- the paint and the rule have to be in
+ * the same place or the paint is a lie.
+ */
+const gates = LEVELS.flatMap((spec) => {
+  if (!spec.crossing || spec.target.kind !== 'landmark') return [];
+  const described = LANDMARKS.find((landmark) => landmark.name === spec.target.name);
+  if (!described) return [];
+
+  const line = crossingLine(
+    project(spec.start[0], spec.start[1], map.centre),
+    project(described.at[0], described.at[1], map.centre),
+    spec.crossing.at,
+  );
+  // The band is modelled along its own x, so it is turned to lie along the
+  // route: the same convention everything else on this map is turned in.
+  return [
+    {
+      name: spec.name,
+      x: line.x,
+      z: line.z,
+      yaw: Math.atan2(-line.uz, line.ux),
+      span: GATE_SPAN,
+    },
+  ];
+});
+
 const world = buildWorld(layout, {
+  gates,
   // The described things need no list here: they arrive on the layout already
   // named, having been put there on purpose. Only the wagons do, because
   // which wagon is a level is a decision about the game rather than a fact
@@ -696,6 +739,10 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   saveProgress(storage(), at);
 
   for (const marker of world.markers) marker.setActive(marker.name === targetName(spec));
+  // Only this level's line is painted. Every other one belongs to a flight
+  // that is not being flown, and a stripe across the ground that means
+  // nothing is worse than no stripe at all.
+  for (const gate of world.gates) gate.object.visible = gate.name === spec.name;
 
   finished = false;
   talk = null;
