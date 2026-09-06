@@ -1,8 +1,10 @@
 /** Flight instruments, drawn as plain DOM over the canvas. */
 
-import { isPerched, type BirdState, type FlightTelemetry } from '../sim/flight';
+/** How little is left in the wings before the bar says so. */
+const TIRED_STAMINA = 0.3;
+
+import type { BirdState, FlightTelemetry } from '../sim/flight';
 import { rateText, speedText } from './units';
-import type { WalkTelemetry } from '../sim/walk';
 
 export interface Hud {
   update(
@@ -11,12 +13,8 @@ export interface Hud {
     /** Metres still to fly to the target, along the ground. */
     toGo: number,
     fps: number,
-    /** What the bird did on its feet this tick, for the on-foot cue. */
-    onFoot: WalkTelemetry,
-    /** Something that has just been achieved, or null. Outranks everything. */
+    /** What the story has to say, or null. */
     note: string | null,
-    /** Whether the bird is standing with somebody, and cannot walk off. */
-    talking: boolean,
   ): void;
   dispose(): void;
 }
@@ -62,9 +60,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     telemetry: FlightTelemetry,
     toGo: number,
     fps: number,
-    onFoot: WalkTelemetry,
     note: string | null,
-    talking: boolean,
   ) {
     speedEl.textContent = speedText(telemetry.airspeed);
     altitudeEl.textContent = telemetry.altitude.toFixed(0);
@@ -82,27 +78,18 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     headwindEl.classList.toggle('adverse', head > 0.3);
 
     staminaEl.style.width = `${state.stamina * 100}%`;
-    staminaEl.classList.toggle('low', state.stamina < 0.25);
+    // Red at the same mark the "slow down" instruction appears at, so the
+    // words and the picture say the same thing at the same moment.
+    staminaEl.classList.toggle('low', state.stamina < TIRED_STAMINA);
 
-    const warning = note
-      ? note
-      : // Nothing at all while you are standing with somebody. The panel
-        // below is saying who and what, in their own words and colours, and
-        // a line over the top of it announcing that a conversation is
-        // happening is the game narrating what the player is reading.
-        talking
-        ? ''
-        : isPerched(state)
-      ? onFoot.blocked
-        ? 'blocked — turn and walk round it'
-        : onFoot.travelled > 0
-          ? 'walking — mind the edge'
-          : 'on foot — WASD or arrows to walk, SPACE to take off'
-      : telemetry.stalled && !state.ending
-        ? 'STALL — push the nose down'
-        : '';
-    if (warningEl.textContent !== warning) warningEl.textContent = warning;
-    warningEl.classList.toggle('calm', isPerched(state) || note !== null);
+    // The line over the bird is the story's, and only the story's: what level
+    // is being flown, and that it has been finished. Everything that was
+    // sharing it -- stall, the on-foot hints, an announcement that a
+    // conversation was happening -- has gone to the instruction panel under
+    // the bird, where the keys are.
+    const said = note ?? '';
+    if (warningEl.textContent !== said) warningEl.textContent = said;
+    warningEl.classList.toggle('calm', true);
 
     homeEl.textContent = toGo.toFixed(0);
     homeEl.classList.toggle('positive', toGo < 40);

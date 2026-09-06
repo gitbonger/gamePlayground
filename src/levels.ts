@@ -125,6 +125,20 @@ export interface Level {
   begins?: 'flight' | 'perched';
 }
 
+/**
+ * The hour every level is flown at, as an instant.
+ *
+ * Six in the evening in Budapest on the first of July, which is 16:00 UTC --
+ * the field is an instant and the city is two hours ahead of it in summer.
+ * One hour for all five: the levels run into each other now, one handing over
+ * to the next where the last one ended, and a story that crosses a whole
+ * afternoon between one wingbeat and the next is a story with a cut in it.
+ *
+ * It is written once rather than five times because it is one decision. When
+ * a level wants its own light again, it says so by not using this.
+ */
+const EVENING = '2026-07-01T16:00:00Z';
+
 export const LEVELS: readonly Level[] = [
   {
     // The story's first beat rather than a flight: the hero on the home tree
@@ -140,9 +154,7 @@ export const LEVELS: readonly Level[] = [
     // on, so that taking `begins: 'perched'` away would leave a level that
     // still makes sense rather than one with a hole in it.
     release: HOME_TREE.height,
-    // First light, which is when a homing pigeon is actually let go, and the
-    // only level in the game flown out of a sunrise.
-    when: '2025-06-21T03:10:00Z',
+    when: EVENING,
     target: { kind: 'landmark', name: HOME_TREE.name },
     // The pink one, and the only bird in the game wearing her colours. She
     // stands beside the nest rather than on it.
@@ -171,8 +183,7 @@ export const LEVELS: readonly Level[] = [
     // cannot be glided -- from twenty-three metres a pigeon covers about a
     // hundred and forty of the three hundred and fifty.
     release: HOME_TREE.height + 5,
-    // Midday, so the shadows are short and the ground reads plainly.
-    when: '2025-06-21T10:00:00Z',
+    when: EVENING,
     target: { kind: 'landmark', name: PARK_PATCH.name },
     person: { morph: 0, along: 2.4, across: 0 },
     dialogue: GREETING,
@@ -187,10 +198,7 @@ export const LEVELS: readonly Level[] = [
     start: [47.494610, 19.086245],
     // High enough to see the whole approach and to reach it gliding.
     release: 100,
-    // Late afternoon in midsummer: 24 degrees up and a little north of due
-    // west, which hangs the sun over the rooftops instead of above the top of
-    // the frame, and makes the shadows long enough to read from the air.
-    when: '2025-06-21T16:00:00Z',
+    when: EVENING,
     target: { kind: 'landmark', name: LOFT.name },
     person: { morph: 1, along: 2.6, across: 0 },
     dialogue: GREETING,
@@ -202,8 +210,7 @@ export const LEVELS: readonly Level[] = [
     start: [47.503261, 19.091374],
     // High enough to see the whole approach and to reach it gliding.
     release: 100,
-    // Low evening sun, straight down the yard.
-    when: '2025-06-21T17:30:00Z',
+    when: EVENING,
     target: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' },
     person: { morph: 2, along: 2.5, across: 0 },
     dialogue: GREETING,
@@ -216,10 +223,7 @@ export const LEVELS: readonly Level[] = [
     start: [47.494106, 19.071122],
     // High enough to see the whole approach and to reach it gliding.
     release: 100,
-    // Half past seven in the morning, local. Four degrees north of due east
-    // and eleven degrees up, which is the sun of the evening levels seen from
-    // the other side.
-    when: '2025-06-21T05:30:00Z',
+    when: EVENING,
     target: { kind: 'landmark', name: WEST_PATCH.name },
     person: { morph: 3, along: 2.4, across: 0 },
     dialogue: GREETING,

@@ -2232,6 +2232,24 @@ somebody had just said to you. It is `SPACE` and **Take off!** now, in the
 corner, and the rest of the reference card is going the same way one line at a
 time.
 
+**And some of them watch the flight rather than the distance.** A lesson is
+offered and taken; these are the state of the flight, on screen for exactly as
+long as the flight is in that state — stalled, slow, low, or out of wing. They
+are gated on a `tutorial` flag, on for now and turned off nowhere, because
+which level has earned the player the right to be left alone is not decided
+yet. A pigeon spends half its life low, slow and tired on purpose.
+
+The stall is the exception and stays on for everybody: nobody stalls on
+purpose, and the wing has genuinely stopped working. It is first in the order
+too, because it is the only one that is *already* happening rather than about
+to. Then slow, then low, then tired — and that order is the load-bearing part.
+Low *and* slow looks like a case for pulling up, and pulling up with no speed
+is how a bird stalls into the ground it was trying to clear, so the wings come
+before the nose. Tired comes last because it is the only one you can put off.
+
+The stamina bar goes red at the same mark the "slow down" instruction appears
+at, so the words and the picture say it together.
+
 They live under the bird, in the slot the landing cue used to have. That is
 the one place on the screen the eye is already looking — at the pigeon, and at
 what is in front of it — where a corner is somewhere you have to look away to.
@@ -2260,6 +2278,13 @@ never leave it either read as one instruction changing its mind. All of that
 is a small state machine that knows nothing about the clock or the DOM, told
 how far and how long, which is what makes it something to state as tests
 rather than to watch for.
+
+**The line above the bird is the story's, and only the story's**: which level
+is being flown, and that it has been finished. It used to share that line with
+the stall warning, the on-foot hints and an announcement that a conversation
+was happening. All of those have gone down to the instruction panel, where the
+keys are — and the reference card in the top left has gone entirely, which was
+the point of the exercise.
 
 **The `HOME` readout is the distance to the home tree**, and to nothing else.
 It used to follow whichever target was lit, which made it a second

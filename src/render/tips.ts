@@ -32,6 +32,9 @@ const CODES: Record<string, readonly string[]> = {
   SPACE: ['Space'],
   '↑': ['ArrowUp', 'KeyW'],
   '↓': ['ArrowDown', 'KeyS'],
+  '←': ['ArrowLeft', 'KeyA'],
+  '→': ['ArrowRight', 'KeyD'],
+  B: ['KeyB'],
 };
 
 /** The `KeyboardEvent.code`s that count as doing what a tip says. */
@@ -59,13 +62,106 @@ export interface Lesson extends Tip {
  * be told again, and the one who never crashes never sees a repeat.
  */
 export const LESSONS: readonly Lesson[] = [
-  // Five metres: he is off the branch and sinking, which is the moment the
-  // answer matters and the moment nobody reads a reference card.
-  { at: 5, keys: ['SPACE'], text: 'Keep flapping' },
-  // Then where to point. It is the one control with no natural gesture -- the
-  // key says up and the nose goes up, which is the opposite of a joystick.
-  { at: 20, keys: ['↑', '↓'], text: 'Aim up or down' },
+  // Turning, one side at a time, and not straight away: eighty metres is
+  // five or six seconds of flying, which is long enough to have stopped
+  // thinking about staying up. Nothing about the flight demands a turn -- the
+  // target is straight ahead -- which is exactly why it is a good moment to
+  // be asked to try one: the cost of getting it wrong is a few seconds of
+  // going the wrong way over an empty park.
+  { at: 80, keys: ['→'], text: 'Try right!' },
+  { at: 120, keys: ['←'], text: 'Try left!' },
 ];
+
+/**
+ * What the flight looks like from outside, for the tips that watch it.
+ *
+ * SI, like the simulation: metres and metres per second. A threshold written
+ * in km/h would be a threshold about the readout rather than about the air.
+ */
+export interface Flying {
+  altitude: number;
+  airspeed: number;
+  /** What is left in the wings, 0 to 1. */
+  stamina: number;
+  /** Whether the wing has stopped working, which is not the same as slow. */
+  stalled: boolean;
+}
+
+/** Below this the bird is running out of air to fly on, in m/s -- 20 km/h. */
+const SLOW = 20 / 3.6;
+/** And below this it is running out of room, in metres. */
+const LOW = 20;
+/** And below this, out of wing. A fraction of a full tank. */
+const TIRED = 0.3;
+
+/**
+ * A tip given while something is true, rather than once at a distance.
+ *
+ * These are the ones that do not go away by being read. A lesson is offered
+ * and taken; a warning is the state of the flight, and it is on screen for
+ * exactly as long as the flight is in that state.
+ */
+export interface Warning extends Tip {
+  when(flight: Flying): boolean;
+  /**
+   * Shown to everyone, taught or not.
+   *
+   * A lesson is for somebody learning; a stall is for whoever is in one. A
+   * pigeon spends half its life low, slow and tired on purpose, so those
+   * three stop once the game has stopped teaching -- but nobody stalls on
+   * purpose, and the wing has genuinely stopped working.
+   */
+  always?: boolean;
+}
+
+export const WARNINGS: readonly Warning[] = [
+  // The stall first, because it is the only one that is already happening
+  // rather than about to. The nose has to come down before anything else is
+  // worth trying, and the key that brings it down is the up arrow, which is
+  // the sort of thing worth a picture of a key.
+  {
+    keys: ['↑'],
+    text: 'Nose down!',
+    always: true,
+    when: (flight) => flight.stalled,
+  },
+  // Then slow, and this is the whole reason there is an order. Low *and*
+  // slow looks like a case for pulling up, and pulling up with no speed is
+  // how a bird stalls into the ground it was trying to clear. Wings first,
+  // always: flapping is the only control that makes more of both.
+  {
+    keys: ['SPACE'],
+    text: 'Keep flapping!',
+    when: (flight) => flight.airspeed < SLOW,
+  },
+  // The down key, because the nose follows the key rather than the horizon:
+  // down on the keyboard is up in the air, which is the one control nobody
+  // guesses right.
+  {
+    keys: ['↓'],
+    text: 'Pull up!',
+    when: (flight) => flight.altitude < LOW,
+  },
+  // Last, because it is the only one you can put off. Out of wing is a slow
+  // problem: it means the flapping has been paid for and the way to stop
+  // paying is to stop hurrying. The bar in the corner goes red at the same
+  // mark, so the words and the picture say it together.
+  {
+    keys: ['B'],
+    text: 'Slow down!',
+    when: (flight) => flight.stamina < TIRED,
+  },
+];
+
+/**
+ * Whichever warning the flight is in, or null. The first that applies.
+ *
+ * `teaching` is the tutorial: with it off, only the ones marked `always`
+ * survive, which is the difference between a game explaining flying and a
+ * game telling you your wing has stopped working.
+ */
+export const warningFor = (teaching: boolean, flight: Flying): Tip | null =>
+  WARNINGS.find((warning) => (warning.always || teaching) && warning.when(flight)) ?? null;
 
 /** How long a lesson stays on screen once it has been given, in seconds. */
 const LINGER = 7;

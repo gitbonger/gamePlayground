@@ -36,7 +36,7 @@ import { LEVELS, targetName, type Level, type LevelTarget } from './levels';
 import { HOME_TREE, LANDMARKS } from './landmarks';
 import { begin, isOver, reply, type Exchange } from './dialogue';
 import { createDialoguePanel, speechColour } from './render/dialogue';
-import { createTipPanel, createTutor, type Tip } from './render/tips';
+import { createTipPanel, createTutor, warningFor, type Tip } from './render/tips';
 import { loadProgress, saveProgress } from './progress';
 import { createLevelMenu } from './render/menu';
 import {
@@ -711,6 +711,18 @@ const talkPanel = createDialoguePanel(overlay);
 const tipPanel = createTipPanel(overlay);
 /** Hands out the flying lessons, by how far this flight has gone. */
 const tutor = createTutor();
+/**
+ * Whether the game is still teaching.
+ *
+ * On for now, and it turns itself off nowhere: which level has earned the
+ * player the right to be left alone is not decided yet, and when it is, it is
+ * one line in `playLevel`. What it gates is the instructions that watch the
+ * flight rather than the flight's distance -- the ones that say pull up, keep
+ * flapping, slow down. Those are exactly right for somebody learning and
+ * exactly wrong for somebody who knows, since a pigeon spends half its life
+ * low, slow or tired on purpose.
+ */
+let tutorial = true;
 /** The hero's own colour, which is what his half of a conversation is set in. */
 const hero = speechColour(HERO_MORPH.body);
 // The level being flown is the one remembered, applied through the same path
@@ -985,6 +997,16 @@ function opened(): number {
  */
 function nextThing(): Tip | null {
   if (finished && talkingTo && !midSentence()) return { keys: ['SPACE'], text: 'Take off!' };
+
+  // On foot, where the controls are a different set entirely and the player
+  // has just arrived in them. These used to be the line above the bird, which
+  // is the story's line.
+  if (isPerched(bird)) {
+    if (talkingTo) return null;
+    if (onFoot.blocked) return { keys: ['←', '→'], text: 'Turn and walk round it' };
+    if (onFoot.travelled > 0) return { keys: [], text: 'Mind the edge' };
+    return { keys: ['↑', 'SPACE'], text: 'Walk, or take off' };
+  }
   return null;
 }
 
@@ -1110,8 +1132,25 @@ function frame(nowMs: number) {
   // The tutor is asked every frame whether or not anything is showing, so its
   // own clock runs; a state tip takes the corner while it has something to
   // say, because what to do now outranks what to learn.
-  const lesson = tutor.update(run.stats.distance, frameTime, input.anyDown);
-  tipPanel.show(nextThing() ?? lesson);
+  // What the flight is in the middle of outranks what it might learn next,
+  // and what to do right now outranks both.
+  const urgent =
+    nextThing() ??
+    (bird.ending === null
+      ? warningFor(tutorial, {
+          altitude: telemetry.altitude,
+          airspeed: telemetry.airspeed,
+          stamina: bird.stamina,
+          stalled: telemetry.stalled,
+        })
+      : null);
+
+  // The tutor is only asked while the corner is free. Asked anyway, it would
+  // hand out lessons into a panel that is showing something else -- given,
+  // never seen, and never given again -- which is the whole failure mode of a
+  // queue that does not know whether anyone is listening. A level flown
+  // entirely below the "pull up" mark would have taught nothing.
+  tipPanel.show(urgent ?? tutor.update(run.stats.distance, frameTime, input.anyDown));
   world.updateSmoke(allPuffs, camera.quaternion);
   rig.update(interpolatedState, wings, frameTime);
 
@@ -1226,9 +1265,7 @@ function frame(nowMs: number) {
     telemetry,
     distance(interpolatedState.position, home),
     smoothedFps,
-    onFoot,
     banner(),
-    stance === 'talking',
   );
   renderer.render(scene, camera);
   // Then the arrows, on a fresh depth buffer so the world cannot cover them.

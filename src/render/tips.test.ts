@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { codesFor, createTutor, LESSONS, type Lesson } from './tips';
+import { codesFor, createTutor, LESSONS, warningFor, WARNINGS, type Lesson } from './tips';
 
 const EARLY: Lesson = { at: 20, keys: ['↑'], text: 'up' };
 const LATE: Lesson = { at: 100, keys: ['B'], text: 'brake' };
@@ -89,16 +89,10 @@ describe('handing out the flying lessons', () => {
     expect(codesFor({ keys: ['SPACE'], text: '' })).toEqual(['Space']);
   });
 
-  it('teaches staying up before anything else, and teaches it at once', () => {
-    // The real course rather than the fixture. Five metres off a branch is
-    // where a bird that does not flap finds out, so it is the first thing
-    // said and it is said almost immediately.
-    const first = LESSONS[0]!;
-    expect(first.at).toBeLessThanOrEqual(5);
-    expect(first.keys).toEqual(['SPACE']);
-
-    // In order, so the queue hands them out in the order they were written
-    // rather than in whatever order the distances happen to fall.
+  it('asks for one turn at a time, in the order they are written', () => {
+    // The real course rather than the fixture. Nothing about the flight
+    // demands a turn -- the target is straight ahead -- which is why it is a
+    // good moment to be asked to try one.
     const order = LESSONS.map((lesson) => lesson.at);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
 
@@ -106,6 +100,71 @@ describe('handing out the flying lessons', () => {
       // Short enough to read while flying, and useless without its keys.
       expect(lesson.text.length, lesson.text).toBeLessThan(30);
       expect(lesson.keys.length, lesson.text).toBeGreaterThan(0);
+      expect(codesFor(lesson).length, lesson.text).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('the instructions that watch the flight', () => {
+  /** A bird that is fine: high, fast, fresh and flying. */
+  const fine = { altitude: 120, airspeed: 16, stamina: 1, stalled: false };
+
+  it('says nothing to a flight that is going well', () => {
+    expect(warningFor(true, fine)).toBeNull();
+  });
+
+  it('calls out slow, low and tired, each on its own', () => {
+    expect(warningFor(true, { ...fine, airspeed: 5 })?.text).toBe('Keep flapping!');
+    expect(warningFor(true, { ...fine, altitude: 19 })?.text).toBe('Pull up!');
+    expect(warningFor(true, { ...fine, stamina: 0.29 })?.text).toBe('Slow down!');
+  });
+
+  it('puts the wings before the nose when the bird is low and slow', () => {
+    // The one ordering that matters. Low and slow looks like a case for
+    // pulling up, and pulling up with no speed is how a bird stalls into the
+    // ground it was trying to clear -- so the answer is the wings, which are
+    // the only control that makes more of both.
+    expect(warningFor(true, { ...fine, altitude: 5, airspeed: 4 })?.text).toBe('Keep flapping!');
+  });
+
+  it('leaves the slow problem until the quick ones are over', () => {
+    // Tired is the only one of the three you can put off, so it is the only
+    // one that gives way. A bird about to hit the ground has a bigger problem
+    // than the one it will have in thirty seconds.
+    const spent = { ...fine, altitude: 5, stamina: 0.1 };
+    expect(warningFor(true, spent)?.text).toBe('Pull up!');
+  });
+
+  it('keeps the stall for everyone and the lessons for the taught', () => {
+    // A pigeon spends half its life low, slow and tired on purpose, so those
+    // three stop once the game stops teaching. Nobody stalls on purpose.
+    const stalled = { ...fine, stalled: true };
+    const struggling = { ...fine, altitude: 5, airspeed: 4, stamina: 0.1 };
+    expect(warningFor(false, stalled)?.text).toBe('Nose down!');
+    expect(warningFor(false, struggling)).toBeNull();
+    expect(warningFor(true, struggling)).not.toBeNull();
+  });
+
+  it('puts the stall before everything, because it is already happening', () => {
+    // The others are about to be a problem. A stall is one: the wing has
+    // stopped working, and nothing else is worth trying until it works again.
+    expect(warningFor(true, { altitude: 5, airspeed: 4, stamina: 0.1, stalled: true })?.text).toBe(
+      'Nose down!',
+    );
+  });
+
+  it('draws every one of them with a key that does something', () => {
+    for (const warning of WARNINGS) {
+      expect(warning.text.length, warning.text).toBeLessThan(30);
+      expect(codesFor(warning).length, warning.text).toBeGreaterThan(0);
+    }
+  });
+
+  it('takes its thresholds in the simulation\'s own units', () => {
+    // Twenty km/h is the readout; 5.6 m/s is the air. A threshold written in
+    // km/h would be a threshold about the display rather than about flying,
+    // and the display is the thing most likely to change.
+    expect(warningFor(true, { ...fine, airspeed: 20 / 3.6 - 0.01 })?.text).toBe('Keep flapping!');
+    expect(warningFor(true, { ...fine, airspeed: 20 / 3.6 + 0.01 })).toBeNull();
   });
 });

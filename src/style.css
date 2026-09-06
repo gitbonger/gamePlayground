@@ -130,7 +130,7 @@ body {
 }
 
 .bar-fill.low {
-  background: #e8a24b;
+  background: #e0533f;
 }
 
 .hud-warning.calm {
@@ -165,104 +165,6 @@ body {
   font-size: 10px;
   color: var(--dim);
   opacity: 0.75;
-}
-
-.controls-hint {
-  position: absolute;
-  left: 20px;
-  top: 20px;
-  padding: 10px 14px;
-  border-radius: 6px;
-  background: var(--panel);
-  backdrop-filter: blur(6px);
-  font-size: 12px;
-  line-height: 1.8;
-  color: var(--dim);
-}
-
-.controls-hint b {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-/* lil-gui sits above the overlay and must stay clickable. */
-.lil-gui {
-  --width: 300px;
-  z-index: 10;
-}
-
-/* --- End of flight ------------------------------------------------------ */
-
-.outcome {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgba(6, 10, 15, 0.55);
-  backdrop-filter: blur(3px);
-  animation: outcome-in 0.35s ease both;
-}
-
-@keyframes outcome-in {
-  from {
-    opacity: 0;
-  }
-}
-
-.outcome-card {
-  min-width: 340px;
-  padding: 30px 38px 26px;
-  border: 1px solid rgba(242, 245, 248, 0.14);
-  border-radius: 10px;
-  background: rgba(12, 18, 26, 0.86);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
-  text-align: center;
-}
-
-.outcome-card h1 {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: #ff8b6b;
-}
-
-.outcome-cause {
-  margin: 10px 0 24px;
-  font-size: 13px;
-  color: var(--dim);
-}
-
-.outcome-hint {
-  margin: 0;
-  padding-top: 16px;
-  border-top: 1px solid rgba(242, 245, 248, 0.1);
-  font-size: 12px;
-  color: var(--dim);
-}
-
-.outcome-hint b {
-  color: var(--ink);
-}
-
-.controls-hint .hint-warn {
-  color: #e8a24b;
-}
-
-.outcome-card h1 {
-  color: #ff8b6b;
-}
-
-/* A clean landing is the one good ending, so it gets the one green headline. */
-.outcome.landed .outcome-card h1 {
-  color: #7fe0a8;
-}
-
-/* --- Approach cue -------------------------------------------------------- */
-
-.controls-hint .hint-tip {
-  color: #7fe0a8;
 }
 
 /* --- Level menu ---------------------------------------------------------- */
