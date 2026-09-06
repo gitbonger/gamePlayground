@@ -76,13 +76,14 @@ export const LOFT: LandmarkSpec = {
  * margin keeps the trees off it, and off the approach to it.
  */
 /**
- * The first thing the hero is asked to land on: a slab of concrete in the
- * park a hundred and thirty-six metres from the home tree.
+ * The first thing the hero is asked to land on: a slab of concrete in a park
+ * three hundred and fifty metres from the home tree.
  *
- * Close, because it is the first flight of the game and it follows straight
- * on from leaving the tree -- he takes off from the branch and it is already
- * in front of him. Well inside the park, too: thirty-two metres from the
- * nearest kerb, so nothing about the approach is about avoiding anything.
+ * Far enough that it is a flight rather than a hop -- from eighteen metres up
+ * a pigeon glides about a hundred and ten, so the rest of it has to be flown
+ * -- and near enough that it is in front of him the whole way. Well inside
+ * the park: thirty-two metres from the nearest kerb, so nothing about the
+ * approach is about avoiding anything.
  */
 export const PARK_PATCH: LandmarkSpec = {
   name: 'The Concrete',
@@ -91,6 +92,13 @@ export const PARK_PATCH: LandmarkSpec = {
   depth: 9,
   height: 0,
   margin: 7,
+  // Somebody standing by it, on the far side from the way he comes in: in
+  // view for the whole approach and not in the way of it, turned to face
+  // across the slab so that a bird coming down onto it comes down in front
+  // of them. Two metres of person is also the only thing in the world with
+  // a size you already know, which is what makes a nine-metre slab read as
+  // nine metres rather than as whatever size the eye decides.
+  people: [{ along: -6, across: 0, facing: -Math.PI / 2 }],
 };
 
 /**
@@ -126,7 +134,7 @@ export const WEST_PATCH: LandmarkSpec = {
  */
 export const HOME_TREE: LandmarkSpec = {
   name: 'The Home Tree',
-  at: [47.493452, 19.085940],
+  at: [47.492101, 19.087960],
   // The width is the *platform*, not the tree: two and three-quarter metres of
   // flat crest, which holds the nest, the two of them, and no more than that.
   // A treetop should feel like a perch rather than a roof. The crown itself

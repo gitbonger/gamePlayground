@@ -119,7 +119,7 @@ export const LEVELS: readonly Level[] = [
     name: 'Heading out',
     // The tree itself. Unused for a perched start, which stands him on the
     // platform, but written down because a level without a place is not one.
-    start: [47.493452, 19.085940],
+    start: [47.492101, 19.087960],
     // First light, which is when a homing pigeon is actually let go, and the
     // only level in the game flown out of a sunrise.
     when: '2025-06-21T03:10:00Z',
@@ -131,17 +131,17 @@ export const LEVELS: readonly Level[] = [
     begins: 'perched',
   },
   {
-    // A short hop onto a concrete patch in the park: nothing to fly round,
-    // nothing that moves, and the target in front of him before he has
-    // finished climbing. That is the flight the level is -- a hundred and
-    // thirty-six metres, straight on from the branch he leaves.
-    name: 'The Park',
-    // But only when it is *entered* by leaving the home tree, which is how it
-    // is entered when the game is played through. This is where it puts you
-    // instead -- from the menu, or after a death -- and it has not been moved
-    // to follow the target: it is 684 m out, over a different park, and it is
-    // a glide across the whole district rather than a hop.
-    start: [47.495944, 19.093122],
+    // The errand, and the first flight of the game: three hundred and fifty
+    // metres from the branch he leaves to a slab of concrete in a park, with
+    // somebody standing beside it. Nothing to fly round and nothing that
+    // moves, but further than a pigeon glides from eighteen metres up, so it
+    // has to be flown rather than fallen down.
+    name: 'Grabbing food',
+    // Over the home tree, which is where the flight begins when the game
+    // is played through -- so being put here from the menu, or after a
+    // death, is being put back at the top of the same flight rather than
+    // somewhere else that happens to face the same way.
+    start: [47.492242, 19.087661],
     // Midday, so the shadows are short and the ground reads plainly.
     when: '2025-06-21T10:00:00Z',
     target: { kind: 'landmark', name: PARK_PATCH.name },

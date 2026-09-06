@@ -218,9 +218,11 @@ thing has to stand clear of the carriageway *and* the pavement, because a
 building over a pavement is a building in the road. A tree may reach out over
 a street — that is what a street tree does — so what is tested against the
 kerb is the trunk, and the crown is tested against a different claim instead:
-that its underside clears four metres, which is the legal height of a lorry.
-Overhanging a pavement is a plane tree; overhanging it at head height is a
-tree growing through the top deck of a bus.
+that its underside clears whatever passes beneath. That was four metres, the
+legal height of a lorry, until the tree was moved to a spot seven metres from
+a tramway; it is six now, which is where a tram's overhead line runs.
+Overhanging a street is a plane tree; overhanging it at head height is a tree
+growing through somebody's pantograph.
 
 There is a nest on the platform with one egg in it. Life size is a 26 cm nest
 holding a 39 mm egg, which is the truth and is also invisible: it is the thing
@@ -259,6 +261,17 @@ original coordinate at the *original* size too, which is how the old thirty
 metre loft turned out to have been standing on the pavement all along.
 
 The bushes are solid, like the trees. A bush you can fly through is scenery.
+
+Somebody can stand *beside* a described thing as well as on one. The rule used
+to be that a person needed a terrace, which was a limitation being written
+down as an intention: a patch of concrete has no terrace, no roof and nothing
+to fly into, and somebody standing next to one is still somebody. So people
+are placed on a landmark's terrace if it has one and on its own flat top
+otherwise — which, for something lying flat, is the ground it is laid into —
+and they may be past its edge, because beside is a place too. What is tested
+is that they are not *on* the landing: two metres of solid on the slab you
+have been asked to put down on, or within reach of the pigeon you have to walk
+up to, is an obstacle rather than a scene.
 
 **And there is somebody standing on it.** Two metres of person at the parapet,
 looking out over the city — the first of them, and the only thing in the world
@@ -334,9 +347,14 @@ told through the level-completion machinery rather than through anything of
 its own. It is not one in the sense that matters, since nothing downstream
 knows about it. The bird is standing, she is standing, they are within reach.
 
-*The Park* is a patch of concrete on open ground at midday:
-nothing to fly round, nothing that moves, and the whole approach visible from
-the start. *The Loft* is a planted roof terrace thirty-one metres up on a
+*Grabbing food* is the errand: three hundred and fifty metres from the branch
+he leaves to a slab of concrete in a park, with somebody standing beside it.
+Nothing to fly round and nothing that moves, but further than a pigeon glides
+from eighteen metres up — about a hundred and ten — so it has to be flown
+rather than fallen down. Its release point is over the home tree
+rather than out on the approach, because being put back at a level ought to
+put you back at the top of the flight it is, and that flight begins on the
+branch. *The Loft* is a planted roof terrace thirty-one metres up on a
 block of flats standing seven metres clear of the 16–24 m roofline around it,
 in late-afternoon light — still nothing moving, but you have to pick out the
 right half of it and put down on the strip between the bushes. *The Yard* is a
@@ -524,7 +542,7 @@ last line, so the player reads the end of the conversation before the panel
 goes; and because the key is not consumed, the take-off that follows is the
 same take-off as any other. *Heading out* ends this way on both its branches —
 he agrees to the errand, or offers to stay and is turned down — and either way
-the level is *The Park* before his wings open.
+the level is *Grabbing food* before his wings open.
 
 It is on the ending rather than on the level because different answers can
 lead to different places. Nothing does that yet; the shape is what makes it

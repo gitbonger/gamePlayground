@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LEVELS, targetName } from './levels';
 import { HOME_TREE, LANDMARKS, LOFT } from './landmarks';
-import { nestOn, penthouseOf, plantTerrace, pointOn, terraceOf } from './world/layout';
+import { nestOn, penthouseOf, peopleOn, plantTerrace, pointOn, terraceOf } from './world/layout';
 import { CHARACTER_MORPHS, HERO_MORPH, PIGEON_MORPHS, PINK_MORPH } from './render/bird';
 import { MEET_RADIUS } from './sim/walk';
 import { begin, isOver, reply, type Turn } from './dialogue';
@@ -127,17 +127,20 @@ describe('what the levels aim at', () => {
     }
   });
 
-  it('hangs a crown high enough to walk a lorry under', () => {
+  it('hangs a crown high enough to run a tram under', () => {
     // The concession the test above makes: a tree may overhang a street. This
-    // is what it is conceded against. Four metres is the legal height of a
-    // lorry here, and the underside of the crown has to clear it wherever the
-    // crown reaches past the trunk -- otherwise "overhanging the pavement"
-    // means a tree growing through the top deck of a bus.
-    const LORRY = 4;
+    // is what it is conceded against, and the height comes off whatever
+    // actually passes beneath. A lorry is four metres, which was the figure
+    // here until the home tree was moved to a spot seven metres from a
+    // tramway -- and a tram carries an overhead line six metres up. The
+    // underside of the crown has to clear the tallest of them wherever the
+    // crown reaches past the trunk, or "overhanging the street" means a tree
+    // growing through the pantograph of the 28.
+    const OVERHEAD_LINE = 6;
     for (const landmark of LANDMARKS) {
       if (!landmark.canopy) continue;
       const underside = landmark.height - landmark.canopy.skirt;
-      expect(underside, landmark.name).toBeGreaterThan(LORRY);
+      expect(underside, landmark.name).toBeGreaterThan(OVERHEAD_LINE);
     }
   });
 
@@ -285,6 +288,36 @@ describe('what the levels aim at', () => {
     // is allowed to be won by starting it.
     const perched = LEVELS.filter((level) => level.begins === 'perched');
     expect(perched).toEqual([LEVELS[0]]);
+  });
+
+  it('stands nobody in the way of the landing they are standing there for', () => {
+    // A person is two metres of solid, and the landmarks they stand on are
+    // the things levels ask you to land on. On a roof terrace that is fine --
+    // a terrace is bigger than the bit of it you come down on. On something
+    // lying flat it is not: a person on the slab is an obstacle on the target
+    // itself, and the pigeon you have to walk up to is on there too.
+    for (const level of LEVELS) {
+      if (level.target.kind !== 'landmark') continue;
+      const described = LANDMARKS.find((l) => l.name === level.target.name);
+      if (!described?.people) continue;
+
+      const here = { ...described, x: 0, z: 0 };
+      const waiting = pointOn(here, level.person.along, level.person.across);
+      for (const standing of peopleOn(here)) {
+        // Off a flat target altogether: beside it, not on it.
+        if (described.height === 0) {
+          const off =
+            Math.abs(standing.x) > described.width / 2 ||
+            Math.abs(standing.z) > described.depth / 2;
+          expect(off, `${described.name} at ${standing.x}, ${standing.z}`).toBe(true);
+        }
+        // And never within reach of the bird you have to walk up to, whatever
+        // it is standing on: a metre, which is two of their widths and half a
+        // pigeon's reach.
+        const gap = Math.hypot(standing.x - waiting.x, standing.z - waiting.z);
+        expect(gap, described.name).toBeGreaterThan(1);
+      }
+    }
   });
 
   it('leaves room around each described thing, so it stands apart', () => {
