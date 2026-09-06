@@ -12,6 +12,7 @@ import {
   pointAlong,
   trainBoxes,
   railNetwork,
+  rakeNear,
   directionFor,
   stockIsHauled,
   stockRuns,
@@ -960,5 +961,50 @@ describe('choosing which way to set off', () => {
     expect(directionFor(BEND, 150, 90)).toBe(1);
     expect(directionFor(BEND, 450, 90)).toBe(-1);
     expect(directionFor(BEND, 450, 180)).toBe(1);
+  });
+});
+
+/**
+ * Which trains are worth drawing exactly.
+ *
+ * A train is where it is whether or not anyone is watching -- that is not
+ * negotiable and it is not what this is about. This is the other half: laying
+ * a rake out in world coordinates and boxing it for collision is work done
+ * for the player, and there is no player near a train four kilometres away.
+ */
+describe('how near a rake is', () => {
+  const LINE: Rail = { kind: 'rail', width: 8, points: [[0, 0], [4000, 0]] };
+  const rake = (along: number) => ({ line: LINE, along, cars: 6, stock: 'carriage' as const });
+
+  it('measures from the back of the rake, not the front', () => {
+    // The reach is allowed the whole length of the train behind the coupling,
+    // because something level with the last coach is next to a train whatever
+    // the front of it is doing.
+    const consist = consistLength(6, 'carriage');
+    expect(rakeNear(rake(1000), 1000, 0, 100)).toBe(true);
+    expect(rakeNear(rake(1000), 1000, consist + 90, 100)).toBe(true);
+    expect(rakeNear(rake(1000), 1000, consist + 110, 100)).toBe(false);
+  });
+
+  it('gives a longer train a longer reach, because it is longer', () => {
+    const consist = consistLength(6, 'carriage');
+    const short = { line: LINE, along: 1000, cars: 1, stock: 'carriage' as const };
+    expect(rakeNear(rake(1000), 1000, consist + 10, 20)).toBe(true);
+    expect(rakeNear(short, 1000, consist + 10, 20)).toBe(false);
+  });
+
+  it('lets go of one that has gone', () => {
+    // The case this exists for: the train that leaves the yard and runs three
+    // and a half kilometres down the main line.
+    expect(rakeNear(rake(300), 300, 0, 300)).toBe(true);
+    expect(rakeNear(rake(3600), 300, 0, 300)).toBe(false);
+  });
+
+  it('keeps one it cannot place, rather than dropping it', () => {
+    // `pointAlong` gives nothing for a chainage off the end of the line. A
+    // train that cannot be located is a train to go on drawing: the cost of
+    // being wrong that way is a collider nobody needed, and the cost of the
+    // other way is a train you can fly through.
+    expect(rakeNear(rake(99999), 0, 0, 1)).toBe(true);
   });
 });

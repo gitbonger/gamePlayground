@@ -43,7 +43,20 @@ export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): S
     logarithmicDepthBuffer: true,
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.shadowMap.enabled = true;
+  /**
+   * Shadows are off.
+   *
+   * A shadow map is a second pass over the whole world: everything that casts
+   * is drawn again from the sun's point of view, which roughly doubles the
+   * draw calls. Submitting them was 3.5 ms of a 4.6 ms frame, and the city
+   * they were mostly being drawn for is a few merged and instanced meshes
+   * whose shadows read as a grey wash at altitude.
+   *
+   * Every mesh keeps its `castShadow` and `receiveShadow` flags. They do
+   * nothing while the shadow map is off, and turning this back on is the only
+   * change needed to have them again.
+   */
+  renderer.shadowMap.enabled = false;
   // PCFSoft is deprecated as of three r185 and silently falls back to PCF, so
   // ask for what we actually get rather than logging a warning every load.
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -61,6 +74,7 @@ export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): S
 
   const sun = new THREE.DirectionalLight(0xfff2dd, 2.2);
   sun.position.copy(sunDirection).multiplyScalar(400);
+  // Left described, and inert while the shadow map above is off.
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   // The shadow camera follows the bird, so it only needs to cover what is

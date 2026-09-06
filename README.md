@@ -560,6 +560,59 @@ the area means re-running the baker and committing the result.
 
 ### What it costs
 
+**Shadows are off.** A shadow map is a second pass over the world: everything
+that casts is drawn again from the sun's point of view. Turning it off took
+the frame from 4.81 M triangles to **3.08 M** — a third of them were being
+drawn only to be thrown into a depth texture. Every mesh keeps its
+`castShadow` flag, and `renderer.shadowMap.enabled` is the one line that
+brings them back.
+
+**A train is where it is; only its picture is optional.** Rebuilding the
+rakes was 96% of the whole simulation: every tick, at 120 Hz, seven trains
+re-laid into 46 vehicles, ~218 collision boxes rebuilt, and seven fresh
+uniform-grid collider fields built and combined. Six of those trains are
+usually kilometres away.
+
+The split is between what a train *is* and what it *looks like*. Where it is
+gets worked out every tick for every train, near or far, watched or not — a
+train is part of the world rather than a prop, and one that stopped while your
+back was turned would be in the wrong place when you came back. That half is
+also nearly free: a step along a line and a reflection at the ends.
+
+What is skipped beyond 300 m is the presentation — laying the rake out in
+world coordinates, boxing it for collision, and interpolating it between
+ticks. A distant train is put back where it has got to once a second, which at
+a kilometre is less than a pixel of error.
+
+**And the coarse step costs nothing in accuracy**, which is the part worth
+stating: a train advanced once a second ends up in exactly the same place as
+one advanced 120 times a second — to the last decimal, over an hour of play
+and several reversals. Position along the line is linear in time and the
+reversal at the buffers is a mirror, and both are exact at any step size. So
+the only thing a coarse step loses is smoothness, which is why it is tied to
+distance from the bird rather than to anything else.
+
+The reach is 300 m against a bird that covers 30 m a second, so it is ten
+seconds wide and tested every tick: there is no way to arrive somewhere before
+the rake there has been boxed. And it is measured from the *back* of the rake,
+because something level with the last coach is next to a train whatever the
+front of it is doing.
+
+| | before | after |
+| --- | --- | --- |
+| Whole simulation, per second of play | 32.3 ms | **14.8 ms** |
+| — of which rebuilding rakes | 19 ms | **0.6 ms** |
+| — of which smoke | 10.7 ms | 10.7 ms |
+| Triangles per frame | 4.81 M | **3.08 M** |
+| CPU per frame | 4.6 ms | **3.3 ms** |
+
+Which leaves **smoke as the largest thing in the simulation**: 3,491 puffs
+advected 120 times a second, 419,000 puff-updates a second, for four plumes.
+It was hidden inside the rake figure until the rakes got cheap enough to see
+past.
+
+### What it costs (the map)
+
 Measured, not estimated, on the shipped 4.2 km square. The numbers either side
 of the arrow are the 3.0 km square it replaced, so the second column is what
 enlarging the map actually bought and cost.

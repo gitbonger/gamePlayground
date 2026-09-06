@@ -531,6 +531,31 @@ export function layOutTrain(
   return vehicles;
 }
 
+/**
+ * Whether any part of a rake is within `reach` of a point on the ground.
+ *
+ * Asked so that a train far from the bird can be spared the work of being
+ * laid out in world coordinates and boxed for collision -- which is
+ * presentation, and costs something -- while still being advanced along its
+ * line, which is where it actually is, and costs nothing.
+ *
+ * Measured from the leading coupling and allowed the whole length of the
+ * consist behind it, in a straight line. On a curved route that reaches
+ * further back than the rake really does, which errs towards calling a train
+ * near: the cost of being wrong that way is a collider nobody needed.
+ */
+export function rakeNear(
+  train: Pick<Train, 'line' | 'along' | 'cars' | 'stock'>,
+  x: number,
+  z: number,
+  reach: number,
+): boolean {
+  const head = pointAlong(train.line.points, train.along);
+  if (!head) return true;
+  const away = Math.hypot(head.x - x, head.z - z) - consistLength(train.cars, train.stock);
+  return away <= reach;
+}
+
 /** A point on a vehicle, given in metres along it and across it. */
 export function onVehicle(
   vehicle: Vehicle,

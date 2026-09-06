@@ -55,6 +55,7 @@ import {
   layOutTrain,
   lineLength,
   onVehicle,
+  rakeNear,
   shuttle,
   stackTop,
   stockIsHauled,
@@ -623,6 +624,20 @@ const restCameraParams = { ...cameraParams };
  * that reads as the whole rake shivering.
  */
 const previousAlong = layout.trains.map((train) => train.along);
+/**
+ * How close the bird has to be for a train to be worth drawing exactly.
+ *
+ * Generous: the bird covers 30 m in a second at its fastest, so it takes ten
+ * seconds to cross this, and the test is made every tick. There is no way to
+ * arrive somewhere before the rake there has been boxed.
+ */
+const TRAIN_REACH = 300;
+/** How often one out of reach is put back where it has got to, in seconds. */
+const DISTANT_REDRAW = 1;
+/** When each train was last laid out in world coordinates. */
+const laidOut = layout.trains.map(() => Number.NEGATIVE_INFINITY);
+/** And which of them were near enough to be worth it, this tick. */
+const near = layout.trains.map(() => false);
 
 /** Every vehicle on the map, flattened. The index is its carrier tag. */
 function allVehicles() {
@@ -634,9 +649,15 @@ function moveTrains(dt: number) {
   const fields: Collider[] = [world.collider];
   const before = allVehicles();
   let tagged = 0;
+  near.fill(false);
 
   layout.trains.forEach((train, index) => {
     previousAlong[index] = train.along;
+    // Where it is. Every train, every tick, whether or not anyone is looking:
+    // a train is part of the world rather than a prop, and one that stopped
+    // while your back was turned would be in the wrong place when you came
+    // back. It is also the cheap half -- a step along a line and a reflection
+    // at the ends -- so there is nothing to gain by skipping it.
     const run = shuttle(
       lineLength(train.line.points),
       consistLength(train.cars, train.stock),
@@ -646,9 +667,31 @@ function moveTrains(dt: number) {
     );
     train.along = run.along;
     train.direction = run.direction;
-    train.vehicles = layOutTrain(train.line, train.along, train.cars, train.stock);
+
+    // The tags are handed out for every train in turn whatever happens next,
+    // so that skipping one does not renumber the rest -- a resident's idea of
+    // which wagon it is standing on is one of these numbers.
     const base = tagged;
     tagged += train.cars + 1;
+
+    // And what it looks like, which is only worth working out near the bird.
+    // Laying a rake out in world coordinates and boxing it for collision is
+    // 96% of the whole simulation, and six of the seven trains are usually
+    // kilometres away.
+    if (!rakeNear(train, bird.position.x, bird.position.z, TRAIN_REACH)) {
+      // Still put back where it has got to now and then, so that a train seen
+      // from a distance is where it should be rather than where it was. At
+      // a kilometre, a second of travel is less than a pixel.
+      if (clock - laidOut[index]! >= DISTANT_REDRAW) {
+        train.vehicles = layOutTrain(train.line, train.along, train.cars, train.stock);
+        laidOut[index] = clock;
+      }
+      return;
+    }
+
+    train.vehicles = layOutTrain(train.line, train.along, train.cars, train.stock);
+    laidOut[index] = clock;
+    near[index] = true;
     // Every box knows how fast the rake is running, which is what makes
     // being touched by one fatal rather than merely blocking.
     fields.push(
@@ -873,16 +916,25 @@ function frame(nowMs: number) {
   // Drawn between the last two ticks, exactly as the bird is. A train covers
   // five centimetres a tick, which is small enough to be invisible and big
   // enough to shimmer if you take it in steps.
+  // Interpolated between the last two ticks, exactly as the bird is: a train
+  // covers five centimetres a tick, small enough to be invisible and big
+  // enough to shimmer if you take it in steps. Only for the ones near enough
+  // for that to show -- a distant rake keeps whatever pose it was last laid
+  // out in, which is a second old at worst and a fraction of a pixel wrong.
   world.updateTrains(
-    layout.trains.map((train, index) => ({
-      ...train,
-      vehicles: layOutTrain(
-        train.line,
-        tweenAlong(previousAlong[index]!, train.along, alpha),
-        train.cars,
-        train.stock,
-      ),
-    })),
+    layout.trains.map((train, index) =>
+      near[index]
+        ? {
+            ...train,
+            vehicles: layOutTrain(
+              train.line,
+              tweenAlong(previousAlong[index]!, train.along, alpha),
+              train.cars,
+              train.stock,
+            ),
+          }
+        : train,
+    ),
   );
   talkPanel.show(talkingTo ? talk : null);
   world.updateSmoke(allPuffs, camera.quaternion);
