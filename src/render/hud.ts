@@ -36,7 +36,6 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
         <div class="readout"><span class="label">airspeed</span><span data-field="speed">0</span><span class="unit">km/h</span></div>
         <div class="readout"><span class="label">altitude</span><span data-field="altitude">0</span><span class="unit">m</span></div>
         <div class="readout"><span class="label">climb</span><span data-field="climb">0</span><span class="unit">km/h</span></div>
-        <div class="readout secondary" title="Height you could reach by trading all your speed for climb"><span class="label">energy</span><span data-field="energy">0</span><span class="unit">m</span></div>
         <div class="readout secondary" title="Local wind, and how much of it is against you"><span class="label">wind</span><span data-field="wind">0</span><span class="unit">km/h</span><span class="aside" data-field="headwind"></span></div>
         <div class="readout" title="Distance still to fly to the marked target"><span class="label">home</span><span data-field="home">0</span><span class="unit">m</span></div>
       </div>
@@ -59,7 +58,6 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
   const speedEl = field('speed');
   const altitudeEl = field('altitude');
   const climbEl = field('climb');
-  const energyEl = field('energy');
   const windEl = field('wind');
   const homeEl = field('home');
   const headwindEl = field('headwind');
@@ -88,10 +86,6 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     altitudeEl.textContent = telemetry.altitude.toFixed(0);
     climbEl.textContent = rateText(telemetry.climbRate);
     climbEl.classList.toggle('positive', telemetry.climbRate > 0.2);
-
-    // Specific energy: altitude plus the height your airspeed is worth. It is
-    // what actually says whether you can clear the roofline ahead.
-    energyEl.textContent = telemetry.energy.height.toFixed(0);
 
     // Airspeed already reflects the wind; this says where it is coming from.
     // The thresholds below stay in m/s: they are facts about the air, not

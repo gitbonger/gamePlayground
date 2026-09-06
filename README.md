@@ -366,11 +366,14 @@ told through the level-completion machinery rather than through anything of
 its own. It is not one in the sense that matters, since nothing downstream
 knows about it. The bird is standing, she is standing, they are within reach.
 
-*Grabbing food* is the errand: three hundred and fifty metres from the branch
-he leaves to a slab of concrete in a park, with somebody standing beside it.
-Nothing to fly round and nothing that moves, but further than a pigeon glides
-from eighteen metres up — about a hundred and ten — so it has to be flown
-rather than fallen down. Its release point is over the home tree
+*Grabbing food* is the errand: nine hundred and fourteen metres from the
+branch he leaves to a slab of concrete in a park, with somebody standing
+beside it. Nothing to fly round and nothing that moves, and long on purpose.
+Landing is the hard part of this game, and a first level that reaches the hard
+part twenty seconds after the first take-off asks the player to learn flying
+and landing at once. From twenty-three metres a pigeon glides about a hundred
+and forty, so the other seven hundred and seventy are flown — and by the time
+the slab is in reach there has been a while to get the feel of the wings. Its release point is over the home tree
 rather than out on the approach, because being put back at a level ought to
 put you back at the top of the flight it is, and that flight begins on the
 branch. *The Loft* is a planted roof terrace thirty-one metres up on a
@@ -2212,6 +2215,40 @@ band now stands two centimetres proud of the end and a centimetre under the
 roofline, which is what the glass down the side had been doing all along. A
 test asserts the two no longer end at the same depth, because it is the sort
 of thing a later tidy-up would helpfully round back off.
+
+### One instruction at a time
+
+The controls are a dozen lines in the top left. That is a reference card, and
+a reference card is read once — at the moment the player knows least about
+what any of it means — and then sits there being scenery.
+
+`src/render/tips.ts` is the other way round: one instruction, in the top right,
+at the moment that instruction is the thing to do. Some keys and a few words.
+The keycap is a picture of the key, so "press" is a word the text never has to
+spend, and the tip says nothing the panel around it already says.
+
+The first one is the take-off at the end of a conversation, which used to be a
+line inside the conversation panel — *press SPACE to fly on*, under the words
+somebody had just said to you. It is `SPACE` and **Take off!** now, in the
+corner, and the rest of the reference card is going the same way one line at a
+time.
+
+### What the screen does not say any more
+
+Three things came off it, and all three for the same reason: a number nobody
+can act on is a number in the way.
+
+**The game-over screen was carrying four statistics** — time aloft, distance,
+top speed, ceiling — under the sentence explaining what you had just hit. Four
+right numbers at the wrong moment. A screen that appears because you flew into
+a building should say what you hit and which key flies again, and hold nothing
+else for the eye to work through first.
+
+**The energy readout is gone.** It was specific energy: altitude plus the
+height your airspeed is worth, which is genuinely the number that says whether
+you can clear the roofline ahead — and which nobody reads that way while
+flying a pigeon into a park. Airspeed, altitude and climb are the three you
+fly on.
 
 ## Walking
 

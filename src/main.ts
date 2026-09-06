@@ -38,6 +38,7 @@ import { LEVELS, targetName, type Level, type LevelTarget } from './levels';
 import { LANDMARKS } from './landmarks';
 import { begin, isOver, reply, type Exchange } from './dialogue';
 import { createDialoguePanel, speechColour } from './render/dialogue';
+import { createTipPanel, type Tip } from './render/tips';
 import { loadProgress, saveProgress } from './progress';
 import { createLevelMenu } from './render/menu';
 import {
@@ -704,6 +705,7 @@ createDebugGui(flightParams, cameraParams, windParams, pictureParams, {
 
 const menu = createLevelMenu(overlay, LEVELS);
 const talkPanel = createDialoguePanel(overlay);
+const tipPanel = createTipPanel(overlay);
 /** The hero's own colour, which is what his half of a conversation is set in. */
 const hero = speechColour(HERO_MORPH.body);
 // The level being flown is the one remembered, applied through the same path
@@ -965,6 +967,22 @@ function opened(): number {
   return name === undefined ? -1 : LEVELS.findIndex((spec) => spec.name === name);
 }
 
+/**
+ * The one thing to do next, as a key and a few words.
+ *
+ * One at a time and only when it is the thing to do, which is the whole point
+ * of it: a dozen lines of controls read at the start are read at the moment
+ * the player knows least about what any of them mean.
+ *
+ * So far there is one. Standing with somebody and out of things to say, the
+ * next thing is to go -- and whether that is a take-off or a journey, the key
+ * is the same and the word for it is the same to a bird.
+ */
+function nextThing(): Tip | null {
+  if (finished && talkingTo && !midSentence()) return { keys: ['SPACE'], text: 'Take off!' };
+  return null;
+}
+
 /** The resident this level is about, if it has one. */
 function levelPerson(): Resident | null {
   const here = LEVELS[level];
@@ -1035,7 +1053,7 @@ function frame(nowMs: number) {
 
   // Only a crash ends the run. A clean landing leaves the bird perched, which
   // is a place to watch it from rather than a screen to dismiss.
-  if (wasAlive && hasCrashed(bird)) outcome.show(bird.ending!, run.stats);
+  if (wasAlive && hasCrashed(bird)) outcome.show(bird.ending!);
 
   // Blend between the last two ticks so motion is smooth at any refresh rate.
   const alpha = accumulator / TICK;
@@ -1083,10 +1101,8 @@ function frame(nowMs: number) {
   talkPanel.show(
     talkingTo ? talk : null,
     talkingTo ? { them: talkingTo.voice, you: hero } : undefined,
-    // A handed-over level is flown out of where you are standing, so the key
-    // is the take-off it looks like rather than a journey.
-    opened() >= 0 ? 'press SPACE to take off' : undefined,
   );
+  tipPanel.show(nextThing());
   world.updateSmoke(allPuffs, camera.quaternion);
   rig.update(interpolatedState, wings, frameTime);
 

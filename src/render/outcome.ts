@@ -1,11 +1,18 @@
-/** End-of-flight panel: how the flight finished, and how it went. */
+/**
+ * End-of-flight panel: how the flight finished, and how to start again.
+ *
+ * Three lines and nothing else. It used to carry the run's statistics as well
+ * -- time aloft, distance, top speed, ceiling -- and they were the wrong four
+ * numbers at the wrong moment: a screen that appears because you have just
+ * hit a building should say what you hit and which key flies again, and hold
+ * nothing else for the eye to work through first.
+ */
 
 import type { Ending } from '../sim/flight';
-import type { RunStats } from '../run';
 import { speedText } from './units';
 
 export interface OutcomePanel {
-  show(ending: Ending, stats: RunStats): void;
+  show(ending: Ending): void;
   hide(): void;
   dispose(): void;
 }
@@ -46,12 +53,6 @@ export function createOutcomePanel(container: HTMLElement): OutcomePanel {
     <div class="outcome-card">
       <h1 data-field="title"></h1>
       <p class="outcome-detail" data-field="detail"></p>
-      <dl class="outcome-stats">
-        <div><dt>time aloft</dt><dd data-field="duration"></dd></div>
-        <div><dt>distance</dt><dd data-field="distance"></dd></div>
-        <div><dt>top speed</dt><dd data-field="topSpeed"></dd></div>
-        <div><dt>ceiling</dt><dd data-field="ceiling"></dd></div>
-      </dl>
       <p class="outcome-hint">press <b>R</b> to fly again</p>
     </div>
   `;
@@ -59,17 +60,10 @@ export function createOutcomePanel(container: HTMLElement): OutcomePanel {
 
   const field = (name: string) => root.querySelector<HTMLElement>(`[data-field="${name}"]`)!;
 
-  function show(ending: Ending, stats: RunStats) {
+  function show(ending: Ending) {
     const copy = OUTCOMES[ending.cause ?? 'landed']!;
     field('title').textContent = copy.title;
     field('detail').textContent = copy.detail(ending);
-    field('duration').textContent = formatDuration(stats.duration);
-    field('distance').textContent =
-      stats.distance >= 1000
-        ? `${(stats.distance / 1000).toFixed(2)} km`
-        : `${stats.distance.toFixed(0)} m`;
-    field('topSpeed').textContent = `${speedText(stats.topSpeed)} km/h`;
-    field('ceiling').textContent = `${stats.ceiling.toFixed(0)} m`;
 
     root.classList.toggle('landed', ending.kind === 'landed');
     root.hidden = false;
@@ -84,10 +78,4 @@ export function createOutcomePanel(container: HTMLElement): OutcomePanel {
       root.remove();
     },
   };
-}
-
-function formatDuration(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds - minutes * 60;
-  return minutes > 0 ? `${minutes}m ${rest.toFixed(0)}s` : `${rest.toFixed(1)}s`;
 }

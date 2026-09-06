@@ -134,7 +134,7 @@ export const LEVELS: readonly Level[] = [
     name: 'Heading out',
     // The tree itself. Unused for a perched start, which stands him on the
     // platform, but written down because a level without a place is not one.
-    start: [47.492101, 19.087960],
+    start: [47.493997, 19.096538],
     // Never used: a perched level puts him on the crest rather than in the
     // air over it. Stated anyway, at the height of the thing he is standing
     // on, so that taking `begins: 'perched'` away would leave a level that
@@ -151,17 +151,19 @@ export const LEVELS: readonly Level[] = [
     begins: 'perched',
   },
   {
-    // The errand, and the first flight of the game: three hundred and fifty
-    // metres from the branch he leaves to a slab of concrete in a park, with
-    // somebody standing beside it. Nothing to fly round and nothing that
-    // moves, but further than a pigeon glides from eighteen metres up, so it
-    // has to be flown rather than fallen down.
+    // The errand, and the first flight of the game: most of a kilometre from
+    // the branch he leaves to a slab of concrete in a park, with somebody
+    // standing beside it. Nothing to fly round and nothing that moves, and
+    // long on purpose -- landing is the hard part of this game, and a first
+    // level that reaches the hard part twenty seconds in asks the player to
+    // learn flying and landing at the same time. Nine hundred metres of
+    // flapping first, and the slab is still there when he arrives.
     name: 'Grabbing food',
     // Over the home tree, which is where the flight begins when the game
     // is played through -- so being put here from the menu, or after a
     // death, is being put back at the top of the same flight rather than
     // somewhere else that happens to face the same way.
-    start: [47.492242, 19.087661],
+    start: [47.494002, 19.096376],
     // Five metres over the crest he has just left, which is the whole
     // difference between this level and every other one: he is not dropped
     // into it from the sky, he is leaving a tree. It also means the flight

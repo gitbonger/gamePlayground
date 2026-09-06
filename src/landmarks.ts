@@ -77,13 +77,17 @@ export const LOFT: LandmarkSpec = {
  */
 /**
  * The first thing the hero is asked to land on: a slab of concrete in a park
- * three hundred and fifty metres from the home tree.
+ * most of a kilometre from the home tree.
  *
- * Far enough that it is a flight rather than a hop -- from eighteen metres up
- * a pigeon glides about a hundred and ten, so the rest of it has to be flown
- * -- and near enough that it is in front of him the whole way. Well inside
- * the park: thirty-two metres from the nearest kerb, so nothing about the
- * approach is about avoiding anything.
+ * Nine hundred and fourteen metres, which is a flight rather than a hop and
+ * is meant to be. Landing is the hard part of this game, and a level that
+ * puts the hard part twenty seconds after the first take-off asks the player
+ * to learn the two things at once. From twenty-three metres a pigeon glides
+ * about a hundred and forty, so the rest of it is flown -- and by the time
+ * the slab is in reach there has been a while to get the feel of the wings.
+ *
+ * Well inside the park at the far end of it: thirty-two metres from the
+ * nearest kerb, so nothing about the approach is about avoiding anything.
  */
 export const PARK_PATCH: LandmarkSpec = {
   name: 'The Concrete',
@@ -134,7 +138,7 @@ export const WEST_PATCH: LandmarkSpec = {
  */
 export const HOME_TREE: LandmarkSpec = {
   name: 'The Home Tree',
-  at: [47.492101, 19.087960],
+  at: [47.493997, 19.096538],
   // The width is the *platform*, not the tree: two and three-quarter metres of
   // flat crest, which holds the nest, the two of them, and no more than that.
   // A treetop should feel like a perch rather than a roof. The crown itself
@@ -154,7 +158,7 @@ export const HOME_TREE: LandmarkSpec = {
 
 /**
  * A petrol station: a hut, a pump and a car on a forecourt, set back from the
- * road in the block between the home tree and the concrete.
+ * road in the block beside the concrete, near the end of the long flight in.
  *
  * Small, and worth having for exactly that reason. Everything else described
  * in this file is something a level is *about*; this is the first thing that
