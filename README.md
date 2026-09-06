@@ -683,6 +683,32 @@ on a 1080-line display.
 | Flock out, at the yard | ~700 | **252** |
 | Flock not yet released | ~240 | **49** |
 
+**A line is measured once, not counted along every time.** This was the last
+of it, and it hid behind a stale label of mine: the profile said "rebuilding
+rakes" long after the rakes had stopped being rebuilt. What was actually left
+was `pointAlong` — "the coupling is 3,000 m along this route, where is that?"
+— counting segments from the start of the line on every call. It is called
+**twice per vehicle**, once per bogie, so a rake of twelve on a sixty-point
+route walked over a thousand segments, 120 times a second, to answer a
+question the line could have answered once.
+
+A route is discovered when the world is built and never changes afterwards, so
+neither does the distance to any of its points. Those distances are now worked
+out once and held against the points themselves, which makes finding a place
+on a line a binary search. Nothing at any call site changed.
+
+| the trains, per second of play | before | after |
+| --- | --- | --- |
+| `moveTrain` — where each bogie is | 3.94 ms | **1.02 ms** |
+| `rakeNear` — is it worth drawing | 1.02 ms | **0.23 ms** |
+| `lineLength` — how long is the route | 0.57 ms | **0.11 ms** |
+| `createColliderField` | 0.71 ms | 1.12 ms |
+| everything else | 0.59 ms | 0.76 ms |
+| **total** | **6.7 ms** | **3.2 ms** |
+
+Which leaves `createColliderField` as the largest of them: the boxes now live
+for the game but the grid built around them still does not.
+
 **And the picture is drawn at 1.5 device pixels per CSS pixel, not 2.** This
 is the one setting that costs the same on every machine and is felt only on
 the slow ones — every pixel in the buffer is shaded, every frame, whatever is

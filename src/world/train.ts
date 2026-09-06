@@ -245,12 +245,54 @@ export function tweenAlong(previous: number, current: number, alpha: number): nu
 }
 
 /** Total length of a polyline, in metres. */
-export function lineLength(points: readonly Point2[]): number {
+/**
+ * A line with its distances already worked out.
+ *
+ * `at[i]` is how far along the line the i-th point is, so the total length is
+ * the last of them and finding the point at a given distance is a search
+ * rather than a walk.
+ */
+interface Measured {
+  /** Distance from the start to each point. */
+  at: Float64Array;
+  length: number;
+}
+
+/**
+ * Every line the game has measured, kept for as long as the line is.
+ *
+ * A route is discovered once, when the world is built, and never changes
+ * afterwards -- so neither does its length, or the distance to any of its
+ * points. Working that out again on every query was most of what the trains
+ * cost: `pointAlong` counted from the start of the line every time it was
+ * asked, and it is asked twice per vehicle per tick. For a rake of twelve on
+ * a sixty-point route that is over a thousand segments walked, 120 times a
+ * second, to answer a question the line could have answered once.
+ *
+ * Keyed on the points themselves and held weakly, so a line that goes out of
+ * use takes its measurements with it. Sound only because a line is never
+ * written to after it is made, which is a thing the tests state.
+ */
+const measurements = new WeakMap<readonly Point2[], Measured>();
+
+function measure(points: readonly Point2[]): Measured {
+  const known = measurements.get(points);
+  if (known) return known;
+
+  const at = new Float64Array(points.length);
   let total = 0;
   for (let i = 1; i < points.length; i += 1) {
     total += Math.hypot(points[i]![0] - points[i - 1]![0], points[i]![1] - points[i - 1]![1]);
+    at[i] = total;
   }
-  return total;
+  const measured = { at, length: total };
+  measurements.set(points, measured);
+  return measured;
+}
+
+/** Total length of a polyline, in metres. */
+export function lineLength(points: readonly Point2[]): number {
+  return measure(points).length;
 }
 
 /** The point `distance` metres along a polyline, or null if it runs out. */
@@ -258,20 +300,26 @@ export function pointAlong(
   points: readonly Point2[],
   distance: number,
 ): { x: number; z: number } | null {
-  if (distance < 0) return null;
-  let run = 0;
-  for (let i = 1; i < points.length; i += 1) {
-    const [x0, z0] = points[i - 1]!;
-    const [x1, z1] = points[i]!;
-    const step = Math.hypot(x1 - x0, z1 - z0);
-    if (step < 1e-9) continue;
-    if (run + step >= distance) {
-      const t = (distance - run) / step;
-      return { x: x0 + (x1 - x0) * t, z: z0 + (z1 - z0) * t };
-    }
-    run += step;
+  if (distance < 0 || points.length < 2) return null;
+  const { at, length } = measure(points);
+  if (distance > length) return null;
+
+  // The last point whose distance is at or below the one asked for. Binary
+  // search rather than a walk, which is the whole point of measuring.
+  let low = 0;
+  let high = points.length - 1;
+  while (high - low > 1) {
+    const middle = (low + high) >> 1;
+    if (at[middle]! <= distance) low = middle;
+    else high = middle;
   }
-  return null;
+
+  const [x0, z0] = points[low]!;
+  const [x1, z1] = points[high]!;
+  const step = at[high]! - at[low]!;
+  if (step < 1e-9) return { x: x0, z: z0 };
+  const t = (distance - at[low]!) / step;
+  return { x: x0 + (x1 - x0) * t, z: z0 + (z1 - z0) * t };
 }
 
 /**

@@ -1057,3 +1057,98 @@ describe('moving a rake that already exists', () => {
     expect(moveTrain(rake, LINE, 10, 6, 'carriage')).toBe(false);
   });
 });
+
+/**
+ * Measuring a line once instead of counting along it every time.
+ *
+ * A route is discovered when the world is built and never changes, so neither
+ * does the distance to any of its points. `pointAlong` used to count from the
+ * start on every call, and it is called twice per vehicle per tick.
+ */
+describe('finding a point on a line', () => {
+  /** The obvious way, kept here to check the quick way against. */
+  const byWalking = (points: readonly Point2[], distance: number) => {
+    if (distance < 0) return null;
+    let run = 0;
+    for (let i = 1; i < points.length; i += 1) {
+      const [x0, z0] = points[i - 1]!;
+      const [x1, z1] = points[i]!;
+      const step = Math.hypot(x1 - x0, z1 - z0);
+      if (step < 1e-9) continue;
+      if (run + step >= distance) {
+        const t = (distance - run) / step;
+        return { x: x0 + (x1 - x0) * t, z: z0 + (z1 - z0) * t };
+      }
+      run += step;
+    }
+    return null;
+  };
+
+  const shapes: Record<string, Point2[]> = {
+    straight: [[0, 0], [400, 0]],
+    'a dog-leg': [[0, 0], [100, 0], [100, 100], [250, 100]],
+    'many short pieces': Array.from({ length: 40 }, (_, i): Point2 => [i * 9, Math.sin(i / 3) * 20]),
+    'with a doubled point': [[0, 0], [50, 0], [50, 0], [150, 0], [150, 60]],
+    // A line that ends on a repeat of its last point: asking for the very end
+    // of it lands on a segment of no length, which is a division by nothing.
+    'ending on a repeat': [[0, 0], [80, 0], [80, 0]],
+  };
+
+  it('gives what walking the line gives, wherever you ask', () => {
+    for (const [name, points] of Object.entries(shapes)) {
+      const run = lineLength(points);
+      for (const t of [0, 0.001, 0.25, 0.5, 0.75, 0.999, 1]) {
+        const distance = run * t;
+        const quick = pointAlong(points, distance);
+        const slow = byWalking(points, distance);
+        expect(quick, `${name} at ${distance.toFixed(2)}`).not.toBeNull();
+        expect(quick!.x, `${name} at ${distance.toFixed(2)}`).toBeCloseTo(slow!.x, 6);
+        expect(quick!.z, `${name} at ${distance.toFixed(2)}`).toBeCloseTo(slow!.z, 6);
+      }
+    }
+  });
+
+  it('lands exactly on the line\'s own points', () => {
+    const points = shapes['a dog-leg']!;
+    let run = 0;
+    for (let i = 1; i < points.length; i += 1) {
+      run += Math.hypot(points[i]![0] - points[i - 1]![0], points[i]![1] - points[i - 1]![1]);
+      const at = pointAlong(points, run)!;
+      expect(at.x, `point ${i}`).toBeCloseTo(points[i]![0], 9);
+      expect(at.z, `point ${i}`).toBeCloseTo(points[i]![1], 9);
+    }
+  });
+
+  it('gives nothing before the start or past the end', () => {
+    const points = shapes['a dog-leg']!;
+    expect(pointAlong(points, -1)).toBeNull();
+    expect(pointAlong(points, lineLength(points) + 0.001)).toBeNull();
+    // And something at either end of it.
+    expect(pointAlong(points, 0)).toEqual({ x: 0, z: 0 });
+    expect(pointAlong(points, lineLength(points))).not.toBeNull();
+  });
+
+  it('measures a line the same however often it is asked', () => {
+    // The measurements are kept, so the second answer comes from the first.
+    // It has to be the same answer.
+    const points = shapes['many short pieces']!;
+    const first = lineLength(points);
+    for (let i = 0; i < 5; i += 1) expect(lineLength(points)).toBe(first);
+    expect(pointAlong(points, 100)).toEqual(pointAlong(points, 100));
+  });
+
+  it('measures two lines of the same shape separately', () => {
+    // Kept against the points themselves, so a second line that happens to
+    // look the same is still its own line.
+    const one: Point2[] = [[0, 0], [100, 0]];
+    const two: Point2[] = [[0, 0], [300, 0]];
+    expect(lineLength(one)).toBeCloseTo(100, 9);
+    expect(lineLength(two)).toBeCloseTo(300, 9);
+    expect(lineLength(one)).toBeCloseTo(100, 9);
+  });
+
+  it('has nothing to say about a line of one point', () => {
+    expect(pointAlong([[5, 5]], 0)).toBeNull();
+    expect(lineLength([[5, 5]])).toBe(0);
+  });
+});
