@@ -22,7 +22,7 @@ import {
   type CityLayout,
 } from './layout';
 import type { Rail, Road } from './streets';
-import { CARRIAGE, ENGINE, WAGON, type Train, type Vehicle } from './train';
+import { CARRIAGE, ENGINE, TRAM, WAGON, type Train, type Vehicle } from './train';
 import { defaultSmokeOptions, puffOpacity, puffRadius, type Puff } from './smoke';
 import type { Area, AreaKind } from './areas';
 
@@ -1326,6 +1326,7 @@ function buildVehicle(vehicle: Vehicle): {
   };
 
   const IRON = 0x2b2b2d;
+  const GLASS_TRAM = 0x22303a;
   const RUST = 0x5c4a40;
   const bogie = vehicle.length * 0.33;
 
@@ -1445,6 +1446,56 @@ function buildVehicle(vehicle: Vehicle): {
 
     // A roof a little narrower than the body, so it reads as curved.
     part(0x8e9296, 0, 0, CARRIAGE.body, vehicle.length, vehicle.width * 0.88, CARRIAGE.roof - CARRIAGE.body);
+  } else if (vehicle.kind === 'tram') {
+    // Budapest yellow, which is the whole point of putting a tram in
+    // Budapest: at three metres tall in a street of red roofs it is the one
+    // thing on the map you can find by colour alone.
+    const LIVERY = 0xe8b62a;
+    const half = vehicle.length / 2;
+    const side = vehicle.width / 2;
+
+    // Two bogies under a low floor, and no buffers -- a tram has none, and a
+    // section that ends in a concertina has nothing to buff against.
+    for (const end of [bogie, -bogie]) {
+      part(IRON, end, 0, 0.1, 2.2, vehicle.width * 0.7, 0.25);
+      for (const at of [side * 0.78, -side * 0.78]) {
+        wheel(0x1a1a1c, end, at, 0.0, 0.34, 0.16);
+      }
+    }
+
+    // Underframe and body. Low: the floor is 35 cm up rather than 110.
+    part(IRON, 0, 0, TRAM.floor - 0.16, vehicle.length * 0.96, vehicle.width * 0.92, 0.16);
+    part(LIVERY, 0, 0, TRAM.floor, vehicle.length, vehicle.width, TRAM.body - TRAM.floor);
+
+    // A deep band of glass most of the way down each side. A tram is mostly
+    // window, which is what tells it apart from a railway coach at distance.
+    const glass = vehicle.width / 2 + 0.02;
+    const bays = 4;
+    const pitch = (vehicle.length - 2.2) / bays;
+    for (let i = 0; i < bays; i += 1) {
+      const along = -(vehicle.length - 2.2) / 2 + pitch * (i + 0.5);
+      for (const at of [glass, -glass]) {
+        part(GLASS_TRAM, along, at, TRAM.windowSill, pitch * 0.78, 0.06, TRAM.windowHeight);
+      }
+    }
+    // A door bay at each end of each side, floor to header.
+    for (const end of [half - 1.5, -(half - 1.5)]) {
+      for (const at of [glass, -glass]) {
+        part(0x2f3338, end, at, TRAM.floor + 0.05, 1.25, 0.05, TRAM.body - TRAM.floor - 0.35);
+      }
+    }
+    // The concertina: a dark band across each end, so a four-car set reads as
+    // one articulated vehicle rather than four short ones in a row.
+    for (const end of [half - 0.12, -(half - 0.12)]) {
+      part(0x2a2c2f, end, 0, TRAM.floor, 0.24, vehicle.width * 0.94, TRAM.body - TRAM.floor);
+    }
+
+    // A shallow roof, and the pantograph that says it is electric.
+    part(0x9aa0a4, 0, 0, TRAM.body, vehicle.length, vehicle.width * 0.9, TRAM.roof - TRAM.body);
+    part(0x3c3f43, 0, 0, TRAM.roof, 2.6, vehicle.width * 0.5, 0.08);
+    part(0x53565b, 0.5, 0, TRAM.roof + 0.08, 0.1, 0.1, TRAM.pantographHeight);
+    part(0x53565b, -0.5, 0, TRAM.roof + 0.08, 0.1, 0.1, TRAM.pantographHeight * 0.6);
+    part(0x6a6e73, 0, 0, TRAM.roof + 0.08 + TRAM.pantographHeight, 1.6, vehicle.width * 0.42, 0.07);
   } else {
     // Running gear, solebar, and the deck laid on top of it.
     for (const end of [bogie, -bogie]) {

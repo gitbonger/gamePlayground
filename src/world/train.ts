@@ -77,30 +77,86 @@ export const CARRIAGE = {
   windowHeight: 0.95,
 };
 
+/**
+ * One car of an articulated tram.
+ *
+ * Not a train that happens to be small. It has no locomotive -- the whole
+ * thing is powered and a four-car set is four sections of one vehicle -- it
+ * is narrower and much lower than anything on the heavy railway, and the
+ * sections are joined by a concertina rather than by couplings, so there is
+ * no gap to speak of between one and the next.
+ *
+ * Low is the part that matters to a pigeon. A carriage roof is four metres
+ * up; this is three and a bit, which is a roof you can put down on from a
+ * street rather than one you have to come at from above.
+ */
+export const TRAM = {
+  length: 13.4,
+  width: 2.4,
+  /** Top of the underframe: the floor is low, which is the point of a tram. */
+  floor: 0.35,
+  /** Top of the body sides. */
+  body: 3.05,
+  /** Top of the roof, which is what the pigeon lands on. */
+  roof: 3.3,
+  /** The band of glass down each side: how high it starts and how tall. */
+  windowSill: 1.35,
+  windowHeight: 1.35,
+  /** The pantograph on the middle car, which is what says it is electric. */
+  pantographHeight: 0.55,
+};
+
 /** Slack over the couplings between one vehicle and the next, in metres. */
 export const COUPLING = 0.9;
 
+/** And over the concertina between one tram section and the next. */
+export const ARTICULATION = 0.25;
+
 /**
- * What a train is made of behind the engine.
+ * What a rake is made of.
  *
  * Named rather than counted, because a train has to be able to say what it is
  * when it is laid out again -- which happens every tick for anything that
  * moves, and once for anything that does not.
  */
-export type Stock = 'wagon' | 'carriage';
+export type Stock = 'wagon' | 'carriage' | 'tram';
 
 /** The length and width of one vehicle of a given sort. */
 export const stockSize = (stock: Stock): { length: number; width: number } =>
   stock === 'carriage'
     ? { length: CARRIAGE.length, width: CARRIAGE.width }
-    : { length: WAGON.length, width: WAGON.width };
+    : stock === 'tram'
+      ? { length: TRAM.length, width: TRAM.width }
+      : { length: WAGON.length, width: WAGON.width };
+
+/**
+ * Whether a rake of this stock is hauled by a locomotive.
+ *
+ * A tram is not: every section is powered, so a four-car tram is four cars
+ * and not an engine and three. This is the only thing about laying a rake out
+ * that depends on what it is made of, so it is the only thing asked.
+ */
+export const stockIsHauled = (stock: Stock): boolean => stock !== 'tram';
+
+/** The gap between one vehicle of this sort and the next. */
+export const stockGap = (stock: Stock): number =>
+  stock === 'tram' ? ARTICULATION : COUPLING;
+
+/** Which sort of line this stock runs on. */
+export const stockRuns = (stock: Stock): string => (stock === 'tram' ? 'tram' : 'rail');
 
 /** How high the top of a vehicle is: what anything standing on it stands on. */
 export const stockTop = (kind: Vehicle['kind']): number =>
-  kind === 'carriage' ? CARRIAGE.roof : kind === 'wagon' ? WAGON.deck : ENGINE.cab;
+  kind === 'carriage'
+    ? CARRIAGE.roof
+    : kind === 'tram'
+      ? TRAM.roof
+      : kind === 'wagon'
+        ? WAGON.deck
+        : ENGINE.cab;
 
 export interface Vehicle {
-  kind: 'engine' | 'wagon' | 'carriage';
+  kind: 'engine' | 'wagon' | 'carriage' | 'tram';
   /** Centre of the vehicle, in world metres. */
   x: number;
   z: number;
@@ -216,6 +272,37 @@ export function pointAlong(
     run += step;
   }
   return null;
+}
+
+/**
+ * Which way along a line to set off, to go roughly the way asked for.
+ *
+ * A route is a polyline and `direction` +1 means "up it as drawn", which is a
+ * fact about the order somebody traced the way into OpenStreetMap rather than
+ * about the world. So a spec says which way it wants to go, as a compass
+ * bearing, and this works out the sign.
+ *
+ * Bearings are clockwise from north, and north is -Z, which is the convention
+ * the whole map is in.
+ */
+export function directionFor(
+  points: readonly Point2[],
+  along: number,
+  bearing: number,
+): number {
+  // The tangent where the train is, taken over a metre so a polyline vertex
+  // exactly under it cannot make the step zero.
+  const ahead = pointAlong(points, Math.min(along + 0.5, lineLength(points)));
+  const behind = pointAlong(points, Math.max(along - 0.5, 0));
+  if (!ahead || !behind) return 1;
+
+  const up = { x: ahead.x - behind.x, z: ahead.z - behind.z };
+  const want = {
+    x: Math.sin((bearing * Math.PI) / 180),
+    z: -Math.cos((bearing * Math.PI) / 180),
+  };
+  // Ties go up the line, which is what a spec that asked for nothing gets.
+  return up.x * want.x + up.z * want.z >= 0 ? 1 : -1;
 }
 
 /** How far along a line the closest point to (x, z) is, in metres. */
@@ -391,7 +478,12 @@ export function traceRoute(network: RailNetwork, from: Rail): Route {
  * default is what let it be written.
  */
 export function consistLength(cars: number, stock: Stock): number {
-  return ENGINE.length + cars * (COUPLING + stockSize(stock).length);
+  const gap = stockGap(stock);
+  const rake = cars * (gap + stockSize(stock).length);
+  // A tram has no locomotive in front of its cars, and no coupling where one
+  // would have been -- so it is its cars, less the joint the last of them
+  // does not have anything behind it to make.
+  return stockIsHauled(stock) ? ENGINE.length + rake : rake - gap;
 }
 
 /**
@@ -407,6 +499,7 @@ export function layOutTrain(
   stock: Stock = 'wagon',
 ): Vehicle[] {
   const vehicles: Vehicle[] = [];
+  const gap = stockGap(stock);
   let front = along;
 
   const place = (kind: Vehicle['kind'], length: number, width: number): boolean => {
@@ -424,11 +517,13 @@ export function layOutTrain(
       z: (lead.z + trail.z) / 2,
       yaw: Math.atan2(-(lead.z - trail.z), lead.x - trail.x),
     });
-    front = centre - length / 2 - COUPLING;
+    front = centre - length / 2 - gap;
     return true;
   };
 
-  if (!place('engine', ENGINE.length, ENGINE.width)) return [];
+  // A hauled rake is a locomotive and then its cars. A tram is neither: every
+  // section is powered, so four cars means four cars.
+  if (stockIsHauled(stock) && !place('engine', ENGINE.length, ENGINE.width)) return [];
   const size = stockSize(stock);
   for (let i = 0; i < cars; i += 1) {
     if (!place(stock, size.length, size.width)) return [];
@@ -492,12 +587,20 @@ export function trainBoxes(
       continue;
     }
 
-    if (vehicle.kind === 'carriage') {
+    if (vehicle.kind === 'carriage' || vehicle.kind === 'tram') {
       // One solid body up to the roof. There is no getting inside it, so
-      // there is nothing to model but the outside.
+      // there is nothing to model but the outside -- and a tram is the same
+      // problem as a carriage, lower.
       boxes.push(
         tag(
-          turnedBox(vehicle.x, vehicle.z, vehicle.length, CARRIAGE.roof, vehicle.width, vehicle.yaw),
+          turnedBox(
+            vehicle.x,
+            vehicle.z,
+            vehicle.length,
+            stockTop(vehicle.kind),
+            vehicle.width,
+            vehicle.yaw,
+          ),
           index,
         ),
       );

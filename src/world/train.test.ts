@@ -12,8 +12,13 @@ import {
   pointAlong,
   trainBoxes,
   railNetwork,
+  directionFor,
+  stockIsHauled,
+  stockRuns,
+  stockTop,
   traceRoute,
   tweenAlong,
+  TRAM,
   CARRIAGE,
   COUPLING,
   WAGON,
@@ -844,5 +849,116 @@ describe('running a rake up and down its line', () => {
     // The count that is written down does not care what the layout managed.
     const cars = 6;
     expect(layOutTrain(LINE, 400, cars, 'carriage')).toHaveLength(7);
+  });
+});
+
+/**
+ * Trams.
+ *
+ * Not a small train. It has no locomotive, its sections are joined by a
+ * concertina rather than by couplings, and it runs on tramway rather than on
+ * railway -- three differences, each of which used to be an assumption
+ * somewhere that a rake is an engine and some cars behind it.
+ */
+describe('a tram', () => {
+  const TRAMWAY: Rail = { kind: 'tram', width: 6, points: [[0, 0], [600, 0]] };
+
+  it('is all cars and no engine', () => {
+    const cars = layOutTrain(TRAMWAY, 300, 4, 'tram');
+    expect(cars).toHaveLength(4);
+    expect(cars.every((v) => v.kind === 'tram')).toBe(true);
+    expect(stockIsHauled('tram')).toBe(false);
+
+    // Where a hauled rake of four is five vehicles, the first a locomotive.
+    const hauled = layOutTrain(TRAMWAY, 300, 4, 'carriage');
+    expect(hauled).toHaveLength(5);
+    expect(hauled[0]!.kind).toBe('engine');
+  });
+
+  it('measures itself over its concertinas, not over couplings it has not got', () => {
+    // Four cars and three joints, and no locomotive in front of them.
+    const measured = consistLength(4, 'tram');
+    expect(measured).toBeCloseTo(4 * TRAM.length + 3 * 0.25, 6);
+
+    // Which has to be what it actually occupies, or `shuttle` turns it round
+    // in the wrong place and it runs off the end of its line.
+    const cars = layOutTrain(TRAMWAY, 300, 4, 'tram');
+    const front = Math.max(...cars.map((v) => v.x + v.length / 2));
+    const back = Math.min(...cars.map((v) => v.x - v.length / 2));
+    expect(front - back).toBeCloseTo(measured, 6);
+  });
+
+  it('is lower than a railway coach, which is what you land on', () => {
+    // Three and a bit rather than four, and a roof either way.
+    expect(stockTop('tram')).toBe(TRAM.roof);
+    expect(stockTop('tram')).toBeLessThan(stockTop('carriage'));
+
+    const cars = layOutTrain(TRAMWAY, 300, 4, 'tram');
+    const boxes = trainBoxes(cars);
+    expect(boxes).toHaveLength(4);
+    for (const box of boxes) expect(box.maxY).toBeCloseTo(TRAM.roof, 6);
+  });
+
+  it('runs on tramway, and a train does not', () => {
+    expect(stockRuns('tram')).toBe('tram');
+    expect(stockRuns('carriage')).toBe('rail');
+    expect(stockRuns('wagon')).toBe('rail');
+  });
+
+  it('stays on its line however long it runs for', () => {
+    // The same claim the rakes get, for the stock that measures itself
+    // differently from all of them.
+    const consist = consistLength(4, 'tram');
+    const run = lineLength(TRAMWAY.points);
+    let along = consist + 3;
+    let direction = -1;
+    for (let tick = 0; tick < 4000; tick += 1) {
+      const step = shuttle(run, consist, along, direction, 10 / 120);
+      along = step.along;
+      direction = step.direction;
+      expect(layOutTrain(TRAMWAY, along, 4, 'tram'), `${along.toFixed(1)}`).toHaveLength(4);
+    }
+  });
+});
+
+/**
+ * Setting off the way you meant to.
+ *
+ * `direction` is +1 for "up the line as drawn", which is a fact about the
+ * order somebody traced a way into OpenStreetMap and not about the world.
+ */
+describe('choosing which way to set off', () => {
+  /** A line running due south as drawn: north at -Z, so south is +Z. */
+  const SOUTHWARD: readonly Point2[] = [[0, -300], [0, 300]];
+  /** The same line, traced the other way. */
+  const NORTHWARD: readonly Point2[] = [[0, 300], [0, -300]];
+
+  it('goes up a line that already points the way asked for', () => {
+    expect(directionFor(SOUTHWARD, 300, 180)).toBe(1);
+    expect(directionFor(NORTHWARD, 300, 0)).toBe(1);
+  });
+
+  it('goes down one that does not', () => {
+    expect(directionFor(SOUTHWARD, 300, 0)).toBe(-1);
+    expect(directionFor(NORTHWARD, 300, 180)).toBe(-1);
+  });
+
+  it('reads a bearing as a compass bearing, clockwise from north', () => {
+    const EASTWARD: readonly Point2[] = [[-300, 0], [300, 0]];
+    expect(directionFor(EASTWARD, 300, 90)).toBe(1);
+    expect(directionFor(EASTWARD, 300, 270)).toBe(-1);
+    // And anything within a quarter turn counts, because a real line does not
+    // run due anything.
+    expect(directionFor(EASTWARD, 300, 135)).toBe(1);
+    expect(directionFor(EASTWARD, 300, 225)).toBe(-1);
+  });
+
+  it('turns with the line, not with where the line started', () => {
+    // A line that comes in heading east and leaves heading south. Which way
+    // to set off depends on where along it you are standing.
+    const BEND: readonly Point2[] = [[0, 0], [300, 0], [300, 300]];
+    expect(directionFor(BEND, 150, 90)).toBe(1);
+    expect(directionFor(BEND, 450, 90)).toBe(-1);
+    expect(directionFor(BEND, 450, 180)).toBe(1);
   });
 });

@@ -4,7 +4,7 @@ import { penthouseOf, terraceOf, type Landmark } from './layout';
 import { indexStreets, type MapData, type Rail, type Road } from './streets';
 import { footprintSamples, type Area } from './areas';
 import { distanceToEdges, pointInPolygon } from './polygon';
-import { consistLength, lineLength, trainBoxes, WAGON } from './train';
+import { consistLength, layOutTrain, lineLength, shuttle, trainBoxes, WAGON } from './train';
 import { combineColliders, createColliderField, worldBounds } from '../sim/collision';
 import { createBird, defaultParams, neutralControls, step } from '../sim/flight';
 import { vec } from '../sim/math3';
@@ -845,6 +845,72 @@ describe('two trains in one yard', () => {
     // So the roamer takes the siding and its 500 m rather than the platform
     // and the 1,800 m run that goes straight through the other train.
     expect(lineLength(world.trains[1]!.line.points)).toBeCloseTo(500, 6);
+  });
+
+  it('puts a tram on the tramway and a train on the railway', () => {
+    // Nothing said so before, and nothing had to: every train asked for was
+    // asked for over a goods yard where the roomiest line nearby happened to
+    // be heavy rail every time. A tram asked for at the same point must not
+    // take the siding, and a train must not take the tramway.
+    const MIXED: Rail[] = [
+      { kind: 'rail', width: 8, points: [[-300, 112], [300, 112]] },
+      { kind: 'tram', width: 6, points: [[-200, 124], [200, 124]] },
+    ];
+    const world = buildLayoutFromMap(mapOf(BLOCK, [], MIXED), {
+      ...defaultMapWorldOptions,
+      trains: [
+        { near: { x: 40, z: 118 }, cars: 4, stock: 'tram', speed: 10 },
+        { near: { x: 40, z: 118 }, cars: 3, stock: 'carriage', speed: 0 },
+      ],
+    });
+
+    expect(world.trains).toHaveLength(2);
+    expect(world.trains[0]!.line.kind).toBe('tram');
+    expect(world.trains[1]!.line.kind).toBe('rail');
+    // Four cars and no locomotive.
+    expect(world.trains[0]!.vehicles).toHaveLength(4);
+    expect(world.trains[0]!.vehicles.every((v) => v.kind === 'tram')).toBe(true);
+  });
+
+  it('leaves a tram out when there is only railway to run on', () => {
+    // Better than putting it on the railway. A tram on a main line is a
+    // stranger thing to see than an empty tramway.
+    const world = buildLayoutFromMap(mapOf(BLOCK, [], [
+      { kind: 'rail', width: 8, points: [[-300, 112], [300, 112]] },
+    ]), {
+      ...defaultMapWorldOptions,
+      trains: [{ near: { x: 40, z: 118 }, cars: 4, stock: 'tram', speed: 10 }],
+    });
+    expect(world.trains).toEqual([]);
+  });
+
+  it('sets off the way it was asked to, whichever way the line was drawn', () => {
+    // Two tramways over the same ground, traced in opposite orders. A tram
+    // asked to head south has to go south on both.
+    for (const points of [
+      [[0, -300], [0, 300]] as [number, number][],
+      [[0, 300], [0, -300]] as [number, number][],
+    ]) {
+      const world = buildLayoutFromMap(mapOf(BLOCK, [], [{ kind: 'tram', width: 6, points }]), {
+        ...defaultMapWorldOptions,
+        trains: [{ near: { x: 0, z: 0 }, cars: 4, stock: 'tram', speed: 10, setOff: 180 }],
+      });
+      const tram = world.trains[0]!;
+      expect(tram).toBeDefined();
+
+      // A step of its own length, and see which way the front of it moved.
+      const before = tram.vehicles[0]!.z;
+      const run = shuttle(
+        lineLength(tram.line.points),
+        consistLength(tram.cars, tram.stock),
+        tram.along,
+        tram.direction,
+        20,
+      );
+      const after = layOutTrain(tram.line, run.along, tram.cars, tram.stock)[0]!.z;
+      // South is +Z, north being -Z everywhere on this map.
+      expect(after - before, `drawn ${JSON.stringify(points)}`).toBeGreaterThan(0);
+    }
   });
 
   it('asks for only as many as there are tracks', () => {

@@ -42,9 +42,11 @@ import {
   chainageOf,
   consistLength,
   layOutTrain,
+  directionFor,
   lineLength,
   pointAlong,
   railNetwork,
+  stockRuns,
   traceRoute,
   type Train,
   type Stock,
@@ -180,6 +182,14 @@ export interface TrainSpec {
    * the one whose *route* is longest, not the one whose own way is.
    */
   runsOut?: boolean;
+  /**
+   * Which way to set off, as a compass bearing in degrees.
+   *
+   * Omitted, it goes up its line as drawn, which is a fact about how somebody
+   * traced the way rather than about the world -- fine for a shuttle that
+   * will be back, and no use at all for saying "south".
+   */
+  setOff?: number;
 }
 
 export interface MapWorld extends CityLayout {
@@ -638,6 +648,11 @@ export function buildLayoutFromMap(
     let over: readonly Rail[] = [];
     let best = -Infinity;
     for (const rail of map.rails ?? []) {
+      // A tram runs on tramway and a train runs on railway. Nothing said so
+      // before, and nothing had to: every train asked for was asked for over
+      // a goods yard, where the roomiest line nearby happened to be heavy
+      // rail every time.
+      if (rail.kind !== stockRuns(stock)) continue;
       if (taken.has(rail)) continue;
       const at = chainageOf(rail.points, spec.near.x, spec.near.z);
       const on = pointAlong(rail.points, at);
@@ -676,7 +691,17 @@ export function buildLayoutFromMap(
     // otherwise the next train stands itself in a platform this one comes
     // through at fifty kilometres an hour.
     for (const part of over) taken.add(part);
-    trains.push({ line, along, direction: 1, speed: spec.speed ?? 6, stock, cars: spec.cars, vehicles });
+    const direction =
+      spec.setOff === undefined ? 1 : directionFor(line.points, along, spec.setOff);
+    trains.push({
+      line,
+      along,
+      direction,
+      speed: spec.speed ?? 6,
+      stock,
+      cars: spec.cars,
+      vehicles,
+    });
   }
 
   return {

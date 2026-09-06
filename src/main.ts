@@ -57,6 +57,7 @@ import {
   onVehicle,
   shuttle,
   stackTop,
+  stockIsHauled,
   stockTop,
   trainBoxes,
   turnedBetween,
@@ -138,6 +139,15 @@ const home = project(HOME_POINT[0], HOME_POINT[1], map.centre);
 const TRAIN_POINT: [number, number] = [47.500052, 19.088174];
 const train = project(TRAIN_POINT[0], TRAIN_POINT[1], map.centre);
 
+/**
+ * The tramway west of the city, beside the fourth level's patch of concrete.
+ *
+ * On the line rather than near it: a tram is put on the tramway nearest the
+ * point it is asked for, and this one has a railway within reach as well.
+ */
+const TRAM_POINT: [number, number] = [47.496648, 19.070644];
+const tram = project(TRAM_POINT[0], TRAM_POINT[1], map.centre);
+
 const layout = buildLayoutFromMap(map, {
   ...defaultMapWorldOptions,
   // Described first, and everything generated afterwards gives way to them.
@@ -164,6 +174,12 @@ const layout = buildLayoutFromMap(map, {
     { near: train, cars: 6, stock: 'carriage', speed: 16, runsOut: true },
     { near: train, cars: 4, stock: 'carriage', speed: 13, runsOut: true },
     { near: train, cars: 8, stock: 'carriage', speed: 11, runsOut: true },
+    // And a tram, on the tramway rather than the railway: four articulated
+    // cars, no locomotive, and 3.2 km of route once the switches are
+    // followed. Set off south, which the line does not know how to be -- a
+    // polyline is drawn in whatever order somebody traced it -- so it is
+    // asked for as a bearing and worked out from the tangent.
+    { near: tram, cars: 4, stock: 'tram', speed: 10, runsOut: true, setOff: 180 },
   ],
 });
 /**
@@ -186,11 +202,13 @@ const carOf = (target: Extract<LevelTarget, { kind: 'wagon' }>): number =>
  *
  * The goods engine works hard up and down the yard; the passenger engines are
  * running easily on the main line, so they get a thinner plume, which costs
- * proportionally less to keep as well as looking like less effort.
+ * proportionally less to keep as well as looking like less effort. A tram has
+ * no chimney and no emitter, which is the same rule as a train standing in a
+ * platform: nothing special, it just never gets one.
  */
 const smokes = layout.trains
   .map((train, index) =>
-    train.speed > 0
+    train.speed > 0 && stockIsHauled(train.stock)
       ? {
           index,
           puffs: createSmoke(

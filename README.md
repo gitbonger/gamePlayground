@@ -793,7 +793,39 @@ the difference is invisible on a straight line: with the wagon's yaw at zero,
 arithmetic. The test for it runs on a line laid diagonally for exactly that
 reason — on an axis-aligned one it passes either way.
 
-**There are four of them, and all four move.** A rake of stake wagons
+**And a tram, which is not a small train.** Four articulated cars in Budapest
+yellow on the tramway out west, beside the fourth level's patch of concrete,
+with 3,169 m of route once the switches are followed. Three things about it
+were each an assumption somewhere that a rake is a locomotive and some cars
+behind it:
+
+- **It has no engine.** Every section is powered, so four cars means four
+  cars, not an engine and three. `stockIsHauled` is the only question laying a
+  rake out has to ask about what it is made of.
+- **Its sections are joined by a concertina**, not couplings — 25 cm rather
+  than 90 — and there is no coupling in front of the first car because there
+  is nothing in front of it. `consistLength` has to agree with `layOutTrain`
+  about that to the centimetre or `shuttle` turns it round in the wrong place
+  and the back of it runs off the end of the line, which is exactly the bug
+  the passenger trains had.
+- **It runs on tramway.** Nothing checked before, and nothing had to: every
+  train was asked for over a goods yard where the roomiest line nearby was
+  heavy rail every time. Now the stock says which sort of line it runs on, and
+  a tram with only railway within reach is left out rather than put on it.
+
+It is also *low* — 3.3 m to the roof against a coach's 4.05 — which is a roof
+you can put down on from street level rather than one you have to come at from
+above.
+
+**Setting off south** needed a way to say so. `direction` is +1 for "up the
+line as drawn", which is a fact about the order somebody traced the way into
+OpenStreetMap and nothing to do with the world — the same tramway traced the
+other way would send it north. So a spec gives a compass bearing and
+`directionFor` takes the tangent where the train is standing and picks the
+sign. Measured in the running game: 40 m of travel moves it +42 m in Z, and
+north is −Z.
+
+**There are four trains, and all four move.** A rake of stake wagons
 shuttling up and down the yard, and three passenger trains of six, four and
 eight coaches that leave it — out of the platforms and away down whatever main
 line the switches lead them onto, at 16, 13 and 11 m/s. They come out with
