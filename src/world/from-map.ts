@@ -288,16 +288,37 @@ export function buildLayoutFromMap(
     // roof, and the ground it takes is kept clear by `reserved` below, which
     // is a wider rule than overlapping a footprint. Leaving it out is what
     // stops the renderer having to find it again by matching coordinates.
-    boxes.push(
-      turnedBox(
+    if (landmark.canopy) {
+      // A tree is solid where a tree is: the crown, and the trunk holding it
+      // up. Not one box from the ground, which is what a building gets --
+      // that would wall off the whole space under the canopy, and the space
+      // under a canopy is somewhere you can fly.
+      const { trunk, skirt } = landmark.canopy;
+      const crown = turnedBox(
         landmark.x,
         landmark.z,
         landmark.width,
         landmark.height,
         landmark.depth,
         landmark.yaw ?? 0,
-      ),
-    );
+      );
+      crown.minY = Math.max(0, landmark.height - skirt);
+      boxes.push(crown);
+      boxes.push(
+        turnedBox(landmark.x, landmark.z, trunk, crown.minY, trunk, landmark.yaw ?? 0),
+      );
+    } else {
+      boxes.push(
+        turnedBox(
+          landmark.x,
+          landmark.z,
+          landmark.width,
+          landmark.height,
+          landmark.depth,
+          landmark.yaw ?? 0,
+        ),
+      );
+    }
 
     // The penthouse is boxed from the ground rather than from the terrace it
     // stands on. The union is the same solid either way, and a box that

@@ -74,6 +74,29 @@ export function reply(exchange: Exchange, choice: number): Exchange {
  * Both branches end after one exchange, which is the shape the real ones will
  * have too even when they are longer: they speak, you choose, they answer.
  */
+/**
+ * The first thing anyone says in the game: the mate on the home tree, the egg
+ * under her, and the reason the hero is about to leave.
+ *
+ * The level it belongs to is won the moment it starts, so this carries the
+ * whole of it. Both branches end after one exchange, like the placeholder,
+ * because the shape is right even when the words are real: she speaks, you
+ * choose, she answers.
+ */
+export const LEAVING: Turn = {
+  them: 'Go on, then. The egg and I will still be here.',
+  you: [
+    {
+      text: "I'll be back before it hatches.",
+      then: { them: "You'd better be. Fly high, and keep the river on your left." },
+    },
+    {
+      text: "I don't want to go.",
+      then: { them: 'Nor do I want you to. Go anyway -- and come home.' },
+    },
+  ],
+};
+
 export const GREETING: Turn = {
   them: "It's good to see you!",
   you: [

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { LEVELS, targetName } from './levels';
-import { LANDMARKS, LOFT } from './landmarks';
-import { penthouseOf, plantTerrace, pointOn, terraceOf } from './world/layout';
+import { HOME_TREE, LANDMARKS, LOFT } from './landmarks';
+import { nestOn, penthouseOf, plantTerrace, pointOn, terraceOf } from './world/layout';
+import { CHARACTER_MORPHS, PIGEON_MORPHS, PINK_MORPH } from './render/bird';
+import { MEET_RADIUS } from './sim/walk';
 import { project } from './world/geo';
 import HOME_MAP from './world/data/home.json';
 import { indexStreets, type Road } from './world/streets';
@@ -93,11 +95,19 @@ describe('what the levels aim at', () => {
 
     for (const landmark of LANDMARKS) {
       const at = project(landmark.at[0], landmark.at[1], centre);
+      // What has to be clear of the street is what stands on the ground. For
+      // a building that is the whole footprint; for a tree it is the trunk,
+      // because a crown reaching out over a pavement is what a street tree
+      // does. The other half of that bargain -- that it reaches over high
+      // enough to be reached under -- is the test below.
+      const standing = landmark.canopy
+        ? { width: landmark.canopy.trunk, depth: landmark.canopy.trunk }
+        : { width: landmark.width, depth: landmark.depth };
       const corners = footprintSamples(
         at.x,
         at.z,
-        landmark.width,
-        landmark.depth,
+        standing.width,
+        standing.depth,
         landmark.yaw ?? 0,
         4,
       );
@@ -106,7 +116,7 @@ describe('what the levels aim at', () => {
       // paving, and paving beside a road is a pavement. It would not even
       // show if it overlapped, being drawn under the roads, which is exactly
       // why it is worth stating rather than leaving to be noticed.
-      const room = landmark.height > 0 ? 2 : 0;
+      const room = landmark.height > 0 && !landmark.canopy ? 2 : 0;
       for (const [x, z] of corners) {
         const road = streets.nearest(x, z, 120);
         if (!road) continue;
@@ -114,6 +124,72 @@ describe('what the levels aim at', () => {
           .toBeGreaterThan(road.width / 2 + room);
       }
     }
+  });
+
+  it('hangs a crown high enough to walk a lorry under', () => {
+    // The concession the test above makes: a tree may overhang a street. This
+    // is what it is conceded against. Four metres is the legal height of a
+    // lorry here, and the underside of the crown has to clear it wherever the
+    // crown reaches past the trunk -- otherwise "overhanging the pavement"
+    // means a tree growing through the top deck of a bus.
+    const LORRY = 4;
+    for (const landmark of LANDMARKS) {
+      if (!landmark.canopy) continue;
+      const underside = landmark.height - landmark.canopy.skirt;
+      expect(underside, landmark.name).toBeGreaterThan(LORRY);
+    }
+  });
+
+  it('starts the game standing on the home tree, within reach of the pink one', () => {
+    // The level is a conversation, not a flight: it is complete on the tick it
+    // opens because the hero is put down in the middle of the platform and she
+    // is standing a stride away. If she drifts further off than a bird can
+    // reach, the opening level silently becomes one you have to walk.
+    const leaving = LEVELS[0]!;
+    expect(leaving.begins).toBe('perched');
+    expect(leaving.target).toEqual({ kind: 'landmark', name: HOME_TREE.name });
+
+    // The hero stands where the arrow points, which is the middle of the top.
+    const middle = { x: 0, z: 0, yaw: HOME_TREE.yaw ?? 0 };
+    const her = pointOn(middle, leaving.person.along, leaving.person.across);
+    expect(Math.hypot(her.x, her.z)).toBeLessThan(MEET_RADIUS);
+  });
+
+  it('stands the pink one beside her nest rather than in it', () => {
+    // Both are described in the tree's own frame, and they have to agree: she
+    // is at the nest, which is what the picture is, but not standing on the
+    // egg, which is what the picture would be if the two coordinates were
+    // written independently and left to drift.
+    const leaving = LEVELS[0]!;
+    const here = { ...HOME_TREE, x: 0, z: 0 };
+    const nest = nestOn(here)!;
+    const her = pointOn(here, leaving.person.along, leaving.person.across);
+    const apart = Math.hypot(her.x - nest.x, her.z - nest.z);
+    expect(apart).toBeGreaterThan(nest.radius);
+    expect(apart).toBeLessThan(1);
+
+    // And all of it on the platform, with room to stand: the crown is what
+    // holds them up and it ends where the landmark's footprint does.
+    for (const [x, z] of [[her.x, her.z], [nest.x, nest.z]] as const) {
+      expect(Math.abs(x)).toBeLessThan(HOME_TREE.width / 2 - 0.5);
+      expect(Math.abs(z)).toBeLessThan(HOME_TREE.depth / 2 - 0.5);
+    }
+  });
+
+  it('keeps the pink pigeon out of the flock', () => {
+    // She is somebody, and the flock draws its colours from `PIGEON_MORPHS`.
+    // A city with thirty pink pigeons in it has no pink pigeon in it.
+    expect(PIGEON_MORPHS).not.toContain(PINK_MORPH);
+    expect(CHARACTER_MORPHS).toContain(PINK_MORPH);
+    expect(CHARACTER_MORPHS[LEVELS[0]!.person.morph]).toBe(PINK_MORPH);
+  });
+
+  it('flies every level but the first', () => {
+    // The perched opening is a hack -- a story beat told through the
+    // level-completion machinery -- and this is the fence round it. One level
+    // is allowed to be won by starting it.
+    const perched = LEVELS.filter((level) => level.begins === 'perched');
+    expect(perched).toEqual([LEVELS[0]]);
   });
 
   it('leaves room around each described thing, so it stands apart', () => {

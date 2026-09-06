@@ -15,11 +15,13 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { createColliderField, type Box, type Collider } from '../sim/collision';
 import {
   generateCityLayout,
+  nestOn,
   penthouseOf,
   PERSON_HEIGHT,
   terraceOf,
   type Building,
   type CityLayout,
+  type Landmark,
 } from './layout';
 import type { Rail, Road } from './streets';
 import { CARRIAGE, ENGINE, TRAM, WAGON, type Train, type Vehicle } from './train';
@@ -468,6 +470,11 @@ export function buildWorld(
    * it there.
    */
   for (const landmark of layout.landmarks) {
+    if (landmark.canopy) {
+      markers.push(growTree(landmark, group, disposables, overlay));
+      continue;
+    }
+
     if (landmark.height > 0) {
       // An ordinary building between flashes, which is what it goes back to.
       // Both tiers share the one material, so both go red together: it is one
@@ -1128,6 +1135,122 @@ const PATCH_COLOR = 0x9a9a94;
 const LANDMARK_COLOR = 0x8d8477;
 /** The paving of a roof terrace: pale, and plainly not roof tiles. */
 const TERRACE_COLOR = 0xb0aaa0;
+/** A described tree: its leaves, the crown seen from above, and its bark. */
+const CANOPY_COLOR = 0x4e7538;
+const CROWN_TOP_COLOR = 0x6f9450;
+const BARK_COLOR = 0x53412f;
+/** A nest: dry stems, and the egg in it. */
+const NEST_COLOR = 0x8a7248;
+const EGG_COLOR = 0xf3ece0;
+
+/**
+ * A described tree: a trunk, a crown, and a flat top you can stand on.
+ *
+ * The flat top is the odd thing about it and it is the point of it. This is
+ * the one tree in the city that is a place rather than an obstacle, so the
+ * crown is drawn as a mass with its top face at exactly the landmark's
+ * height -- which is exactly the top of its collision box, so the bird's feet
+ * land on the surface it can see. Lobes hang round the rim to keep it from
+ * reading as a green drum, and every one of them is below that face: a lobe
+ * standing proud of it would be foliage the bird walks through.
+ *
+ * Its nest is drawn here too. The nest is what the level is about, but it is
+ * built at the size a pigeon builds one, which is nothing from more than
+ * about twenty metres off. Finding the tree is the marker's job.
+ */
+function growTree(
+  landmark: Landmark,
+  group: THREE.Group,
+  disposables: { dispose(): void }[],
+  overlay: THREE.Group,
+): TargetMarker {
+  const canopy = landmark.canopy!;
+  const radius = Math.min(landmark.width, landmark.depth) / 2;
+  const clear = Math.max(0, landmark.height - canopy.skirt);
+
+  const leaves = new THREE.MeshLambertMaterial({ color: CANOPY_COLOR, flatShading: true });
+  const crownTop = new THREE.MeshLambertMaterial({ color: CROWN_TOP_COLOR });
+  const bark = new THREE.MeshLambertMaterial({ color: BARK_COLOR, flatShading: true });
+  disposables.push(leaves, crownTop, bark);
+
+  // The trunk runs up into the crown rather than stopping at the underside of
+  // it, so there is no seam to see from below.
+  const trunkHeight = clear + canopy.skirt * 0.6;
+  const trunk = new THREE.CylinderGeometry(canopy.trunk * 0.42, canopy.trunk * 0.6, trunkHeight, 7);
+  trunk.translate(0, trunkHeight / 2, 0);
+  disposables.push(trunk);
+  const stem = new THREE.Mesh(trunk, bark);
+  stem.position.set(landmark.x, 0, landmark.z);
+  stem.castShadow = true;
+  group.add(stem);
+
+  // Narrower at the bottom than the top, which is how a crown grown out to
+  // the light actually stands -- and it puts the widest part of it at the
+  // height the platform is, so the platform reads as the top of the tree
+  // rather than as a lid on it.
+  const crown = new THREE.CylinderGeometry(radius, radius * 0.55, canopy.skirt, 11);
+  crown.translate(0, landmark.height - canopy.skirt / 2, 0);
+  disposables.push(crown);
+  const mass = new THREE.Mesh(crown, [leaves, crownTop, leaves]);
+  mass.position.set(landmark.x, 0, landmark.z);
+  mass.castShadow = true;
+  mass.receiveShadow = true;
+  group.add(mass);
+
+  const lobe = new THREE.IcosahedronGeometry(1, 0);
+  disposables.push(lobe);
+  const lobes = new THREE.InstancedMesh(lobe, leaves, 7);
+  lobes.castShadow = true;
+  lobes.name = 'canopy';
+  const matrix = new THREE.Matrix4();
+  for (let i = 0; i < 7; i += 1) {
+    const angle = (i / 7) * Math.PI * 2;
+    const size = radius * (0.3 + 0.08 * ((i * 3) % 4));
+    // Sunk by its own size, so the highest point of the lobe is the top face
+    // and not a hand's breadth above it.
+    matrix.makeScale(size, size * 0.7, size);
+    matrix.setPosition(
+      landmark.x + Math.cos(angle) * (radius - size * 0.55),
+      landmark.height - size * 0.7,
+      landmark.z + Math.sin(angle) * (radius - size * 0.55),
+    );
+    lobes.setMatrixAt(i, matrix);
+  }
+  lobes.instanceMatrix.needsUpdate = true;
+  group.add(lobes);
+
+  const nest = nestOn(landmark);
+  if (nest) {
+    const sticks = new THREE.CylinderGeometry(nest.radius, nest.radius * 0.7, 0.05, 9);
+    sticks.translate(0, 0.025, 0);
+    const nestMaterial = new THREE.MeshLambertMaterial({
+      color: NEST_COLOR,
+      flatShading: true,
+    });
+    disposables.push(sticks, nestMaterial);
+    const saucer = new THREE.Mesh(sticks, nestMaterial);
+    saucer.position.set(nest.x, nest.base, nest.z);
+    group.add(saucer);
+
+    // One egg, lying on its side the way an egg lies.
+    const shell = new THREE.SphereGeometry(nest.egg / 2, 7, 5);
+    shell.scale(1, 0.74, 0.74);
+    const eggMaterial = new THREE.MeshLambertMaterial({ color: EGG_COLOR });
+    disposables.push(shell, eggMaterial);
+    const egg = new THREE.Mesh(shell, eggMaterial);
+    egg.position.set(nest.x, nest.base + nest.egg * 0.37, nest.z);
+    egg.rotation.y = 0.6;
+    group.add(egg);
+  }
+
+  return createMarker(
+    landmark.name,
+    [leaves, crownTop],
+    new THREE.Vector3(landmark.x, landmark.height, landmark.z),
+    disposables,
+    overlay,
+  );
+}
 
 const AREA_ORDER = 1;
 const PATCH_ORDER = 2;

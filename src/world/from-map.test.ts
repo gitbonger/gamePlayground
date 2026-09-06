@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
-import { penthouseOf, terraceOf, type Landmark } from './layout';
+import { nestOn, penthouseOf, terraceOf, type Landmark } from './layout';
 import { indexStreets, type MapData, type Rail, type Road } from './streets';
 import { footprintSamples, type Area } from './areas';
 import { distanceToEdges, pointInPolygon } from './polygon';
@@ -334,6 +334,20 @@ describe('describing a thing into the world', () => {
     margin: 7,
   };
 
+  // A tree of the same kind: written down, put in place first, and giving the
+  // level something particular to name. Its top is a floor.
+  const TREE: Landmark = {
+    name: 'The Home Tree',
+    x: 40,
+    z: 40,
+    width: 12,
+    depth: 12,
+    height: 20,
+    margin: 8,
+    canopy: { trunk: 1.5, skirt: 7 },
+    nest: { along: -1.6, across: 0.75 },
+  };
+
   const withLandmark = (landmark: Landmark) =>
     buildLayoutFromMap(mapOf(BLOCK), { ...defaultMapWorldOptions, landmarks: [landmark] });
 
@@ -384,6 +398,44 @@ describe('describing a thing into the world', () => {
     // penthouse, which is the whole difference between the two halves.
     expect(field.heightAt(terrace.x, terrace.z)).toBeCloseTo(TOWER.height, 6);
     expect(field.heightAt(penthouse.x, penthouse.z)).toBeCloseTo(penthouse.top, 6);
+  });
+
+  it('holds a tree up on its trunk, leaving the air under the crown open', () => {
+    // A tree is not a block of flats with leaves on. It is solid where a tree
+    // is solid -- the crown, and the trunk holding it up -- and the space
+    // between the two is somewhere to fly, which is half of what makes flying
+    // through a park worth doing.
+    const field = createColliderField(withLandmark(TREE).boxes);
+    const under = (TREE.height - TREE.canopy!.skirt) / 2;
+
+    // Out from the trunk and below the crown: clean through.
+    expect(
+      field.sweep(
+        vec(TREE.x - 60, under, TREE.z + 4),
+        vec(TREE.x + 60, under, TREE.z + 4),
+        0.22,
+      ),
+    ).toBeNull();
+    // Straight at the trunk, at the same height: stopped.
+    expect(
+      field.sweep(vec(TREE.x - 60, under, TREE.z), vec(TREE.x + 60, under, TREE.z), 0.22),
+    ).not.toBeNull();
+    // And the crown is a floor at the height it was described at, all the way
+    // out to its edge, which is what "the top is a walkable platform" means.
+    expect(field.heightAt(TREE.x, TREE.z)).toBeCloseTo(TREE.height, 6);
+    expect(field.heightAt(TREE.x + TREE.width / 2 - 0.5, TREE.z)).toBeCloseTo(TREE.height, 6);
+    // Nothing of it beyond its own footprint.
+    expect(field.heightAt(TREE.x + TREE.width / 2 + 1, TREE.z)).toBeLessThan(TREE.height);
+  });
+
+  it('leaves the nest to be walked over rather than into', () => {
+    // The nest is what the level is about and it is deliberately not solid: a
+    // bird that bumped into it would be the game arguing with the player at
+    // the one moment it should be getting out of the way.
+    const nest = nestOn(TREE)!;
+    const field = createColliderField(withLandmark(TREE).boxes);
+    expect(nest.base).toBe(TREE.height);
+    expect(field.heightAt(nest.x, nest.z)).toBeCloseTo(TREE.height, 6);
   });
 
   it('turns the terrace with the building', () => {

@@ -121,6 +121,32 @@ export const PIGEON_MORPHS: readonly PigeonMorph[] = [
 ];
 
 /**
+ * The pink pigeon, which is a real bird and not a recoloured one.
+ *
+ * Nesoenas mayeri, of Mauritius: pale rose over the breast and head, a brown
+ * back, and the dark rufous tail that tells it apart at any distance. Kept
+ * out of `PIGEON_MORPHS` on purpose -- the flock draws from that list, and
+ * she is somebody rather than one of the crowd. A city with thirty pink
+ * pigeons in it has no pink pigeon in it.
+ */
+export const PINK_MORPH: PigeonMorph = {
+  body: 0xe3b9b4,
+  wing: 0xa8867a,
+  bar: 0x8a6a5e,
+  head: 0xf0d3cd,
+  neck: 0xc99a92,
+  rump: 0x8a4a34,
+  beak: 0xd9a892,
+  leg: 0xc4626b,
+};
+
+/**
+ * Every morph a named bird may wear: the feral set, then the ones that are
+ * somebody. Indexed by the levels, so the order of it is written down.
+ */
+export const CHARACTER_MORPHS: readonly PigeonMorph[] = [...PIGEON_MORPHS, PINK_MORPH];
+
+/**
  * How far the body sits above the feet when standing, in metres.
  *
  * The simulation tracks a point at the bird's centre and stops it at ground

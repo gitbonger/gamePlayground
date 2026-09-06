@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultWorldOptions, generateCityLayout } from './layout';
+import { defaultWorldOptions, generateCityLayout, nestOn, type Landmark } from './layout';
 import { createColliderField } from '../sim/collision';
 import { createBird, defaultParams, neutralControls, step } from '../sim/flight';
 import { vec } from '../sim/math3';
@@ -123,5 +123,48 @@ describe('the trees it plants', () => {
       ),
     );
     expect(sorts.size).toBeGreaterThan(1);
+  });
+});
+
+describe('a nest on a described thing', () => {
+  const TREE: Landmark = {
+    name: 'The Home Tree',
+    x: 100,
+    z: -40,
+    width: 11,
+    depth: 11,
+    height: 18,
+    canopy: { trunk: 1.5, skirt: 7 },
+    nest: { along: -1.6, across: 0.75 },
+  };
+
+  it('sits on the flat top, at the size a pigeon builds one', () => {
+    const nest = nestOn(TREE)!;
+    // On the top rather than at some height of its own: whatever the tree is
+    // made, the nest is on it.
+    expect(nest.base).toBe(TREE.height);
+    // A handspan across, holding an egg 39 mm long. Both are the real bird's
+    // measurements, and a nest that had quietly grown to the size of a bath
+    // would still look fine from the air, which is why it is asserted here.
+    expect(nest.radius).toBeGreaterThan(0.1);
+    expect(nest.radius).toBeLessThan(0.2);
+    expect(nest.egg).toBeCloseTo(0.039, 6);
+  });
+
+  it('turns with the thing it is on', () => {
+    // Described along and across the tree, like everything else that stands
+    // on a landmark, so turning the tree carries the nest round with it
+    // instead of leaving it hanging over the same patch of the world.
+    const spun = nestOn({ ...TREE, yaw: Math.PI / 2 })!;
+    const flat = nestOn(TREE)!;
+    // A quarter turn takes the offset from -x to +z, in the collider's
+    // convention, and leaves the distance from the middle alone.
+    expect(spun.x - TREE.x).toBeCloseTo(flat.z - TREE.z, 9);
+    expect(spun.z - TREE.z).toBeCloseTo(TREE.x - flat.x, 9);
+  });
+
+  it('is only there when it was described', () => {
+    const { nest: _nest, ...bare } = TREE;
+    expect(nestOn(bare)).toBeNull();
   });
 });

@@ -26,7 +26,7 @@ import { createInput } from './input';
 import { createRunTracker } from './run';
 import { createDebugGui } from './debug-gui';
 import { createScene } from './render/scene';
-import { createBirdRig, PIGEON_MORPHS, type WingPose } from './render/bird';
+import { CHARACTER_MORPHS, createBirdRig, PIGEON_MORPHS, type WingPose } from './render/bird';
 import { createFlock } from './flock';
 import { LEVELS, targetName, type Level, type LevelTarget } from './levels';
 import { LANDMARKS } from './landmarks';
@@ -389,11 +389,23 @@ const rebuildWind = () => {
  * Pointed at whatever the level is about, which is the direction a homing
  * pigeon leaves in and saves the player a search before they have started.
  */
-function releaseFor(spec: Level | undefined): { at: Vec3; heading: number } {
+function releaseFor(spec: Level | undefined): { at: Vec3; heading: number; perched: boolean } {
   const point = spec ? project(spec.start[0], spec.start[1], map.centre) : release;
   const floor = world.collider.heightAt(point.x, point.z);
   const marker = spec ? objective(targetName(spec)) : null;
   const aim = marker ? { x: marker.position.x, z: marker.position.z } : home;
+
+  // A perched level does not release the bird at all: it stands him on the
+  // thing the level is about, in the middle of it, which is where the arrow
+  // points and where anyone flying it in would have put their feet. The
+  // pigeon waiting there is a stride away, so the level is complete before
+  // the player has touched anything -- which is the whole idea of it.
+  const stood = spec?.begins === 'perched' ? standingSpot(spec) : null;
+  if (spec && marker && stood) {
+    const at = vec(marker.position.x, stood.at.y, marker.position.z);
+    return { at, heading: bearing(at, stood.at), perched: true };
+  }
+
   return {
     at: vec(
       point.x,
@@ -403,12 +415,36 @@ function releaseFor(spec: Level | undefined): { at: Vec3; heading: number } {
       point.z,
     ),
     heading: bearing(point, aim),
+    perched: false,
+  };
+}
+
+/**
+ * Put a bird on its feet where it already is, standing still.
+ *
+ * The residents are made this way and so is the hero of a perched level, and
+ * it has to be the same way for both: `meeting` asks whether both birds are
+ * perched and on the same solid, so a hero who was merely at the right
+ * coordinates with no ending on him would be a hero standing next to somebody
+ * he can never say hello to.
+ */
+function standStill(state: BirdState): void {
+  state.velocity = vec(0, 0, 0);
+  state.restingOn = null;
+  state.ending = {
+    kind: 'landed',
+    cause: null,
+    speed: 0,
+    sink: 0,
+    bank: 0,
+    position: state.position,
   };
 }
 
 let start = releaseFor(LEVELS[level]);
 
-let bird: BirdState = createBird(start.at, SPAWN_SPEED, start.heading);
+let bird: BirdState = createBird(start.at, start.perched ? 0 : SPAWN_SPEED, start.heading);
+if (start.perched) standStill(bird);
 let telemetry: FlightTelemetry = step(bird, input.controls, flightParams, TICK);
 /** What the bird did on its feet this tick, when it was on them. */
 let onFoot: WalkTelemetry = { grounded: false, travelled: 0, blocked: false };
@@ -506,17 +542,9 @@ for (const spec of LEVELS) {
   if (!stood) continue;
 
   const state = createBird(stood.at, 0, stood.facing);
-  state.velocity = vec(0, 0, 0);
+  standStill(state);
   state.restingOn = stood.on;
-  state.ending = {
-    kind: 'landed',
-    cause: null,
-    speed: 0,
-    sink: 0,
-    bank: 0,
-    position: state.position,
-  };
-  const rig = createBirdRig(PIGEON_MORPHS[spec.person.morph % PIGEON_MORPHS.length]);
+  const rig = createBirdRig(CHARACTER_MORPHS[spec.person.morph % CHARACTER_MORPHS.length]);
   scene.add(rig.object);
   residents.push({ state, rig, completes: spec.name, glowing: 0 });
 }
@@ -578,7 +606,8 @@ let previousPosition: Vec3 = { ...bird.position };
 let previousOrientation: Quat = { ...bird.orientation };
 
 function respawn() {
-  bird = createBird(start.at, SPAWN_SPEED, start.heading);
+  bird = createBird(start.at, start.perched ? 0 : SPAWN_SPEED, start.heading);
+  if (start.perched) standStill(bird);
   previousPosition = { ...bird.position };
   previousOrientation = { ...bird.orientation };
   run.reset(bird);

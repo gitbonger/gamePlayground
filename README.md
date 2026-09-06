@@ -189,6 +189,30 @@ target means being recoloured several times a second. It is not in the
 building list at all, which is what keeps it out of the instanced crowd and
 off the roof pass without either of them having to remember to skip it.
 
+**The home tree is a landmark that is not a building.** A described thing has
+always been a box with a flat top; the tree is the same box with a trunk under
+it. Eleven metres across and eighteen up, in a small park east of the loft, and
+the top of it is a floor — the platform the story starts on, the thing the
+arrow points at, and the top of its collision box, so the bird's feet land on
+the surface it can see. What is solid is a crown seven metres deep and the
+trunk holding it up, and nothing in between: the space under a canopy is
+somewhere to fly, which one box from the ground would have walled off.
+
+It also gets the one exemption in the siting rules. Every other described
+thing has to stand clear of the carriageway *and* the pavement, because a
+building over a pavement is a building in the road. A tree may reach out over
+a street — that is what a street tree does — so what is tested against the
+kerb is the trunk, and the crown is tested against a different claim instead:
+that its underside clears four metres, which is the legal height of a lorry.
+Overhanging a pavement is a plane tree; overhanging it at head height is a
+tree growing through the top deck of a bus.
+
+There is a nest on the platform with one egg in it, both built at the size the
+real bird builds them — a handspan across, 39 mm by 29 — rather than at a size
+that would read from the air. Finding the tree is the marker's job. Neither is
+solid: a nest you could walk into would be the game arguing with the player at
+the one moment it should be getting out of the way.
+
 **The Loft has a shape rather than a size.** It is a ninety by forty-two metre
 block of flats — about three times the plan of anything around it, at the same
 thirty-one metres to the top — and half of it is one storey higher than the
@@ -276,7 +300,17 @@ Both halves of the marker are arithmetic and tested as such: what the flash
 does across a second and across the fade band, and that the arrow's size stays
 proportional to range with a floor so it does not vanish underfoot.
 
-**Four of them.** *The Park* is a patch of concrete on open ground at midday:
+**Five of them, and the first is not a flight.** *Leaving* opens on the home
+tree at first light, with the hero already standing on the platform at the top
+of it: his mate beside their nest, one egg in it, and a conversation about
+going. It is complete on the tick it begins — he is a stride from her, which
+is the same rule that finishes every other level — so what the player does
+here is read, answer, and take off. That is a hack in one sense: a story beat
+told through the level-completion machinery rather than through anything of
+its own. It is not one in the sense that matters, since nothing downstream
+knows about it. The bird is standing, she is standing, they are within reach.
+
+*The Park* is a patch of concrete on open ground at midday:
 nothing to fly round, nothing that moves, and the whole approach visible from
 the start. *The Loft* is a planted roof terrace thirty-one metres up on a
 block of flats standing seven metres clear of the 16–24 m roofline around it,
@@ -318,7 +352,8 @@ level should have.
 written there means the same place for good — which is what makes a level
 something you can describe rather than something you have to build. Each one
 carries five things: a name, a point to be released at, an hour to fly it at,
-a thing to land on, and somebody standing on it.
+a thing to land on, and somebody standing on it — plus what it says when you
+get there.
 
 The hour is the interesting one. It is an instant rather than a light
 direction, and the sun is worked out from the real solar position over the
@@ -326,15 +361,23 @@ map's own coordinates at that moment — so choosing an hour is a lighting
 decision that cannot be wrong for the place. Changing level moves the sun, the
 sky's own disc and glare, and the shadow frustum, all from the one number.
 
-There is no story yet and no mechanism for one. These are landing problems in
-increasing order of difficulty, and whatever eventually joins them up can be
-another field on the same objects.
+The sixth thing is optional and only the first level has it: `begins:
+'perched'`, which stands the bird on the target instead of releasing it over
+the map. It is the whole of what makes a level a conversation rather than a
+flight, and there is a test whose job is to keep it that way — exactly one
+level may be won by starting it.
 
 **Every level's target is built and sitting there dark.** Which one is lit is
 the whole of switching between them, and so is a pigeon standing on each of
 them: they are stationary birds on wagons that were going to be drawn anyway,
 and a level nobody is playing having somebody waiting on it reads, correctly,
 as a city with pigeons in it.
+
+They wear the feral colour schemes the flock wears, picked by index — all but
+one. The pink pigeon on the home tree is Nesoenas mayeri, of Mauritius, and
+she is kept out of the list the flock draws from: a city with thirty pink
+pigeons in it has no pink pigeon in it. So there are two lists, the feral
+morphs and the characters, and the difference between them is a test.
 
 `playLevel` is the single path in. Starting the game, picking one out of the
 menu and flying on from the one before are all the same thing happening: light

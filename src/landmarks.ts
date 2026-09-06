@@ -102,4 +102,32 @@ export const WEST_PATCH: LandmarkSpec = {
   margin: 7,
 };
 
-export const LANDMARKS: readonly LandmarkSpec[] = [LOFT, PARK_PATCH, WEST_PATCH];
+/**
+ * The home tree: where the hero and his mate nest, and where the story starts.
+ *
+ * A plane in a small park, grown far past anything else in it, with a crown
+ * broad and flat enough on top to be a floor. Eleven metres across and
+ * eighteen up -- so it clears the four-storey terraces around it, and so the
+ * platform is a place rather than a perch: room for two pigeons, a nest, and
+ * a walk between them.
+ *
+ * It is described rather than generated because a level names it. The margin
+ * keeps the park's own trees off it, which is what makes it read as the one
+ * big tree rather than as the tallest of a stand.
+ */
+export const HOME_TREE: LandmarkSpec = {
+  name: 'The Home Tree',
+  at: [47.493452, 19.085940],
+  width: 11,
+  depth: 11,
+  height: 18,
+  margin: 10,
+  canopy: { trunk: 1.5, skirt: 7 },
+  // Off to one side of the middle, which is where the arrow points and where
+  // a bird coming in puts its feet. Near enough that the nest, the pink one
+  // standing by it and whoever has just landed are all one group rather than
+  // three things scattered over an eleven-metre platform.
+  nest: { along: -1.6, across: 0.75 },
+};
+
+export const LANDMARKS: readonly LandmarkSpec[] = [HOME_TREE, LOFT, PARK_PATCH, WEST_PATCH];

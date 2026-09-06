@@ -83,6 +83,20 @@ export interface Planting {
 }
 
 /**
+ * What makes a landmark a tree instead of a building.
+ *
+ * The height is still the height of the flat top, so the platform, the
+ * marker and anything standing up there all work out the same way they do on
+ * a roof. This only says what is underneath it.
+ */
+export interface Canopy {
+  /** How thick the trunk is, in metres. */
+  trunk: number;
+  /** How far below the platform the crown reaches. */
+  skirt: number;
+}
+
+/**
  * A described thing, placed before the city is generated around it.
  *
  * Everything else in the world is worked out from the map: where the streets
@@ -117,6 +131,18 @@ export interface Landmark {
   yaw?: number;
   /** A taller part over one end, if it has one. */
   penthouse?: Penthouse;
+  /**
+   * Drawn as a tree rather than a building, if it has one.
+   *
+   * The flat top is still a flat top -- something to land on and walk about
+   * on -- but everything below it is a trunk and a crown. A tree this size is
+   * a described thing for the same reason the loft is: a level names it, so
+   * it has to be a particular tree in a particular place rather than
+   * whichever one the generator happened to put nearby.
+   */
+  canopy?: Canopy;
+  /** A nest on top, in metres along and across the flat top. */
+  nest?: { along: number; across: number };
   /** What is planted on the terrace, if anything. */
   planting?: Planting;
   /** Anybody standing on the terrace. */
@@ -312,6 +338,51 @@ export function plantTerrace(landmark: Landmark): Bush[] {
     }
   }
   return bushes;
+}
+
+/**
+ * A nest on a landmark's flat top, in world coordinates.
+ *
+ * A saucer of sticks with one egg in it. Small enough to walk round and not
+ * solid: it is the thing the level is about, so bumping into it would be the
+ * game arguing with the player at the one moment it should be getting out of
+ * the way.
+ */
+export interface Nest {
+  x: number;
+  z: number;
+  /** How high the sticks stand, which is the top of whatever it is on. */
+  base: number;
+  /** Across the rim, in metres. */
+  radius: number;
+  /** How big the egg in it is, along its long axis. */
+  egg: number;
+}
+
+/**
+ * How wide a pigeon's nest is built, and how big the egg in it is.
+ *
+ * Both measured off the real bird rather than chosen to read well: a feral
+ * pigeon's nest is a flimsy platform of stems about a handspan across, and
+ * the egg is 39 mm by 29. Small, and deliberately left small -- a nest scaled
+ * up until it was obvious from the air would be a prop, and the platform it
+ * is on is what you are meant to see from the air.
+ */
+const NEST_RADIUS = 0.13;
+const EGG_LENGTH = 0.039;
+
+/**
+ * The nest on a landmark, if it has one.
+ *
+ * Placed along and across the thing it is on, like everything else that
+ * stands on a landmark, so that turning the landmark turns the nest with it.
+ */
+export function nestOn(landmark: Landmark): Nest | null {
+  const spot = landmark.nest;
+  if (!spot || landmark.height <= 0) return null;
+
+  const at = pointOn(landmark, spot.along, spot.across);
+  return { x: at.x, z: at.z, base: landmark.height, radius: NEST_RADIUS, egg: EGG_LENGTH };
 }
 
 /**
