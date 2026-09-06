@@ -837,10 +837,23 @@ export function buildLayoutFromMap(
     const routes: { line: Rail; over: Rail[]; run: number }[] = [];
     for (const rail of map.rails ?? []) {
       if (rail.kind !== runs || taken.has(rail)) continue;
-      // Traced around what is already spoken for, rather than into it: a
-      // route that ran into a claimed way used to be thrown away whole, which
-      // left most of the network with nothing on it.
-      const route = traceRoute(network, rail, taken);
+      // Traced through what is already spoken for, not around it.
+      //
+      // `taken` says which rails a route has already been *seeded* from, so
+      // that twenty trams are not twenty copies of one line. It used to say
+      // where a route may not *go* as well, and those are different
+      // questions: a route traced around a claimed way stops at it, and a
+      // route that stops is a tram that turns round. On this map that put
+      // four reversals within a hundred and fifty metres of the petrol
+      // station, at junctions where the way ahead leaves at one to nine
+      // degrees -- straight on, in the middle of a street, blocked by nothing
+      // but our own ledger.
+      //
+      // So routes overlap now, and trams share track, which is what trams do.
+      // They pass through each other where they meet; nothing here models a
+      // collision, and a tram reversing in a street looks far worse than two
+      // of them occupying it.
+      const route = traceRoute(network, rail);
       const run = lineLength(route.points);
       if (run < Math.max(want.minRoute, length * 2)) continue;
       // Claimed as they are found, so a route is only offered once.

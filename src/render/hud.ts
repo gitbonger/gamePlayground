@@ -15,6 +15,8 @@ export interface Hud {
     fps: number,
     /** What the story has to say, or null. */
     note: string | null,
+    /** Where the bird is, in degrees. */
+    where: { latitude: number; longitude: number },
   ): void;
   dispose(): void;
 }
@@ -37,6 +39,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
       </div>
     </div>
     <div class="hud-warning" data-field="warning"></div>
+    <div class="hud-where" data-field="where"></div>
     <div class="hud-fps"><span data-field="fps">0</span> fps</div>
     <div class="hud-credit" data-field="credit"></div>
   `;
@@ -52,6 +55,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
   const staminaEl = field('stamina');
   const warningEl = field('warning');
   const fpsEl = field('fps');
+  const whereEl = field('where');
   // Map data licences generally require the credit to stay on screen.
   field('credit').textContent = credit;
 
@@ -61,6 +65,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     toGo: number,
     fps: number,
     note: string | null,
+    where: { latitude: number; longitude: number },
   ) {
     speedEl.textContent = speedText(telemetry.airspeed);
     altitudeEl.textContent = telemetry.altitude.toFixed(0);
@@ -93,6 +98,12 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
 
     homeEl.textContent = toGo.toFixed(0);
     homeEl.classList.toggle('positive', toGo < 40);
+
+    // Where the bird is, in the coordinates everything else in this game is
+    // written in. A development readout: it is here so that something seen
+    // from the air can be reported as a pair of numbers rather than as "over
+    // some trees near a junction", and it costs two lines of arithmetic.
+    whereEl.textContent = `${where.latitude.toFixed(6)}, ${where.longitude.toFixed(6)}`;
 
     fpsEl.textContent = fps.toFixed(0);
   }

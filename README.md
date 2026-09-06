@@ -1388,6 +1388,24 @@ Measured over the whole tram network, the change is small and in the right
 direction: 96 routes become 94, and the third-longest run grows from 3,491 m
 to 3,943 m. The same track, joined up in fewer, longer pieces.
 
+**And that was only half of it.** Trams went on turning round in the street,
+and the second cause had nothing to do with angles. `taken` — the set that
+stops twenty trams being twenty copies of one line — was doing two jobs: which
+rails a route may be *seeded* from, and which rails it may *go through*. Those
+are different questions. A route traced around a claimed way stops at it, and
+a route that stops is a tram that turns round. Four of the five route ends
+within a hundred and fifty metres of the petrol station were of this kind, at
+junctions where the way ahead leaves at **one to nine degrees** — straight on,
+in the middle of a street, blocked by nothing but our own ledger.
+
+Routes overlap now and trams share track, which is what trams do. The
+difference is worth the numbers: routes over 320 m go from 24 to 40, the
+longest run from 5,628 m to 8,820 m, and of the sixty ends of the thirty
+routes kept, fifty-six are places where no other track joins at all — real
+buffer stops rather than accounting. They pass through each other where they
+meet; nothing here models a collision yet, and a tram reversing in a street
+looks far worse than two of them sharing it.
+
 On the real network that turns 255 m of siding into a **3,687 m** run, from
 one side of the map to the other and back, against the 389 m the goods train
 has. A train that leaves has to be told to (`runsOut`), because following the

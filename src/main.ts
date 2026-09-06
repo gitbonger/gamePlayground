@@ -96,7 +96,7 @@ import {
   type WalkControls,
   type WalkTelemetry,
 } from './sim/walk';
-import { bearing, distance, project } from './world/geo';
+import { bearing, distance, project, unproject } from './world/geo';
 import type { MapData } from './world/streets';
 import homeMap from './world/data/home.json';
 import { createWind, defaultWindParams } from './sim/wind';
@@ -1403,6 +1403,7 @@ function frame(nowMs: number) {
     distance(interpolatedState.position, home),
     smoothedFps,
     banner(),
+    unproject(interpolatedState.position, map.centre),
   );
   renderer.render(scene, camera);
   // Then the arrows, on a fresh depth buffer so the world cannot cover them.

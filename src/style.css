@@ -150,6 +150,17 @@ body {
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6);
 }
 
+/* Where the bird is, for reporting what was seen there. */
+.hud-where {
+  position: absolute;
+  right: 16px;
+  bottom: 46px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+}
+
 .hud-fps {
   position: absolute;
   right: 16px;

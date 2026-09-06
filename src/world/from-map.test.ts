@@ -309,6 +309,51 @@ describe('building a perimeter block', () => {
  * Loft" and mean a particular building of a particular shape, instead of
  * whichever house happened to come out nearest to a coordinate.
  */
+describe('filling the network with trams', () => {
+  /** A trunk in two pieces, with a branch merging into it at forty-five degrees. */
+  const tram = (points: [number, number][]): Rail => ({ kind: 'tram', width: 6, points });
+  const TRUNK_A = tram([[0, 0], [300, 0]]);
+  const TRUNK_B = tram([[300, 0], [600, 0]]);
+  const BRANCH = tram([[100, 200], [300, 0]]);
+
+  const filled = () =>
+    buildLayoutFromMap(mapOf(BLOCK, [], [TRUNK_A, TRUNK_B, BRANCH]), {
+      ...defaultMapWorldOptions,
+      fill: [{ stock: 'tram', cars: 2, speed: 10, minRoute: 320, most: 4 }],
+    }).trains ?? [];
+
+  it('runs a second tram through the line the first one is on', () => {
+    // The bug this is here for. `taken` says which rails a route has already
+    // been *seeded* from, so that twenty trams are not twenty copies of one
+    // line. It used to say where a route may not *go* as well, and those are
+    // different questions: the branch, traced around the claimed trunk, was
+    // 283 m of its own and nothing else -- under the minimum, so no tram at
+    // all, and where a route does survive being cut short like that, the tram
+    // turns round in the middle of a street at a junction where the way ahead
+    // is dead straight.
+    const trains = filled();
+    expect(trains.length).toBe(2);
+
+    // Both of them on a run longer than any single way: the first down the
+    // trunk, the second up the branch and *through* the trunk the first is
+    // already on.
+    for (const train of trains) {
+      expect(lineLength(train.line.points), `${train.line.points.length} points`).toBeGreaterThan(
+        500,
+      );
+    }
+  });
+
+  it('still seeds each tram from a different piece of track', () => {
+    // Routes may overlap; the trams that run them must not all be the same
+    // tram. Four allowed, three ways to seed from, two of which trace out the
+    // same trunk -- so what stops a third is that its ways are spoken for.
+    const trains = filled();
+    const starts = trains.map((train) => train.line.points[0]!.join(','));
+    expect(new Set(starts).size).toBe(starts.length);
+  });
+});
+
 describe('a park that is a cemetery', () => {
   /**
    * A park over the whole block, so there are enough plantings in it for one

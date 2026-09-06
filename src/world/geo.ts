@@ -34,6 +34,28 @@ export function project(
   };
 }
 
+/**
+ * The other way: a point on the map, back into degrees.
+ *
+ * The inverse of `project` and written beside it for that reason -- the two
+ * share one idea of how many metres a degree is here, and a second copy of
+ * that arithmetic somewhere else would be a second copy to get wrong.
+ *
+ * It exists so the game can say where it is. A bug seen from the air is worth
+ * nothing as "over some trees near a junction" and everything as a pair of
+ * numbers that can be pasted back into a level or a landmark.
+ */
+export function unproject(
+  point: Point,
+  centre: readonly [number, number],
+): { latitude: number; longitude: number } {
+  const perDegree = metresPerDegree(centre[0]);
+  return {
+    latitude: centre[0] - point.z / perDegree.lat,
+    longitude: centre[1] + point.x / perDegree.lon,
+  };
+}
+
 /** Compass heading from `from` to `to`, in radians clockwise from north. */
 export const bearing = (from: Point, to: Point): number =>
   Math.atan2(to.x - from.x, -(to.z - from.z));
