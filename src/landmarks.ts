@@ -118,20 +118,21 @@ export const WEST_PATCH: LandmarkSpec = {
 export const HOME_TREE: LandmarkSpec = {
   name: 'The Home Tree',
   at: [47.493452, 19.085940],
-  // The width is the *platform*, not the tree: five and a half metres of flat
-  // crest, which is room for two pigeons, a nest and a walk between them and
-  // not much more. The crown itself still reaches eleven metres across --
-  // `spread` says so -- and hangs out past the crest all the way round.
-  width: 5.5,
-  depth: 5.5,
+  // The width is the *platform*, not the tree: two and three-quarter metres of
+  // flat crest, which holds the nest, the two of them, and no more than that.
+  // A treetop should feel like a perch rather than a roof. The crown itself
+  // still reaches eleven metres across -- `spread` says so -- and hangs out
+  // past the crest four times over, all the way round.
+  width: 2.75,
+  depth: 2.75,
   height: 18,
   margin: 10,
   canopy: { trunk: 1.5, skirt: 7, spread: 5.5 },
-  // Off to one side of the middle, which is where the arrow points and where
-  // a bird coming in puts its feet. Near enough that the nest, the pink one
-  // standing by it and whoever has just landed are all one group rather than
-  // three things scattered over an eleven-metre platform.
-  nest: { along: -1.6, across: 0.75 },
+  // Off to one side of the middle, with its rim well inside the edge: on a
+  // crest this size the nest, the pink one standing by it and whoever has
+  // just landed are one group whether you arrange them or not, and what
+  // actually needs arranging is that none of the three hangs over the drop.
+  nest: { along: -0.85, across: 0.3 },
 };
 
 export const LANDMARKS: readonly LandmarkSpec[] = [HOME_TREE, LOFT, PARK_PATCH, WEST_PATCH];

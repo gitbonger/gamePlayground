@@ -199,13 +199,19 @@ and nothing in between: the space under a canopy is somewhere to fly, which
 one box from the ground would have walled off.
 
 It carries two widths, and the difference between them is the shape of the
-tree. The landmark's own width is the **crest**: five and a half metres of
-flat top, which is room for two pigeons, a nest and a walk between them, and
-which is exactly what the collision box is. `spread` is where the leaves get
-to — eleven metres across, hanging out past the crest all the way round, drawn
-and not solid, like every other tree in the city. A crown that stopped at the
-crest would be a green table; a crest as wide as the crown would let a bird
-stand on the outermost leaf.
+tree. The landmark's own width is the **crest**: two and three-quarter metres
+of flat top, which holds the nest and the two of them and nothing else, and
+which is exactly what the collision box is. A treetop should feel like a
+perch, not a roof. `spread` is where the leaves get to — eleven metres across,
+four times the crest, hanging out past it all the way round, drawn and not
+solid like every other tree in the city. A crown that stopped at the crest
+would be a green table; a crest as wide as the crown would let a bird stand on
+the outermost leaf.
+
+A crest that small makes its own arithmetic: the nest is 78 cm across and a
+pigeon is 20, so where each of the three goes stops being decoration. Their
+places are tested rather than eyeballed — both birds and the whole rim of the
+nest, measured from the middle, inside the edge.
 
 It also gets the one exemption in the siting rules. Every other described
 thing has to stand clear of the carriageway *and* the pavement, because a
@@ -314,12 +320,16 @@ Both halves of the marker are arithmetic and tested as such: what the flash
 does across a second and across the fade band, and that the arrow's size stays
 proportional to range with a floor so it does not vanish underfoot.
 
-**Five of them, and the first is not a flight.** *Leaving* opens on the home
-tree at first light, with the hero already standing on the platform at the top
-of it: his mate beside their nest, one egg in it, and a conversation about
-going. It is complete on the tick it begins — he is a stride from her, which
+**Five of them, and the first is not a flight.** *Heading out* opens on the
+home tree at first light, with the hero already standing on the crest at the
+top of it: his mate beside their nest, one egg in it, and an errand to Teleki
+tér, which is a real market four hundred metres south and the reason he leaves
+at all. It is complete on the tick it begins — he is a stride from her, which
 is the same rule that finishes every other level — so what the player does
-here is read, answer, and take off. That is a hack in one sense: a story beat
+here is read, answer, and take off. He is stood where she stands, mirrored
+through the middle of the crest, rather than in the middle of it: the middle
+is simpler and, on a platform not much wider than the two of them, puts him on
+top of her. That is a hack in one sense: a story beat
 told through the level-completion machinery rather than through anything of
 its own. It is not one in the sense that matters, since nothing downstream
 knows about it. The bird is standing, she is standing, they are within reach.
@@ -434,15 +444,29 @@ put down.
 `src/dialogue.ts` is a tree, because a conversation is one: they say
 something, you pick from what you might say back, and what they say next
 depends on which you chose. One reply or several; a branch ends when there is
-nothing left to say. The script is a placeholder and the same at the end of
-every level — written as data, so that replacing it is writing different data,
-and carried on the level itself so that giving one its own conversation is
-changing one line.
+nothing left to say. It is written as data, so that replacing it is writing
+different data, and carried on the level itself so that giving one its own
+conversation is changing one line — which is what the first level does. The
+rest still share a placeholder.
+
+The opening conversation is also the first that goes anywhere: one branch
+agrees to the errand and ends on her word, the other offers to swap places, is
+turned down, and ends on his. Which is the shape the tree was built for and
+the first thing in the game to use it.
 
 An exchange keeps everything said, not only where it has got to. A
 conversation you can see one line of is one you have to remember rather than
 read, and the panel shows the whole of it: their line, your answer, their
 reply.
+
+**Each line is printed in the colour of whoever says it** — her pink, his
+blue, and the replies waiting to be spoken in his too, since they are his
+words. It is the same signal as the birds themselves, which is the point: no
+name in front of a line, and nothing to learn. The catch is that the panel is
+nearly black and one of the four street pigeons is *black*, so a colour too
+dark to read is lifted towards white until it reads — by however much it takes
+and no more, which keeps the hue and spends only the depth. A pale bird is
+printed exactly as it looks.
 
 Three keys do three things while you are standing there, and each of them
 does nothing rather than something wrong:
@@ -455,6 +479,10 @@ does nothing rather than something wrong:
   the flight model can see it, so answering a question by flying off is not
   available either.
 - **`Space` once the conversation is done** is what starts the next level.
+
+**The tuning panel starts hidden.** It is thirty numbers for whoever is
+working on the flight model, and for everyone else it is a wall of text over
+the corner of the sky. `H` brings it up and puts it away again.
 
 **Which level you are on is remembered**, in local storage, and anything else
 found there is treated as the beginning — a number from a build with more
@@ -2524,6 +2552,11 @@ npm test
   that — and it ends on your word when a reply has no answer. And every
   level's conversation opens with something and ends whichever way you take
   it, because a branch that never runs out is a level you can never leave.
+- **`src/render/dialogue.test.ts`** — the colour a spoken line is printed in:
+  a bird light enough to read is printed exactly as it looks, every bird in
+  the game comes out readable on a nearly-black card, and a lifted colour
+  keeps its hue and stops at readable rather than going on to white. The panel
+  around it is not tested, for the same reason the menu's markup is not.
 - **`src/render/menu.test.ts`** — which level a number key picks: counting
   from one, nothing at all while the menu is closed, nothing for a number that
   is not a level, and exactly as many working numbers as there are levels. The

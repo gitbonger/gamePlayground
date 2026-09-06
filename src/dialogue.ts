@@ -76,23 +76,23 @@ export function reply(exchange: Exchange, choice: number): Exchange {
  */
 /**
  * The first thing anyone says in the game: the mate on the home tree, the egg
- * under her, and the reason the hero is about to leave.
+ * under her, and the errand that is the reason he leaves at all.
  *
  * The level it belongs to is won the moment it starts, so this carries the
- * whole of it. Both branches end after one exchange, like the placeholder,
- * because the shape is right even when the words are real: she speaks, you
- * choose, she answers.
+ * whole of it. One branch agrees and ends; the other offers to swap places,
+ * is turned down, and ends on his word -- which is the first thing in the
+ * game that shows a reply can go somewhere rather than merely be chosen.
  */
-export const LEAVING: Turn = {
-  them: 'Go on, then. The egg and I will still be here.',
+export const HEADING_OUT: Turn = {
+  them: 'Could you get some food from Teleki tér?',
   you: [
+    { text: 'Yes, sure!', then: { them: 'See you!' } },
     {
-      text: "I'll be back before it hatches.",
-      then: { them: "You'd better be. Fly high, and keep the river on your left." },
-    },
-    {
-      text: "I don't want to go.",
-      then: { them: 'Nor do I want you to. Go anyway -- and come home.' },
+      text: 'I would watch the egg, while you go!',
+      then: {
+        them: "I'd rather stay",
+        you: [{ text: 'Okay.' }],
+      },
     },
   ],
 };

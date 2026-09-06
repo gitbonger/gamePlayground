@@ -113,8 +113,11 @@ export function createDebugGui(
 
   gui.add(actions, 'respawn').name('respawn (R)');
 
-  // H hides the panel for an unobstructed look at the world.
-  let visible = true;
+  // Hidden until asked for. It is a tuning panel for whoever is working on
+  // the flight model, and for everyone else it is a wall of numbers over the
+  // corner of the sky. H brings it up and puts it away again.
+  let visible = false;
+  gui.show(visible);
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.code !== 'KeyH') return;
     visible = !visible;

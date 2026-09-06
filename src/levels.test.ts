@@ -149,10 +149,16 @@ describe('what the levels aim at', () => {
     expect(leaving.begins).toBe('perched');
     expect(leaving.target).toEqual({ kind: 'landmark', name: HOME_TREE.name });
 
-    // The hero stands where the arrow points, which is the middle of the top.
+    // He stands where she stands, mirrored through the middle -- so the two
+    // of them are twice her offset apart, and that has to be inside a bird's
+    // reach or the opening level quietly becomes one you have to walk.
     const middle = { x: 0, z: 0, yaw: HOME_TREE.yaw ?? 0 };
     const her = pointOn(middle, leaving.person.along, leaving.person.across);
-    expect(Math.hypot(her.x, her.z)).toBeLessThan(MEET_RADIUS);
+    const him = pointOn(middle, -leaving.person.along, -leaving.person.across);
+    expect(Math.hypot(her.x - him.x, her.z - him.z)).toBeLessThan(MEET_RADIUS);
+    // And far enough apart to be two birds rather than one: a pigeon is about
+    // a fifth of a metre across.
+    expect(Math.hypot(her.x - him.x, her.z - him.z)).toBeGreaterThan(0.4);
   });
 
   it('stands the pink one beside her nest rather than in it', () => {
@@ -188,9 +194,29 @@ describe('what the levels aim at', () => {
     const canopy = HOME_TREE.canopy!;
     const crest = HOME_TREE.width / 2;
     expect(canopy.spread).toBeGreaterThan(crest * 1.5);
-    // And the crest still holds a nest, a bird, and the bird that lands on
-    // it: two metres of reach between the two of them, with the nest beside.
-    expect(HOME_TREE.width / 2).toBeGreaterThan(MEET_RADIUS);
+    // Small enough to be a perch rather than a roof: the crown is four times
+    // it across.
+    expect(canopy.spread / crest).toBeGreaterThan(3.5);
+  });
+
+  it('keeps everything standing on the crest clear of the drop', () => {
+    // The crest is not much wider than what stands on it, which is the point
+    // of it -- and which is why this has to be arithmetic rather than a look
+    // at a screenshot. Both birds and the whole rim of the nest, measured
+    // from the middle, inside the edge.
+    const leaving = LEVELS[0]!;
+    const here = { ...HOME_TREE, x: 0, z: 0 };
+    const crest = HOME_TREE.width / 2;
+    const nest = nestOn(here)!;
+    const her = pointOn(here, leaving.person.along, leaving.person.across);
+    const him = pointOn(here, -leaving.person.along, -leaving.person.across);
+
+    expect(Math.hypot(nest.x, nest.z) + nest.radius).toBeLessThan(crest);
+    for (const bird of [her, him]) {
+      // Half a pigeon's width off the edge, so it is standing on the crest
+      // rather than balanced on the lip of it.
+      expect(Math.hypot(bird.x, bird.z) + 0.1).toBeLessThan(crest);
+    }
   });
 
   it('keeps the pink pigeon out of the flock, and off every level but hers', () => {

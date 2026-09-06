@@ -26,12 +26,18 @@ import { createInput } from './input';
 import { createRunTracker } from './run';
 import { createDebugGui } from './debug-gui';
 import { createScene } from './render/scene';
-import { CHARACTER_MORPHS, createBirdRig, PIGEON_MORPHS, type WingPose } from './render/bird';
+import {
+  CHARACTER_MORPHS,
+  createBirdRig,
+  HERO_MORPH,
+  PIGEON_MORPHS,
+  type WingPose,
+} from './render/bird';
 import { createFlock } from './flock';
 import { LEVELS, targetName, type Level, type LevelTarget } from './levels';
 import { LANDMARKS } from './landmarks';
 import { begin, isOver, reply, type Exchange } from './dialogue';
-import { createDialoguePanel } from './render/dialogue';
+import { createDialoguePanel, speechColour } from './render/dialogue';
 import { loadProgress, saveProgress } from './progress';
 import { createLevelMenu } from './render/menu';
 import {
@@ -396,13 +402,20 @@ function releaseFor(spec: Level | undefined): { at: Vec3; heading: number; perch
   const aim = marker ? { x: marker.position.x, z: marker.position.z } : home;
 
   // A perched level does not release the bird at all: it stands him on the
-  // thing the level is about, in the middle of it, which is where the arrow
-  // points and where anyone flying it in would have put their feet. The
-  // pigeon waiting there is a stride away, so the level is complete before
-  // the player has touched anything -- which is the whole idea of it.
+  // thing the level is about, opposite whoever is waiting there -- her offset
+  // from the middle, mirrored. The middle would be simpler and is wrong: on a
+  // platform not much wider than the two of them it puts him on top of her.
+  // Mirrored, they face each other across it, and the level is complete
+  // before the player has touched anything, which is the whole idea of it.
   const stood = spec?.begins === 'perched' ? standingSpot(spec) : null;
+  const described = spec ? LANDMARKS.find((l) => l.name === spec.target.name) : null;
   if (spec && marker && stood) {
-    const at = vec(marker.position.x, stood.at.y, marker.position.z);
+    const across = pointOn(
+      { x: marker.position.x, z: marker.position.z, yaw: described?.yaw ?? 0 },
+      -spec.person.along,
+      -spec.person.across,
+    );
+    const at = vec(across.x, stood.at.y, across.z);
     return { at, heading: bearing(at, stood.at), perched: true };
   }
 
@@ -498,6 +511,8 @@ interface Resident {
   rig: ReturnType<typeof createBirdRig>;
   /** The level walking up to it completes. */
   completes: string;
+  /** The colour its words are printed in: its own, made readable. */
+  voice: string;
   /** How red it is being washed this frame, 0 to 1. */
   glowing: number;
 }
@@ -544,9 +559,16 @@ for (const spec of LEVELS) {
   const state = createBird(stood.at, 0, stood.facing);
   standStill(state);
   state.restingOn = stood.on;
-  const rig = createBirdRig(CHARACTER_MORPHS[spec.person.morph % CHARACTER_MORPHS.length]);
+  const morph = CHARACTER_MORPHS[spec.person.morph % CHARACTER_MORPHS.length]!;
+  const rig = createBirdRig(morph);
   scene.add(rig.object);
-  residents.push({ state, rig, completes: spec.name, glowing: 0 });
+  residents.push({
+    state,
+    rig,
+    completes: spec.name,
+    voice: speechColour(morph.body),
+    glowing: 0,
+  });
 }
 
 /**
@@ -654,6 +676,8 @@ createDebugGui(flightParams, cameraParams, windParams, pictureParams, {
 
 const menu = createLevelMenu(overlay, LEVELS);
 const talkPanel = createDialoguePanel(overlay);
+/** The hero's own colour, which is what his half of a conversation is set in. */
+const hero = speechColour(HERO_MORPH.body);
 // The level being flown is the one remembered, applied through the same path
 // everything else uses rather than by having been set up that way.
 playLevel(level);
@@ -1004,7 +1028,7 @@ function frame(nowMs: number) {
       near[index] ? { ...train, vehicles: drawnVehicles[index]! } : train,
     ),
   );
-  talkPanel.show(talkingTo ? talk : null);
+  talkPanel.show(talkingTo ? talk : null, talkingTo ? { them: talkingTo.voice, you: hero } : undefined);
   world.updateSmoke(allPuffs, camera.quaternion);
   rig.update(interpolatedState, wings, frameTime);
 

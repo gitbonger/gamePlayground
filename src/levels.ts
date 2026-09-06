@@ -11,7 +11,7 @@
  * joins them up can be different data in the same shape.
  */
 
-import { GREETING, LEAVING, type Turn } from './dialogue';
+import { GREETING, HEADING_OUT, type Turn } from './dialogue';
 import { HOME_TREE, LOFT, PARK_PATCH, WEST_PATCH } from './landmarks';
 
 /**
@@ -110,7 +110,7 @@ export const LEVELS: readonly Level[] = [
     // with his mate and their egg, leaving. It is won on the instant it opens
     // -- he is already standing next to her -- so what the player does here
     // is read, answer, and take off.
-    name: 'Leaving',
+    name: 'Heading out',
     // The tree itself. Unused for a perched start, which stands him on the
     // platform, but written down because a level without a place is not one.
     start: [47.493452, 19.085940],
@@ -120,8 +120,8 @@ export const LEVELS: readonly Level[] = [
     target: { kind: 'landmark', name: HOME_TREE.name },
     // The pink one, and the only bird in the game wearing her colours. She
     // stands beside the nest rather than on it.
-    person: { morph: 4, along: -1.05, across: 0.5 },
-    dialogue: LEAVING,
+    person: { morph: 4, along: -0.4, across: 0.08 },
+    dialogue: HEADING_OUT,
     begins: 'perched',
   },
   {
