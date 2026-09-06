@@ -540,9 +540,9 @@ describe('drawing the smoke', () => {
       { smoke: 64 },
     );
 
-  /** Puffs of a given age, all at the same spot. */
-  const aged = (ages: number[]): Puff[] =>
-    ages.map((age) => ({ x: 0, y: 20, z: 0, vx: 0, vy: 0, vz: 0, age, life: 10, seed: 0.5 }));
+  /** Puffs that have risen a given distance, all at the same spot. */
+  const aged = (risen: number[]): Puff[] =>
+    risen.map((r) => ({ x: 0, y: 20, z: 0, risen: r, seed: 0.5 }));
 
   const smokeMesh = (world: ReturnType<typeof buildWorld>) => {
     let found: any = null;
@@ -561,12 +561,12 @@ describe('drawing the smoke', () => {
     const mesh = smokeMesh(world);
     const quiet = new THREE.Quaternion();
 
-    world.updateSmoke(aged([0.5, 3, 6, 9]), quiet);
+    world.updateSmoke(aged([1.5, 8, 15, 22]), quiet);
 
     const fade = mesh.geometry.getAttribute('puffFade');
     const values = [0, 1, 2, 3].map((i) => fade.getX(i));
     expect(values.every((v) => v > 0 && v < 1)).toBe(true);
-    // Thinning as it ages, every step of the way.
+    // Thinning as it climbs, every step of the way.
     for (let i = 1; i < values.length; i += 1) {
       expect(values[i]!, `puff ${i}`).toBeLessThan(values[i - 1]!);
     }
@@ -576,7 +576,7 @@ describe('drawing the smoke', () => {
   it('draws them paler and larger as they go', () => {
     const world = build();
     const mesh = smokeMesh(world);
-    world.updateSmoke(aged([0.5, 8]), new THREE.Quaternion());
+    world.updateSmoke(aged([1.5, 21]), new THREE.Quaternion());
 
     const colour = mesh.instanceColor;
     // Soot at the stack, a grey haze by the end.
@@ -594,7 +594,7 @@ describe('drawing the smoke', () => {
   it('leaves the dead ones out of the draw entirely', () => {
     const world = build();
     const mesh = smokeMesh(world);
-    world.updateSmoke(aged([1, 2, 3]).concat(aged([-1, -1])), new THREE.Quaternion());
+    world.updateSmoke(aged([2, 6, 10]).concat(aged([-1, -1])), new THREE.Quaternion());
     expect(mesh.count).toBe(3);
     world.dispose();
   });

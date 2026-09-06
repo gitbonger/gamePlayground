@@ -1,240 +1,159 @@
 import { describe, expect, it } from 'vitest';
-import {
-  createSmoke,
-  defaultSmokeOptions,
-  puffOpacity,
-  puffRadius,
-  type Puff,
-} from './smoke';
+import { createSmoke, defaultSmokeOptions, puffOpacity, puffRadius, type Puff } from './smoke';
 
-const still = () => ({ x: 0, y: 0, z: 0 });
-const nowhere = { x: 0, y: 0, z: 0 };
+const calm = { x: 0, y: 0, z: 0 };
 const stack = { x: 0, y: 4, z: 0 };
 const DT = 1 / 120;
 
-/** Run the plume for `seconds` out of a stationary stack in still air. */
-function burn(seconds: number, air = still) {
+/** Run the plume for `seconds` out of a stationary stack, exactly. */
+function burn(seconds: number, wind = calm, from = stack) {
   const smoke = createSmoke();
-  for (let t = 0; t < seconds; t += DT) smoke.update(DT, stack, nowhere, air);
+  for (let i = 0; i < Math.round(seconds * 120); i += 1) smoke.update(DT, from, wind);
   return smoke;
 }
 
-const live = (smoke: { puffs: readonly Puff[] }) => smoke.puffs.filter((p) => p.age >= 0);
+/** The puffs that are actually out. */
+const out = (smoke: { puffs: readonly Puff[] }) => smoke.puffs.filter((p) => p.risen >= 0);
 
-describe('smoke', () => {
+describe('a plume of exhaust', () => {
   it('emits at the rate asked for, whatever the tick length', () => {
-    // At 55 a second and a 120 Hz tick, less than one is due each time: the
-    // fraction has to carry over or the plume comes out at nothing a second.
-    for (const dt of [1 / 120, 1 / 60, 1 / 30]) {
-      const smoke = createSmoke();
-      for (let t = 0; t < 2; t += dt) smoke.update(dt, stack, nowhere, still);
-      expect(live(smoke).length, `dt ${dt}`).toBeGreaterThan(defaultSmokeOptions.rate * 2 * 0.9);
-    }
+    // Ten seconds is ten puffs taken a step at a time or a second at a time.
+    // At one a second and a 120 Hz tick, every single step owes less than a
+    // whole puff -- so a version that dropped the fraction instead of
+    // carrying it would emit nothing at all, for ever.
+    const fine = burn(10);
+    const coarse = createSmoke();
+    for (let t = 0; t < 10; t += 1) coarse.update(1, stack, calm);
+
+    expect(coarse.living).toBe(10);
+    // Within one, the last of them being a rounding error away from due.
+    expect(fine.living).toBeGreaterThanOrEqual(9);
+    expect(fine.living).toBeLessThanOrEqual(10);
   });
 
-  it('settles at as many puffs as fit in one lifetime', () => {
-    // Rate times life, give or take the spread on the lifetimes.
-    const smoke = burn(20);
-    const expected = defaultSmokeOptions.rate * defaultSmokeOptions.life;
-    expect(live(smoke).length).toBeGreaterThan(expected * 0.75);
-    expect(live(smoke).length).toBeLessThan(expected * 1.25);
+  it('settles at as many as fit in one climb, rather than growing for ever', () => {
+    // A puff lasts as long as it takes to reach the top, so the plume settles
+    // at one for each second of that and stays there however long it runs.
+    const climbing = defaultSmokeOptions.reach / defaultSmokeOptions.climb;
+    const settled = burn(60).living;
+    expect(settled).toBeGreaterThan(climbing - 1);
+    expect(settled).toBeLessThan(climbing + 1);
+    expect(burn(600).living).toBe(settled);
   });
 
   it('never outgrows the room it was given', () => {
-    // The ring is sized from the rate and the longest life; overrunning it
-    // would quietly overwrite puffs that are still burning.
-    const smoke = burn(60);
-    expect(live(smoke).length).toBeLessThanOrEqual(smoke.puffs.length);
+    const smoke = burn(600);
+    expect(smoke.living).toBeLessThanOrEqual(smoke.puffs.length);
   });
 
-  it('leaves the stack and climbs', () => {
+  it('leaves the stack and climbs at the speed it says', () => {
+    // The first puff is owed after a second, so at three seconds the oldest
+    // has been out for two of them.
     const smoke = burn(3);
-    const above = live(smoke).filter((p) => p.y > stack.y + 1).length;
-    expect(above).toBeGreaterThan(live(smoke).length / 3);
-    // And nothing has fallen back down through the chimney.
-    for (const puff of live(smoke)) expect(puff.y).toBeGreaterThan(stack.y - 0.5);
+    const highest = Math.max(...out(smoke).map((p) => p.y));
+    expect(highest - stack.y).toBeCloseTo(2 * defaultSmokeOptions.climb, 6);
   });
 
-  it('stops climbing as it cools, instead of rising forever', () => {
-    // Hot exhaust goes up hard and then stops going up. Without that a plume
-    // is a column standing on the engine rather than a cloud lying over it.
+  it('goes on climbing at the same speed rather than slowing', () => {
+    // The whole simplification: exhaust that has left the chimney is just
+    // air, and air does not remember how hard it was pushed.
     const smoke = burn(12);
-    const old = live(smoke).filter((p) => p.age > 6);
-    expect(old.length).toBeGreaterThan(0);
-    for (const puff of old) expect(puff.vy).toBeLessThan(defaultSmokeOptions.exhaust * 0.5);
+    const heights = out(smoke)
+      .map((p) => p.risen)
+      .sort((a, b) => a - b);
+    const gaps = heights.slice(1).map((h, i) => h - heights[i]!);
+    for (const gap of gaps) expect(gap).toBeCloseTo(defaultSmokeOptions.climb, 6);
   });
 
-  it('lies down and drifts with the wind', () => {
-    const blown = burn(10, () => ({ x: 9, y: 0, z: 0 }));
-    const calm = burn(10);
-    const reach = (s: typeof blown) => Math.max(...live(s).map((p) => Math.abs(p.x)));
-    expect(reach(blown)).toBeGreaterThan(reach(calm) + 20);
+  it('leans downwind, and further the higher it has got', () => {
+    const smoke = burn(12, { x: 4, y: 0, z: 0 });
+    const laid = out(smoke).sort((a, b) => a.risen - b.risen);
+    for (let i = 1; i < laid.length; i += 1) {
+      expect(laid[i]!.x, `puff ${i}`).toBeGreaterThan(laid[i - 1]!.x);
+    }
+    // Drifting at the wind's own speed, not some fraction of it.
+    const top = laid[laid.length - 1]!;
+    expect(top.x).toBeCloseTo((top.risen / defaultSmokeOptions.climb) * 4, 1);
   });
 
-  it('is never blown faster than the air blowing it', () => {
-    const smoke = burn(15, () => ({ x: 9, y: 0, z: 0 }));
-    for (const puff of live(smoke)) expect(puff.vx).toBeLessThanOrEqual(9 + 1e-9);
-  });
-
-  it('trails behind something that is moving', () => {
-    // Carried out of the stack at the machine's own speed, so the plume lies
-    // along the track rather than standing over the chimney.
+  it('is only ever lit where the stack is now', () => {
+    // The thing that makes a reversing train safe. A plume laid along the way
+    // the engine came is wrong the moment the engine turns round, and wrong
+    // again if it ever changes speed.
     const smoke = createSmoke();
-    for (let t = 0; t < 4; t += DT) smoke.update(DT, stack, { x: 12, y: 0, z: 0 }, still);
-    expect(Math.max(...live(smoke).map((p) => p.x))).toBeGreaterThan(15);
+    smoke.update(1, { ...stack, x: 0 }, calm);
+    smoke.update(1, { ...stack, x: 40 }, calm);
+    smoke.update(1, { ...stack, x: 0 }, calm);
+
+    const laid = out(smoke).map((p) => p.x).sort((a, b) => a - b);
+    expect(laid).toHaveLength(3);
+    expect(laid).toEqual([0, 0, 40]);
   });
 
   it('thins away rather than switching off', () => {
-    const puff: Puff = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, age: 0, life: 4, seed: 0 };
-    const seen: number[] = [];
-    // Sampled a frame at a time, because the rise is deliberately quick --
-    // exhaust is thick the moment it is out -- and a coarser sample would
-    // read that as a jump.
-    for (let age = 0; age <= 4; age += 1 / 60) {
-      puff.age = age;
-      seen.push(puffOpacity(puff));
+    const climbing = [0, 6, 15, 24, 29].map((risen) => ({ ...stack, risen, seed: 0 }));
+    const fading = climbing.map((p) => puffOpacity(p, defaultSmokeOptions));
+    for (let i = 2; i < fading.length; i += 1) {
+      expect(fading[i]!, `${i}`).toBeLessThan(fading[i - 1]!);
     }
+    expect(fading[fading.length - 1]!).toBeLessThan(0.02);
+  });
 
-    // It never quite reaches one, because it has started thinning before it
-    // has finished thickening. Thick enough is the point.
-    expect(Math.max(...seen)).toBeGreaterThan(0.85);
-    expect(seen[seen.length - 1]!).toBeCloseTo(0, 3);
-    for (let i = 1; i < seen.length; i += 1) {
-      expect(Math.abs(seen[i]! - seen[i - 1]!), `at sample ${i}`).toBeLessThan(0.08);
-    }
-
-    // And past its life it is gone, not negative.
-    puff.age = 5;
-    expect(puffOpacity(puff)).toBe(0);
+  it('eases in over the first metre, so it does not appear from nothing', () => {
+    const atTheStack = puffOpacity({ ...stack, risen: 0, seed: 0 }, defaultSmokeOptions);
+    const justOut = puffOpacity({ ...stack, risen: 1, seed: 0 }, defaultSmokeOptions);
+    expect(atTheStack).toBe(0);
+    expect(justOut).toBeGreaterThan(0.9);
   });
 
   it('gives an empty slot no substance at all', () => {
-    expect(puffOpacity({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, age: -1, life: 4, seed: 0 })).toBe(0);
+    expect(puffOpacity({ ...stack, risen: -1, seed: 0 }, defaultSmokeOptions)).toBe(0);
   });
 
-  it('spreads as it ages', () => {
-    const young: Puff = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, age: 0, life: 8, seed: 0 };
-    const old: Puff = { ...young, age: 6 };
-    expect(puffRadius(young, defaultSmokeOptions)).toBeCloseTo(defaultSmokeOptions.size, 9);
-    expect(puffRadius(old, defaultSmokeOptions)).toBeGreaterThan(
-      puffRadius(young, defaultSmokeOptions) * 3,
-    );
+  it('spreads as it climbs, not as it ages', () => {
+    const low = puffRadius({ ...stack, risen: 0, seed: 0 }, defaultSmokeOptions);
+    const high = puffRadius({ ...stack, risen: 30, seed: 0 }, defaultSmokeOptions);
+    expect(low).toBe(defaultSmokeOptions.size);
+    expect(high).toBeCloseTo(defaultSmokeOptions.size + 30 * defaultSmokeOptions.spread, 9);
+    // And wide enough at the bottom to overlap its neighbour, which is what
+    // makes a line of separate balls read as a column of smoke.
+    expect(low * 2).toBeGreaterThan(defaultSmokeOptions.climb);
   });
 
   it('is the same smoke every time, for a given seed', () => {
-    const a = burn(5);
-    const b = burn(5);
-    expect(live(a).map((p) => p.x.toFixed(6))).toEqual(live(b).map((p) => p.x.toFixed(6)));
+    const a = createSmoke(defaultSmokeOptions, 5);
+    const b = createSmoke(defaultSmokeOptions, 5);
+    for (let t = 0; t < 4; t += DT) {
+      a.update(DT, stack, calm);
+      b.update(DT, stack, calm);
+    }
+    expect(a.puffs).toEqual(b.puffs);
   });
 
   it('does nothing on a tick of no time at all', () => {
-    const smoke = createSmoke();
-    smoke.update(0, stack, nowhere, still);
-    expect(live(smoke)).toHaveLength(0);
+    const smoke = burn(4);
+    const before = JSON.parse(JSON.stringify(smoke.puffs));
+    smoke.update(0, stack, calm);
+    expect(smoke.puffs).toEqual(before);
   });
 
-  it('is thick enough to see nothing through', () => {
-    // The requirement was a lot of smoke, more than one would expect, and
-    // "a lot" is measurable: add up the area of every puff, against the area
-    // of the plume they make between them. Below about one there are gaps and
-    // you can see the yard through it. This is fifteen.
-    const smoke = createSmoke();
-    const blowing = () => ({ x: 3.5, y: 0, z: 1.5 });
-    for (let t = 0; t < 40; t += DT) {
-      smoke.update(DT, stack, { x: 6, y: 0, z: 0 }, blowing);
-    }
+  it('dies exactly where it has faded to nothing', () => {
+    // The renderer draws every puff in the world from `defaultSmokeOptions`,
+    // because a puff carries where it is and how far it has risen but not
+    // which plume it belongs to. So a plume that stopped short of its reach
+    // would vanish at full strength, and one that outlived it would go on
+    // being drawn at nothing.
+    const last = puffOpacity({ ...stack, risen: defaultSmokeOptions.reach - 0.1, seed: 0 }, defaultSmokeOptions);
+    expect(last).toBeLessThan(0.01);
 
-    let area = 0;
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const puff of live(smoke)) {
-      const r = puffRadius(puff, defaultSmokeOptions);
-      area += Math.PI * r * r * puffOpacity(puff);
-      minX = Math.min(minX, puff.x - r);
-      maxX = Math.max(maxX, puff.x + r);
-      minY = Math.min(minY, puff.y - r);
-      maxY = Math.max(maxY, puff.y + r);
-    }
-
-    const frontal = (maxX - minX) * (maxY - minY);
-    expect(area / frontal).toBeGreaterThan(8);
-    // And it is a plume rather than a puff: tens of metres of it.
-    expect(maxX - minX).toBeGreaterThan(40);
-    expect(maxY - minY).toBeGreaterThan(20);
-  });
-});
-
-/**
- * A step is a stretch of track, not a point.
- *
- * A plume far from the bird is worked out a second at a time rather than a
- * hundred and twentieth, which is what makes it nearly free. That only works
- * if what a second buys is a second's worth of plume laid along the way the
- * engine came -- otherwise it is eighty puffs stacked on one spot, sixteen
- * metres from the last eighty, and when the train comes into view it is
- * trailing a string of beads.
- */
-describe('a plume laid down in one long step', () => {
-  /** Where the live puffs are, along the axis the stack moved down. */
-  const spread = (smoke: ReturnType<typeof createSmoke>) => {
-    const live = smoke.puffs.filter((p) => p.age >= 0).map((p) => p.x);
-    return { count: live.length, low: Math.min(...live), high: Math.max(...live) };
-  };
-
-  it('lays the puffs along the way the stack came, not all where it got to', () => {
-    const smoke = createSmoke();
-    // One second of travel at 16 m/s, in a single step.
-    smoke.update(1 / 120, { ...stack, x: 0 }, nowhere, still);
-    smoke.update(1, { ...stack, x: 16 }, nowhere, still);
-
-    const laid = spread(smoke);
-    expect(laid.count).toBeGreaterThan(50);
-    // Spread down the sixteen metres rather than piled at the end of them.
-    expect(laid.low).toBeLessThan(2);
-    expect(laid.high).toBeGreaterThan(14);
+    const smoke = burn(600);
+    for (const puff of out(smoke)) expect(puff.risen).toBeLessThan(defaultSmokeOptions.reach);
   });
 
-  it('leaves no gap where one step ends and the next begins', () => {
-    const smoke = createSmoke();
-    smoke.update(1 / 120, { ...stack, x: 0 }, nowhere, still);
-    for (let step = 1; step <= 3; step += 1) {
-      smoke.update(1, { ...stack, x: step * 16 }, nowhere, still);
-    }
-    // Sorted, no two consecutive puffs further apart than a puff is wide.
-    const along = smoke.puffs.filter((p) => p.age >= 0).map((p) => p.x).sort((a, b) => a - b);
-    let widest = 0;
-    for (let i = 1; i < along.length; i += 1) widest = Math.max(widest, along[i]! - along[i - 1]!);
-    expect(widest).toBeLessThan(defaultSmokeOptions.size);
-  });
-
-  it('starts again when the stack has plainly been moved rather than driven', () => {
-    // A level change puts the engine kilometres away. Smeared, that is a line
-    // of smoke across the whole map; the plume should simply begin again.
-    const smoke = createSmoke();
-    smoke.update(1, { ...stack, x: 0 }, nowhere, still);
-    smoke.update(1, { ...stack, x: 4000 }, nowhere, still);
-
-    const along = smoke.puffs.filter((p) => p.age >= 0).map((p) => p.x);
-    expect(along.length).toBeGreaterThan(100);
-    // Smoke at both ends, and none of it in between.
-    expect(along.filter((x) => x < 100).length).toBeGreaterThan(50);
-    expect(along.filter((x) => x > 3900).length).toBeGreaterThan(50);
-    expect(along.filter((x) => x > 500 && x < 3500)).toEqual([]);
-  });
-
-  it('gives the same plume in one step as in many, near enough', () => {
-    // Not identical -- this is an integration, not a straight line, so a
-    // coarse step really does come out a little different. The claim is only
-    // that it is the same plume: the same amount of smoke, in the same place,
-    // going the same way.
-    const fine = createSmoke();
-    for (let t = 0; t < 1; t += DT) fine.update(DT, stack, nowhere, still);
-    const coarse = createSmoke();
-    coarse.update(1, stack, nowhere, still);
-
-    expect(coarse.living).toBeCloseTo(fine.living, -1);
-    const top = (smoke: ReturnType<typeof createSmoke>) =>
-      Math.max(...smoke.puffs.filter((p) => p.age >= 0).map((p) => p.y));
-    // Within a couple of metres of the same height after a second of climb.
-    expect(Math.abs(top(coarse) - top(fine))).toBeLessThan(2.5);
+  it('costs a fraction of what a particle system did', () => {
+    // A couple of dozen puffs against 1,883, and no wind lookup per puff per
+    // tick -- that lookup was the single most expensive thing in the whole
+    // simulation.
+    expect(createSmoke().puffs.length).toBeLessThan(30);
   });
 });

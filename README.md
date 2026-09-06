@@ -606,43 +606,51 @@ front of it is doing.
 | Triangles per frame | 4.81 M | **3.08 M** |
 | CPU per frame | 4.6 ms | **3.3 ms** |
 
-**The smoke got the same two treatments**, and needed a third thing to make
-them safe. It was the largest item left in the simulation: 3,491 puffs
-advected 120 times a second for four plumes.
+**And then the smoke stopped being a particle system.** It had been the
+largest thing in the simulation: 150 puffs a second, each with its own
+velocity, dragged toward the wind sampled *at its own position*, buoyant while
+it was hot — 3,491 of them advected 120 times a second, most of the cost being
+one wind lookup per puff per tick.
 
-*Fewer of them.* What makes a plume opaque is its puffs adding up to several
-times its own area, and there is more than one way to buy that. 150 a second
-at 1.1 m came to about fifteen times over; 80 a second at 1.4 m comes to about
-thirteen, which is the same wall of smoke out of **45% fewer puffs** — 3,491
-down to 1,930.
+Almost all of that bought detail nobody can see. A plume is a column of smoke
+leaning downwind, and that is what **one puff a second** gets you if the puffs
+are big enough and grow as they climb. So:
 
-*Worked out a second at a time when far off.* Unlike the train underneath it,
-this really is different at a coarse step: advection is an integration, not a
-straight line, so a second in one go gives a little more lift and a little
-less drift. It is close enough — the same amount of smoke, in the same place,
-going the same way, which is what the test states rather than claiming they
-are identical.
+- **One a second**, lit where the chimney is *at that moment* and nowhere else.
+  Nothing is remembered about where the engine was. An earlier version did
+  remember, and laid the puffs owed for a step back along the way it had come
+  — which is right for a train going steadily one way and wrong the instant it
+  reverses, or changes speed, which these do.
+- **A fixed climb.** Exhaust that has left the chimney is just air, and air
+  does not remember how hard it was pushed.
+- **Grown and faded by how far it has risen**, not by how old it is. The same
+  thing while the climb is fixed, and the thing actually being described.
+- **One wind vector for every plume in the world**, sampled where the bird is —
+  the wind the player can feel. Asking the field per puff was the single most
+  expensive thing in the whole simulation, and the answers were within a knot
+  of each other.
 
-*But a plume is never simply stopped.* A distant one goes on being made,
-drifting and thinning, so that arriving at a train does not mean arriving at a
-cloud that has been standing still since you last looked.
+A puff lasts 22 seconds, so an engine carries 22 of them. They are 1.2 m apart
+up the column and 3 m across at the bottom, so each covers its neighbour when
+it is born and covers two by the time it is halfway up — which is what makes a
+line of separate balls read as a column of smoke.
 
-And the third thing, without which the other two are no good: **a step is a
-stretch of track, not a point.** Eighty puffs owed for a second are laid along
-the way the engine came, not stacked at the point it reached — otherwise a
-train updated once a second trails a string of beads sixteen metres apart, and
-they are still in the air when you get there. The stack remembers where it was
-and the owed puffs are spread back along that line, oldest furthest back.
-Except when it has plainly been *moved* rather than driven — a level change
-puts it kilometres away, and a plume smeared across the map is worse than one
-that begins again.
-
-| smoke, per second of play | before | after |
+| | before | after |
 | --- | --- | --- |
-| At the yard, four engines in view | 10.7 ms | **6.0 ms** |
-| Anywhere else | 10.7 ms | **~0 ms** |
+| Puffs in the world | 3,491 | **89** |
+| Smoke, per second of play | 10.7 ms | **0.375 ms** |
 
-### What it costs (the map)
+Cheap enough that the near-and-far distinction the trains need was deleted
+rather than kept: every plume in the world runs the same code at the same
+rate, watched or not.
+
+One thing that had to be given up. Every plume is now the same shape, because
+the renderer draws a puff from `defaultSmokeOptions` — a puff carries where it
+is and how far it has risen, but not which plume it belongs to. Giving one
+engine a shorter reach made its smoke vanish at full strength instead of
+thinning away, which is a test now.
+
+### What it costs (the map)### What it costs (the map)
 
 Measured, not estimated, on the shipped 4.2 km square. The numbers either side
 of the arrow are the 3.0 km square it replaced, so the second column is what

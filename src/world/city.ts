@@ -744,7 +744,7 @@ export function buildWorld(
   const updateSmoke = (puffs: readonly Puff[], viewer: THREE.Quaternion) => {
     let drawn = 0;
     for (const puff of puffs) {
-      const alpha = puffOpacity(puff);
+      const alpha = puffOpacity(puff, defaultSmokeOptions);
       if (alpha <= 0.004 || drawn >= plume.mesh.count + puffs.length) continue;
 
       const radius = puffRadius(puff, defaultSmokeOptions) * 2;
@@ -755,13 +755,14 @@ export function buildWorld(
 
       // Soot at the stack, thinning to a grey haze as it disperses -- and
       // never black, which reads as a hole in the sky rather than as smoke.
-      const through = Math.min(1, puff.age / Math.max(puff.life, 0.001));
+      const through = Math.min(1, puff.risen / defaultSmokeOptions.reach);
       const grey = 0.09 + 0.34 * through;
       puffTint.setRGB(grey, grey, grey * 1.06);
       plume.mesh.setColorAt(drawn, puffTint);
 
-      // Each bubble faint on its own; it is the hundreds of them overlapping
-      // that make the plume thick, which is what lets you see into it.
+      // There are eighteen of these in a plume rather than fifteen hundred,
+      // so each one has to carry its own weight: near enough opaque at the
+      // stack, and thinning as it climbs.
       plume.fade.setX(drawn, alpha * PUFF_ALPHA);
       drawn += 1;
     }
@@ -1639,11 +1640,13 @@ function buildRoads(roads: readonly Road[]): {
 /**
  * How solid one bubble is at its thickest.
  *
- * Low on purpose. A plume is not one object, it is several hundred faint ones
- * on top of each other, and that is the difference between smoke you can see
- * into and a silhouette.
+ * A plume used to be several hundred faint bubbles on top of each other, at
+ * a fifth of solid each. It is twenty-two now, overlapping two or three deep,
+ * so each has to be most of the way to solid on its own -- and still short of
+ * it, because smoke you can see into is the difference between a plume and a
+ * silhouette.
  */
-const PUFF_ALPHA = 0.2;
+const PUFF_ALPHA = 0.7;
 
 /**
  * A soft round smudge, drawn to a canvas.
