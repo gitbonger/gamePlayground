@@ -523,13 +523,20 @@ asset. Run it once and commit the result — the game never talks to a map
 server, so it works offline and cannot be broken by someone else's rate limit.
 
 ```bash
-npm run fetch-map -- --centre 47.494593,19.081282 --radius 1200 --name home
+npm run fetch-map -- --centre 47.498969,19.093366 --radius 2100 --name home
 ```
 
-The shipped world is that square of Budapest: 1,189 roads, 399 railways, 390
-green areas, 173 kB. It is centred between the release point and the loft
-rather than on either, so the flight stays inside it with room to wander. The
-bird spawns over the release point, raised clear of whatever stands there.
+The shipped world is that square of Budapest — 4.2 km on a side: **2,311
+roads, 604 railways, 735 green areas, 333 kB** (77 kB gzipped). The radius is
+a half-width, not a circle, so it is a bbox query. It is centred well east of
+where the levels are, which leaves room to wander in every direction, and the
+bird spawns over the release point raised clear of whatever stands there.
+
+**Nothing decides what to download, because nothing downloads.** The whole
+square ships inside the bundle, so a new player fetches exactly the same bytes
+as everyone else and there is no tiling, no streaming, no viewport test and no
+map provider in the loop. Extending the world is a decision made once, here,
+by whoever runs the baker.
 
 The release point sits on the line from the loft *through the train*, 400 m
 short of it, so the pigeon is let go facing both at once: the rake of wagons is
@@ -542,6 +549,49 @@ wagons is a glide and settling on one wants the airbrake.
 module, so the bundler builds it into the app: there is no request at run time,
 nothing to load, and no map provider in the loop while you are flying. Changing
 the area means re-running the baker and committing the result.
+
+### What it costs
+
+Measured, not estimated, on the shipped 4.2 km square. The numbers either side
+of the arrow are the 3.0 km square it replaced, so the second column is what
+enlarging the map actually bought and cost.
+
+| | 3.0 km | 4.2 km |
+| --- | --- | --- |
+| `home.json` | 178 kB / 39 kB gz | **333 kB / 77 kB gz** |
+| Buildings generated | 4,198 | **10,450** |
+| Trees | 9,254 | **15,817** |
+| Collision boxes | 4,233 | **10,485** |
+| Build the layout, once at load | 205 ms | **451 ms** |
+| Index the world collider, once | 0.4 ms | **1.1 ms** |
+| Simulation, per 120 Hz tick | 0.060 ms | **0.058 ms** |
+| Draw calls per frame | 780 | **780** |
+| Triangles per frame | 1.80 M | **4.81 M** |
+| JS heap | 33 MB | **47 MB** |
+
+The JS bundle is 839 kB, 218 kB gzipped, of which most is Three.js.
+
+Three things are worth reading off that table.
+
+**The per-tick cost did not move at all.** The collider is a uniform grid, so
+asking it about a sweep costs what the sweep covers rather than what the world
+holds; two and a half times the boxes is the same 0.06 ms. At 120 Hz the whole
+simulation — four trains relaid, five collider fields built and combined, and
+the flight step — is 0.7% of real time. There is no reason to think a bigger
+map would change that either.
+
+**The draw calls did not move either**, because the city is not made of
+objects. Roads are one merged mesh, railways another, green areas one per
+kind, roofs one, and the buildings and trees are instanced — so twice the city
+is a bigger number in an instance buffer, not more work per frame. Of the 780
+calls, the great majority are *pigeons*: a bird rig is about forty small
+meshes, there are a dozen rigs, and a shadow pass draws everything twice. The
+birds cost more draw calls than the entire city does.
+
+**The load-time layout build is the number to watch.** 451 ms of blocking work
+before the first frame, and it is the only figure here that grew faster than
+the map. If it ever needs fixing the fix is not a smaller map: it is to stop
+doing all of it up front.
 
 **Why not real buildings too?** Because OSM's road coverage is essentially
 complete worldwide while its building *heights* are patchy — in most cities
