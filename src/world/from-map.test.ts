@@ -578,9 +578,34 @@ describe('describing a thing into the world', () => {
     expect(field.heightAt(person.x, person.z)).toBeCloseTo(TOWER.height + 2, 6);
   });
 
-  it('stands nobody where there is no terrace', () => {
+  it('stands somebody on a landmark that has no terrace at all', () => {
+    // A terrace is where somebody stands when a landmark has one. It is not
+    // what makes standing possible, which is what this used to assert -- and
+    // it was a limitation being written down as an intention. A plain-roofed
+    // block puts them on the roof.
     const { penthouse: _, ...plain } = TOWER;
-    expect(withLandmark(plain).people).toEqual([]);
+    const [person] = withLandmark(plain).people;
+    expect(person).toBeDefined();
+    expect(person!.base).toBe(TOWER.height);
+  });
+
+  it('stands somebody beside a landmark that lies flat', () => {
+    // Which is the case the old rule made impossible: a patch of concrete has
+    // no terrace, no roof and nothing to fly into, and somebody standing next
+    // to one is still somebody. Placed along and across it like anyone else,
+    // and free to be past its edge -- beside is a place too.
+    const beside: Landmark = { ...SLAB, people: [{ along: -6, across: 0, facing: 0 }] };
+    const [person] = withLandmark(beside).people;
+    expect(person).toBeDefined();
+    // On the ground, six metres along from the middle, which is a metre and a
+    // half clear of a nine-metre slab.
+    expect(person!.base).toBe(0);
+    expect(person!.x).toBeCloseTo(SLAB.x - 6, 9);
+    expect(person!.z).toBeCloseTo(SLAB.z, 9);
+
+    // And solid: two metres of somebody is something to fly round.
+    const field = createColliderField(withLandmark(beside).boxes);
+    expect(field.heightAt(person!.x, person!.z)).toBeCloseTo(2, 6);
   });
 
   it('plants nothing where there is no terrace to plant', () => {

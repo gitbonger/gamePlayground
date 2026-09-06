@@ -281,6 +281,25 @@ export function buildLayoutFromMap(
   const bushes: Bush[] = [];
   const people: Person[] = [];
   for (const landmark of landmarks) {
+    // Whoever is standing on it, or beside it. Before the height test rather
+    // than after it: a patch of concrete is a described thing with nothing to
+    // fly into, and somebody standing next to one is still somebody.
+    for (const person of peopleOn(landmark)) {
+      people.push(person);
+      // Solid, and for the same reason a tree is: two metres of somebody is
+      // something to fly round, not something to fly through.
+      boxes.push(
+        aabb(
+          person.x - PERSON_WIDTH / 2,
+          person.base,
+          person.z - PERSON_WIDTH / 2,
+          person.x + PERSON_WIDTH / 2,
+          person.base + PERSON_HEIGHT,
+          person.z + PERSON_WIDTH / 2,
+        ),
+      );
+    }
+
     if (landmark.height <= 0) continue;
 
     // Deliberately not pushed into `buildings`. A described thing is not one
@@ -333,23 +352,6 @@ export function buildLayoutFromMap(
           penthouse.top,
           penthouse.depth,
           penthouse.yaw,
-        ),
-      );
-    }
-
-    for (const person of peopleOn(landmark)) {
-      people.push(person);
-      // Solid, and for the same reason a tree is: two metres of somebody
-      // standing on a roof is something to fly round, not something to fly
-      // through.
-      boxes.push(
-        aabb(
-          person.x - PERSON_WIDTH / 2,
-          person.base,
-          person.z - PERSON_WIDTH / 2,
-          person.x + PERSON_WIDTH / 2,
-          person.base + PERSON_HEIGHT,
-          person.z + PERSON_WIDTH / 2,
         ),
       );
     }

@@ -398,6 +398,28 @@ export function nestOn(landmark: Landmark): Nest | null {
 }
 
 /**
+ * The tier somebody standing on a landmark stands on.
+ *
+ * The terrace when there is one, because the point of a terrace is that it is
+ * the open half of the top. Otherwise the thing's own flat top -- which for
+ * something lying flat is the ground it is laid into. That is what lets a
+ * patch of concrete have somebody standing by it without a patch of concrete
+ * having to grow a penthouse first.
+ */
+export function topOf(landmark: Landmark): Tier {
+  return (
+    terraceOf(landmark) ?? {
+      x: landmark.x,
+      z: landmark.z,
+      width: landmark.width,
+      depth: landmark.depth,
+      top: landmark.height,
+      yaw: landmark.yaw ?? 0,
+    }
+  );
+}
+
+/**
  * Whoever is standing on a landmark's terrace.
  *
  * On the terrace and not on the roof of the penthouse, because the terrace is
@@ -406,13 +428,17 @@ export function nestOn(landmark: Landmark): Nest | null {
  * will not know the difference.
  */
 export function peopleOn(landmark: Landmark): Person[] {
-  const terrace = terraceOf(landmark);
-  if (!landmark.people || !terrace) return [];
+  if (!landmark.people) return [];
 
+  // Placed on the tier rather than on the landmark, and free to be off the
+  // edge of it: somebody *beside* a patch of concrete is as much a part of
+  // the description as somebody on a roof terrace, and both are written the
+  // same way -- so many metres along it and across it.
+  const tier = topOf(landmark);
   return landmark.people.map((spot) => ({
-    ...pointOn(terrace, spot.along, spot.across),
-    base: terrace.top,
-    facing: terrace.yaw + spot.facing,
+    ...pointOn(tier, spot.along, spot.across),
+    base: tier.top,
+    facing: tier.yaw + spot.facing,
   }));
 }
 
