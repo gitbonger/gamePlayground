@@ -121,7 +121,7 @@ const overlay = document.querySelector<HTMLElement>('#overlay')!;
 // JSON widens the fixed-length tuples, so this crosses through unknown.
 const map = homeMap as unknown as MapData;
 
-const { renderer, scene, camera, sun, sunDirection, setSun } = createScene(canvas, {
+const { renderer, scene, camera, sun, sunDirection, setSun, setPixelRatio } = createScene(canvas, {
   sun: sunVector(map.centre[0], map.centre[1], new Date(LEVELS[0]?.when ?? 0)),
 });
 /**
@@ -609,7 +609,13 @@ function playLevel(at: number): void {
   respawn();
 }
 
-createDebugGui(flightParams, cameraParams, windParams, { respawn, rebuildWind });
+/** What the picture is drawn at, so the panel can move it and see. */
+const pictureParams = { pixelRatio: renderer.getPixelRatio() };
+createDebugGui(flightParams, cameraParams, windParams, pictureParams, {
+  respawn,
+  rebuildWind,
+  repaint: () => setPixelRatio(pictureParams.pixelRatio),
+});
 
 const menu = createLevelMenu(overlay, LEVELS);
 const talkPanel = createDialoguePanel(overlay);

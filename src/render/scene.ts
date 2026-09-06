@@ -17,6 +17,16 @@ export interface SceneBundle {
    * and the glare around it -- and they agree by all being told here.
    */
   setSun(direction: { x: number; y: number; z: number }): void;
+  /**
+   * How many device pixels a CSS pixel is drawn at.
+   *
+   * Exposed so the difference can be looked at rather than argued about: it
+   * is the one setting whose cost is the same on every machine and whose
+   * effect shows only on a display good enough to resolve it. Clamped to
+   * what the display actually has, since asking for more than that is paying
+   * for pixels nobody can see.
+   */
+  setPixelRatio(ratio: number): void;
   resize(): void;
 }
 
@@ -30,6 +40,24 @@ export interface SceneOptions {
   sun: { x: number; y: number; z: number };
 }
 
+/**
+ * How many device pixels the world is drawn at per CSS pixel, at most.
+ *
+ * The one number that costs the same on every machine and is felt only on the
+ * slow ones. A 1512 by 982 window on a retina display asks for a 3024 by 1964
+ * buffer at 2.0 -- 5.9 megapixels, every frame, every one of them shaded. At
+ * 1.5 it is 2268 by 1473, which is **3.3 megapixels: 44% fewer**.
+ *
+ * 1.5 rather than 1.0 because the difference between 2.0 and 1.5 is a slight
+ * softening of edges and the difference between 1.5 and 1.0 is visible
+ * stair-stepping on every roofline. And this is a world of long straight
+ * edges seen against a plain sky, which is the worst case for that.
+ *
+ * A display that is not retina reports 1.0 and is unaffected: this only ever
+ * takes something away from the machines that had the most to give.
+ */
+const MAX_PIXEL_RATIO = 1.5;
+
 const HORIZON = new THREE.Color(0xbcd3e8);
 const ZENITH = new THREE.Color(0x4a86c8);
 
@@ -42,7 +70,7 @@ export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): S
     // barely a bit of precision between them and flicker against it.
     logarithmicDepthBuffer: true,
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
   /**
    * Shadows are off.
    *
@@ -109,7 +137,12 @@ export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): S
   resize();
   window.addEventListener('resize', resize);
 
-  return { renderer, scene, camera, sun, sunDirection, setSun, resize };
+  function setPixelRatio(ratio: number) {
+    renderer.setPixelRatio(Math.min(Math.max(ratio, 0.5), window.devicePixelRatio));
+    resize();
+  }
+
+  return { renderer, scene, camera, sun, sunDirection, setSun, setPixelRatio, resize };
 }
 
 /**

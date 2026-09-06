@@ -19,7 +19,8 @@ export function createDebugGui(
   flight: FlightParams,
   camera: CameraParams,
   air: WindParams,
-  actions: { respawn(): void; rebuildWind(): void },
+  picture: { pixelRatio: number },
+  actions: { respawn(): void; rebuildWind(): void; repaint(): void },
 ): DebugGui {
   const gui = new GUI({ title: 'pigeon sim' });
 
@@ -99,6 +100,16 @@ export function createDebugGui(
   cameraFolder.add(camera, 'baseFov', 40, 110, 1);
   cameraFolder.add(camera, 'fovGain', 0, 50, 1);
   cameraFolder.close();
+
+  const pictureFolder = gui.addFolder('picture');
+  // The one setting that costs the same on every machine and shows only on a
+  // display good enough to resolve it, so it is here to be looked at rather
+  // than argued about. Half the pixels is nearly half the shading.
+  pictureFolder
+    .add(picture, 'pixelRatio', 0.75, 2, 0.25)
+    .name('pixels per CSS pixel')
+    .onChange(actions.repaint);
+  pictureFolder.close();
 
   gui.add(actions, 'respawn').name('respawn (R)');
 

@@ -683,6 +683,24 @@ on a 1080-line display.
 | Flock out, at the yard | ~700 | **252** |
 | Flock not yet released | ~240 | **49** |
 
+**And the picture is drawn at 1.5 device pixels per CSS pixel, not 2.** This
+is the one setting that costs the same on every machine and is felt only on
+the slow ones — every pixel in the buffer is shaded, every frame, whatever is
+in it. Measured on a 1280 by 720 window on a retina display: 2560 by 1440 at a
+ratio of 2, and **1920 by 1080 at 1.5. 44% fewer pixels.**
+
+1.5 rather than 1.0 because the step from 2.0 to 1.5 is a slight softening of
+edges and the step from 1.5 to 1.0 is visible stair-stepping on every
+roofline — and this is a world of long straight edges against a plain sky,
+which is the worst case for that. A display that is not retina reports 1.0 and
+is untouched: this only ever takes something away from the machines that had
+the most to give.
+
+It is also in the debug panel, under `picture`, because whether the softening
+is worth it is a thing to look at on a real display rather than to argue
+about. The slider is clamped to what the display actually has, since asking
+for more than that is paying for pixels nobody can see.
+
 ### What it costs (the map)### What it costs (the map)
 
 Measured, not estimated, on the shipped 4.2 km square. The numbers either side
