@@ -20,6 +20,25 @@ export interface Tip {
 }
 
 /**
+ * Which keys on the keyboard each shown key stands for.
+ *
+ * An instruction goes away when the player uses it, which means the drawing
+ * of a key has to be connected to the key -- and the arrows are drawn as
+ * arrows while the same control is also on WASD, so one label answers to two
+ * codes. Kept here, beside the labels, because the label is the only reason
+ * this mapping exists.
+ */
+const CODES: Record<string, readonly string[]> = {
+  SPACE: ['Space'],
+  '↑': ['ArrowUp', 'KeyW'],
+  '↓': ['ArrowDown', 'KeyS'],
+};
+
+/** The `KeyboardEvent.code`s that count as doing what a tip says. */
+export const codesFor = (tip: Tip): readonly string[] =>
+  tip.keys.flatMap((key) => CODES[key] ?? []);
+
+/**
  * A tip, and how far you have to have flown to be given it.
  *
  * Distance rather than time, because distance is the only measure of the
@@ -62,9 +81,14 @@ const REST = 1.5;
 export interface Tutor {
   /**
    * The lesson to show now, or null. Called every frame with the distance
-   * flown so far and the time since the last call.
+   * flown so far, the time since the last call, and a way to ask whether a
+   * key is down.
+   *
+   * A lesson the player is already following is a lesson they do not need on
+   * screen: pressing one of the keys it shows takes it away at once. Which
+   * is also the shortest way to find out that it worked.
    */
-  update(travelled: number, dt: number): Tip | null;
+  update(travelled: number, dt: number, down?: (codes: readonly string[]) => boolean): Tip | null;
   /** Forget what has been given, for a flight that is starting again. */
   reset(): void;
 }
@@ -88,7 +112,16 @@ export function createTutor(
   let resting = false;
 
   return {
-    update(travelled, dt) {
+    update(travelled, dt, down) {
+      if (showing && down?.(codesFor(showing))) {
+        // Used, so it has said what it had to say. The pause still runs, so
+        // the next lesson does not arrive on the same keystroke.
+        showing = null;
+        resting = true;
+        left = rest;
+        return null;
+      }
+
       if (showing || resting) {
         left -= dt;
         if (left > 0) return showing;

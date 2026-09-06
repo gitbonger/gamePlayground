@@ -84,6 +84,14 @@ export interface InputSource {
    * two of them are two choices, not one.
    */
   consumeDigit(): number | null;
+  /**
+   * Whether any of these keys is down, by `KeyboardEvent.code`.
+   *
+   * For asking about a key without binding it to anything -- an instruction
+   * on screen goes away when the player uses the key it is about, and that is
+   * a question about the keyboard rather than another control.
+   */
+  anyDown(codes: readonly string[]): boolean;
   dispose(): void;
 }
 
@@ -109,6 +117,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
   const digits: number[] = [];
 
   const anyHeld = (codes: readonly string[]) => codes.some((code) => held.has(code));
+  const anyDown = anyHeld;
   const axis = (negative: readonly string[], positive: readonly string[]) =>
     (anyHeld(positive) ? 1 : 0) - (anyHeld(negative) ? 1 : 0);
 
@@ -189,6 +198,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     consumeLaunch,
     consumeMenu,
     consumeDigit,
+    anyDown,
     dispose() {
       target.removeEventListener('keydown', onKeyDown);
       target.removeEventListener('keyup', onKeyUp);

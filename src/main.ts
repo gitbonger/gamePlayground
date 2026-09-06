@@ -10,11 +10,9 @@ import {
   hasCrashed,
   heading,
   isPerched,
-  landingReadiness,
   step,
   type BirdState,
   type FlightTelemetry,
-  type LandingReadiness,
 } from './sim/flight';
 import {
   quat,
@@ -114,8 +112,6 @@ const SPAWN_SPEED = 16;
  * know what the generator happened to build under it.
  */
 const SPAWN_CLEARANCE = 40;
-/** Altitude below which the HUD starts showing the approach cue, in metres. */
-const APPROACH_ALTITUDE = 45;
 
 /** How far up-sun the shadow camera sits from the bird, in metres. */
 const SUN_RANGE = 320;
@@ -1114,7 +1110,7 @@ function frame(nowMs: number) {
   // The tutor is asked every frame whether or not anything is showing, so its
   // own clock runs; a state tip takes the corner while it has something to
   // say, because what to do now outranks what to learn.
-  const lesson = tutor.update(run.stats.distance, frameTime);
+  const lesson = tutor.update(run.stats.distance, frameTime, input.anyDown);
   tipPanel.show(nextThing() ?? lesson);
   world.updateSmoke(allPuffs, camera.quaternion);
   rig.update(interpolatedState, wings, frameTime);
@@ -1224,16 +1220,10 @@ function frame(nowMs: number) {
   sun.position.copy(sun.target.position).add(sunOffset);
   sun.target.updateMatrixWorld();
 
-  // The approach cue is only shown while still flying and low enough to act on.
-  const landing: LandingReadiness | null =
-    bird.ending === null && telemetry.altitude < APPROACH_ALTITUDE
-      ? landingReadiness(bird, flightParams)
-      : null;
 
   hud.update(
     interpolatedState,
     telemetry,
-    landing,
     distance(interpolatedState.position, home),
     smoothedFps,
     onFoot,

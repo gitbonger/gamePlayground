@@ -64,8 +64,7 @@ Braking without beating will slow you beautifully and then drive you into the
 ground; that is correct, and it is the single most useful thing to learn.
 
 Flare too high and you balloon, stall, and drop. Glide straight in without
-either tool and you arrive far too fast. Below 45 m the HUD shows the three
-checks live, so you can see which one is still red.
+either tool and you arrive far too fast.
 
 ## Stack
 
@@ -2233,6 +2232,16 @@ somebody had just said to you. It is `SPACE` and **Take off!** now, in the
 corner, and the rest of the reference card is going the same way one line at a
 time.
 
+They live under the bird, in the slot the landing cue used to have. That is
+the one place on the screen the eye is already looking — at the pigeon, and at
+what is in front of it — where a corner is somewhere you have to look away to.
+
+**A tip goes away when the player uses the key it is about.** A lesson
+somebody is already following is a lesson they do not need on screen, and
+pressing the key is the shortest way to find out that it worked. Which is why
+the drawn key has to know what it stands for: the arrows are drawn as arrows
+while the same control is also on WASD, so one label answers to two codes.
+
 **The rest are given by distance flown**, not by time and not by state.
 Distance is the only measure of the flight that is also a measure of the
 player: twenty metres of flying is twenty metres of flying whether it took two
@@ -2426,10 +2435,13 @@ is what the physics says, and it may or may not be what a game wants.
 ## How landing works
 
 `landingReadiness()` in `src/sim/flight.ts` answers one question — could the
-bird put down cleanly if it touched the ground right now — and both the
-touchdown verdict and the HUD's approach cue are built on it. That is
-deliberate: the cue cannot drift out of step with the rule it reports on,
-because they are the same function.
+bird put down cleanly if it touched the ground right now. The touchdown
+verdict is built on it, and so was the HUD's approach cue: three lights under
+the bird, sink, speed and wings, going green as each limit was met. The cue is
+gone for now, and the slot it had — centred under the pigeon, which is the one
+place on screen the eye is already looking — belongs to the instructions
+instead. The function stays where it is, still the single source of the rule
+it used to report on.
 
 Touching the ground always ends the flight. `touchdown()` checks sink, then
 speed, then bank, and names the first limit breached as the cause. Ordering

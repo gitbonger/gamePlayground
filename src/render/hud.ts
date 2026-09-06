@@ -1,15 +1,13 @@
 /** Flight instruments, drawn as plain DOM over the canvas. */
 
-import { isPerched, type BirdState, type FlightTelemetry, type LandingReadiness } from '../sim/flight';
+import { isPerched, type BirdState, type FlightTelemetry } from '../sim/flight';
 import { rateText, speedText } from './units';
 import type { WalkTelemetry } from '../sim/walk';
 
 export interface Hud {
-  /** `landing` is null when the bird is too high for the approach cue to help. */
   update(
     state: BirdState,
     telemetry: FlightTelemetry,
-    landing: LandingReadiness | null,
     /** Metres still to fly to the target, along the ground. */
     toGo: number,
     fps: number,
@@ -41,14 +39,6 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
       </div>
     </div>
     <div class="hud-warning" data-field="warning"></div>
-    <div class="hud-landing" data-field="landing" hidden>
-      <div class="landing-title" data-field="landingTitle">approach</div>
-      <div class="landing-checks">
-        <span class="check" data-field="checkSink">sink</span>
-        <span class="check" data-field="checkSpeed">speed</span>
-        <span class="check" data-field="checkBank">wings</span>
-      </div>
-    </div>
     <div class="hud-fps"><span data-field="fps">0</span> fps</div>
     <div class="hud-credit" data-field="credit"></div>
   `;
@@ -66,16 +56,10 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
   const fpsEl = field('fps');
   // Map data licences generally require the credit to stay on screen.
   field('credit').textContent = credit;
-  const landingEl = field('landing');
-  const landingTitleEl = field('landingTitle');
-  const checkSinkEl = field('checkSink');
-  const checkSpeedEl = field('checkSpeed');
-  const checkBankEl = field('checkBank');
 
   function update(
     state: BirdState,
     telemetry: FlightTelemetry,
-    landing: LandingReadiness | null,
     toGo: number,
     fps: number,
     onFoot: WalkTelemetry,
@@ -119,16 +103,6 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
         : '';
     if (warningEl.textContent !== warning) warningEl.textContent = warning;
     warningEl.classList.toggle('calm', isPerched(state) || note !== null);
-
-    // Approach cue: only useful on the way down, and only while still flying.
-    landingEl.hidden = landing === null;
-    if (landing) {
-      checkSinkEl.classList.toggle('ok', landing.sinkOk);
-      checkSpeedEl.classList.toggle('ok', landing.speedOk);
-      checkBankEl.classList.toggle('ok', landing.bankOk);
-      landingEl.classList.toggle('ready', landing.ready);
-      landingTitleEl.textContent = landing.ready ? 'ready to land' : 'approach';
-    }
 
     homeEl.textContent = toGo.toFixed(0);
     homeEl.classList.toggle('positive', toGo < 40);

@@ -261,59 +261,6 @@ body {
 
 /* --- Approach cue -------------------------------------------------------- */
 
-.hud-landing {
-  position: absolute;
-  left: 50%;
-  bottom: 34px;
-  transform: translateX(-50%);
-  padding: 10px 16px 12px;
-  border: 1px solid rgba(242, 245, 248, 0.12);
-  border-radius: 8px;
-  background: var(--panel);
-  backdrop-filter: blur(6px);
-  text-align: center;
-  transition: border-color 0.2s ease;
-}
-
-.hud-landing.ready {
-  border-color: rgba(127, 224, 168, 0.55);
-}
-
-.landing-title {
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--dim);
-}
-
-.hud-landing.ready .landing-title {
-  color: #7fe0a8;
-}
-
-.landing-checks {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.check {
-  padding: 4px 12px;
-  border-radius: 4px;
-  background: rgba(232, 162, 75, 0.16);
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #e8a24b;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
-}
-
-.check.ok {
-  background: rgba(127, 224, 168, 0.16);
-  color: #7fe0a8;
-}
-
 .controls-hint .hint-tip {
   color: #7fe0a8;
 }
@@ -393,10 +340,18 @@ body {
 /* --- Tips ----------------------------------------------------------------- */
 /* One instruction at a time, top right: the keys, then what they do. */
 
+/*
+ * Under the bird, where the approach cue used to be.
+ *
+ * The best place on the screen for something that has to be read while
+ * flying: the eye is already there, on the pigeon and on what is in front of
+ * it, and a corner is somewhere you have to look away to.
+ */
 .tip {
   position: absolute;
-  top: 18px;
-  right: 20px;
+  left: 50%;
+  bottom: 34px;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -434,7 +389,12 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 7%;
+  /*
+   * Clear of the instruction slot at the bottom, which is where the take-off
+   * tip appears the moment a conversation ends -- so the card sits above that
+   * band whether or not anything is in it, rather than being landed on.
+   */
+  bottom: calc(7% + 64px);
   display: grid;
   place-items: center;
   pointer-events: none;

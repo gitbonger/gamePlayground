@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createTutor, LESSONS, type Lesson } from './tips';
+import { codesFor, createTutor, LESSONS, type Lesson } from './tips';
 
 const EARLY: Lesson = { at: 20, keys: ['↑'], text: 'up' };
 const LATE: Lesson = { at: 100, keys: ['B'], text: 'brake' };
@@ -62,6 +62,31 @@ describe('handing out the flying lessons', () => {
     // And not straight away: the new flight has to earn it over again.
     expect(tutor.update(0, 1 / 60)).toBeNull();
     expect(tutor.update(20, 1 / 60)?.text).toBe('up');
+  });
+
+  it('goes away when the player uses the key it is about', () => {
+    // A lesson somebody is already following is a lesson they do not need on
+    // screen -- and pressing the key is the shortest way to find out that it
+    // worked.
+    const tutor = createTutor([EARLY], 7, 1.5);
+    const nothing = () => false;
+    expect(tutor.update(20, 1 / 60, nothing)?.text).toBe('up');
+    expect(tutor.update(21, 1 / 60, (codes) => codes.includes('ArrowUp'))).toBeNull();
+    // And stays away: it has been given, key or no key.
+    expect(tutor.update(22, 2, nothing)).toBeNull();
+    expect(tutor.update(23, 1 / 60, nothing)).toBeNull();
+  });
+
+  it('knows which keys on the keyboard each drawn key stands for', () => {
+    // The arrows are drawn as arrows and the same control is also on WASD, so
+    // one label answers to two codes -- and a label with no codes at all is a
+    // tip that can never be dismissed by doing what it says.
+    for (const lesson of LESSONS) {
+      const codes = codesFor(lesson);
+      expect(codes.length, lesson.text).toBeGreaterThanOrEqual(lesson.keys.length);
+    }
+    expect(codesFor({ keys: ['↑', '↓'], text: '' })).toContain('KeyW');
+    expect(codesFor({ keys: ['SPACE'], text: '' })).toEqual(['Space']);
   });
 
   it('teaches staying up before anything else, and teaches it at once', () => {
