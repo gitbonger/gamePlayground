@@ -63,6 +63,7 @@ import {
   stockIsHauled,
   stockTop,
   tweenAlong,
+  type Vehicle,
 } from './world/train';
 import { createSmoke, defaultSmokeOptions, type Puff, type Smoke } from './world/smoke';
 import {
@@ -199,6 +200,15 @@ const layout = buildLayoutFromMap(map, {
     // about the map's editing history rather than about the tramway.
     { near: trams, cars: 4, stock: 'tram', speed: 10, runsOut: true, setOff: 110 },
     { near: trams, cars: 4, stock: 'tram', speed: 10, runsOut: true, setOff: 290 },
+  ],
+  // And then the rest of the network, which nothing in the game names or
+  // cares about. A city with a hundred and thirty kilometres of tramway and
+  // three trams on it reads as a model of a city; these are what make it a
+  // working one. They go wherever there is a line long enough, one to a
+  // route, and nobody decides where.
+  fill: [
+    { stock: 'tram', cars: 4, speed: 10, minRoute: 320, most: 30 },
+    { stock: 'carriage', cars: 5, speed: 14, minRoute: 1200, most: 8 },
   ],
 });
 /**
@@ -670,10 +680,15 @@ const drawnVehicles = layout.trains.map((train) =>
 /** And which of them were near enough to be worth it, this tick. */
 const near = layout.trains.map(() => false);
 
-/** Every vehicle on the map, flattened. The index is its carrier tag. */
-function allVehicles() {
-  return layout.trains.flatMap((train) => train.vehicles);
-}
+/**
+ * Every vehicle on the map, flattened. The index is its carrier tag.
+ *
+ * Worked out once. The vehicles are the same objects for as long as the game
+ * is open -- written over rather than rebuilt -- so this list never changes
+ * either, and flattening it again every tick was 142 references copied twice
+ * a tick for nothing.
+ */
+const everyVehicle: readonly Vehicle[] = layout.trains.flatMap((train) => train.vehicles);
 
 /**
  * Where every vehicle was before the trains were moved.
@@ -685,15 +700,13 @@ function allVehicles() {
  * was a real bug: the pigeon standing on the middle wagon watched the train
  * leave without it.
  */
-const wasAt = allVehicles().map((vehicle) => ({ x: vehicle.x, z: vehicle.z, yaw: vehicle.yaw }));
+const wasAt = everyVehicle.map((vehicle) => ({ x: vehicle.x, z: vehicle.z, yaw: vehicle.yaw }));
 
 /** Take that copy. Called at the top of a tick, before anything has moved. */
 function rememberWhereTrainsWere() {
-  const now = allVehicles();
   for (let i = 0; i < wasAt.length; i += 1) {
-    const vehicle = now[i];
+    const vehicle = everyVehicle[i]!;
     const kept = wasAt[i]!;
-    if (!vehicle) continue;
     kept.x = vehicle.x;
     kept.z = vehicle.z;
     kept.yaw = vehicle.yaw;
@@ -763,7 +776,7 @@ function moveTrains(dt: number) {
       ...residents.map((resident) => resident.state),
     ],
     wasAt,
-    allVehicles(),
+    everyVehicle,
   );
 
   const air = wind.at(bird.position, clock);

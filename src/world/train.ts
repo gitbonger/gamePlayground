@@ -480,7 +480,19 @@ export interface Route {
   over: Rail[];
 }
 
-export function traceRoute(network: RailNetwork, from: Rail): Route {
+export function traceRoute(
+  network: RailNetwork,
+  from: Rail,
+  /**
+   * Ways to treat as though they were not there.
+   *
+   * So that a second route can be traced through what the first left behind,
+   * rather than running into it and being thrown away whole. Without this a
+   * network gets carved into a few long routes and a great deal of track
+   * that nothing can be put on.
+   */
+  avoid?: ReadonlySet<Rail>,
+): Route {
   const points = from.points.map((point) => [...point] as Point2);
   if (points.length < 2) return { points, over: [from] };
 
@@ -499,7 +511,7 @@ export function traceRoute(network: RailNetwork, from: Rail): Route {
 
       for (const end of network.at(tip)) {
         // Same sort of line only, so nothing finds its way onto a tramway.
-        if (end.rail.kind !== from.kind || used.has(end.rail)) continue;
+        if (end.rail.kind !== from.kind || used.has(end.rail) || avoid?.has(end.rail)) continue;
         const on = end.rail.points as readonly Point2[];
         const leaving = end.fromHead
           ? heading(on[0]!, on[1]!)
@@ -640,12 +652,17 @@ export function moveTrain(
  * near: the cost of being wrong that way is a collider nobody needed.
  */
 export function rakeNear(
-  train: Pick<Train, 'line' | 'along' | 'cars' | 'stock'>,
+  train: Pick<Train, 'line' | 'along' | 'cars' | 'stock'> & { vehicles?: readonly Placed[] },
   x: number,
   z: number,
   reach: number,
 ): boolean {
-  const head = pointAlong(train.line.points, train.along);
+  // Where the rake was last put, if it has been put anywhere. Asking the line
+  // instead means a search down it for every train on the map, every tick,
+  // and a train too far away to draw is by definition one whose position is
+  // allowed to be a second old -- sixteen metres at the speed of the fastest
+  // of them, against a reach of three hundred.
+  const head = train.vehicles?.[0] ?? pointAlong(train.line.points, train.along);
   if (!head) return true;
   const away = Math.hypot(head.x - x, head.z - z) - consistLength(train.cars, train.stock);
   return away <= reach;

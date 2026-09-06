@@ -982,7 +982,14 @@ describe('choosing which way to set off', () => {
  */
 describe('how near a rake is', () => {
   const LINE: Rail = { kind: 'rail', width: 8, points: [[0, 0], [4000, 0]] };
-  const rake = (along: number) => ({ line: LINE, along, cars: 6, stock: 'carriage' as const });
+  /** A rake, laid out, as a real one always is by the time this is asked. */
+  const rake = (along: number) => ({
+    line: LINE,
+    along,
+    cars: 6,
+    stock: 'carriage' as const,
+    vehicles: layOutTrain(LINE, along, 6, 'carriage'),
+  });
 
   it('measures from the back of the rake, not the front', () => {
     // The reach is allowed the whole length of the train behind the coupling,
@@ -996,7 +1003,13 @@ describe('how near a rake is', () => {
 
   it('gives a longer train a longer reach, because it is longer', () => {
     const consist = consistLength(6, 'carriage');
-    const short = { line: LINE, along: 1000, cars: 1, stock: 'carriage' as const };
+    const short = {
+      line: LINE,
+      along: 1000,
+      cars: 1,
+      stock: 'carriage' as const,
+      vehicles: layOutTrain(LINE, 1000, 1, 'carriage'),
+    };
     expect(rakeNear(rake(1000), 1000, consist + 10, 20)).toBe(true);
     expect(rakeNear(short, 1000, consist + 10, 20)).toBe(false);
   });
@@ -1009,11 +1022,25 @@ describe('how near a rake is', () => {
   });
 
   it('keeps one it cannot place, rather than dropping it', () => {
+    // Before it has ever been laid out there is nothing to measure from, and
     // `pointAlong` gives nothing for a chainage off the end of the line. A
     // train that cannot be located is a train to go on drawing: the cost of
     // being wrong that way is a collider nobody needed, and the cost of the
     // other way is a train you can fly through.
-    expect(rakeNear(rake(99999), 0, 0, 1)).toBe(true);
+    const never = { line: LINE, along: 99999, cars: 6, stock: 'carriage' as const };
+    expect(rakeNear(never, 0, 0, 1)).toBe(true);
+  });
+
+  it('measures from where the rake is, not from a fresh search of the line', () => {
+    // The rake's own position is a second old at worst for a train too far
+    // off to draw, which against a reach of three hundred metres is nothing
+    // -- and it saves searching the line for every train on the map, every
+    // tick.
+    const stale = rake(1000);
+    // Its vehicles say 1000 while its chainage says it has run on to 2000.
+    stale.along = 2000;
+    expect(rakeNear(stale, 1000, 0, 50)).toBe(true);
+    expect(rakeNear(stale, 2000, 0, 50)).toBe(false);
   });
 });
 

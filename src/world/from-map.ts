@@ -123,8 +123,21 @@ export interface MapWorldOptions {
    * there and being that shape.
    */
   landmarks?: Landmark[];
-  /** Trains to run on the track. */
+  /** Trains to run on the track, each asked for by name of a place. */
   trains?: TrainSpec[];
+  /**
+   * And trains put on whatever line is left, to fill the network.
+   *
+   * The distinction is what a train is *for*. The rake of stake wagons in the
+   * yard is a level: something names it, lands on it, and finds somebody
+   * standing on it. Everything else is scenery -- a city with a hundred and
+   * thirty kilometres of tramway and three trams on it reads as a model of a
+   * city rather than a city.
+   *
+   * Scenery is asked for by the yard-full rather than one at a time, and goes
+   * wherever there is room, which is why it is a different sort of request.
+   */
+  fill?: FillSpec[];
   /** How far from where a train was asked for a line may be, in metres. */
   trainReach: number;
 }
@@ -190,6 +203,24 @@ export interface TrainSpec {
    * will be back, and no use at all for saying "south".
    */
   setOff?: number;
+}
+
+/**
+ * A quantity of trains to spread over whatever line is unclaimed.
+ *
+ * No `near`: the point is that nobody cares where these are, only that the
+ * network does not look abandoned.
+ */
+export interface FillSpec {
+  /** What they are made of, which also says which sort of line they take. */
+  stock: Stock;
+  cars: number;
+  /** How fast, in metres per second. */
+  speed: number;
+  /** Only take a route at least this long, in metres. */
+  minRoute: number;
+  /** How many to place at most. */
+  most: number;
 }
 
 export interface MapWorld extends CityLayout {
@@ -701,6 +732,55 @@ export function buildLayoutFromMap(
       stock,
       cars: spec.cars,
       vehicles,
+    });
+  }
+
+  // --- Filling the network --------------------------------------------------
+  // Whatever is left after the levels have had their pick. One train to a
+  // route, so no two can ever be found running the same rails, and each put
+  // somewhere different along its own route -- placed at the same fraction
+  // they would all sit at the same end of their lines and the network would
+  // read as a depot rather than as a service.
+  for (const want of options.fill ?? []) {
+    const runs = stockRuns(want.stock);
+    const length = consistLength(want.cars, want.stock);
+    const spread = 0.618033988749895;
+
+    const routes: { line: Rail; over: Rail[]; run: number }[] = [];
+    for (const rail of map.rails ?? []) {
+      if (rail.kind !== runs || taken.has(rail)) continue;
+      // Traced around what is already spoken for, rather than into it: a
+      // route that ran into a claimed way used to be thrown away whole, which
+      // left most of the network with nothing on it.
+      const route = traceRoute(network, rail, taken);
+      const run = lineLength(route.points);
+      if (run < Math.max(want.minRoute, length * 2)) continue;
+      // Claimed as they are found, so a route is only offered once.
+      for (const part of route.over) taken.add(part);
+      routes.push({ line: { kind: rail.kind, width: rail.width, points: route.points }, over: route.over, run });
+    }
+
+    // Longest first, so a small allowance goes on the lines worth seeing.
+    routes.sort((a, b) => b.run - a.run);
+    routes.slice(want.most).forEach((spare) => {
+      for (const part of spare.over) taken.delete(part);
+    });
+
+    routes.slice(0, want.most).forEach((route, index) => {
+      const along = length + (route.run - length) * ((index * spread) % 1);
+      const vehicles = layOutTrain(route.line, along, want.cars, want.stock);
+      if (!vehicles.length) return;
+      trains.push({
+        line: route.line,
+        along,
+        // Alternating, so the network has traffic both ways rather than a
+        // parade all going the same direction.
+        direction: index % 2 === 0 ? 1 : -1,
+        speed: want.speed,
+        stock: want.stock,
+        cars: want.cars,
+        vehicles,
+      });
     });
   }
 
