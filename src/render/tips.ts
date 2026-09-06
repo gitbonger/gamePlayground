@@ -22,7 +22,8 @@
  * life low, slow and tired on purpose. They live in `CAUTIONS` here.
  *
  * **Command.** What to do *now*, in a situation the game has put you in: the
- * take-off at the end of a conversation, the walking keys on a roof. Context
+ * take-off at the end of a conversation, the walking keys on a roof, the
+ * things to do in the last hundred and fifty metres of an approach. Context
  * rather than danger, and it stays up while the context does. It outranks a
  * caution, because a situation the game has arranged is more definite than a
  * risk it has noticed. These live in `main.ts`, since what they depend on is
@@ -80,8 +81,28 @@ export const codesFor = (tip: Tip): readonly string[] =>
  * still working out which way is up has not covered it yet.
  */
 export interface Lesson extends Tip {
-  /** Metres flown in this run before it is offered. */
-  at: number;
+  /**
+   * Metres flown in this level before it is offered.
+   *
+   * Distance flown is the measure of the *player*: twenty metres of flying is
+   * twenty metres of flying whether it took two seconds or twenty, and
+   * somebody still working out which way is up has not covered it yet.
+   */
+  at?: number;
+  /**
+   * Or metres still to fly, offered once the target is that near.
+   *
+   * The other end of the same flight. Some things are about how far you have
+   * come and some are about what is coming up, and an instruction about
+   * landing is the second sort however long the flight was.
+   */
+  within?: number;
+}
+
+/** How far this flight has come, and how far it has left. */
+export interface Progress {
+  flown: number;
+  toGo: number;
 }
 
 /**
@@ -113,6 +134,10 @@ export const COURSES: Record<string, readonly Lesson[]> = {
     // comes up. The panel has been telling him how to fly for two levels, so
     // it is worth its saying something that is only the story now and then.
     { at: 150, keys: [], text: 'Approaching Teleki tér' },
+    // And the last of them, counted from the other end of the flight: the
+    // hard part of this game is arriving, and this is the sentence that says
+    // the arriving has started.
+    { within: 200, keys: [], text: 'Land near the arrow!' },
   ],
 };
 
@@ -214,6 +239,58 @@ export const CAUTIONS: readonly Caution[] = [
 ];
 
 /**
+ * How the approach is going, for the instructions that talk you down.
+ *
+ * `fast` and `sinking` are the landing rule's own verdicts rather than
+ * thresholds restated here: `landingReadiness` in the simulation answers
+ * whether the bird could put down cleanly right now, and what the panel says
+ * has to be what the ground will say a moment later.
+ */
+export interface Approaching {
+  /** Metres still to fly to the target. */
+  toGo: number;
+  altitude: number;
+  /** Too fast to put down, by the landing rule. */
+  fast: boolean;
+  /** Coming down too hard to put down, by the same rule. */
+  sinking: boolean;
+}
+
+/** Inside this, the flight is an approach and is talked through as one. */
+const APPROACH = 150;
+
+/**
+ * The last hundred and fifty metres, which is the hard part of this game.
+ *
+ * Commands rather than cautions: the situation is one the level has arranged
+ * -- there is a target in front of you and you are close to it -- and the
+ * instruction is what to do about it now. They repeat as often as approaches
+ * do, because an approach is exactly the thing you go on getting wrong until
+ * you have done enough of them.
+ *
+ * In order, and the order is the order the mistakes matter in: height cannot
+ * be got rid of in the last twenty metres, speed can, and the flare is last
+ * because it is the only one of them that is a moment rather than a state.
+ */
+export const approachFor = (flight: Approaching): Tip | null => {
+  if (flight.toGo > APPROACH) return null;
+
+  // Too high to get down in the room that is left. A pigeon glides about six
+  // to one, so a third of the distance is a steep but flyable slope, and more
+  // than that has to be lost rather than flown off.
+  if (flight.altitude > flight.toGo / 3) return { keys: ['↑'], text: 'Lose some height' };
+  // Too fast to put down, which is what the brake is for: wings spread and a
+  // backwards beat.
+  if (flight.fast) return { keys: ['B'], text: 'Brake to slow down' };
+  // Down to roof height and still coming down hard. Beating arrests a sink in
+  // a way that pulling the nose up at this height does not.
+  if (flight.sinking && flight.altitude < 12) return { keys: ['SPACE'], text: 'Beat to soften it' };
+  // Low, slow and settling: the last thing, and a moment rather than a state.
+  if (flight.altitude < 6) return { keys: ['↓'], text: 'Flare to settle' };
+  return { keys: ['B'], text: 'Brake, then flare' };
+};
+
+/**
  * Whichever caution the flight has earned, or null. The first that applies.
  *
  * `teaching` is the tutorial: with it off, only the ones marked `always`
@@ -222,6 +299,14 @@ export const CAUTIONS: readonly Caution[] = [
  */
 export const cautionFor = (teaching: boolean, flight: Flying): Tip | null =>
   CAUTIONS.find((caution) => (caution.always || teaching) && caution.when(flight)) ?? null;
+
+/**
+ * Whether a lesson has come round, by whichever end of the flight it counts
+ * from. `zero` is how far had been flown when the course started.
+ */
+const dueAt = (lesson: Lesson, progress: Progress, zero: number): boolean =>
+  (lesson.at !== undefined && progress.flown - zero >= lesson.at) ||
+  (lesson.within !== undefined && progress.toGo <= lesson.within);
 
 /** How long a lesson stays on screen once it has been given, in seconds. */
 const LINGER = 7;
@@ -253,7 +338,11 @@ export interface Tutor {
    * screen: pressing one of the keys it shows takes it away at once. Which
    * is also the shortest way to find out that it worked.
    */
-  update(travelled: number, dt: number, down?: (codes: readonly string[]) => boolean): Tip | null;
+  update(
+    progress: Progress,
+    dt: number,
+    down?: (codes: readonly string[]) => boolean,
+  ): Tip | null;
   /** Forget what has been given, for a flight that is starting again. */
   reset(): void;
 }
@@ -274,13 +363,14 @@ export function createTutor(
   /** How far had been flown when this course started. */
   let zero = 0;
   const given = new Set<Lesson>();
+  const due = (lesson: Lesson, progress: Progress) => dueAt(lesson, progress, zero);
   let showing: Tip | null = null;
   /** Seconds left of showing this one, or of the pause after it. */
   let left = 0;
   let resting = false;
 
   return {
-    update(travelled, dt, down) {
+    update(progress, dt, down) {
       if (showing && down?.(codesFor(showing))) {
         // Used, so it has said what it had to say. The pause still runs, so
         // the next lesson does not arrive on the same keystroke.
@@ -307,9 +397,7 @@ export function createTutor(
       // The first one not yet given that the flight has reached. One at a
       // time: passing two thresholds in one frame gives the earlier lesson
       // now and the later one when this has had its turn.
-      const next = lessons.find(
-        (lesson) => lesson.at <= travelled - zero && !given.has(lesson),
-      );
+      const next = lessons.find((lesson) => !given.has(lesson) && due(lesson, progress));
       if (!next) return null;
 
       given.add(next);

@@ -9,6 +9,7 @@ import {
   defaultParams,
   hasCrashed,
   heading,
+  landingReadiness,
   isPerched,
   step,
   type BirdState,
@@ -44,7 +45,14 @@ import {
 import { HOME_TREE, LANDMARKS } from './landmarks';
 import { begin, isOver, reply, type Exchange } from './dialogue';
 import { createDialoguePanel, speechColour } from './render/dialogue';
-import { cautionFor, courseFor, createTipPanel, createTutor, type Tip } from './render/tips';
+import {
+  approachFor,
+  cautionFor,
+  courseFor,
+  createTipPanel,
+  createTutor,
+  type Tip,
+} from './render/tips';
 import { loadProgress, saveProgress } from './progress';
 import { createLevelMenu } from './render/menu';
 import {
@@ -1233,8 +1241,27 @@ function frame(nowMs: number) {
   // say, because what to do now outranks what to learn.
   // What the flight is in the middle of outranks what it might learn next,
   // and what to do right now outranks both.
+  const aim = activeMarker();
+  const toGo = aim
+    ? Math.hypot(bird.position.x - aim.position.x, bird.position.z - aim.position.z)
+    : Infinity;
+  // Talking the approach down, which is a command rather than a caution: the
+  // level has put a target in front of you and you are near it. The two
+  // verdicts come off the landing rule itself, so the panel and the ground
+  // cannot disagree about what "too fast" means.
+  const settling =
+    bird.ending === null && toGo <= 150 ? landingReadiness(bird, flightParams) : null;
+
   const urgent =
     command() ??
+    (settling
+      ? approachFor({
+          toGo,
+          altitude: telemetry.altitude,
+          fast: !settling.speedOk,
+          sinking: !settling.sinkOk,
+        })
+      : null) ??
     (bird.ending === null
       ? cautionFor(tutorial, {
           altitude: telemetry.altitude,
@@ -1250,7 +1277,11 @@ function frame(nowMs: number) {
   // never seen, and never given again -- which is the whole failure mode of a
   // queue that does not know whether anyone is listening. A level flown
   // entirely below the "pull up" mark would have taught nothing.
-  tipPanel.show(urgent ?? tutor.update(run.stats.distance, frameTime, input.anyDown));
+  // Some lessons count from the take-off and some from the arrival, and the
+  // arrival is the harder half.
+  tipPanel.show(
+    urgent ?? tutor.update({ flown: run.stats.distance, toGo }, frameTime, input.anyDown),
+  );
   world.updateSmoke(allPuffs, camera.quaternion);
   rig.update(interpolatedState, wings, frameTime);
 

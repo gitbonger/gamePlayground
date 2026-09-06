@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  approachFor,
   CAUTIONS,
   cautionFor,
   codesFor,
@@ -19,41 +20,41 @@ describe('handing out the flying lessons', () => {
     // flight that is also a measure of the player: somebody still working out
     // which way is up has not covered twenty metres.
     const tutor = createTutor(COURSE, 7);
-    expect(tutor.update(0, 1 / 60)).toBeNull();
-    expect(tutor.update(19.9, 1 / 60)).toBeNull();
-    expect(tutor.update(20, 1 / 60)?.text).toBe('up');
+    expect(tutor.update({ flown: 0, toGo: 9999 }, 1 / 60)).toBeNull();
+    expect(tutor.update({ flown: 19.9, toGo: 9999 }, 1 / 60)).toBeNull();
+    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.text).toBe('up');
   });
 
   it('gives one at a time, in the order the flight reaches them', () => {
     // Starting a flight already past both thresholds -- which a respawn into
     // the middle of one would -- must not stack two tips into one corner.
     const tutor = createTutor(COURSE, 7, 1.5);
-    expect(tutor.update(500, 1 / 60)?.text).toBe('up');
-    expect(tutor.update(500, 1)?.text).toBe('up');
+    expect(tutor.update({ flown: 500, toGo: 9999 }, 1 / 60)?.text).toBe('up');
+    expect(tutor.update({ flown: 500, toGo: 9999 }, 1)?.text).toBe('up');
 
     // And the corner empties between them. Two instructions that never share
     // the screen but never leave it either read as one instruction changing
     // its mind.
-    expect(tutor.update(500, 7)).toBeNull();
-    expect(tutor.update(500, 1)).toBeNull();
-    expect(tutor.update(500, 1)?.text).toBe('brake');
+    expect(tutor.update({ flown: 500, toGo: 9999 }, 7)).toBeNull();
+    expect(tutor.update({ flown: 500, toGo: 9999 }, 1)).toBeNull();
+    expect(tutor.update({ flown: 500, toGo: 9999 }, 1)?.text).toBe('brake');
   });
 
   it('takes a lesson away once it has been up long enough', () => {
     const tutor = createTutor([EARLY], 7, 1.5);
-    expect(tutor.update(20, 1 / 60)).not.toBeNull();
-    expect(tutor.update(21, 6)).not.toBeNull();
+    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)).not.toBeNull();
+    expect(tutor.update({ flown: 21, toGo: 9999 }, 6)).not.toBeNull();
     // Seven seconds of showing, then the corner is empty again.
-    expect(tutor.update(22, 1)).toBeNull();
+    expect(tutor.update({ flown: 22, toGo: 9999 }, 1)).toBeNull();
   });
 
   it('never gives the same lesson twice in one flight', () => {
     const tutor = createTutor([EARLY], 7, 1.5);
-    expect(tutor.update(20, 1 / 60)).not.toBeNull();
-    tutor.update(30, 8);
-    tutor.update(30, 2);
+    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)).not.toBeNull();
+    tutor.update({ flown: 30, toGo: 9999 }, 8);
+    tutor.update({ flown: 30, toGo: 9999 }, 2);
     for (const travelled of [40, 200, 900]) {
-      expect(tutor.update(travelled, 1 / 60), `${travelled} m`).toBeNull();
+      expect(tutor.update({ flown: travelled, toGo: 9999 }, 1 / 60), `${travelled} m`).toBeNull();
     }
   });
 
@@ -61,15 +62,15 @@ describe('handing out the flying lessons', () => {
     // The player who has just flown into a building is the one who most wants
     // to be told again, and the one who never crashes never sees a repeat.
     const tutor = createTutor([EARLY], 7, 1.5);
-    expect(tutor.update(20, 1 / 60)).not.toBeNull();
-    tutor.update(30, 8);
-    tutor.update(30, 2);
-    expect(tutor.update(40, 1 / 60)).toBeNull();
+    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)).not.toBeNull();
+    tutor.update({ flown: 30, toGo: 9999 }, 8);
+    tutor.update({ flown: 30, toGo: 9999 }, 2);
+    expect(tutor.update({ flown: 40, toGo: 9999 }, 1 / 60)).toBeNull();
 
     tutor.reset();
     // And not straight away: the new flight has to earn it over again.
-    expect(tutor.update(0, 1 / 60)).toBeNull();
-    expect(tutor.update(20, 1 / 60)?.text).toBe('up');
+    expect(tutor.update({ flown: 0, toGo: 9999 }, 1 / 60)).toBeNull();
+    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.text).toBe('up');
   });
 
   it('goes away when the player uses the key it is about', () => {
@@ -78,11 +79,11 @@ describe('handing out the flying lessons', () => {
     // worked.
     const tutor = createTutor([EARLY], 7, 1.5);
     const nothing = () => false;
-    expect(tutor.update(20, 1 / 60, nothing)?.text).toBe('up');
-    expect(tutor.update(21, 1 / 60, (codes) => codes.includes('ArrowUp'))).toBeNull();
+    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60, nothing)?.text).toBe('up');
+    expect(tutor.update({ flown: 21, toGo: 9999 }, 1 / 60, (codes) => codes.includes('ArrowUp'))).toBeNull();
     // And stays away: it has been given, key or no key.
-    expect(tutor.update(22, 2, nothing)).toBeNull();
-    expect(tutor.update(23, 1 / 60, nothing)).toBeNull();
+    expect(tutor.update({ flown: 22, toGo: 9999 }, 2, nothing)).toBeNull();
+    expect(tutor.update({ flown: 23, toGo: 9999 }, 1 / 60, nothing)).toBeNull();
   });
 
   it('knows which keys on the keyboard each drawn key stands for', () => {
@@ -103,10 +104,20 @@ describe('handing out the flying lessons', () => {
   it('asks for one turn at a time, in the order they are written', () => {
     // The real courses rather than the fixture.
     for (const course of Object.values(COURSES)) {
-      const order = course.map((lesson) => lesson.at);
+      // In the order they were written, for the ones counted from the
+      // take-off. The ones counted from the arrival are in the same list and
+      // come round when the arrival does, which is not a position in a list.
+      const order = course.flatMap((lesson) => (lesson.at === undefined ? [] : [lesson.at]));
       expect([...order].sort((a, b) => a - b)).toEqual(order);
 
       for (const lesson of course) {
+        // One trigger or the other, never both and never neither: a lesson
+        // with no trigger is never given, and a lesson with two is a lesson
+        // whose moment depends on which end of the flight you ask from.
+        expect(
+          [lesson.at, lesson.within].filter((trigger) => trigger !== undefined),
+          lesson.text,
+        ).toHaveLength(1);
         // Short enough to take in at a glance, since it is read while flying.
         expect(lesson.text.length, lesson.text).toBeGreaterThan(0);
         expect(lesson.text.length, lesson.text).toBeLessThan(60);
@@ -127,12 +138,12 @@ describe('handing out the flying lessons', () => {
     // Being told to try turning while threading a goods yard would be the
     // game talking over itself.
     const tutor = createTutor(COURSE, 7, 1.5);
-    expect(tutor.update(20, 1 / 60)?.text).toBe('up');
+    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.text).toBe('up');
 
     // A level with nothing to teach teaches nothing, however far it is flown.
     tutor.teach(courseFor('The Yard'), 0);
     for (const travelled of [20, 100, 900]) {
-      expect(tutor.update(travelled, 1 / 60), `${travelled} m`).toBeNull();
+      expect(tutor.update({ flown: travelled, toGo: 9999 }, 1 / 60), `${travelled} m`).toBeNull();
     }
     expect(courseFor('The Yard')).toEqual([]);
   });
@@ -143,9 +154,9 @@ describe('handing out the flying lessons', () => {
     // lesson it has would be a lesson already missed.
     const tutor = createTutor([], 7, 1.5);
     tutor.teach(COURSE, 500);
-    expect(tutor.update(500, 1 / 60)).toBeNull();
-    expect(tutor.update(519, 1 / 60)).toBeNull();
-    expect(tutor.update(520, 1 / 60)?.text).toBe('up');
+    expect(tutor.update({ flown: 500, toGo: 9999 }, 1 / 60)).toBeNull();
+    expect(tutor.update({ flown: 519, toGo: 9999 }, 1 / 60)).toBeNull();
+    expect(tutor.update({ flown: 520, toGo: 9999 }, 1 / 60)?.text).toBe('up');
   });
 });
 
@@ -226,5 +237,55 @@ describe('the cautions, which watch the flight', () => {
     // and the display is the thing most likely to change.
     expect(cautionFor(true, { ...fine, airspeed: 20 / 3.6 - 0.01 })?.text).toBe('Keep flapping!');
     expect(cautionFor(true, { ...fine, airspeed: 20 / 3.6 + 0.01 })).toBeNull();
+  });
+});
+
+describe('talking an approach down', () => {
+  /** On the way in: a hundred metres to go, low and steady. */
+  const near = { toGo: 100, altitude: 20, fast: false, sinking: false };
+
+  it('says nothing until the target is close', () => {
+    // Out here it is a flight, not an approach, and the arrow is enough.
+    expect(approachFor({ ...near, toGo: 151 })).toBeNull();
+    expect(approachFor({ ...near, toGo: 150 })).not.toBeNull();
+  });
+
+  it('deals with height first, because height is the one that runs out', () => {
+    // A pigeon glides about six to one. Too high at a hundred metres out
+    // cannot be fixed at twenty, whereas too fast can -- so height is said
+    // first even when both are wrong.
+    const high = { ...near, altitude: 60, fast: true };
+    expect(approachFor(high)?.text).toBe('Lose some height');
+    expect(approachFor({ ...high, altitude: 20 })?.text).toBe('Brake to slow down');
+  });
+
+  it('answers a hard sink with the wings, not the nose', () => {
+    // At roof height, beating arrests a sink; pulling the nose up trades the
+    // speed there is no longer any of.
+    expect(approachFor({ ...near, altitude: 10, sinking: true })?.text).toBe('Beat to soften it');
+    // Higher up there is room to fly out of it, and the general instruction
+    // stands.
+    expect(approachFor({ ...near, altitude: 30, toGo: 120, sinking: true })?.text).toBe(
+      'Brake, then flare',
+    );
+  });
+
+  it('ends on the flare, which is the last thing you do', () => {
+    expect(approachFor({ ...near, toGo: 20, altitude: 5 })?.text).toBe('Flare to settle');
+  });
+
+  it('draws every one of them with a key that does something', () => {
+    const shown = [
+      approachFor({ ...near, altitude: 60 }),
+      approachFor({ ...near, fast: true }),
+      approachFor({ ...near, altitude: 10, sinking: true }),
+      approachFor({ ...near, toGo: 20, altitude: 5 }),
+      approachFor(near),
+    ];
+    for (const tip of shown) {
+      expect(tip).not.toBeNull();
+      expect(codesFor(tip!).length, tip!.text).toBeGreaterThan(0);
+      expect(tip!.text.length, tip!.text).toBeLessThan(30);
+    }
   });
 });

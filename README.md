@@ -2284,7 +2284,9 @@ arranged is more definite than a risk it has noticed.
 
 **One-off.** A thing worth trying once, offered when there is room to try it:
 turn right, turn left, or a fact about the world you cannot see by looking —
-*fly through trees, avoid buildings and vehicles*. Given once, and **belonging
+*fly through trees, avoid buildings and vehicles*. Most are counted in metres
+flown; some are counted the other way, in metres still to go, because an
+instruction about landing belongs to the arrival however long the flight was. Given once, and **belonging
 to the level that teaches it**, so a death repeats it and a later level never
 sees it again. That is the whole reason they are keyed by level rather than
 being one list the game works through: the flight that teaches turning is the
@@ -2292,6 +2294,17 @@ one long empty flight, and being told to try turning while threading a goods
 yard would be the game talking over itself. A level taken up in mid-air
 inherits the distance the last one ran up, so its course counts from the
 hand-over rather than from a take-off two levels ago.
+
+**The last hundred and fifty metres are talked down**, and those are commands
+rather than cautions: the level has put a target in front of you and you are
+near it. Four of them, in the order the mistakes matter in — height, because
+it cannot be got rid of in the last twenty metres; then speed, because it can;
+then the wings against a hard sink at roof height, where pulling the nose up
+would trade away the speed there is none of; and the flare last, being the
+only one of them that is a moment rather than a state. The two verdicts they
+turn on, *too fast* and *sinking too hard*, come off `landingReadiness` — the
+same function the ground uses a second later — so the panel and the touchdown
+cannot disagree about what "too fast" means.
 
 The order between them is fixed and it is that order: command, caution,
 lesson. What the game has arranged, then what the flight is in the middle of,
