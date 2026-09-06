@@ -141,15 +141,6 @@ const STANDING_HEIGHT = 0.14;
 export const FOOT_DROP = 0.07;
 
 /**
- * How far above a surface the feet are put, in metres.
- *
- * Clearing it exactly is not the same as being seen to stand on it: at a
- * millimetre the feet read as sunk into the rail rather than resting on it,
- * and a chase camera two metres back has no depth cue to say otherwise.
- */
-const FOOT_CLEARANCE = 0.02;
-
-/**
  * How far forward the head is thrust over a stride, in metres, and how much of
  * the stride the thrust itself takes.
  *
@@ -183,13 +174,7 @@ export interface BirdRig {
    * that lot by red gives a muddy brown rather than a red pigeon.
    */
   glow(amount: number): void;
-  /**
-   * `surfaceY` is the height of the drawn ground beneath the bird, if it is
-   * near enough to matter. The simulation stops a bird on a plane that the
-   * roads and railways are painted *above*, so a bird resting on a track
-   * stands in it unless the model is lifted clear.
-   */
-  update(state: BirdState, pose: WingPose, dt: number, surfaceY?: number): void;
+  update(state: BirdState, pose: WingPose, dt: number): void;
   dispose(): void;
 }
 
@@ -367,23 +352,13 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
   // Separate axis for standing, which is about the whole body, not the wings.
   let stand = 0;
 
-  function update(
-    state: BirdState,
-    wingPose: WingPose,
-    dt: number,
-    surfaceY = Number.NEGATIVE_INFINITY,
-  ) {
+  function update(state: BirdState, wingPose: WingPose, dt: number) {
     const standing = wingPose === 'perched';
     stand += ((standing ? 1 : 0) - stand) * Math.min(1, dt * 7);
 
-    // Never lowered, only raised: on plain ground and on every roof and deck
-    // the bird is already well clear and this does nothing at all.
     object.position.set(
       state.position.x,
-      Math.max(
-        state.position.y + STANDING_HEIGHT * stand,
-        surfaceY + FOOT_DROP + FOOT_CLEARANCE,
-      ),
+      state.position.y + STANDING_HEIGHT * stand,
       state.position.z,
     );
     object.quaternion.set(

@@ -83,11 +83,6 @@ export interface World {
   collider: Collider;
   /** Everything the pigeon can be sent to, in the order it was named. */
   markers: TargetMarker[];
-  /**
-   * Height of the drawn ground at a point -- the road or railway painted over
-   * the plane, or the plane itself. What a bird resting there stands on.
-   */
-  surfaceAt(x: number, z: number): number;
   /** Move the rolling stock to where the layout says the trains have got to. */
   updateTrains(trains: readonly Train[]): void;
   /**
@@ -548,7 +543,7 @@ export function buildWorld(
     disposables.push(slab, concrete);
 
     const mesh = new THREE.Mesh(slab, asDecal(concrete, PATCH_ORDER));
-    mesh.position.set(landmark.x, PATCH_LIFT, landmark.z);
+    mesh.position.set(landmark.x, 0, landmark.z);
     mesh.rotation.y = landmark.yaw ?? 0;
     mesh.receiveShadow = true;
     mesh.renderOrder = PATCH_ORDER;
@@ -558,7 +553,7 @@ export function buildWorld(
       createMarker(
         landmark.name,
         concrete,
-        new THREE.Vector3(landmark.x, PATCH_LIFT, landmark.z),
+        new THREE.Vector3(landmark.x, 0, landmark.z),
         disposables,
         overlay,
       ),
@@ -819,7 +814,6 @@ export function buildWorld(
     boxes: layout.boxes,
     collider: createColliderField(layout.boxes),
     markers,
-    surfaceAt: (x, z) => groundSurfaceAt(x, z, layout.roads, layout.rails),
     overlay,
     updateTrains,
     updateSmoke,
@@ -1110,79 +1104,29 @@ function treeShapes(): { geometry: THREE.BufferGeometry; color: number }[] {
 }
 
 /**
- * Ground markings are decals: flat things lying on other flat things.
+ * Ground markings are decals: flat things lying on other flat things, all of
+ * them at ground level, none of them lifted above it.
  *
- * Depth alone cannot separate them reliably -- roads cross each other and
- * overlap at every junction, and coplanar quads with the same material fight
- * whatever their height. So they are lifted a little, pulled towards the
- * camera by a polygon offset, and drawn in a fixed order without writing
- * depth, which leaves overlaps to be settled by draw order rather than by
- * fractions of a millimetre.
- */
-const AREA_LIFT = 0.05;
-const ROAD_LIFT = 0.12;
-const RAIL_LIFT = 0.18;
-/**
- * How far a concrete patch is lifted off the ground plane, in metres.
+ * Depth alone cannot separate them -- roads cross each other and overlap at
+ * every junction, and coplanar quads fight for the same pixels. Three things
+ * settle it and none of them is height: a polygon offset pulls each layer
+ * towards the camera by its order, none of them writes depth, and they are
+ * drawn in that same order, so an overlap is settled by which was drawn last.
  *
- * Level with the ground rather than laid on top of it. A slab even ten
- * centimetres proud is a step, and a level whose target you have to land
- * *inside* is a much harder level than one whose target you land near and
- * walk onto. So it is a flat layer like the roads and the parkland, lifted
- * only by the hair that stops it fighting the ground for the same pixels.
+ * They used to be lifted as well -- parkland 5 cm, concrete 7, roads 12,
+ * railways 18 -- and that fourth mechanism was the only one that cost
+ * anything. It made the drawn ground a different height from the simulated
+ * ground, so a bird standing on a railway stood *in* it, and the fix for that
+ * was to ask, every frame and for every bird near the ground, which of the
+ * map's several thousand road and railway segments it happened to be over.
+ * That question took 0.18 ms to answer. Flat, there is no question.
  */
-const PATCH_LIFT = 0.07;
 /** Poured concrete, a bit paler than the roads. */
 const PATCH_COLOR = 0x9a9a94;
 /** A landmark building, a shade off the crowd it stands in. */
 const LANDMARK_COLOR = 0x8d8477;
 /** The paving of a roof terrace: pale, and plainly not roof tiles. */
 const TERRACE_COLOR = 0xb0aaa0;
-
-/**
- * Height of whatever is drawn flat on the ground at a point, in metres.
- *
- * The lifts above are a drawing trick, but they are still the surface a player
- * sees: the railhead is painted 18 cm above the plane the simulation stops a
- * bird on, so a bird resting on the plane under a track is a bird standing
- * inside it. Asked once when something comes to rest rather than every frame,
- * which is why a plain scan of the ribbons is fast enough.
- *
- * Rails beat roads because that is the order they are drawn in: at a level
- * crossing the rail is the surface you would stand on.
- */
-export function groundSurfaceAt(
-  x: number,
-  z: number,
-  roads: readonly Road[] = [],
-  rails: readonly Rail[] = [],
-): number {
-  for (const rail of rails) if (onRibbon(x, z, rail.points, rail.width)) return RAIL_LIFT;
-  for (const road of roads) if (onRibbon(x, z, road.points, road.width)) return ROAD_LIFT;
-  return 0;
-}
-
-/** Whether a point lies within `width` of a polyline, measured across it. */
-function onRibbon(
-  x: number,
-  z: number,
-  points: readonly (readonly [number, number])[],
-  width: number,
-): boolean {
-  const half = width / 2;
-  for (let i = 1; i < points.length; i += 1) {
-    const [x0, z0] = points[i - 1]!;
-    const [x1, z1] = points[i]!;
-    const dx = x1 - x0;
-    const dz = z1 - z0;
-    const span = dx * dx + dz * dz;
-    // Clamped projection onto the segment: past either end, the nearest point
-    // is that end, which is what rounds off a ribbon's corners.
-    const t = span < 1e-12 ? 0 : Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / span));
-    if (Math.hypot(x - (x0 + dx * t), z - (z0 + dz * t)) <= half) return true;
-  }
-  return false;
-}
 
 const AREA_ORDER = 1;
 const PATCH_ORDER = 2;
@@ -1226,7 +1170,7 @@ function buildAreas(
 
     const target = byKind.get(area.kind) ?? [];
     for (let i = 0; i < positions.count; i += 1) {
-      target.push(positions.getX(i), AREA_LIFT, -positions.getY(i));
+      target.push(positions.getX(i), 0, -positions.getY(i));
     }
     byKind.set(area.kind, target);
     flat.dispose();
@@ -1573,7 +1517,7 @@ function buildRails(rails: readonly Rail[]): {
       ];
       for (const corner of [0, 1, 2, 1, 3, 2]) {
         const [px, pz, across, run] = quad[corner]!;
-        positions.push(px!, RAIL_LIFT, pz!);
+        positions.push(px!, 0, pz!);
         edges.push(across!, run!, tram);
       }
     }
@@ -1671,7 +1615,7 @@ function buildRoads(roads: readonly Road[]): {
         [1, 3, 2],
       ]) {
         for (const corner of [a, b, c]) {
-          positions.push(quad[corner! * 2]!, ROAD_LIFT, quad[corner! * 2 + 1]!);
+          positions.push(quad[corner! * 2]!, 0, quad[corner! * 2 + 1]!);
           colours.push(shade.r, shade.g, shade.b);
         }
       }

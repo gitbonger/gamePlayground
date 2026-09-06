@@ -4,7 +4,6 @@ import {
   arrowScale,
   buildRoofs,
   buildWorld,
-  groundSurfaceAt,
   roofRise,
   targetFlash,
 } from './city';
@@ -32,6 +31,17 @@ const SIDING: Rail[] = [{ kind: 'rail', width: 8, points: [[-200, 320], [200, 32
  * Half of it a storey higher, the other half a planted terrace, because that
  * is the shape the loft has and the one every piece of this has to handle.
  */
+/** And a flat one: a patch of concrete, which is a layer on the ground. */
+const SLAB: Landmark = {
+  name: 'Level 3',
+  x: 150,
+  z: 150,
+  width: 9,
+  depth: 9,
+  height: 0,
+  margin: 7,
+};
+
 const TOWER: Landmark = {
   name: 'Level 2',
   x: 40,
@@ -51,7 +61,8 @@ const map: MapData = {
   attribution: 'test',
   roads: BLOCK,
   rails: SIDING,
-  areas: [],
+  // A park, so the area layer is one of the things drawn on the ground here.
+  areas: [{ kind: 'park', points: [[20, 20], [90, 20], [90, 90], [20, 90]] }],
 };
 
 /**
@@ -711,66 +722,48 @@ describe('the trees', () => {
   });
 });
 
-describe('the surface a resting bird stands on', () => {
-  // Built inside the suite, because the ground texture needs the canvas stub
-  // that `beforeAll` puts up.
-  let world: ReturnType<typeof buildWorld>;
-  beforeAll(() => {
-    world = buildWorld(buildLayoutFromMap(map, defaultMapWorldOptions), {});
-  });
-
-  it('is the railhead over a track, not the plane under it', () => {
-    // Stated against the geometry that actually gets drawn: whatever height
-    // the ribbon is painted at, that is what a bird there is standing on.
-    const drawn = highestFlatSurface(world.group);
-    expect(world.surfaceAt(0, 320)).toBeCloseTo(drawn, 6);
-    expect(world.surfaceAt(0, 320)).toBeGreaterThan(0);
-  });
-
-  it('is the plane again once you step off the track', () => {
-    // The siding is 8 m wide, so four metres either side of the centreline.
-    expect(world.surfaceAt(0, 320 + 3.5)).toBeGreaterThan(0);
-    expect(world.surfaceAt(0, 320 + 40)).toBe(0);
-    expect(world.surfaceAt(-600, 320)).toBe(0);
-  });
-
-  it('rounds off the ends of a ribbon rather than running on for ever', () => {
-    // The siding stops at x = 200. Just past the railhead is still track,
-    // because a corridor has a width; well past it is not.
-    expect(world.surfaceAt(203, 320)).toBeGreaterThan(0);
-    expect(world.surfaceAt(260, 320)).toBe(0);
-  });
-
-  it('puts a road below a railway where they actually cross', () => {
-    // A level crossing: the same point is on both, and the rail is drawn over
-    // the road, so the rail is what you would be standing on.
-    const road: Road[] = [{ kind: 'residential', width: 10, points: [[0, -50], [0, 50]] }];
-    const rail: Rail[] = [{ kind: 'rail', width: 8, points: [[-50, 0], [50, 0]] }];
-
-    const onRoadOnly = groundSurfaceAt(0, 40, road, rail);
-    const onRailOnly = groundSurfaceAt(40, 0, road, rail);
-    const onBoth = groundSurfaceAt(0, 0, road, rail);
-
-    expect(onRoadOnly).toBeGreaterThan(0);
-    expect(onRailOnly).toBeGreaterThan(onRoadOnly);
-    expect(onBoth).toBe(onRailOnly);
+describe('the ground the layers are drawn on', () => {
+  it('paints every one of them at ground level, and none above it', () => {
+    // Which is why there is no longer any such thing as asking how high the
+    // drawn ground is. Roads, railways, parkland and concrete used to be
+    // lifted 5 to 18 cm clear of the plane so they would not fight it for
+    // pixels -- and a bird resting on a railway then stood *in* it, so the
+    // renderer had to be told the ribbon's height, which meant scanning every
+    // road and railway on the map for every bird near the ground, every
+    // frame. It cost 0.18 ms a call.
+    //
+    // What separates the layers now is what always did most of the work: a
+    // polygon offset per layer, no depth writing, and a fixed draw order.
+    // None of those has a height.
+    const world = buildWorld(
+      buildLayoutFromMap(map, { ...defaultMapWorldOptions, landmarks: [TOWER, SLAB] }),
+      {},
+    );
+    // Zero to the last decimal place a rotated plane can manage, which is
+    // some fraction of an atom rather than the 5 to 18 cm it used to be.
+    expect(highestFlatSurface(world.group)).toBeLessThan(1e-9);
+    world.dispose();
   });
 });
 
-/** The highest vertex of anything drawn flat over the ground plane. */
+/**
+ * The highest anything drawn flat sits above the ground plane, in world
+ * metres.
+ *
+ * In world space, not in the geometry: a plane whose vertices are all at zero
+ * still lies 7 cm up if the mesh it belongs to was moved 7 cm up, and that is
+ * exactly how the patches of concrete used to be lifted.
+ */
 function highestFlatSurface(group: THREE.Object3D): number {
   let top = 0;
+  group.updateMatrixWorld(true);
+  const box = new THREE.Box3();
   group.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
-    const position = object.geometry.getAttribute('position');
+    box.setFromObject(object);
+    if (box.isEmpty()) return;
     // Flat layers only: a ribbon is one height all over, a building is not.
-    let low = Infinity;
-    let high = -Infinity;
-    for (let i = 0; i < position.count; i += 1) {
-      low = Math.min(low, position.getY(i));
-      high = Math.max(high, position.getY(i));
-    }
-    if (high - low < 1e-6 && high > top) top = high;
+    if (box.max.y - box.min.y < 1e-6 && box.max.y > top) top = box.max.y;
   });
   return top;
 }

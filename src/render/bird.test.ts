@@ -32,16 +32,13 @@ function posed(pose: WingPose, stridePhase: number) {
   return { legs, head: head! };
 }
 
-/**
- * Where the bottom of the drawn bird's feet ends up, given a resting height
- * and the surface the renderer was told is underneath it.
- */
-function lowestPoint(pose: WingPose, restingY: number, surfaceY?: number): number {
+/** Where the bottom of the drawn bird's feet ends up, at a resting height. */
+function lowestPoint(pose: WingPose, restingY: number): number {
   const rig = createBirdRig();
   const bird = createBird(vec(0, restingY, 0), 0, 0);
   bird.velocity = vec(0, 0, 0);
   // Long enough for the standing ease-in to have finished moving.
-  for (let i = 0; i < 400; i += 1) rig.update(bird, pose, 1 / 120, surfaceY);
+  for (let i = 0; i < 400; i += 1) rig.update(bird, pose, 1 / 120);
   rig.object.updateMatrixWorld(true);
 
   const feet = new THREE.Box3();
@@ -75,39 +72,22 @@ describe('how far the model hangs below the point the simulation tracks', () => 
   });
 });
 
-describe('a bird resting on a surface the renderer draws above the plane', () => {
-  // A railway ribbon is painted 18 cm over the plane the simulation stops a
-  // bird on, which is how a landed pigeon came to be standing inside a track.
-  const RAILHEAD = 0.18;
-  const rest = defaultParams.groundHeight + defaultParams.bodyRadius;
-
-  it('keeps its feet above the railhead however the landing went', () => {
+describe('a bird resting on the ground', () => {
+  it('stands on it rather than in it', () => {
+    // The reported bug was a pigeon sunk to its middle in a railway track.
+    // It was sunk because the track was painted 18 cm above the plane the
+    // simulation stops a bird on, and the fix was to tell the renderer how
+    // high the drawn ground was -- which meant asking, every frame, which of
+    // the map's thousands of segments the bird was over.
+    //
+    // Nothing is drawn above the plane any more. So what keeps the feet
+    // visible is only this: the bird is tracked by its middle, and the model
+    // hangs less far below that than the middle stands above the ground.
+    const rest = defaultParams.groundHeight + defaultParams.bodyRadius;
     for (const pose of POSES) {
-      // Clear of it, not level with it: feet exactly on the surface read as
-      // feet inside it from a chase camera two metres back.
-      expect(lowestPoint(pose, rest, RAILHEAD), pose).toBeGreaterThan(RAILHEAD + 0.01);
+      expect(lowestPoint(pose, rest), pose).toBeGreaterThan(defaultParams.groundHeight);
     }
-  });
-
-  it('was standing inside it before, which is what this fixes', () => {
-    // Without being told about the ribbon, a bird that scrapes to a stop puts
-    // its feet below the rail it is lying on. This is the reported bug.
-    expect(lowestPoint('gliding', rest)).toBeLessThan(RAILHEAD);
-  });
-
-  it('is not lifted off plain ground, where there was never a problem', () => {
-    for (const pose of POSES) {
-      expect(lowestPoint(pose, rest, 0), pose).toBeCloseTo(lowestPoint(pose, rest), 9);
-    }
-  });
-
-  it('is not lifted off a roof or a wagon deck either', () => {
-    // Those are real geometry at their real height, and a ground ribbon is
-    // never anywhere near them.
-    const deck = 1.25 + defaultParams.bodyRadius;
-    for (const pose of POSES) {
-      expect(lowestPoint(pose, deck, RAILHEAD), pose).toBeCloseTo(lowestPoint(pose, deck), 9);
-    }
+    expect(defaultParams.bodyRadius).toBeGreaterThan(FOOT_DROP);
   });
 });
 

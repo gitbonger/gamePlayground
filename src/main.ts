@@ -716,19 +716,6 @@ let lastTime = performance.now() / 1000;
 let smoothedFps = 60;
 
 /**
- * The drawn ground under a bird, when it is close enough for that to show.
- *
- * Only asked while a bird is on or just above the surface: the answer is a
- * scan of every road and railway on the map, and it changes nothing at all
- * for a bird that is flying, standing on a roof or riding a wagon.
- */
-function surfaceUnder(state: BirdState): number {
-  if (state.restingOn !== null) return Number.NEGATIVE_INFINITY;
-  if (state.position.y > flightParams.groundHeight + 1) return Number.NEGATIVE_INFINITY;
-  return world.surfaceAt(state.position.x, state.position.z);
-}
-
-/**
  * Walking up to the resident that belongs to the level being flown finishes
  * it, and lights the next one.
  *
@@ -899,7 +886,7 @@ function frame(nowMs: number) {
   );
   talkPanel.show(talkingTo ? talk : null);
   world.updateSmoke(allPuffs, camera.quaternion);
-  rig.update(interpolatedState, wings, frameTime, surfaceUnder(interpolatedState));
+  rig.update(interpolatedState, wings, frameTime);
 
   // --- What is being pointed at -------------------------------------------
   // Three states, and the marker is told the answer rather than working it
@@ -938,12 +925,11 @@ function frame(nowMs: number) {
       member.state,
       isPerched(member.state) ? 'perched' : 'gliding',
       frameTime,
-      surfaceUnder(member.state),
     );
   });
 
   for (const resident of residents) {
-    resident.rig.update(resident.state, 'perched', frameTime, surfaceUnder(resident.state));
+    resident.rig.update(resident.state, 'perched', frameTime);
     resident.rig.glow(resident.glowing);
   }
 

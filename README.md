@@ -1647,22 +1647,37 @@ body is lifted 0.14 m — the simulation tracks a point at the bird's centre and
 stops it at ground level, which would otherwise bury half the model. That
 offset is a rendering concern and lives in the rig, not the flight model.
 
-**And it has to clear whatever is painted on the ground.** The flat layers —
-parkland at 5 cm, roads at 12, railways at 18 — are lifted off the ground plane
-to settle which of them draws over which, because coplanar quads sharing a
-material fight whatever their depth. The simulation knows nothing about any of
-that: it stops a bird on the plane at zero. On grass that is invisible, and on
-a railway it meant a pigeon standing 4 cm inside the rail it had just landed
-on, which is exactly how it was reported.
+**Nothing is painted above the ground, and that took some finding.** The flat
+layers used to be lifted off the plane to settle which drew over which —
+parkland 5 cm, concrete 7, roads 12, railways 18 — because coplanar quads
+fight for the same pixels. The simulation knew nothing about it: it stops a
+bird on the plane at zero. On grass that was invisible; on a railway it meant
+a pigeon standing 4 cm inside the rail it had just landed on, which is exactly
+how it was reported.
 
-So `World.surfaceAt` answers what is drawn under a point, and the rig lifts the
-bird until its feet are 2 cm clear of it. Three things make that safe. It only
-ever raises, so a roof, a wagon deck and plain grass are all untouched — each
-is already well above. It is measured on the *feet* rather than the model,
-because spread wings in the braking pose droop nearly 30 cm and a wingtip
-brushing the ballast is a bird braking, not a bug. And it is asked only of a
-bird within a metre of the ground and not riding anything, which is what makes
-a plain scan of every road and railway on the map cheap enough to do at all.
+The fix, then, was to tell the renderer how high the drawn ground was — which
+meant `World.surfaceAt`, a scan of every road and railway on the map, for every
+bird within a metre of the ground, every frame. That was cheap when it was
+written. It is not cheap now: **0.18 ms a call** on a 4.2 km map of 4,800 road
+and rail segments, and it is asked for the hero, all ten of the flock and all
+four residents. Two of those residents stand on patches of concrete at ground
+level and so paid it unconditionally — **22 ms of every second**, before the
+player has done anything — and the hero joined them the moment it landed,
+which is why a level would start smooth and get choppy at exactly the point
+you were trying to put down.
+
+So the lift is gone. It was the fourth of four mechanisms separating those
+layers, and the only one with a height: a polygon offset per layer, no depth
+writing, and a fixed draw order were already doing the work, and the ground
+renders identically without it — checked flat out along a railway two metres
+up, which is the worst case there is for coplanar quads. With every layer at
+zero the drawn ground *is* the simulated ground, so there is nothing to ask.
+`surfaceAt`, `groundSurfaceAt`, `onRibbon` and the rig's surface argument all
+went with it, and a test states the thing the whole edifice existed to work
+around: nothing drawn flat sits above the plane.
+
+What keeps the feet visible now is only that the bird is tracked by its middle
+and hangs less far below that than its middle stands above the ground.
 
 The 7 cm the feet hang below the tracked point is measured off the built model
 in a test rather than written down twice: lengthen a leg and the test fails.
@@ -2117,16 +2132,14 @@ npm test
   point than `FOOT_DROP` says, in any of the four poses, and `FOOT_DROP` is
   within 5 mm of the deepest they actually reach, so it cannot quietly grow
   into holding the bird off the ground. Measured off the built model, so
-  lengthening a leg fails it. On a surface drawn above the plane the feet end
-  up clear of it in every pose — and the same measurement without the surface
-  shows them under it, which is the bug as reported. Plain ground, a roof and
-  a wagon deck are all left exactly where they were.
-- **`src/world/city.test.ts`** — the surface under a resting bird is the
-  railhead over a track, stated against the height the ribbon is actually
-  drawn at rather than the constant behind it; the plane again once you step
-  off; rounded off at a ribbon's ends rather than running on down the line;
-  and the rail, not the road, at a level crossing where the same point is on
-  both.
+  lengthening a leg fails it. And a bird resting on the ground stands on it
+  rather than in it, in every pose, which now follows from that drop being
+  smaller than the body radius rather than from anything being told how high
+  the ground is.
+- **`src/world/city.test.ts`** — every flat layer is drawn at ground level and
+  none above it, measured in world space over a map with roads, a railway,
+  parkland and a patch of concrete on it, because a mesh moved up has vertices
+  that say zero. Lifting any one of the four fails it.
 - **`src/render/camera.test.ts`** — a two-shot holds both birds inside the
   frame with air to spare, at every separation from touching to a dozen metres
   apart; stated as the angle each subtends from the camera's own aim, which is
