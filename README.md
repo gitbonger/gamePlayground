@@ -564,13 +564,17 @@ half a kilometre off course still gets there. It is square to the *route*
 rather than to the world, which is the sort of thing that works by accident on
 an east-west flight and is therefore written down as a test.
 
-**And the line is painted on the ground**, in road-marking yellow, two
-hundred metres across the route. A flight that changes level in mid-air with
+**And the line is painted on the ground**, in road-marking yellow, right
+across the map. A flight that changes level in mid-air with
 nothing to see reads as a glitch rather than as an arrival — the banner says
 so, but the banner is a caption, and the thing itself should be in the world.
 It is a decal like the road markings and drawn over them, since a stripe a
-tram line could cover would be a stripe you cannot trust. Only the level being
-flown paints its own, the same arrangement the target markers have.
+tram line could cover would be a stripe you cannot trust. It spans the whole
+map because that is what the line is — the rule has no ends, and a stripe
+stopping a hundred metres out would have told a smaller truth than the rule it
+stands for. Only the level being flown paints its own, the same arrangement
+the target markers have, so the line vanishes at the moment it is crossed:
+that is the level it belonged to being over.
 
 The paint and the rule come off the same call: the release point, the target,
 and the distance along. Two calculations of one line would be one too many —
@@ -2259,6 +2263,47 @@ band now stands two centimetres proud of the end and a centimetre under the
 roofline, which is what the glass down the side had been doing all along. A
 test asserts the two no longer end at the same depth, because it is the sort
 of thing a later tidy-up would helpfully round back off.
+
+### The three kinds of instruction
+
+Everything the game says to the player is one of three things, and knowing
+which changes when it appears and when it stops.
+
+**Cautionary.** A danger that is imminent, said every single time it is: pull
+up, keep flapping, nose down, slow down. It is not teaching and it does not
+get used up — the twentieth time you are about to fly into the ground you want
+telling as much as the first. These watch the flight, last exactly as long as
+the state that caused them, and all but the stall stop once the game has
+stopped teaching, because a pigeon spends half its life low, slow and tired on
+purpose. The stall stays on for everybody: nobody stalls on purpose.
+
+**Command.** What to do *now*, in a situation the game has put you in: the
+take-off at the end of a conversation, the walking keys on a roof. Context
+rather than danger. It outranks a caution, because a situation the game has
+arranged is more definite than a risk it has noticed.
+
+**One-off.** A thing worth trying once, offered when there is room to try it:
+turn right, turn left, or a fact about the world you cannot see by looking —
+*fly through trees, avoid buildings and vehicles*. Given once, and **belonging
+to the level that teaches it**, so a death repeats it and a later level never
+sees it again. That is the whole reason they are keyed by level rather than
+being one list the game works through: the flight that teaches turning is the
+one long empty flight, and being told to try turning while threading a goods
+yard would be the game talking over itself. A level taken up in mid-air
+inherits the distance the last one ran up, so its course counts from the
+hand-over rather than from a take-off two levels ago.
+
+The order between them is fixed and it is that order: command, caution,
+lesson. What the game has arranged, then what the flight is in the middle of,
+then what there is spare attention for.
+
+**The quiet band matters as much as the instructions.** *Pull up* fired below
+twenty metres, which is where a pigeon crossing a park actually flies — and
+pulling up hard enough to clear the warning stalls the wing, which brings on
+*nose down*, which drops you back under twenty. Two cautions taking it in
+turns, with no height left to fly in. It is ten metres now, **and only while
+sinking**: level at eight is a bird flying low, sinking at eight is a bird
+about to stop flying.
 
 ### One instruction at a time
 

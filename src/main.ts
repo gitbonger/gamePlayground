@@ -44,7 +44,7 @@ import {
 import { HOME_TREE, LANDMARKS } from './landmarks';
 import { begin, isOver, reply, type Exchange } from './dialogue';
 import { createDialoguePanel, speechColour } from './render/dialogue';
-import { createTipPanel, createTutor, warningFor, type Tip } from './render/tips';
+import { cautionFor, courseFor, createTipPanel, createTutor, type Tip } from './render/tips';
 import { loadProgress, saveProgress } from './progress';
 import { createLevelMenu } from './render/menu';
 import {
@@ -273,13 +273,13 @@ const allPuffs: Puff[] = smokes.flatMap((each) => each.puffs.puffs);
 /**
  * How far a painted finishing line reaches either side of the route.
  *
- * Long enough that missing it is a decision. The flight it divides is nine
- * hundred metres of open park, so a bird would have to be a hundred metres
- * off course to pass outside the paint -- and the line it stands for has no
- * ends at all, so being outside it changes nothing except that you did not
- * see the thing you flew over.
+ * The whole map, because that is what the line is. The rule has no ends --
+ * any path from the near side to the far side crosses it, however wide the
+ * detour -- and a stripe that stopped a hundred metres out would have been
+ * telling a smaller truth than the rule it stands for. Painting all of it
+ * costs one more quad.
  */
-const GATE_SPAN = 200;
+const GATE_SPAN = map.radius * 2;
 
 /**
  * The finishing lines to paint, one for every level that ends at one.
@@ -754,6 +754,10 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // only the *going* there that a level taken up in place skips, and with it
   // the level's own hour, which `respawn` is the only thing that applies.
   start = releaseFor(spec);
+  // What this level teaches, from where it starts teaching it. A level taken
+  // up in mid-air inherits the distance the last one ran up, so the course
+  // counts from here rather than from the take-off two levels ago.
+  tutor.teach(courseFor(spec.name), where === 'in place' ? run.stats.distance : 0);
   // The finishing line, if this level has one: square across the way to the
   // target, so far along it. Worked out here, from the release point this
   // level was given rather than from wherever the bird happens to be, so that
@@ -1081,17 +1085,15 @@ function opened(): number {
 }
 
 /**
- * The one thing to do next, as a key and a few words.
+ * What to do now, in a situation the game has put the bird in.
  *
- * One at a time and only when it is the thing to do, which is the whole point
- * of it: a dozen lines of controls read at the start are read at the moment
- * the player knows least about what any of them mean.
- *
- * So far there is one. Standing with somebody and out of things to say, the
- * next thing is to go -- and whether that is a take-off or a journey, the key
- * is the same and the word for it is the same to a bird.
+ * The second of the three kinds of instruction -- see `render/tips.ts` -- and
+ * the one that outranks the others: a situation the game has arranged is more
+ * definite than a risk it has noticed. Standing with somebody and out of
+ * things to say, the next thing is to go; standing on a roof, the next thing
+ * is that the controls are different now.
  */
-function nextThing(): Tip | null {
+function command(): Tip | null {
   if (finished && talkingTo && !midSentence()) return { keys: ['SPACE'], text: 'Take off!' };
 
   // On foot, where the controls are a different set entirely and the player
@@ -1232,11 +1234,12 @@ function frame(nowMs: number) {
   // What the flight is in the middle of outranks what it might learn next,
   // and what to do right now outranks both.
   const urgent =
-    nextThing() ??
+    command() ??
     (bird.ending === null
-      ? warningFor(tutorial, {
+      ? cautionFor(tutorial, {
           altitude: telemetry.altitude,
           airspeed: telemetry.airspeed,
+          climb: telemetry.climbRate,
           stamina: bird.stamina,
           stalled: telemetry.stalled,
         })
