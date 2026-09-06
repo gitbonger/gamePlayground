@@ -172,7 +172,7 @@ const layout = buildLayoutFromMap(map, {
  */
 const carOf = (target: Extract<LevelTarget, { kind: 'wagon' }>): number =>
   target.car === 'middle'
-    ? Math.floor((layout.trains[target.train]?.vehicles.length ?? 1) / 2)
+    ? Math.floor(((layout.trains[target.train]?.cars ?? 0) + 1) / 2)
     : target.car;
 
 /**
@@ -424,7 +424,13 @@ const personTop = (resident: Resident) =>
  */
 function carrierOf(train: number, vehicle: number): number {
   let base = 0;
-  for (let i = 0; i < train; i += 1) base += layout.trains[i]?.vehicles.length ?? 0;
+  // A train is its engine and its cars, whatever the last layout managed to
+  // place: the tags have to be the same every tick or a resident's idea of
+  // which wagon it is on drifts off the wagon.
+  for (let i = 0; i < train; i += 1) {
+    const each = layout.trains[i];
+    base += each ? each.cars + 1 : 0;
+  }
   return base + vehicle;
 }
 
@@ -597,16 +603,16 @@ function moveTrains(dt: number) {
     previousAlong[index] = train.along;
     const run = shuttle(
       lineLength(train.line.points),
-      consistLength(train.vehicles.length - 1),
+      consistLength(train.cars, train.stock),
       train.along,
       train.direction,
       train.speed * dt,
     );
     train.along = run.along;
     train.direction = run.direction;
-    train.vehicles = layOutTrain(train.line, train.along, train.vehicles.length - 1, train.stock);
+    train.vehicles = layOutTrain(train.line, train.along, train.cars, train.stock);
     const base = tagged;
-    tagged += train.vehicles.length;
+    tagged += train.cars + 1;
     // Every box knows how fast the rake is running, which is what makes
     // being touched by one fatal rather than merely blocking.
     fields.push(
@@ -850,7 +856,7 @@ function frame(nowMs: number) {
       vehicles: layOutTrain(
         train.line,
         tweenAlong(previousAlong[index]!, train.along, alpha),
-        train.vehicles.length - 1,
+        train.cars,
         train.stock,
       ),
     })),

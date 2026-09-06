@@ -676,7 +676,7 @@ export function buildLayoutFromMap(
     // otherwise the next train stands itself in a platform this one comes
     // through at fifty kilometres an hour.
     for (const part of over) taken.add(part);
-    trains.push({ line, along, direction: 1, speed: spec.speed ?? 6, stock, vehicles });
+    trains.push({ line, along, direction: 1, speed: spec.speed ?? 6, stock, cars: spec.cars, vehicles });
   }
 
   return {

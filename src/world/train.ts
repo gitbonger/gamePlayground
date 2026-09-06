@@ -122,6 +122,16 @@ export interface Train {
   speed: number;
   /** What it is made of behind the engine. */
   stock: Stock;
+  /**
+   * How many of those there are.
+   *
+   * Written down rather than counted off `vehicles`, because `layOutTrain`
+   * returns nothing at all when a rake will not fit and a count taken from
+   * that is a count that can go to -1. It did: one failed layout turned a
+   * train into a locomotive running on its own, for the rest of the session,
+   * because the next tick asked for one fewer car than the last.
+   */
+  cars: number;
   vehicles: Vehicle[];
 }
 
@@ -371,8 +381,16 @@ export function traceRoute(network: RailNetwork, from: Rail): Route {
   return { points: [...behind.reverse(), ...points, ...ahead], over: [...used] };
 }
 
-/** How long a consist of this many vehicles is, over the couplings. */
-export function consistLength(cars: number, stock: Stock = 'wagon'): number {
+/**
+ * How long a consist of this many vehicles is, over the couplings.
+ *
+ * The stock is required rather than defaulted. A carriage is five metres
+ * longer than a wagon, so a rake measured as the wrong sort is measured 21 m
+ * short over six of them -- and a train turned round 21 m before it should be
+ * is a train hanging off the end of its line. That was a real bug, and a
+ * default is what let it be written.
+ */
+export function consistLength(cars: number, stock: Stock): number {
   return ENGINE.length + cars * (COUPLING + stockSize(stock).length);
 }
 

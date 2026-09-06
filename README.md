@@ -807,6 +807,27 @@ never exercise a way appended back to front or the backwards half of the walk
 put back in the wrong order; only tracing the real network does, so that is a
 test too.
 
+**A train carries its own car count.** It used to be read off the vehicles
+the last layout produced, which was fine until a layout produced none.
+`layOutTrain` returns nothing at all rather than half a train hanging off the
+end of a siding, so one bad tick asked for `length - 1` = **-1** cars on the
+next, and every tick after that drew a locomotive running on its own — for the
+rest of the session, because nothing ever asked for the coaches again. Three
+passenger trains left the station like that.
+
+What put them past the end in the first place was `consistLength(cars)`
+defaulting to stake wagons. A carriage is five metres longer than a wagon,
+which over six of them is 21 m, and `shuttle` turns a train round at `consist`
+from the end — so a carriage rake measured as wagons reversed 21 m too late
+and the back of it ran out of rails. The default is gone: the stock is now a
+required argument, so measuring the wrong sort is a type error rather than a
+train quietly shedding its coaches.
+
+Both halves are tested, and they are different claims. That `shuttle` never
+leaves a train short of its own length is one; that `layOutTrain` can draw the
+train anywhere `shuttle` is willing to put it is the other, and it is the
+second that fails when the two disagree about how long a rake is.
+
 A standing train is not a special case anywhere, which is the point of the
 speed being a number rather than a flag. It shuttles nowhere because its step
 is zero. It has no plume because a plume belongs to an engine that is running

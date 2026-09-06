@@ -623,7 +623,7 @@ describe('standing a train on the track', () => {
     const train = layout.trains[0]!;
     const along = lineLength(train.line.points);
     expect(train.along).toBeLessThanOrEqual(along + 1e-9);
-    expect(train.along - consistLength(4)).toBeGreaterThanOrEqual(-1e-9);
+    expect(train.along - consistLength(4, 'wagon')).toBeGreaterThanOrEqual(-1e-9);
   });
 
   it('keeps its solids out of the world, and carries them itself', () => {

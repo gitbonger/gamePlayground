@@ -91,7 +91,7 @@ describe('laying out a train', () => {
   it('reaches back from where the leading coupling is', () => {
     expect(vehicles[0]!.x).toBeCloseTo(300 - ENGINE.length / 2, 6);
     const last = vehicles[vehicles.length - 1]!;
-    expect(last.x - last.length / 2).toBeCloseTo(300 - consistLength(5), 6);
+    expect(last.x - last.length / 2).toBeCloseTo(300 - consistLength(5, 'wagon'), 6);
   });
 
   it('points them along the line', () => {
@@ -776,5 +776,73 @@ describe('tracing a route', () => {
     traceRoute(railNetwork([first, second]), first);
     expect(first.points).toEqual([[0, 0], [100, 0]]);
     expect(second.points).toEqual([[100, 0], [250, 0]]);
+  });
+});
+
+/**
+ * A rake stays a rake.
+ *
+ * The failure this is here for: three passenger trains ran out of the station
+ * as locomotives on their own, having shed their coaches somewhere near the
+ * buffers and never got them back.
+ */
+describe('running a rake up and down its line', () => {
+  const LINE: Rail = { kind: 'rail', width: 8, points: [[0, 0], [900, 0]] };
+
+  it('never turns a train round short of its own length', () => {
+    // What `shuttle` is for. It reverses at `consist` from one end, so a
+    // consist measured as the wrong sort of stock reverses in the wrong place
+    // and leaves the back of the train hanging off the rails -- a carriage is
+    // five metres longer than a wagon, which over six of them is 21 m.
+    for (const stock of ['wagon', 'carriage'] as const) {
+      const consist = consistLength(6, stock);
+      const run = lineLength(LINE.points);
+
+      let along = consist + 4;
+      let direction = -1;
+      for (let tick = 0; tick < 4000; tick += 1) {
+        const step = shuttle(run, consist, along, direction, 16 / 120);
+        along = step.along;
+        direction = step.direction;
+        expect(along, `${stock} at tick ${tick}`).toBeGreaterThanOrEqual(consist - 1e-9);
+        expect(along, `${stock} at tick ${tick}`).toBeLessThanOrEqual(run + 1e-9);
+      }
+    }
+  });
+
+  it('lays out every vehicle wherever the shuttle leaves it', () => {
+    // The two halves have to agree: anywhere `shuttle` is willing to put the
+    // train, `layOutTrain` has to be able to draw it. Where they disagree the
+    // rake comes back empty.
+    for (const stock of ['wagon', 'carriage'] as const) {
+      const consist = consistLength(6, stock);
+      const run = lineLength(LINE.points);
+
+      let along = consist + 4;
+      let direction = -1;
+      for (let tick = 0; tick < 4000; tick += 1) {
+        const step = shuttle(run, consist, along, direction, 16 / 120);
+        along = step.along;
+        direction = step.direction;
+        expect(
+          layOutTrain(LINE, along, 6, stock),
+          `${stock} at ${along.toFixed(1)}`,
+        ).toHaveLength(7);
+      }
+    }
+  });
+
+  it('carries its own car count, so a bad tick is not a permanent one', () => {
+    // Counting the cars off the last layout is a ratchet: `layOutTrain`
+    // returns nothing when a rake will not fit, so one bad tick asks for
+    // -1 cars on the next and every tick after that draws an engine on its
+    // own. The count is written down instead, so the same bad tick recovers.
+    const derived = layOutTrain(LINE, 10, 6, 'carriage');
+    expect(derived).toHaveLength(0);
+    expect(derived.length - 1).toBe(-1);
+
+    // The count that is written down does not care what the layout managed.
+    const cars = 6;
+    expect(layOutTrain(LINE, 400, cars, 'carriage')).toHaveLength(7);
   });
 });

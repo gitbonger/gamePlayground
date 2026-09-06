@@ -460,7 +460,7 @@ describe('a train that moves', () => {
     const wagons = train.vehicles.length - 1;
     const moved = shuttle(
       lineLength(train.line.points),
-      consistLength(wagons),
+      consistLength(wagons, 'wagon'),
       train.along,
       train.direction,
       metres,
