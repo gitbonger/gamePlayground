@@ -276,14 +276,22 @@ Both halves of the marker are arithmetic and tested as such: what the flash
 does across a second and across the fade band, and that the arrow's size stays
 proportional to range with a floor so it does not vanish underfoot.
 
-**Three of them, getting harder.** *The Park* is a patch of concrete on open
-ground at midday: nothing to fly round, nothing that moves, and the whole
-approach visible from the start. *The Loft* is a planted roof terrace
-thirty-one metres up on a block of flats standing seven metres clear of the
-16–24 m roofline around it, in late-afternoon light — still nothing moving,
-but you have to pick out the right half of it and put down on the strip
-between the bushes. *The Yard* is a wagon of a running train under a low
-evening sun, which is the first target that will not wait for you.
+**Four of them.** *The Park* is a patch of concrete on open ground at midday:
+nothing to fly round, nothing that moves, and the whole approach visible from
+the start. *The Loft* is a planted roof terrace thirty-one metres up on a
+block of flats standing seven metres clear of the 16–24 m roofline around it,
+in late-afternoon light — still nothing moving, but you have to pick out the
+right half of it and put down on the strip between the bushes. *The Yard* is a
+wagon of a running train under a low evening sun, the first target that will
+not wait for you. *The Crossing* is 286 m due north across the west of the
+city, half past seven in the morning, onto a second patch of concrete with
+twenty metres of clear ground round it — an approach down a gap between
+terraces rather than across a field, and the only level flown with the sun
+behind you.
+
+The bird is released pointing at whatever the level is about, so "north" is
+not a heading written down anywhere: the target is north, and a homing pigeon
+leaves facing home. It comes out at 348°.
 
 **Every target is a thing, never a place.** Open ground was the awkward case:
 a wagon and a building are objects with a material each to flash and a top to

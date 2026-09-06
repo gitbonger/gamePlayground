@@ -12,7 +12,7 @@
  */
 
 import { GREETING, type Turn } from './dialogue';
-import { LOFT, PARK_PATCH } from './landmarks';
+import { LOFT, PARK_PATCH, WEST_PATCH } from './landmarks';
 
 /**
  * What a level asks you to land on. Always a thing, never a place.
@@ -118,6 +118,20 @@ export const LEVELS: readonly Level[] = [
     when: '2025-06-21T17:30:00Z',
     target: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' },
     person: { morph: 3, along: 2.5, across: 0 },
+    dialogue: GREETING,
+  },
+  {
+    // Across the city to the west, and the first level flown in the morning:
+    // a low sun behind you rather than in front, throwing the shadows the
+    // other way from every level before it.
+    name: 'The Crossing',
+    start: [47.494106, 19.071122],
+    // Half past seven in the morning, local. Four degrees north of due east
+    // and eleven degrees up, which is the sun of the evening levels seen from
+    // the other side.
+    when: '2025-06-21T05:30:00Z',
+    target: { kind: 'landmark', name: WEST_PATCH.name },
+    person: { morph: 4, along: 2.4, across: 0 },
     dialogue: GREETING,
   },
 ];

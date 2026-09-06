@@ -82,7 +82,7 @@ describe('what the levels aim at', () => {
     expect(away(terrace)).toBeLessThan(away(penthouse));
   });
 
-  it('stands every described building clear of the streets', () => {
+  it('stands every described thing clear of the streets', () => {
     // The one that actually bites. A described thing is put down at a written
     // coordinate and the generator gives way to it -- so nothing checks it
     // against the map, and a building made three times bigger around a point
@@ -92,7 +92,6 @@ describe('what the levels aim at', () => {
     const streets = indexStreets(HOME_MAP.roads as Road[]);
 
     for (const landmark of LANDMARKS) {
-      if (landmark.height <= 0) continue;
       const at = project(landmark.at[0], landmark.at[1], centre);
       const corners = footprintSamples(
         at.x,
@@ -102,12 +101,17 @@ describe('what the levels aim at', () => {
         landmark.yaw ?? 0,
         4,
       );
+      // A building has to stand off the pavement as well as off the road. A
+      // patch of concrete only has to stay out of the carriageway -- it is
+      // paving, and paving beside a road is a pavement. It would not even
+      // show if it overlapped, being drawn under the roads, which is exactly
+      // why it is worth stating rather than leaving to be noticed.
+      const room = landmark.height > 0 ? 2 : 0;
       for (const [x, z] of corners) {
         const road = streets.nearest(x, z, 120);
         if (!road) continue;
-        // Clear of the carriageway, and off the pavement beside it.
         expect(road.distance, `${landmark.name} at ${x.toFixed(0)}, ${z.toFixed(0)}`)
-          .toBeGreaterThan(road.width / 2 + 2);
+          .toBeGreaterThan(road.width / 2 + room);
       }
     }
   });

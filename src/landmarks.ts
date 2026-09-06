@@ -84,4 +84,22 @@ export const PARK_PATCH: LandmarkSpec = {
   margin: 7,
 };
 
-export const LANDMARKS: readonly LandmarkSpec[] = [LOFT, PARK_PATCH];
+/**
+ * A second patch of concrete, on open ground across the city to the west.
+ *
+ * The same thing as the one in the park and laid the same way -- flush with
+ * the ground, so landing on it, landing beside it and walking from one to the
+ * other are all the same surface. What is different is where it is: twenty
+ * metres of clear ground between a secondary road and a tramway, so the
+ * approach is down a gap between buildings rather than across a field.
+ */
+export const WEST_PATCH: LandmarkSpec = {
+  name: 'The Slab',
+  at: [47.496589, 19.070153],
+  width: 9,
+  depth: 9,
+  height: 0,
+  margin: 7,
+};
+
+export const LANDMARKS: readonly LandmarkSpec[] = [LOFT, PARK_PATCH, WEST_PATCH];
