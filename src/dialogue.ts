@@ -164,6 +164,41 @@ export const HEADING_OUT: Turn = {
   ],
 };
 
+/**
+ * The one out west, and the first news of the story since the empty nest.
+ *
+ * Five levels of looking end here. He has asked at three squares and found
+ * nobody, and what he gets is not his mate -- it is a direction: somebody
+ * takes birds, and he is on the top of a big house.
+ *
+ * No branches. Everything before this offers the player a choice of reply
+ * because the choice is the beat; here the beat is being told something, and
+ * a fork would be offering to not be told it. So each turn has one thing to
+ * say and saying it is what moves on.
+ */
+export const THE_TRAPPER: Turn = {
+  them: 'Hey mate!',
+  you: [
+    {
+      text: 'I am looking for my girl',
+      then: {
+        them: 'Good luck with that!',
+        you: [
+          {
+            text: 'She has gone missing while I was away!',
+            then: {
+              them:
+                'There is a crazy person, a trapper, captures birds! ' +
+                'On the top of a big house! Go look there!',
+              you: [{ text: 'I go quick!', opens: 'up to the roofs' }],
+            },
+          },
+        ],
+      },
+    },
+  ],
+};
+
 export const GREETING: Turn = {
   them: "It's good to see you!",
   you: [

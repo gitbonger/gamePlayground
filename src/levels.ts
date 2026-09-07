@@ -11,7 +11,7 @@
  * joins them up can be different data in the same shape.
  */
 
-import { GREETING, HEADING_OUT, type Turn } from './dialogue';
+import { GREETING, HEADING_OUT, THE_TRAPPER, type Turn } from './dialogue';
 import {
   HOME_TREE,
   JANI_SQUARE,
@@ -181,6 +181,22 @@ export interface Scene {
   /** How high it arcs over the city on the way, in metres. */
   cruise: number;
   /**
+   * Whether the shot goes up rather than across.
+   *
+   * Almost none of them do. A scene is normally a flight between two birds
+   * standing on things -- both ends near the ground, the city in between --
+   * and the only thing holding the camera over the roofs is `cruise`, which
+   * is why an arc is otherwise required.
+   *
+   * A climb has no such problem and cannot satisfy that rule: an arc on a
+   * move which is nearly vertical is a camera wandering off to one side and
+   * coming back. Said here rather than worked out, because what decides it is
+   * how far the shot travels *horizontally*, and a scene knows where it ends
+   * but not where it begins -- that is wherever the thing before it left the
+   * bird.
+   */
+  climbs?: boolean;
+  /**
    * What he says over the closing shot, if anything: a monologue.
    *
    * Lines rather than a line, because a monologue is a conversation with one
@@ -265,7 +281,34 @@ export const NOT_AT_MATYAS: Scene = {
   opens: { level: 'Jani Pali tér' },
 };
 
-export const SCENES: readonly Scene[] = [HOMECOMING, TO_MATYAS, NOT_AT_MATYAS];
+/**
+ * Straight up off the slab, to the height the last leg is flown from.
+ *
+ * The only scene in the game that goes nowhere. Every other one carries the
+ * bird across the city and the camera arcs over the roofs to say so; this one
+ * ends sixty-one metres from where it starts and a hundred and fifty metres
+ * above it, so what it is is a climb. `cruise: 0` gives it no arc at all --
+ * an arc on a move that is almost vertical is a camera wandering off to one
+ * side and coming back.
+ *
+ * It belongs to Blaha rather than to the loft, which is why it is here and
+ * not a taller release: the beat is *he has just been told where to go*, and
+ * the shot is him getting the height to go there. Three seconds, because the
+ * climb is the punctuation and not the scene.
+ *
+ * Nothing said over it, so it does not hold -- the words were the
+ * conversation's, and this runs straight on into the level.
+ */
+export const UP_TO_THE_ROOFS: Scene = {
+  name: 'up to the roofs',
+  endsOn: 'The Loft',
+  seconds: 3,
+  cruise: 0,
+  climbs: true,
+  opens: { level: 'The Loft' },
+};
+
+export const SCENES: readonly Scene[] = [HOMECOMING, TO_MATYAS, NOT_AT_MATYAS, UP_TO_THE_ROOFS];
 
 export const sceneNamed = (name: string): Scene | undefined =>
   SCENES.find((scene) => scene.name === name);
@@ -412,6 +455,20 @@ export interface Level {
    * over a district, in among the crows, or on a branch in a conversation.
    */
   escort: boolean;
+  /**
+   * Whether the wings tire on this level at all.
+   *
+   * Off everywhere but one. Stamina is the cost of flapping and the reason a
+   * long leg has to be glided rather than beaten out, so taking it away takes
+   * away most of what makes flying a decision -- it is not a kindness handed
+   * out wherever a level is hard.
+   *
+   * The loft is the exception because of what it is: the highest release in
+   * the game, with the whole district the last four levels crossed laid out
+   * underneath it. What the player should be doing up there is looking, and a
+   * bar that empties while they look is a bar telling them to stop looking.
+   */
+  tireless?: boolean;
   /**
    * Who is standing where, for as long as this level is being flown.
    *
@@ -731,7 +788,7 @@ export const LEVELS: readonly Level[] = [
       { who: 'Ginger', on: { kind: 'landmark', name: WEST_PATCH.name }, along: 2.4, across: 0 },
       { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
     ],
-    finish: { kind: 'meeting', who: 'Ginger', dialogue: GREETING },
+    finish: { kind: 'meeting', who: 'Ginger', dialogue: THE_TRAPPER },
   },
   {
     // Twenty-four metres up, on a roof among other roofs. Still nothing
@@ -757,6 +814,8 @@ export const LEVELS: readonly Level[] = [
     health: 1,
     when: EVENING,
     escort: false,
+    // The one level the wings do not tire on -- see `tireless`.
+    tireless: true,
     target: { kind: 'landmark', name: LOFT.name },
     // Two of them on the terrace now: the one who lives here, and her. Three
     // metres apart, which is more than the two a bird can be walked up to

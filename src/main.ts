@@ -1804,8 +1804,8 @@ function banner(): string | null {
     // Two ways on, and they ask for different things. Handed a level where
     // you stand, the key is a take-off and the flying is yours to do; handed
     // one the ordinary way, the key is the journey.
-    const handed = opened();
-    if (handed >= 0) return `${here} complete — SPACE to take off for ${LEVELS[handed]!.name}`;
+    const handed = openedName();
+    if (handed) return `${here} complete — SPACE to take off for ${handed}`;
     const next = LEVELS[level + 1]?.name;
     return next ? `${here} complete — SPACE to fly on to ${next}` : `${here} complete`;
   }
@@ -1832,8 +1832,18 @@ function flyOn(): boolean {
   // rest of the game to know about: by the time the wings open, this is
   // simply the next level, being flown from wherever the last one ended.
   const handed = opened();
-  if (handed >= 0) {
-    playLevel(handed, 'in place');
+  if (handed && 'scene' in handed) {
+    // A shot rather than a take-off. The key is spent on starting it -- the
+    // wings must not also open, because there is no bird to open them: the
+    // camera goes on its own and the hero is put down at the far end.
+    follow(handed);
+    return true;
+  }
+  if (handed) {
+    playLevel(
+      LEVELS.findIndex((spec) => spec.name === handed.level),
+      'in place',
+    );
     return false;
   }
 
@@ -1842,10 +1852,28 @@ function flyOn(): boolean {
   return true;
 }
 
-/** The level the conversation on screen has handed over, or -1. */
-function opened(): number {
+/**
+ * What the conversation on screen has handed over to, or null.
+ *
+ * A name rather than an index, because it may be either sort of thing now: a
+ * conversation can hand over to the next level, which is what every one of
+ * them did until the one out west, or to a scene -- and the scene then hands
+ * over to the level, so what the player gets between the last word and the
+ * controls is a shot rather than a cut.
+ */
+function opened(): Opens | null {
   const name = talk?.opens;
-  return name === undefined ? -1 : LEVELS.findIndex((spec) => spec.name === name);
+  if (name === undefined) return null;
+  if (sceneNamed(name)) return { scene: name };
+  return LEVELS.some((spec) => spec.name === name) ? { level: name } : null;
+}
+
+/** And what to call it, for the banner that says which key to press. */
+function openedName(): string | null {
+  const opens = opened();
+  if (!opens) return null;
+  if ('level' in opens) return opens.level;
+  return sceneNamed(opens.scene)?.endsOn ?? null;
 }
 
 /**
@@ -2011,6 +2039,13 @@ function frame(nowMs: number) {
       }
     }
     telemetry = step(bird, asFlight(input.controls, doing), flightParams, TICK, solid, wind);
+    // On the level that does not tire, the wings are simply kept full. Put
+    // back after the step rather than switched off inside the flight model:
+    // the beat still costs what it costs, the telemetry still reports it,
+    // and the one thing that changes is that the cost is refunded. Nothing
+    // else in the game has to know there is such a thing as a tireless
+    // level.
+    if (LEVELS[level]?.tireless) bird.stamina = 1;
     // And if the flight ended in the air, the bird still has to get down.
     // The model above has nothing more to say about it -- a finished flight
     // is inert to it -- but a corpse hanging at sixty metres is not a death,
@@ -2368,6 +2403,7 @@ function frame(nowMs: number) {
     smoothedFps,
     banner(),
     unproject(interpolatedState.position, map.centre),
+    !LEVELS[level]?.tireless,
   );
   renderer.render(scene, camera);
   // Then the arrows, on a fresh depth buffer so the world cannot cover them.

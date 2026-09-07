@@ -347,12 +347,17 @@ describe('what the levels aim at', () => {
     expect(PIGEON_MORPHS).not.toContain(HERO_MORPH);
   });
 
-  it('names a level that exists wherever a conversation hands one over', () => {
-    // The name is the whole check. A conversation reaches for a level by
-    // name, the way a level reaches for a landmark by name, and the cost of
-    // that is that a typo is a level that silently never arrives -- unless
-    // somebody looks, which is this.
-    const names = new Set(LEVELS.map((level) => level.name));
+  it('names something that exists wherever a conversation hands over', () => {
+    // The name is the whole check. A conversation reaches for what comes next
+    // by name, the way a level reaches for a landmark by name, and the cost
+    // of that is that a typo is a handover that silently never arrives --
+    // unless somebody looks, which is this.
+    //
+    // A level or a scene. It was levels only, which was true of every
+    // conversation there was until the one out west: that one is told where
+    // to go and the telling is followed by a shot of him going, so what it
+    // hands over to is the shot.
+    const names = new Set([...LEVELS.map((l) => l.name), ...SCENES.map((s) => s.name)]);
     for (const level of LEVELS) {
       const said = dialogueOf(level);
       if (!said) continue;
@@ -569,8 +574,25 @@ describe('what the levels aim at', () => {
       // Long enough to read as going somewhere, short enough to sit through.
       expect(scene.seconds, scene.name).toBeGreaterThan(1);
       expect(scene.seconds, scene.name).toBeLessThan(15);
-      // And arcing high enough over the city to clear what is built on it.
-      expect(scene.cruise, scene.name).toBeGreaterThan(defaultMapWorldOptions.maxHeight);
+
+      // And passing over the city rather than through it: a scene that
+      // crosses it has to arc above what is built on it, since both ends are
+      // near the ground and the arc is the only thing holding the camera up.
+      //
+      // Unless it climbs, which is a different move and says so. That one
+      // cannot arc -- an arc on a nearly vertical shot is a camera wandering
+      // off to one side and coming back -- and does not need to, having no
+      // city to cross. It is declared rather than detected because what
+      // settles it is the horizontal distance, and a scene knows where it
+      // ends but not where it starts.
+      if (scene.climbs) {
+        // Then it had better be going somewhere worth climbing to.
+        const to = LEVELS.find((level) => level.name === scene.endsOn)!;
+        expect(to.release, scene.name).toBeGreaterThan(defaultMapWorldOptions.maxHeight);
+        expect(scene.cruise, scene.name).toBe(0);
+      } else {
+        expect(scene.cruise, scene.name).toBeGreaterThan(defaultMapWorldOptions.maxHeight);
+      }
     }
   });
 
@@ -803,6 +825,43 @@ describe('what the levels aim at', () => {
       const at = project(second.start[0], second.start[1], centre);
       expect(Math.hypot(at.x - line.x, at.z - line.z), first.name).toBeLessThan(20);
     }
+  });
+
+  it('tires the wings everywhere but the one level built for looking', () => {
+    // Stamina is the cost of flapping and the reason a long leg has to be
+    // glided rather than beaten out. Taking it away takes away most of what
+    // makes flying a decision, so it is not a kindness handed out wherever a
+    // level is hard -- which is what this is here to stop.
+    const free = LEVELS.filter((level) => level.tireless);
+    expect(free.map((level) => level.name)).toEqual(['The Loft']);
+
+    // And it is the one released highest, which is the reason: what the
+    // player should be doing up there is looking at the district they have
+    // just spent four levels crossing, and a bar that empties while they
+    // look is a bar telling them to stop looking.
+    const highest = Math.max(...LEVELS.map((level) => level.release));
+    expect(free[0]!.release).toBe(highest);
+  });
+
+  it('sends the one out west off with somewhere to go rather than good wishes', () => {
+    // Five levels of looking end here, and what he gets is not his mate --
+    // it is a direction. This is the first thing in the story since the empty
+    // nest that says what is happening rather than where to fly next, so the
+    // check is that the conversation actually carries it: the trapper, the
+    // roof, and a handover out of the level.
+    const said = dialogueOf(LEVELS.find((level) => level.name === 'Blaha')!);
+    expect(said, 'somebody to talk to').toBeDefined();
+
+    const everything = JSON.stringify(said);
+    expect(everything).toContain('trapper');
+
+    // And every branch of it goes somewhere. There is only one branch, which
+    // is the point -- being told something is not a choice -- but a reply
+    // that ended the conversation without handing over would strand the
+    // player standing on the slab with nothing left to say and nowhere to go.
+    const ways = handovers(said!);
+    expect(ways.length).toBeGreaterThan(0);
+    for (const way of ways) expect(SCENES.map((scene) => scene.name)).toContain(way);
   });
 
   it('gives the belly it takes to fly each level', () => {

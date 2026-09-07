@@ -17,6 +17,17 @@ export interface Hud {
     note: string | null,
     /** Where the bird is, in degrees. */
     where: { latitude: number; longitude: number },
+    /**
+     * Whether the wings tire on this level.
+     *
+     * False on the one level that does not tire, where the bar is held at
+     * full and pulsed. It has to *say* something rather than merely sit at
+     * a hundred percent: a full green bar is what the first ten seconds of
+     * every level looks like, so a bar that is full because the rule is
+     * different is indistinguishable from a bar that is full because
+     * nothing has happened yet.
+     */
+    tiring?: boolean,
   ): void;
   dispose(): void;
 }
@@ -69,6 +80,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     fps: number,
     note: string | null,
     where: { latitude: number; longitude: number },
+    tiring = true,
   ) {
     speedEl.textContent = speedText(telemetry.airspeed);
     altitudeEl.textContent = telemetry.altitude.toFixed(0);
@@ -85,10 +97,13 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
       strength < 0.2 ? 'calm' : head > 0.3 ? 'head' : head < -0.3 ? 'tail' : 'cross';
     headwindEl.classList.toggle('adverse', head > 0.3);
 
-    staminaEl.style.width = `${state.stamina * 100}%`;
+    staminaEl.style.width = `${tiring ? state.stamina * 100 : 100}%`;
     // Red at the same mark the "slow down" instruction appears at, so the
     // words and the picture say the same thing at the same moment.
-    staminaEl.classList.toggle('low', state.stamina < TIRED_STAMINA);
+    staminaEl.classList.toggle('low', tiring && state.stamina < TIRED_STAMINA);
+    // And pulsing where the wings do not tire, which is the bar saying so
+    // rather than merely happening to be full.
+    staminaEl.classList.toggle('tireless', !tiring);
 
     // What is left in the belly. It only ever falls, and only by flying: this
     // is the bar that says the errand has a cost.

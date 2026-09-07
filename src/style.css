@@ -134,6 +134,28 @@ body {
   background: #e0a34b;
 }
 
+/*
+ * The wings on a level that does not tire them: held at full and breathing.
+ *
+ * A pulse rather than a colour, because the colour already means something --
+ * green is "there is stamina left" and red is "there is not", and a third
+ * colour would be a third meaning to learn. Slow and shallow: this is a bar
+ * saying it is not in play, not a bar asking to be looked at.
+ */
+@keyframes stamina-held {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.bar-fill.tireless {
+  animation: stamina-held 1.8s ease-in-out infinite;
+}
+
 .bar-fill.low {
   background: #e0533f;
 }
