@@ -7,6 +7,8 @@ import {
   LEVELS,
   opensOf,
   personOf,
+  SCENES,
+  sceneNamed,
   targetName,
 } from './levels';
 import { HOME_TREE, LANDMARKS, LOFT } from './landmarks';
@@ -389,6 +391,36 @@ describe('what the levels aim at', () => {
     }
   });
 
+  it('hands over to something that exists, whichever kind of thing it is', () => {
+    // A level that finishes by itself names what comes next, and what comes
+    // next is either another level or a scene the game plays. Two namespaces
+    // reached through one field, so the check is that whichever it says, the
+    // thing it says is there -- a typo either side is a level that silently
+    // never arrives.
+    const levels = new Set(LEVELS.map((level) => level.name));
+    for (const level of LEVELS) {
+      const opens = opensOf(level);
+      if (!opens) continue;
+      if ('level' in opens) expect(levels, level.name).toContain(opens.level);
+      else expect(sceneNamed(opens.scene), `${level.name} opens ${opens.scene}`).toBeDefined();
+    }
+  });
+
+  it('ends every scene on the opening shot of a level that exists', () => {
+    // A scene closes on the place a level begins -- the same call the game
+    // makes to put the player there -- so that the shot cannot drift from the
+    // one the player remembers. Which only works while the level is real.
+    const levels = new Set(LEVELS.map((level) => level.name));
+    for (const scene of SCENES) {
+      expect(levels, scene.name).toContain(scene.endsOn);
+      // Long enough to read as going somewhere, short enough to sit through.
+      expect(scene.seconds, scene.name).toBeGreaterThan(1);
+      expect(scene.seconds, scene.name).toBeLessThan(15);
+      // And arcing high enough over the city to clear what is built on it.
+      expect(scene.cruise, scene.name).toBeGreaterThan(defaultMapWorldOptions.maxHeight);
+    }
+  });
+
   it('feeds the bird on the level that is about food, and nowhere else', () => {
     // The level is the eating: no arrival, no conversation, and a condition
     // met by walking about on the concrete picking things up. It is aimed at
@@ -413,7 +445,8 @@ describe('what the levels aim at', () => {
     for (const level of LEVELS) {
       const ends = level.finish;
       if (ends.kind !== 'crossing') continue;
-      expect(names, level.name).toContain(ends.opens);
+      expect('level' in ends.opens, level.name).toBe(true);
+      if ('level' in ends.opens) expect(names, level.name).toContain(ends.opens.level);
 
       const described = LANDMARKS.find((l) => l.name === level.target.name)!;
       const from = project(level.start[0], level.start[1], centre);
@@ -446,7 +479,9 @@ describe('what the levels aim at', () => {
     const first = LEVELS.find((level) => level.finish.kind === 'crossing')!;
     const ends = first.finish;
     if (ends.kind !== 'crossing') throw new Error('the crossing level has stopped crossing');
-    const second = LEVELS.find((level) => level.name === ends.opens)!;
+    const opens = ends.opens;
+    if (!('level' in opens)) throw new Error('the crossing has stopped opening a level');
+    const second = LEVELS.find((level) => level.name === opens.level)!;
     const described = LANDMARKS.find((l) => l.name === first.target.name)!;
 
     const line = crossingLine(
@@ -477,8 +512,14 @@ describe('what the levels aim at', () => {
       if (!described) continue;
       const from = project(level.start[0], level.start[1], centre);
       const to = project(described.at[0], described.at[1], centre);
-      const short = level.finish.kind === 'crossing' ? level.finish.at : 0;
-      const toGo = Math.hypot(to.x - from.x, to.z - from.z) - short;
+      // How far this level asks the bird to fly, which for a level that ends
+      // at a line is the line and not the target beyond it. It used to be the
+      // span *less* the crossing, which is the half of the flight this level
+      // does not fly -- so the level with a line across it was checked against
+      // its successor's distance, and the longer its own half got the less was
+      // asked of it.
+      const span = Math.hypot(to.x - from.x, to.z - from.z);
+      const toGo = level.finish.kind === 'crossing' ? level.finish.at : span;
       // A full belly is three kilometres of level flight.
       expect(level.health * 3000, `${level.name} has ${toGo.toFixed(0)} m to fly`).toBeGreaterThan(
         toGo,

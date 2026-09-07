@@ -76,6 +76,68 @@ export interface LevelPerson {
  * the name of it; the third ends in a conversation, and what happens after a
  * conversation is the conversation's business.
  */
+/**
+ * What a level that finishes by itself hands over to.
+ *
+ * Two things it can be, and they are not the same kind of thing at all: the
+ * next level, which the player flies, or a scene, which the game flies while
+ * the player watches. It was a bare level name until there was a scene to
+ * name, and a bare name would have meant two namespaces sharing one string.
+ */
+export type Opens = { level: string } | { scene: string };
+
+/**
+ * A stretch the game plays rather than the player.
+ *
+ * The one so far is the flight home from Teleki tér: nine hundred metres of
+ * park he has already flown twice, ending on the branch he left in the first
+ * level -- the same spot, the same heading, the same shot -- with nobody
+ * standing opposite him.
+ *
+ * It is described here with the levels because it is the story between two of
+ * them, and because everything it needs is already written down: where it
+ * ends is a level, and a level knows where it starts.
+ */
+export interface Scene {
+  name: string;
+  /**
+   * The level whose opening shot this closes on.
+   *
+   * Stated as a level rather than as a place, so the shot cannot drift from
+   * the one the player remembers: move the home tree and both move together.
+   */
+  endsOn: string;
+  /** How long the camera takes to get there, in seconds. */
+  seconds: number;
+  /** How high it arcs over the city on the way, in metres. */
+  cruise: number;
+  /** The line over the closing shot. */
+  says: string;
+}
+
+/**
+ * Home, to an empty branch.
+ *
+ * Five seconds for nine hundred metres, which is nothing like flying and is
+ * not meant to be: the camera is not the bird, it is the thing that tells the
+ * player where they now are. Sixty metres over the top, because both ends of
+ * the move are near the ground -- a bird standing on concrete and a bird
+ * standing on a branch -- and the straight line between them runs through
+ * most of the eighth district.
+ */
+export const HOMECOMING: Scene = {
+  name: 'flying home',
+  endsOn: 'Heading out',
+  seconds: 5,
+  cruise: 60,
+  says: 'she is not here',
+};
+
+export const SCENES: readonly Scene[] = [HOMECOMING];
+
+export const sceneNamed = (name: string): Scene | undefined =>
+  SCENES.find((scene) => scene.name === name);
+
 export type Finish =
   /** Walk up to the pigeon waiting at the target and talk to it. */
   | { kind: 'meeting'; person: LevelPerson; dialogue: Turn }
@@ -85,7 +147,7 @@ export type Finish =
    * `at` is metres from the release point. It exists to break a long flight
    * into pieces you do not have to fly twice.
    */
-  | { kind: 'crossing'; at: number; opens: string }
+  | { kind: 'crossing'; at: number; opens: Opens }
   /**
    * Eat until the belly is full.
    *
@@ -93,7 +155,7 @@ export type Finish =
    * There is nobody standing on the concrete to talk to, because a pigeon
    * that has flown nine hundred metres for food has come for the food.
    */
-  | { kind: 'fed'; opens: string };
+  | { kind: 'fed'; opens: Opens };
 
 /** Who is waiting at the target, if the level ends by meeting somebody. */
 export const personOf = (level: Level): LevelPerson | undefined =>
@@ -103,8 +165,8 @@ export const personOf = (level: Level): LevelPerson | undefined =>
 export const dialogueOf = (level: Level): Turn | undefined =>
   level.finish.kind === 'meeting' ? level.finish.dialogue : undefined;
 
-/** The level this one hands over to without being asked, if it does. */
-export const opensOf = (level: Level): string | undefined =>
+/** What this one hands over to without being asked, if it does. */
+export const opensOf = (level: Level): Opens | undefined =>
   level.finish.kind === 'meeting' ? undefined : level.finish.opens;
 
 export interface Level {
@@ -276,15 +338,18 @@ export const LEVELS: readonly Level[] = [
     // cannot be glided -- from twenty-three metres a pigeon covers about a
     // hundred and forty of the nine hundred.
     release: HOME_TREE.height + 5,
-    // The same morning and nothing eaten yet: a fifth of a belly is about
-    // six hundred metres, and this half is five.
-    health: 0.2,
+    // The same morning and nothing eaten yet. A fifth of a belly is about six
+    // hundred metres and this half is six of them, which is a level that can
+    // be flown only by a bird that never climbs; a quarter gives it the
+    // hundred and fifty metres of slack that flapping over the park costs.
+    // Still hungry, which is the half of it the story needs.
+    health: 0.25,
     when: EVENING,
     // The same slab the next level is about: the arrow points at the food for
     // the whole way there, because that is what he is doing. This half is
     // over when he is halfway, and nobody is standing on the line.
     target: { kind: 'landmark', name: PARK_PATCH.name },
-    finish: { kind: 'crossing', at: 500, opens: 'Grabbing food' },
+    finish: { kind: 'crossing', at: 600, opens: { level: 'Grabbing food' } },
   },
   {
     // The second half of the same errand, and the reason it is a level of its
@@ -294,9 +359,9 @@ export const LEVELS: readonly Level[] = [
     // is where the flight starts again.
     name: 'Grabbing food',
     // On the line, which is where he was when this became his level.
-    start: [47.494062, 19.090192],
-    // Forty metres: about what a bird has under it after half a kilometre of
-    // flapping, and well clear of the park's own trees.
+    start: [47.49407, 19.088865],
+    // Forty metres: about what a bird has under it after six hundred metres
+    // of flapping, and well clear of the park's own trees.
     release: 40,
     // Arrived on what is left, which by rights is almost nothing. A quarter
     // is what makes the last four hundred metres flyable when this level is
@@ -307,9 +372,13 @@ export const LEVELS: readonly Level[] = [
     target: { kind: 'landmark', name: PARK_PATCH.name },
     // Nobody is waiting on the concrete. A pigeon that has flown nine hundred
     // metres for food has come for the food, so the level is the eating: over
-    // when the belly is full, and handed on from the middle of a patch of
-    // grain, standing up.
-    finish: { kind: 'fed', opens: 'The Loft' },
+    // when the belly is full.
+    //
+    // And what it hands over to is not a level. He has what he was sent for,
+    // so the next thing that happens is going home -- which the game flies,
+    // because nine hundred metres of park he has already crossed twice is not
+    // a level, it is the journey between two of them.
+    finish: { kind: 'fed', opens: { scene: HOMECOMING.name } },
   },
   {
     // Twenty-four metres up, on a roof among other roofs. Still nothing

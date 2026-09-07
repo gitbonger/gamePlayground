@@ -34,16 +34,21 @@ import {
 } from './render/bird';
 import { createFlock } from './flock';
 import { createAmbient } from './ambient';
+import { createFlyover, type Flyover, type Framing } from './cutscene';
 import {
   bellyOnEntry,
   crossed,
   crossingLine,
   dialogueOf,
+  HOMECOMING,
   LEVELS,
   personOf,
+  sceneNamed,
   targetName,
   type Level,
   type LevelTarget,
+  type Opens,
+  type Scene,
 } from './levels';
 import { HOME_TREE, LANDMARKS, PARK_PATCH } from './landmarks';
 import { begin, isOver, reply, type Exchange } from './dialogue';
@@ -59,6 +64,7 @@ import {
   type Tip,
 } from './render/tips';
 import { loadProgress, saveProgress } from './progress';
+import { DEFAULT_MODE, MODES, otherMode, paramsFor, windFor, type Mode } from './sim/modes';
 import { createLevelMenu } from './render/menu';
 import {
   aabb,
@@ -498,17 +504,44 @@ const hud = createHud(overlay, map.attribution);
 const outcome = createOutcomePanel(overlay);
 const input = createInput();
 
-const flightParams = { ...defaultParams };
+/**
+ * Which simulation is being flown, and everything that follows from it.
+ *
+ * The mode owns three numbers and one choice of air, all of them worked out
+ * in `sim/modes` -- so switching is: take the parameters the mode asks for,
+ * take the air it asks for, and carry on. `flightParams` keeps its identity
+ * through it because the tuning panel is bound to that object.
+ */
+let mode: Mode = MODES[DEFAULT_MODE];
+const flightParams = { ...paramsFor(mode) };
 const cameraParams = { ...defaultCameraParams };
 const watchParams = { ...defaultWatchParams };
 const windParams = { ...defaultWindParams };
 
 // Rebuilt whenever the panel changes the air, since the field closes over its
 // parameters rather than reading them each tick.
-let wind = createWind(windParams);
+let weather = createWind(windParams);
+/**
+ * The air everything is actually flown in.
+ *
+ * The mode's choice rather than the field itself: in the basic one this is
+ * still air, and it is still air for the flock and the smoke as well as for
+ * the player. A mode where the wind blows the chimney smoke sideways while
+ * the bird cannot feel it is a mode that shows you something it then denies.
+ */
+let wind = windFor(mode, weather);
 const rebuildWind = () => {
-  wind = createWind(windParams);
+  weather = createWind(windParams);
+  wind = windFor(mode, weather);
 };
+
+/** Fly the other one, from here on. */
+function switchMode(to: Mode): void {
+  mode = to;
+  // Assigned into rather than replaced: the tuning panel holds this object.
+  Object.assign(flightParams, paramsFor(mode));
+  wind = windFor(mode, weather);
+}
 
 /**
  * Where a level starts, and which way the bird is pointed.
@@ -852,6 +885,9 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // only the *going* there that a level taken up in place skips, and with it
   // the level's own hour, which `respawn` is the only thing that applies.
   start = releaseFor(spec);
+  // Put down on purpose -- picked out of the menu, or dead and starting again
+  // -- is re-entering the story before she left it, and she was there then.
+  if (where === 'released') sheHasGone = false;
   // What this level teaches, from where it starts teaching it. A level taken
   // up in mid-air inherits the distance the last one ran up, so the course
   // counts from here rather than from the take-off two levels ago.
@@ -879,7 +915,7 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
  * a conversation, which is nobody's business but the conversation's, and
  * gives back nothing.
  */
-let handover: { done: () => boolean; opens: string } | null = null;
+let handover: { done: () => boolean; opens: Opens } | null = null;
 
 function handoverFor(spec: Level, marker: TargetMarker | null) {
   const ends = spec.finish;
@@ -910,11 +946,145 @@ function handoverFor(spec: Level, marker: TargetMarker | null) {
  */
 function handOver(): void {
   if (!handover?.done()) return;
+  const opens = handover.opens;
 
-  const next = LEVELS.findIndex((spec) => spec.name === handover!.opens);
+  if ('scene' in opens) {
+    const scene = sceneNamed(opens.scene);
+    if (scene) beginScene(scene);
+    return;
+  }
+  const next = LEVELS.findIndex((spec) => spec.name === opens.level);
   if (next < 0) return;
   playLevel(next, 'in place');
 }
+
+/**
+ * The scene being played, while the game has the controls.
+ *
+ * Null almost always, and while it is not, the player is an audience: the
+ * keys do nothing, the instruction panel is empty, and the bird is flown by
+ * the autopilot. What is kept alongside the flight is where it ends, worked
+ * out when it starts rather than when it finishes -- the closing shot is a
+ * place in the world and it does not depend on how the flying went.
+ */
+let cutscene: { play: Flyover; scene: Scene; ends: ReturnType<typeof releaseFor> } | null = null;
+
+/**
+ * Whether the bird that stood in the closing shot has gone.
+ *
+ * She is the resident of the level the scene closes on, which is how the
+ * story says it without a second list to keep in step: the pigeon standing in
+ * the shot the game is about to play back, empty. Cleared by anything that
+ * puts the player down somewhere on purpose -- picking a level, or dying --
+ * because that is re-entering the story before she left, and she was there
+ * then.
+ */
+let sheHasGone = false;
+
+/** Whether a resident is still in the story, and so still on its branch. */
+const stillThere = (resident: Resident): boolean =>
+  !sheHasGone || resident.completes !== HOMECOMING.endsOn;
+
+/**
+ * The shot a bird on its feet is filmed in: close, low, and level.
+ *
+ * Named rather than written where it is used, because it is used twice now --
+ * once by the camera that settles on a landed bird, and once to work out
+ * where a scene's closing shot is, which is the same shot arrived at from a
+ * different direction. Two copies of it would drift, and the whole point of
+ * the closing shot is that it is the one the player already remembers.
+ */
+function perchedCamera(walking: boolean) {
+  return {
+    distance: 1.4,
+    height: 0.35,
+    // A walking bird is going somewhere, so the camera looks ahead of it and
+    // keeps up. A standing one is the subject of the shot, and a boom that
+    // drifts in over most of a second suits it.
+    lookAhead: walking ? 2.2 : 0.3,
+    rollFollow: 0,
+    positionHalfLife: walking ? 0.12 : 0.7,
+    baseFov: 55,
+    fovGain: 0,
+  };
+}
+
+/** Take the camera off the bird and fly it home. */
+function beginScene(scene: Scene): void {
+  const closing = LEVELS.find((spec) => spec.name === scene.endsOn);
+  if (!closing) return;
+
+  // Where the level it closes on begins, which is a branch eighteen metres up
+  // with somebody standing opposite. The same call the game makes to put the
+  // player there, so the shot cannot drift from the one they remember: move
+  // the tree and the closing shot moves with it.
+  const ends = releaseFor(closing);
+  const from: Framing = {
+    eye: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+    look: { ...interpolatedState.position },
+  };
+
+  // And where the camera has to get to, asked of the camera rather than
+  // worked out again here: a stand-in bird is put in the closing shot, the
+  // chase camera is snapped onto it, and where it lands is the answer. Two
+  // calculations of one shot would be one too many, and the arithmetic of a
+  // boom is exactly the sort that goes quietly out of step.
+  const stand = createBird(ends.at, 0, ends.heading);
+  standStill(stand);
+  chase.snap(stand, { ...cameraParams, ...perchedCamera(false) });
+  const to: Framing = {
+    eye: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+    look: { ...ends.at },
+  };
+
+  cutscene = {
+    scene,
+    ends,
+    play: createFlyover(from, to, { seconds: scene.seconds, arc: scene.cruise }),
+  };
+
+  // The level that opened it is over, and must not open it again: the belly
+  // is still full, so the condition that started this is still true.
+  handover = null;
+  talk = null;
+  talkingTo = null;
+}
+
+/** Put the bird in the closing shot, and let the player have it back. */
+function endScene(): void {
+  if (!cutscene) return;
+  const { ends, scene } = cutscene;
+  cutscene = null;
+
+  // He is simply there. Nothing flew him: the camera went, and the point of
+  // the shot is where the player now is -- the same spot, the same heading,
+  // the same camera as the morning he left, and nobody opposite him.
+  const home = createBird(ends.at, 0, ends.heading);
+  home.health = bird.health;
+  home.stamina = bird.stamina;
+  bird = home;
+  standStill(bird);
+  previousPosition = { ...bird.position };
+  previousOrientation = { ...bird.orientation };
+
+  sheHasGone = true;
+  storyNote = { text: scene.says, at: clock };
+  outcome.hide();
+  // Nothing left to teach. The level the scene came out of still has a course
+  // -- its last lesson is the one about eating, and it waits for the feet to
+  // come down, which they have just done nine hundred metres from the grain.
+  // The act is over; the panel should be empty for the last shot of it.
+  tutor.teach([], run.stats.distance);
+  // Cut rather than swung: the camera is sixty metres up and the closing shot
+  // is a metre and a half behind a standing bird, and easing between those
+  // two is a long fairground ride. Taken at the end of the frame, once the
+  // perched shot has actually been worked out -- snapping here would snap to
+  // whatever the camera wanted while it was still flying.
+  cutTo = true;
+}
+
+/** Whether the camera should jump to the shot rather than ease into it. */
+let cutTo = false;
 
 /** What the picture is drawn at, so the panel can move it and see. */
 const pictureParams = { pixelRatio: renderer.getPixelRatio() };
@@ -924,7 +1094,14 @@ createDebugGui(flightParams, cameraParams, windParams, pictureParams, {
   repaint: () => setPixelRatio(pictureParams.pixelRatio),
 });
 
-const menu = createLevelMenu(overlay, LEVELS);
+const menu = createLevelMenu(overlay, LEVELS, () => {
+  // Switching takes effect on the spot rather than at the next level: the
+  // bird carries on from where it is, in the air it is now in, with the
+  // parameters the new mode asks for. Which is the honest thing for a switch
+  // to do -- somebody who turns the wind off wants the wind off now.
+  switchMode(otherMode(mode));
+  menu.showMode(level, mode);
+});
 const talkPanel = createDialoguePanel(overlay);
 const tipPanel = createTipPanel(overlay);
 /** The bars over the heads of the birds you are looking at. */
@@ -1154,7 +1331,8 @@ let smoothedFps = 60;
 function reachLevel(): void {
   // Anyone at all, not just the one this level is about: standing with a
   // pigeon is standing with a pigeon, and the camera should say so.
-  talkingTo = residents.find((resident) => meeting(bird, resident.state)) ?? null;
+  talkingTo =
+    residents.find((resident) => stillThere(resident) && meeting(bird, resident.state)) ?? null;
 
   const here = LEVELS[level];
   // Meeting them finishes the level and nothing else. What happens next is
@@ -1197,9 +1375,22 @@ function banner(): string | null {
     const next = LEVELS[level + 1]?.name;
     return next ? `${here} complete — SPACE to fly on to ${next}` : `${here} complete`;
   }
+  // Nothing at all while the game is flying: an audience is not being told
+  // which key to press.
+  if (cutscene) return null;
+  if (storyNote && clock - storyNote.at <= NOTE_SECONDS) return storyNote.text;
   if (started && clock - startedAt <= NOTE_SECONDS) return `now flying — ${started}`;
   return null;
 }
+
+/**
+ * A line the story wants on screen, and when it was put there.
+ *
+ * Not an instruction and not a level's name: the one place the game says
+ * something that is only the story. It sits where "now flying -- X" sits,
+ * because that is the line above the bird and this is the same sort of thing.
+ */
+let storyNote: { text: string; at: number } | null = null;
 
 /** Whether the conversation still wants something said before you go. */
 const midSentence = (): boolean => talkingTo !== null && talk !== null && !isOver(talk);
@@ -1276,7 +1467,8 @@ function command(): Tip | null {
 /** The resident this level is about, if it has one. */
 function levelPerson(): Resident | null {
   const here = LEVELS[level];
-  return here ? (residents.find((r) => r.completes === here.name) ?? null) : null;
+  const found = here ? residents.find((r) => r.completes === here.name) : undefined;
+  return found && stillThere(found) ? found : null;
 }
 
 
@@ -1289,7 +1481,7 @@ function frame(nowMs: number) {
   smoothedFps += (1 / Math.max(frameTime, 1e-4) - smoothedFps) * 0.1;
 
   input.update(frameTime);
-  if (input.consumeMenu()) menu.toggle(level);
+  if (input.consumeMenu()) menu.toggle(level, mode);
   // A digit is a level while the menu is up and a thing to say while a
   // conversation is waiting on one. Offered to the menu first, because the
   // menu is the thing the player has just deliberately opened.
@@ -1312,13 +1504,26 @@ function frame(nowMs: number) {
   // off from this one, so the key is taken here before the flight model can
   // have it -- and while there is still something to say it is taken and
   // dropped, because flying off mid-sentence is not an answer either.
-  if (input.consumeLaunch() && !midSentence()) launchPending = !flyOn();
+  if (cutscene) {
+    // One key, and it is the one already in their hand: the take-off. Taken
+    // as an edge rather than a held key, so cutting the scene short does not
+    // also launch the bird off the branch it has just been placed on.
+    if (input.consumeLaunch()) cutscene.play.cut();
+  } else if (input.consumeLaunch() && !midSentence()) launchPending = !flyOn();
 
   // Alive rather than flying: a walking bird is not flying, and being run
   // over while on foot is still a death that has to raise the panel.
   const wasAlive = !hasCrashed(bird);
 
-  accumulator += frameTime;
+  // The world holds still while the camera is away. Nothing is simulated at
+  // all: no ticks, so the trams stop where they are, the flock hangs in the
+  // air and the bird stands in the grain until it is picked up and put on its
+  // branch. It is five seconds, and a frozen city is a great deal easier to
+  // believe than a pigeon flying itself across one.
+  if (cutscene) {
+    if (!cutscene.play.update(frameTime)) endScene();
+  } else accumulator += frameTime;
+
   let ticked = false;
   while (accumulator >= TICK) {
     ticked = true;
@@ -1480,13 +1685,14 @@ function frame(nowMs: number) {
   // entirely below the "pull up" mark would have taught nothing.
   // Some lessons count from the take-off and some from the arrival, and the
   // arrival is the harder half.
-  const saying =
-    urgent ??
-    tutor.update(
-      { flown: run.stats.distance, toGo, landed: isPerched(bird) },
-      frameTime,
-      input.anyDown,
-    );
+  const saying = cutscene
+    ? null
+    : (urgent ??
+      tutor.update(
+        { flown: run.stats.distance, toGo, landed: isPerched(bird) },
+        frameTime,
+        input.anyDown,
+      ));
   tipPanel.show(saying);
   // Only the critical ones are said aloud. A voice that reads every
   // instruction is a voice that gets turned off, and then it is not there for
@@ -1581,7 +1787,7 @@ function frame(nowMs: number) {
   });
 
   for (const resident of residents) {
-    const shown = sighted(resident.state.position, sight);
+    const shown = stillThere(resident) && sighted(resident.state.position, sight);
     resident.rig.object.visible = shown;
     if (!shown) continue;
     resident.rig.update(resident.state, 'perched', frameTime);
@@ -1596,18 +1802,7 @@ function frame(nowMs: number) {
       restCameraParams,
       cameraParams,
       isPerched(bird)
-        ? {
-            distance: 1.4,
-            height: 0.35,
-            // A walking bird is going somewhere, so the camera looks ahead of
-            // it and keeps up. A standing one is the subject of the shot, and
-            // a boom that drifts in over most of a second suits it.
-            lookAhead: onFoot.travelled > 0 ? 2.2 : 0.3,
-            rollFollow: 0,
-            positionHalfLife: onFoot.travelled > 0 ? 0.12 : 0.7,
-            baseFov: 55,
-            fovGain: 0,
-          }
+        ? perchedCamera(onFoot.travelled > 0)
         : {
             distance: cameraParams.distance + 5,
             height: cameraParams.height + 2.5,
@@ -1620,7 +1815,19 @@ function frame(nowMs: number) {
   // Standing with somebody is a different shot: off the boom and to one
   // side, holding both of them. It eases from wherever the chase camera had
   // got to and back again, because it is the same camera.
-  if (talkingTo) {
+  if (cutscene) {
+    // Driven by hand, and the only time anything but the chase camera moves
+    // it. Levelled, because the boom banks with the bird and a scene inherits
+    // whatever roll it was left in mid-turn -- which reads as the whole city
+    // being tilted rather than as the camera being tilted.
+    const { eye, look } = cutscene.play.framing;
+    camera.position.set(eye.x, eye.y, eye.z);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(look.x, look.y, look.z);
+  } else if (cutTo) {
+    chase.snap(bird, activeCamera);
+    cutTo = false;
+  } else if (talkingTo) {
     chase.watch(interpolatedState.position, talkingTo.state.position, watchParams, frameTime);
   } else {
     chase.update(interpolatedState, activeCamera, frameTime);

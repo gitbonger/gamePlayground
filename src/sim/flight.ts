@@ -231,6 +231,22 @@ export interface FlightParams {
   landingSpeed: number;
   /** Greatest bank angle a clean touchdown can be made at, in radians. */
   landingBank: number;
+
+  /**
+   * How much of the lift a bank tilts out of the vertical is given back, 0-1.
+   *
+   * Zero is the aerodynamics: a banked wing's lift leans over with it, the
+   * upward part of it is `cos` of the bank, and a turn costs height unless
+   * the bird pays for it with speed or with wing. That is the truth and it is
+   * what the realistic mode flies.
+   *
+   * At one, the wing works `1/cos` harder through a bank -- so the upward
+   * part is what it was flying level, while the sideways part still carves
+   * the turn. It is the one concession the basic mode makes inside the model
+   * rather than around it, and it is a number rather than a branch so that
+   * there is still only one flight model here.
+   */
+  bankLiftRecovery: number;
 }
 
 export const defaultParams: FlightParams = {
@@ -293,6 +309,10 @@ export const defaultParams: FlightParams = {
   landingSink: 4,
   landingSpeed: 10,
   landingBank: 0.35,
+
+  // Nothing given back: the defaults are the honest model, and a mode that
+  // wants otherwise says so.
+  bankLiftRecovery: 0,
 };
 
 export interface Controls {
@@ -531,6 +551,9 @@ function forcesAt(velocity: Vec3, q: Quat, p: FlightParams, wing: WingSetup): Ai
 
   const dynamicPressure = 0.5 * p.airDensity * speed * speed;
   const rightWorld = rotate(q, vec(1, 0, 0));
+  // How far over it is, measured the same way the landing rule measures it.
+  const upWorld = rotate(q, vec(0, 1, 0));
+  const bank = Math.atan2(-rightWorld.y, upWorld.y);
 
   let lift = vec(0, 0, 0);
   let drag = vec(0, 0, 0);
@@ -542,7 +565,15 @@ function forcesAt(velocity: Vec3, q: Quat, p: FlightParams, wing: WingSetup): Ai
     // banked wing tilts its lift sideways and the bird carves a turn.
     const liftDir = normalize(cross(rightWorld, vHat));
 
-    lift = scale(liftDir, dynamicPressure * wing.area * cl);
+    // Worked harder through a bank, by however much the mode asks for. At the
+    // default of nothing this is a multiply by one and the aerodynamics are
+    // untouched; at one, the wing makes `1/cos` of the lift it would flying
+    // level, so what is left pointing up after the bank has tilted it is what
+    // was holding the bird up before the turn started. The floor is there
+    // because `1/cos` runs away to infinity at ninety degrees, and a bird on
+    // its side is not owed a miracle.
+    const hold = 1 + p.bankLiftRecovery * (1 / Math.max(Math.cos(bank), 0.35) - 1);
+    lift = scale(liftDir, dynamicPressure * wing.area * cl * hold);
     drag = scale(vHat, -dynamicPressure * wing.area * cd);
     // The body and tail resist sideways slip.
     keel = scale(rightWorld, -dynamicPressure * wing.area * p.keelDrag * beta);
