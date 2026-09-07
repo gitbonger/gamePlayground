@@ -40,9 +40,15 @@ up is now turning you and you sink unless you pull. Wingbeats cost stamina and
 stamina comes back slowly; flying at all costs what is in your belly, which is
 why the second level is an errand for food.
 
-The city is not modelled, it is grown: 2,311 roads, 604 railways and 735 green
-areas from OpenStreetMap, and every building, tree, courtyard and garden square
-worked out from the shape of the blocks between the streets. The trams run
+The city is real. 13,742 building outlines, 2,301 roads, 605 railways, 738
+green areas, 693 painted crossings and 808 street trees, all from
+OpenStreetMap — the buildings stand where they stand, face the way they face,
+and the 4,891 that record how tall they are are that tall. What is still
+invented is what fills the gaps: the courtyard planting, the garden squares,
+and a height for the buildings that do not give one.
+
+Street trees are drawn as planes, pale and flat-topped, so you can tell at a
+glance from the air what the map knows and what was made up. The trams run
 themselves on the real tram network, on the correct side.
 
 ## Running it
@@ -50,7 +56,7 @@ themselves on the real tram network, on the correct side.
 ```bash
 npm install
 npm run dev      # http://localhost:5183
-npm test         # 841 of them
+npm test         # 853 of them
 npm run build
 ```
 
