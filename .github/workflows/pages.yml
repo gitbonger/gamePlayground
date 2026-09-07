@@ -1,0 +1,54 @@
+# Build the game and put it on GitHub Pages.
+#
+# Runs on every push to main. The build is gated on the tests: a deploy that
+# ships a broken game is worse than no deploy, and the whole point of having
+# eight hundred of them is that they get to say so before anybody else sees it.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  # And by hand, from the Actions tab, for a redeploy without a commit.
+  workflow_dispatch:
+
+# What the deploy needs, and nothing else: read the code, write a Pages
+# deployment, and prove to Pages who it is.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One at a time. Two pushes in quick succession would otherwise race to
+# publish, and the loser could be the newer one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # `ci` rather than `install`: it installs exactly what the lockfile says
+      # and fails if the lockfile and package.json disagree, which is what you
+      # want of a machine nobody is watching.
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
