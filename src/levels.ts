@@ -700,17 +700,43 @@ export const LEVELS: readonly Level[] = [
     finish: {
       kind: 'crossing',
       through: [47.495543, 19.073687],
-      opens: { level: 'The Loft' },
+      opens: { level: 'The Crossing' },
     },
+  },
+  {
+    // Straight on west, out of the crows and over the open ground: the level
+    // before this one ends by flying through a line, and this one picks the
+    // bird up on it.
+    name: 'The Crossing',
+    // On that line, which is the whole point of a checkpoint -- dying just
+    // after the crossing puts the bird back where it crossed rather than
+    // somewhere it has never been. It used to start two hundred and fifty
+    // metres south of here, which was fine while nothing handed over to it.
+    // The flight is the same length either way: 291 m to the patch from
+    // here against the 286 m it was, so the approach is the same shot from a
+    // slightly different bearing.
+    start: [47.495543, 19.073687],
+    // High enough to see the whole approach and to reach it gliding.
+    release: 100,
+    health: 1,
+    when: EVENING,
+    escort: false,
+    target: { kind: 'landmark', name: WEST_PATCH.name },
+    cast: [
+      { who: 'Ginger', on: { kind: 'landmark', name: WEST_PATCH.name }, along: 2.4, across: 0 },
+      { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
+    ],
+    finish: { kind: 'meeting', who: 'Ginger', dialogue: GREETING },
   },
   {
     // Twenty-four metres up, on a roof among other roofs. Still nothing
     // moving, but now you have to pick the right one and stop on it.
     name: 'The Loft',
-    // On the line the level before hands over at, which is the whole point of
-    // a checkpoint: dying just after the crossing puts the bird back where it
-    // crossed rather than somewhere it has never been. It follows that line
-    // wherever it goes, and the line has moved twice.
+    // The same spot the crossing hands over at, though this is no longer the
+    // level it hands over *to* -- The Crossing sits between them now. It is
+    // kept because it is a good place to start from and not because a rule
+    // requires it: six hundred and twenty metres out from the loft, which at
+    // a hundred metres up is the glide this level is built around.
     start: [47.495543, 19.073687],
     // Three hundred metres out and a hundred and twenty up, which is a good
     // deal steeper than a pigeon glides: 1:2.5 against a best glide of 1:6.2,
@@ -748,23 +774,5 @@ export const LEVELS: readonly Level[] = [
       { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
     ],
     finish: { kind: 'meeting', who: 'White', dialogue: GREETING },
-  },
-  {
-    // Across the city to the west, and the first level flown in the morning:
-    // a low sun behind you rather than in front, throwing the shadows the
-    // other way from every level before it.
-    name: 'The Crossing',
-    start: [47.494106, 19.071122],
-    // High enough to see the whole approach and to reach it gliding.
-    release: 100,
-    health: 1,
-    when: EVENING,
-    escort: false,
-    target: { kind: 'landmark', name: WEST_PATCH.name },
-    cast: [
-      { who: 'Ginger', on: { kind: 'landmark', name: WEST_PATCH.name }, along: 2.4, across: 0 },
-      { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
-    ],
-    finish: { kind: 'meeting', who: 'Ginger', dialogue: GREETING },
   },
 ];
