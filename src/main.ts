@@ -1481,7 +1481,9 @@ const menu = createLevelMenu(overlay, LEVELS, () => {
   // to do -- somebody who turns the wind off wants the wind off now.
   switchMode(otherMode(mode));
   menu.showMode(level, mode);
-});
+},
+  // Clicked, which is the way in nobody has to be told about.
+  (picked) => playLevel(picked));
 const talkPanel = createDialoguePanel(overlay);
 const tipPanel = createTipPanel(overlay);
 /** The bars over the heads of the birds you are looking at. */
@@ -1950,6 +1952,16 @@ function frame(nowMs: number) {
     const picked = menu.choose(digit);
     if (picked !== null) playLevel(picked);
     else if (talk && !isOver(talk)) talk = reply(talk, digit);
+  }
+  // And the arrows, for the levels a digit cannot reach. Taken as a total
+  // rather than one at a time, because holding the key repeats it and a list
+  // that moved one row per frame would be unusable. They do nothing at all
+  // while the menu is shut, where the same keys are the pitch and roll of a
+  // bird -- `move` and `confirm` both refuse while it is closed.
+  menu.move(input.consumeStep());
+  if (input.consumeConfirm()) {
+    const picked = menu.confirm();
+    if (picked !== null) playLevel(picked);
   }
   // The whole level again, rather than only the bird. Restarting has to put
   // the cast back where this level has them and light the arrow again --

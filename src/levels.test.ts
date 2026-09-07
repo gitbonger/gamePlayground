@@ -413,6 +413,7 @@ describe('what the levels aim at', () => {
       'Mátyás tér',
       'Jani Pali tér',
       'Népszínház',
+      'The Yard',
     ]);
 
     // And the oldest are sky drops, with the whole approach laid out beneath
@@ -420,9 +421,11 @@ describe('what the levels aim at', () => {
     // ordinary hundred: a drop is a drop, and how far above the roofs it
     // starts is that level's own business.
     const dropped = flown.filter((level) => !under.includes(level) && !district.includes(level));
-    // The last three, which is what the end of the story is: two searches
-    // from a hundred and fifty metres over the roofs, and the yard.
-    expect(dropped.map((level) => level.name)).toEqual(['The Loft', 'Fiumei út', 'The Yard']);
+    // The two searches from a hundred and fifty metres over the roofs, which
+    // is what the end of the story is. The yard used to be here too and has
+    // come down to ninety: the searching from altitude is over by then and
+    // that one is an approach to a particular wagon.
+    expect(dropped.map((level) => level.name)).toEqual(['The Loft', 'Fiumei út']);
     for (const level of dropped) expect(level.release, level.name).toBeGreaterThanOrEqual(100);
 
     // And the district ones are all above what is built on it, which is the
@@ -771,31 +774,55 @@ describe('what the levels aim at', () => {
       expect('level' in ends.opens, level.name).toBe(true);
       if ('level' in ends.opens) expect(names, level.name).toContain(ends.opens.level);
 
-      // Far enough out to be a flight rather than a formality, and short of
-      // the thing the level is pointed at -- a line beyond the target would
-      // be a level you finish by overflying what you were aiming for.
-      const described = LANDMARKS.find((l) => l.name === level.target.name)!;
+      // Far enough out to be a flight rather than a formality.
       const from = project(level.start[0], level.start[1], centre);
-      const to = project(described.at[0], described.at[1], centre);
       const line = project(ends.through[0], ends.through[1], centre);
       const out = Math.hypot(line.x - from.x, line.z - from.z);
-      const span = Math.hypot(to.x - from.x, to.z - from.z);
       expect(out, level.name).toBeGreaterThan(50);
+
+      // And short of the thing the level is pointed at -- a line beyond the
+      // target would be a level you finish by overflying what you were
+      // aiming for. Only askable of a target that stands still: a wagon is
+      // somewhere else every tick and has no position until the trains have
+      // been laid out, so there is nothing here to measure against.
+      const described = LANDMARKS.find((l) => l.name === level.target.name);
+      if (!described) {
+        expect(level.target.kind, `${level.name} aims at nothing described`).not.toBe('landmark');
+        continue;
+      }
+      const to = project(described.at[0], described.at[1], centre);
+      const span = Math.hypot(to.x - from.x, to.z - from.z);
       expect(out, level.name).toBeLessThan(span - 50);
     }
   });
 
-  it('aims a crossing level at something the line can be painted from', () => {
-    // The stripe on the ground is worked out from the same two points the
-    // rule is -- the release point and the thing the level is aimed at -- and
-    // a level aimed at a wagon has no second point until the trains have been
-    // laid out. A line nobody can see is the thing this paint is here to
-    // stop, so the shape that cannot be painted is refused here rather than
-    // silently skipped there.
+  it('paints every finishing line from two points that exist', () => {
+    // This used to require a crossing level to aim at a *landmark*, on the
+    // grounds that the stripe was worked out from the release point and the
+    // thing the level was aimed at -- so a level aimed at a wagon had no
+    // second point until the trains were laid out.
+    //
+    // That has not been true for a while. `lineThrough` takes the release
+    // point and the crossing coordinate, and the target is not in it: the
+    // stripe is where the level says it is, whatever the level is pointed
+    // at. Keeping the old rule meant Fiumei út could not aim at the yard it
+    // is flying to -- nothing described lies anywhere near that bearing --
+    // and would have had to point its arrow over the player's shoulder at a
+    // landmark behind them.
+    //
+    // So the claim is the one that is actually load-bearing: both points the
+    // paint comes from are real, and the line has a direction.
+    const centre = HOME_MAP.centre as [number, number];
     for (const level of LEVELS) {
       if (level.finish.kind !== 'crossing') continue;
-      expect(level.target.kind, level.name).toBe('landmark');
-      expect(LANDMARKS.map((l) => l.name), level.name).toContain(level.target.name);
+      const from = project(level.start[0], level.start[1], centre);
+      const at = project(level.finish.through[0], level.finish.through[1], centre);
+      const line = lineThrough(from, at);
+      expect(Math.hypot(line.ux, line.uz), level.name).toBeCloseTo(1, 6);
+      // And the line is where the level put it, not somewhere worked out
+      // from what it is aiming at.
+      expect(line.x, level.name).toBeCloseTo(at.x, 6);
+      expect(line.z, level.name).toBeCloseTo(at.z, 6);
     }
   });
 

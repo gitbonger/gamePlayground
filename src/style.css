@@ -246,6 +246,29 @@ body {
   padding: 7px 10px;
   border-radius: 6px;
   font-size: 15px;
+  /* A button now, so that clicking one is a thing the browser already knows
+     how to do -- focus, Enter, and a pointer that says it can be pressed.
+     Everything below undoes the look a button arrives with, and nothing
+     undoes the behaviour. */
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The row the arrows are on. Distinct from `playing`, which says which level
+   is being flown: one is where you are and the other is where you are
+   looking, and on the frame you open the menu they are the same row. */
+.menu-level.picked {
+  background: rgba(255, 255, 255, 0.14);
+  outline: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.menu-level:hover {
+  background: rgba(255, 255, 255, 0.09);
 }
 
 .menu-level b {

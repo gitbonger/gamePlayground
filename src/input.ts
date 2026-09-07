@@ -87,6 +87,14 @@ export interface InputSource {
    */
   consumeDigit(): number | null;
   /**
+   * How far the highlight has been asked to move, up or down, since last
+   * asked. Taken as a total rather than one at a time: holding an arrow key
+   * repeats it, and a list that moved one row per frame would be unusable.
+   */
+  consumeStep(): number;
+  /** Whether the highlighted thing has been chosen since last asked. */
+  consumeConfirm(): boolean;
+  /**
    * Whether any of these keys is down, by `KeyboardEvent.code`.
    *
    * For asking about a key without binding it to anything -- an instruction
@@ -117,6 +125,8 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
   let launchRequested = false;
   let menuRequested = false;
   let voiceRequested = false;
+  let stepped = 0;
+  let confirmed = false;
   const digits: number[] = [];
 
   const anyHeld = (codes: readonly string[]) => codes.some((code) => held.has(code));
@@ -144,6 +154,12 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     // Digit1..Digit9 on the top row, and the same on the numeric pad.
     const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
     if (digit) digits.push(Number(digit[1]));
+    // And the arrows, which are the way to reach anything a single digit
+    // cannot: there are ten levels and nine digits, so the tenth was
+    // unreachable from the keyboard altogether.
+    if (e.code === 'ArrowUp') stepped -= 1;
+    if (e.code === 'ArrowDown') stepped += 1;
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') confirmed = true;
     // Space and the arrows scroll the page otherwise, which fights the controls.
     if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
   };
@@ -196,6 +212,18 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     return requested;
   }
 
+  function consumeStep() {
+    const moved = stepped;
+    stepped = 0;
+    return moved;
+  }
+
+  function consumeConfirm() {
+    const requested = confirmed;
+    confirmed = false;
+    return requested;
+  }
+
   function consumeDigit() {
     return digits.shift() ?? null;
   }
@@ -209,6 +237,8 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     consumeLaunch,
     consumeMenu,
     consumeDigit,
+    consumeStep,
+    consumeConfirm,
     anyDown,
     dispose() {
       target.removeEventListener('keydown', onKeyDown);

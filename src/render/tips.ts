@@ -182,6 +182,32 @@ export const COURSES: Record<string, readonly Lesson[]> = {
   // player could not have worked out by looking, which is exactly what a
   // one-off is for. Said aloud, because it is about staying alive.
   'Népszínház': [{ at: 50, keys: [], text: 'Crows! Fly low!', spoken: true }],
+  // Four of them, all spoken, which is more than any other level has and more
+  // than the rule here usually allows -- see `spoken`. They are asked for as
+  // life-saving, and on this level that is arguable: it is the one flown out
+  // of the crows, a crow that touches the bird ends the run, and none of the
+  // four is a thing the player could work out by looking.
+  //
+  // Thirty metres in and then every fifty: that is two or three seconds
+  // apart at the speed this level is flown at, which is faster than a lesson
+  // can be read. They queue rather than interrupting each other, so the last
+  // of them arrives well after the two hundred metres it is written at.
+  'Blaha': [
+    { at: 30, keys: [], text: 'Keep high!', spoken: true },
+    { at: 100, keys: [], text: 'Mind the crows!', spoken: true },
+    { at: 150, keys: [], text: 'Speed above 100', spoken: true },
+    { at: 200, keys: [], text: 'Keep fast!', spoken: true },
+  ],
+  // The other side of the same coin, and the reason it is worth saying: the
+  // two levels before this one were flown with crows in the sky, and a player
+  // who has just learned to watch for them will go on watching. Fifty metres
+  // in, once the flight has settled.
+  //
+  // Not spoken, and that is the rule rather than an oversight -- see `spoken`
+  // above. The voice is for what kills you and what the flight cannot go on
+  // without; a player who misses this one finds out by not being attacked,
+  // which is the same news a moment later.
+  'Fiumei út': [{ at: 50, keys: [], text: 'Chill, no crows here' }],
 };
 
 /** What a level teaches, which for most levels is nothing. */

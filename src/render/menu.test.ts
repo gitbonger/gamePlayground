@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { levelChoice } from './menu';
+import { highlightAfter, levelChoice } from './menu';
 
 /**
  * The menu's own markup is not tested here: there is no DOM in this suite and
@@ -40,5 +40,42 @@ describe('picking a level with a number key', () => {
         Array.from({ length: count }, (_, i) => i),
       );
     }
+  });
+});
+
+describe('walking the list with the arrows', () => {
+  it('moves one row at a time, either way', () => {
+    expect(highlightAfter(3, 1, 10)).toBe(4);
+    expect(highlightAfter(3, -1, 10)).toBe(2);
+    expect(highlightAfter(3, 0, 10)).toBe(3);
+  });
+
+  it('reaches the levels a digit cannot', () => {
+    // The whole reason for it, and the mechanism is worth naming precisely:
+    // it is not that `levelChoice` refuses a tenth level, it is that there is
+    // no tenth digit to offer it. The input layer reads Digit1..Digit9 and
+    // NumpadEnter1..9, so the digits that can ever arrive are one to nine --
+    // and none of them reaches the tenth row, or an eleventh, or a twelfth.
+    const reachable = new Set(
+      [1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => levelChoice(digit, 10, true)),
+    );
+    expect(reachable.has(9), 'the tenth level, by key').toBe(false);
+
+    // Nine rows down from the first, which is what the arrows are for.
+    expect(highlightAfter(0, 9, 10)).toBe(9);
+  });
+
+  it('wraps at both ends rather than stopping against them', () => {
+    // Held down at the end of the list it carries on. Stopping dead is the
+    // behaviour that makes a player wonder whether the key is working.
+    expect(highlightAfter(9, 1, 10)).toBe(0);
+    expect(highlightAfter(0, -1, 10)).toBe(9);
+    // And a step longer than the list still lands on the list.
+    expect(highlightAfter(0, 25, 10)).toBe(5);
+    expect(highlightAfter(0, -25, 10)).toBe(5);
+  });
+
+  it('has somewhere to be even with nothing to show', () => {
+    expect(highlightAfter(0, 1, 0)).toBe(0);
   });
 });

@@ -15,6 +15,20 @@ export function levelChoice(digit: number, levels: number, open: boolean): numbe
   return Number.isInteger(at) && at >= 0 && at < levels ? at : null;
 }
 
+/**
+ * Where the highlight lands after moving `by` rows.
+ *
+ * Separated for the same reason `levelChoice` is: it is the only part of
+ * arrow navigation with a rule in it, and the rule is worth stating. It
+ * wraps, so holding an arrow at the end of the list carries on round rather
+ * than stopping dead against it -- with ten levels and a list you have just
+ * opened on the tenth, "down" ought to reach the first rather than nothing.
+ */
+export function highlightAfter(current: number, by: number, levels: number): number {
+  if (levels <= 0) return 0;
+  return (((current + by) % levels) + levels) % levels;
+}
+
 /** What the menu needs to know about the simulation being flown. */
 export interface MenuMode {
   title: string;
@@ -30,6 +44,16 @@ export interface LevelMenu {
   /** Offer a digit. Returns the level it chose, or null. */
   choose(digit: number): number | null;
   /**
+   * Move the highlight by `by` rows, wrapping at both ends.
+   *
+   * The way to reach anything a digit cannot. There are ten levels and nine
+   * digits, so the tenth was unreachable from the keyboard altogether -- and
+   * the eleventh would have been, and the twelfth.
+   */
+  move(by: number): void;
+  /** Take the highlighted one. Returns the level, or null if none is. */
+  confirm(): number | null;
+  /**
    * Redraw with a different mode named on the switch.
    *
    * Called after the mode has actually changed rather than instead of
@@ -43,6 +67,15 @@ export function createLevelMenu(
   container: HTMLElement,
   levels: readonly { name: string }[],
   onSwitchMode?: () => void,
+  /**
+   * Called when a level is picked with the mouse.
+   *
+   * A callback rather than a return value, because a click happens whenever
+   * the player clicks and not when the game next asks. The keyboard route
+   * keeps its return value: a digit is offered and answered in the same
+   * breath.
+   */
+  onPick?: (at: number) => void,
 ): LevelMenu {
   const root = document.createElement('div');
   root.className = 'menu';
@@ -50,6 +83,17 @@ export function createLevelMenu(
   container.appendChild(root);
 
   let showing = false;
+  /**
+   * Which row the arrows are on.
+   *
+   * Set to the level being played each time the menu opens, so the list
+   * starts where the player is rather than at the top: the thing they most
+   * often want is the one next to the one they are on.
+   */
+  let highlighted = 0;
+  /** What the last draw was given, so a redraw can repeat it. */
+  let drawnAt = 0;
+  let drawnMode: MenuMode | null = null;
 
   /**
    * Built out of nodes rather than out of a string of markup.
@@ -70,8 +114,19 @@ export function createLevelMenu(
     card.appendChild(title);
 
     levels.forEach((level, index) => {
-      const row = document.createElement('div');
-      row.className = index === at ? 'menu-level playing' : 'menu-level';
+      const row = document.createElement('button');
+      row.type = 'button';
+      const marks = ['menu-level'];
+      if (index === at) marks.push('playing');
+      if (index === highlighted) marks.push('picked');
+      row.className = marks.join(' ');
+      // Clicked, which is the other way in and the one nobody has to be told
+      // about. The same call the keyboard makes.
+      row.addEventListener('click', () => {
+        showing = false;
+        root.hidden = true;
+        onPick?.(index);
+      });
 
       const number = document.createElement('b');
       number.textContent = String(index + 1);
@@ -107,7 +162,7 @@ export function createLevelMenu(
 
     const hint = document.createElement('p');
     hint.className = 'menu-hint';
-    hint.textContent = 'press a number to fly it, L to close';
+    hint.textContent = 'number or ↑↓ and Enter to fly it, or click. L to close';
     card.appendChild(hint);
 
     root.appendChild(card);
@@ -119,11 +174,33 @@ export function createLevelMenu(
     },
     toggle(at, mode) {
       showing = !showing;
-      if (showing) draw(at, mode);
+      // Opened on the level being played, so the arrows start where the
+      // player is.
+      if (showing) {
+        highlighted = at;
+        drawnAt = at;
+        drawnMode = mode;
+        draw(at, mode);
+      }
       root.hidden = !showing;
     },
     showMode(at, mode) {
+      drawnAt = at;
+      drawnMode = mode;
       if (showing) draw(at, mode);
+    },
+    move(by) {
+      if (!showing || levels.length === 0 || by === 0) return;
+      // Wrapping, so holding an arrow at the end of the list carries on
+      // rather than stopping dead against it.
+      highlighted = highlightAfter(highlighted, by, levels.length);
+      if (drawnMode) draw(drawnAt, drawnMode);
+    },
+    confirm() {
+      if (!showing || highlighted < 0 || highlighted >= levels.length) return null;
+      showing = false;
+      root.hidden = true;
+      return highlighted;
     },
     close() {
       showing = false;

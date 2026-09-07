@@ -842,27 +842,36 @@ export const LEVELS: readonly Level[] = [
     health: 1,
     when: EVENING,
     escort: false,
-    // TARGET AND ENDING ARE PLACEHOLDERS. The level was asked for by name,
-    // place and height, and those are what is set here; what it aims at and
-    // how it finishes were not given, and a level cannot exist without them.
-    // Grey is the one member of the cast nobody has met yet, and the loft is
-    // the only described thing within reach that an arrival could use -- so
-    // this is the smallest arrangement that runs, not a decision about the
-    // story. It is two lines to repoint.
-    target: { kind: 'landmark', name: LOFT.name },
-    cast: [
-      { who: 'Grey', on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: -3 },
-      { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
-    ],
-    finish: { kind: 'meeting', who: 'Grey', dialogue: GREETING },
+    // The yard, which is where this is going: the line is at bearing 16 and
+    // the yard at 38, so what the arrow points at and where the flight ends
+    // are the same way for once. A wagon rather than a landmark, because
+    // nothing described lies anywhere near that bearing -- everything on the
+    // map is west or south of here, and aiming at one of those would be an
+    // arrow pointing over the player's shoulder.
+    target: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' },
+    // Nobody at the end of it -- a level finished by flying through a line
+    // has nobody standing there, which is the rule that keeps the three
+    // finishes apart. She is on the loft terrace, as she is in every level
+    // since the park: not somebody to meet, somebody who is there.
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 }],
+    finish: {
+      kind: 'crossing',
+      through: [47.499529, 19.083243],
+      opens: { level: 'The Yard' },
+    },
   },
   {
     // A wagon of a running train, which is the first target that will not
     // wait for you.
     name: 'The Yard',
-    start: [47.503261, 19.091374],
-    // High enough to see the whole approach and to reach it gliding.
-    release: 100,
+    // On the line Fiumei út hands over at, which is the checkpoint rule every
+    // crossing in the game obeys: dying just after the line puts the bird
+    // back where it crossed rather than somewhere it has never been.
+    start: [47.499529, 19.083243],
+    // Ninety. Lower than the two drops before it, which is the shape of the
+    // ending: the searching from altitude is over and this one is an approach
+    // to a particular wagon of a particular train.
+    release: 90,
     health: 1,
     when: EVENING,
     escort: false,
