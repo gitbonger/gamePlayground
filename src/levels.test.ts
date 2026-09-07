@@ -304,16 +304,24 @@ describe('what the levels aim at', () => {
     // home end on an empty nest without anything having to remember that she
     // left. Restarting the third level puts her on the loft, because that is
     // where that level says she is.
+    //
+    // And off the loft again at the very end, where she is not standing
+    // anywhere at all: on the level after the story she is the escort, which
+    // is to say she is in the air beside him. That is the whole arc in one
+    // list -- the branch, the cage on the roof, and then flying.
     const where = LEVELS.map((level) => {
       const spot = standingOf(level, PINK.name);
       return spot && spot.on.kind === 'landmark' ? spot.on.name : null;
     });
-    expect(where).toEqual([
-      HOME_TREE.name,
-      HOME_TREE.name,
-      ...LEVELS.slice(2).map(() => LOFT.name),
-    ]);
+    const middle = LEVELS.slice(2, -1).map(() => LOFT.name);
+    expect(where).toEqual([HOME_TREE.name, HOME_TREE.name, ...middle, null]);
     expect(where.length).toBe(LEVELS.length);
+
+    // She is nowhere on that last level because she is flying it: a bird
+    // cannot be standing on a roof and escorting him at the same time.
+    const after = LEVELS[LEVELS.length - 1]!;
+    expect(after.flockIs).toBe(PINK.name);
+    expect(after.escort).toBe(true);
   });
 
   it('never stands two of the cast on top of each other', () => {
@@ -431,6 +439,7 @@ describe('what the levels aim at', () => {
       'The Loft',
       'Fiumei út',
       'Coming on strong',
+      'Everafter',
     ]);
     for (const level of dropped) expect(level.release, level.name).toBeGreaterThanOrEqual(100);
 
@@ -542,10 +551,12 @@ describe('what the levels aim at', () => {
       const meets = level.finish.kind === 'meeting';
       expect(waitingIn(level) !== undefined, level.name).toBe(meets);
       expect(dialogueOf(level) !== undefined, level.name).toBe(meets);
-      // And the other way about: the two that finish by themselves say what
-      // they open, and the one that ends in a conversation leaves that to the
-      // conversation.
-      expect(opensOf(level) !== undefined, level.name).toBe(!meets);
+      // And the other way about: a level that finishes by itself says what it
+      // opens, a level that ends in a conversation leaves that to the
+      // conversation -- and the one that does not end says nothing, because
+      // there is nothing after it.
+      const ends = level.finish.kind !== 'free';
+      expect(opensOf(level) !== undefined, level.name).toBe(!meets && ends);
     }
   });
 
@@ -696,6 +707,7 @@ describe('what the levels aim at', () => {
       'Teleki tér',
       'Coming on strong',
       'The rescue',
+      'Everafter',
     ]);
     for (const level of LEVELS) expect(typeof level.escort, level.name).toBe('boolean');
 
@@ -945,6 +957,57 @@ describe('what the levels aim at', () => {
     // And they are spread across the flight rather than arriving together.
     const marks = courseFor('The Yard').map((lesson) => lesson.at);
     expect(marks).toEqual([50, 100, 150]);
+  });
+
+  it('ends on a level that does not end', () => {
+    // The map with the story finished on it. Every other level is trying to
+    // get you somewhere; this one is the only one in the game with no
+    // condition on it at all -- nothing to reach, nobody to meet, no line,
+    // and nothing after it to open onto.
+    const last = LEVELS[LEVELS.length - 1]!;
+    expect(last.name).toBe('Everafter');
+    expect(last.finish.kind).toBe('free');
+    expect(opensOf(last)).toBeUndefined();
+
+    // And only that one. A level in the middle of the story that could not be
+    // finished would be a story that stops.
+    const endless = LEVELS.filter((level) => level.finish.kind === 'free');
+    expect(endless).toHaveLength(1);
+  });
+
+  it('puts the last level anywhere, and only ever somewhere real', () => {
+    // Drawn from the other levels' own release points rather than from
+    // anywhere on the map, which is what makes it safe: every one of those
+    // has already been checked for being over a roof, clear of the buildings
+    // and within reach of what it aims at. A coordinate rolled at random over
+    // a city is inside a wall about half the time.
+    const wanders = LEVELS.filter((level) => level.startsAnywhere);
+    expect(wanders.map((level) => level.name)).toEqual(['Everafter']);
+
+    // Its own written coordinate is one of the *other* levels' too, since
+    // everything that checks a release point checks that one and a coordinate
+    // invented for this level would have been checked by nobody.
+    //
+    // Taken from the others rather than from all of them, which is the same
+    // trap as always: a set built from every level contains this level's
+    // start whatever it is, and the question answers itself.
+    const others = new Set(
+      LEVELS.filter((level) => !level.startsAnywhere).map((level) => level.start.join(',')),
+    );
+    expect(others.has(wanders[0]!.start.join(','))).toBe(true);
+  });
+
+  it('stops teaching and calls off the crows exactly once', () => {
+    // Both are the same thought: the game has finished explaining itself and
+    // finished threatening the player. Being killed by a crow on the level
+    // that exists because the story is over would be the game not having
+    // noticed it ended.
+    expect(LEVELS.filter((level) => level.teaches === false).map((l) => l.name)).toEqual([
+      'Everafter',
+    ]);
+    expect(LEVELS.filter((level) => level.crows === false).map((l) => l.name)).toEqual([
+      'Everafter',
+    ]);
   });
 
   it('gives the belly it takes to fly each level', () => {

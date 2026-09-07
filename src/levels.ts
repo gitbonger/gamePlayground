@@ -355,7 +355,17 @@ export type Finish =
    * There is nobody standing on the concrete to talk to, because a pigeon
    * that has flown nine hundred metres for food has come for the food.
    */
-  | { kind: 'fed'; opens: Opens };
+  | { kind: 'fed'; opens: Opens }
+  /**
+   * It does not end.
+   *
+   * The only one of these that is not a condition, and the only level that
+   * is not trying to get you anywhere: it is the map with the story finished
+   * and nothing left to do on it. There is no target to reach, nobody to
+   * walk up to, no line to cross and nothing it opens onto, because there is
+   * nothing after it.
+   */
+  | { kind: 'free' };
 
 /** Whose name finishes the level, if it ends by meeting somebody. */
 export const metBy = (level: Level): string | undefined =>
@@ -377,7 +387,11 @@ export const dialogueOf = (level: Level): Turn | undefined =>
 
 /** What this one hands over to without being asked, if it does. */
 export const opensOf = (level: Level): Opens | undefined =>
-  level.finish.kind === 'meeting' ? undefined : level.finish.opens;
+  // Asked of the shape rather than of the kind. It used to name the one kind
+  // that has no `opens`, which is a list that has to be kept in step with the
+  // union by somebody remembering to -- and stopped being right the moment a
+  // second kind had nothing to open onto.
+  'opens' in level.finish ? level.finish.opens : undefined;
 
 export interface Level {
   /** What it is called, on the marker and in the menu. */
@@ -492,6 +506,49 @@ export interface Level {
    * they came for happens underneath them.
    */
   settles?: boolean;
+  /**
+   * Whether the release point is picked at random from the other levels.
+   *
+   * One level, and it is the one after the story: the map with nothing left
+   * to do on it, so where you start is nowhere in particular. `start` is
+   * still a real coordinate and still has to be a sensible one -- everything
+   * that checks a release point checks this one -- it is simply not the only
+   * one it can be.
+   *
+   * Drawn from the other levels rather than from anywhere on the map, which
+   * is what makes it safe: every one of those has already been checked for
+   * being over a roof, within reach of its target and clear of the buildings.
+   * A coordinate rolled at random over a city is a coordinate inside a wall
+   * about half the time.
+   */
+  startsAnywhere?: boolean;
+  /**
+   * Whether the game is still teaching on this level.
+   *
+   * On everywhere but the last. What it gates is the instructions that watch
+   * the flight rather than its distance -- pull up, keep flapping, slow down
+   * -- which are exactly right for somebody learning and exactly wrong for
+   * somebody who has just finished the game, since a pigeon spends half its
+   * life low, slow or tired on purpose.
+   */
+  teaches?: boolean;
+  /**
+   * Whether there are crows in the sky.
+   *
+   * They live at one place on the map rather than in a level, so a level that
+   * starts anywhere can start next to them -- and being killed by a crow on
+   * the level that exists because the story is over would be the game not
+   * having noticed it ended.
+   */
+  crows?: boolean;
+  /**
+   * Who the escort is, when it is one particular bird.
+   *
+   * Normally nobody: a flock is a flock, drawn in whatever colours it drew.
+   * Named, the flock is that character -- which only makes sense for a flock
+   * of one, and there is only one of those.
+   */
+  flockIs?: string;
   /**
    * Who is standing where, for as long as this level is being flown.
    *
@@ -965,5 +1022,35 @@ export const LEVELS: readonly Level[] = [
       { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
     ],
     finish: { kind: 'meeting', who: 'Black', dialogue: GREETING },
+  },
+  {
+    // After it. The story is over, the map is still there, and this is the
+    // level that is the map: no target, no line, nobody to find, nothing to
+    // open onto and no way to finish it.
+    name: 'Everafter',
+    // Somewhere. The coordinate written here is one of the real ones so that
+    // everything which checks a release point has something to check, and at
+    // play it is swapped for another level's -- see `startsAnywhere`.
+    start: [47.494019, 19.096828],
+    startsAnywhere: true,
+    // High enough to see where you have been, and to get anywhere from.
+    release: 120,
+    health: 1,
+    when: EVENING,
+    // She comes. One bird, and it is her: everything before this was him
+    // alone or him with strangers.
+    escort: true,
+    flock: 1,
+    flockIs: PINK.name,
+    // Nothing is being taught any more, and nothing is hunting.
+    teaches: false,
+    crows: false,
+    // The loft, for the arrow -- somewhere to go for a player who wants
+    // somewhere to go, and nothing at all happens on arriving.
+    target: { kind: 'landmark', name: LOFT.name },
+    // Nobody standing anywhere: she is flying, and everyone else has been
+    // met.
+    cast: [],
+    finish: { kind: 'free' },
   },
 ];

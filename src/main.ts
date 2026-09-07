@@ -36,6 +36,7 @@ import {
   CROW_SCALE,
   HERO_MORPH,
   PIGEON_MORPHS,
+  PINK_MORPH,
   type WingPose,
 } from './render/bird';
 import { createFlock, defaultFlockOptions, type Anchor } from './flock';
@@ -676,8 +677,28 @@ function switchMode(to: Mode): void {
  * Pointed at whatever the level is about, which is the direction a homing
  * pigeon leaves in and saves the player a search before they have started.
  */
+/**
+ * Where this level releases the bird.
+ *
+ * The level's own coordinate, except on the one that starts anywhere -- so
+ * everything downstream reads this rather than `spec.start` and none of it
+ * has to know there is such a thing.
+ *
+ * Declared here rather than beside the other level state further down,
+ * because `releaseFor` reads it and `releaseFor` is called while this module
+ * is still being evaluated. A `let` is hoisted but not readable until its
+ * declaration runs, so the late version threw on load -- which no test could
+ * have caught, since a test imports the pieces rather than running the file.
+ */
+let releaseAt: [number, number] = LEVELS[0]!.start;
+
 function releaseFor(spec: Level): { at: Vec3; heading: number; perched: boolean } {
-  const point = project(spec.start[0], spec.start[1], map.centre);
+  // `releaseAt` rather than `spec.start`: the last level picks somewhere from
+  // the others each time it is played, and this is the one place that has to
+  // know. The finishing lines and the crows' anchor still read `spec.start`,
+  // because those are facts about a particular level's route rather than
+  // about where the bird happens to have been put.
+  const point = project(releaseAt[0], releaseAt[1], map.centre);
   const floor = world.collider.heightAt(point.x, point.z);
   const marker = objective(targetName(spec));
   // Pointed at the first mark if the level has any, and at what it is aimed
@@ -808,6 +829,16 @@ const flockRigs = flock.members.map((member) => {
   scene.add(rig.object);
   return rig;
 });
+/**
+ * And one more, in her colours, for the level where the flock is her.
+ *
+ * A second rig rather than a recoloured one: a rig takes its morph when it is
+ * built, so the alternative is rebuilding thirty of them at every level
+ * change to make one of them pink. There is only ever one bird flying beside
+ * him on that level, so there only has to be one of these.
+ */
+const herRig = createBirdRig(PINK_MORPH);
+scene.add(herRig.object);
 
 /**
  * A crowd of ambient pigeons standing about on one of the described things.
@@ -1387,6 +1418,21 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
 
   level = at;
   saveProgress(storage(), at);
+  // Where this one starts, which for every level but the last is where it
+  // says. The last is the map with the story finished on it, so it puts you
+  // somewhere in it -- drawn from the other levels' own release points rather
+  // than from anywhere at all, because those have each been checked for being
+  // over a roof and clear of the buildings and a coordinate rolled at random
+  // over a city is inside a wall about half the time.
+  releaseAt = spec.start;
+  if (spec.startsAnywhere) {
+    const elsewhere = LEVELS.filter((other) => other !== spec && other.begins !== 'perched');
+    const picked = elsewhere[Math.floor(Math.random() * elsewhere.length)];
+    if (picked) releaseAt = picked.start;
+  }
+  // What the level does and does not have in it.
+  tutorial = spec.teaches ?? true;
+  hunted = spec.crows ?? true;
 
   // Everything this level puts into the world: who is standing where, what is
   // pointed at, and whether anybody is flying with him.
@@ -1489,7 +1535,9 @@ const ARRIVED_WITHIN = 22;
 
 function handoverFor(spec: Level, marker: TargetMarker | null) {
   const ends = spec.finish;
-  if (ends.kind === 'meeting') return null;
+  // Two kinds have nothing to hand over: one you finish by walking up to
+  // somebody, and one that does not finish.
+  if (ends.kind === 'meeting' || ends.kind === 'free') return null;
   // Eaten. There is no arrival to test, only a bird that has had enough --
   // which it can reach standing still in one spot, and usually does.
   if (ends.kind === 'fed') return { done: () => bird.health >= 1, opens: ends.opens };
@@ -1761,6 +1809,17 @@ const tutor = createTutor();
  * low, slow or tired on purpose.
  */
 let tutorial = true;
+/**
+ * Whether there are crows in the sky on this level.
+ *
+ * They live at one place on the map rather than in a level, so any level
+ * whose route passes them has them -- which is right for the two the warning
+ * is written for and wrong for a level that starts anywhere, since being
+ * killed by a crow on the level that exists because the story is over would
+ * be the game not having noticed it ended.
+ */
+let hunted = true;
+
 /** The hero's own colour, which is what his half of a conversation is set in. */
 const hero = speechColour(HERO_MORPH.body);
 // The level being flown is the one remembered, applied through the same path
@@ -2337,12 +2396,12 @@ function frame(nowMs: number) {
     // the wreck is the game carrying on cheerfully around a corpse, which is
     // the one thing that moment should not do.
     flock.update(TICK, solid, wind, doing !== 'dead');
-    crows?.update(TICK, solid, wind, doing !== 'dead');
+    if (hunted) crows?.update(TICK, solid, wind, doing !== 'dead');
     // And if one of them gets to him, that is the flight. It is checked after
     // they have moved rather than before, so the tick a crow arrives is the
     // tick it counts -- and only against a bird that is still flying, since
     // catching a corpse is not an event.
-    if (crows && bird.ending === null && crows.touching(bird.position, CROW_TOUCH)) {
+    if (hunted && crows && bird.ending === null && crows.touching(bird.position, CROW_TOUCH)) {
       caught(bird);
     }
     for (const hound of dogs) hound.update(TICK);
@@ -2591,9 +2650,14 @@ function frame(nowMs: number) {
     // be standing on the wagon either -- and a level that has not asked for
     // an escort has none, whatever the flock is frozen in the middle of.
     const shown = escorted && member.down <= 0 && sighted(member.state.position, sight);
-    flockRigs[i]!.object.visible = shown;
+    // Her, on the level where the flock is one bird and the bird is her.
+    // Only ever the first of them, because only a flock of one can be
+    // somebody.
+    const hers = i === 0 && LEVELS[level]?.flockIs === PINK.name;
+    herRig.object.visible = hers && shown;
+    flockRigs[i]!.object.visible = shown && !hers;
     if (!shown) return;
-    flockRigs[i]!.update(
+    (hers ? herRig : flockRigs[i]!).update(
       member.state,
       // Three poses rather than two, now that a flock can arrive. One that
       // made a mess of the landing is lying on the roof, and drawing it
@@ -2608,7 +2672,9 @@ function frame(nowMs: number) {
   (crows?.members ?? []).forEach((crow, i) => {
     const rig = crowRigs[i];
     if (!rig) return;
-    const shown = crow.down <= 0 && sighted(crow.state.position, sight);
+    // Not drawn where the level says there are none: a crow standing still
+    // in the sky because nothing is updating it is worse than no crow.
+    const shown = hunted && crow.down <= 0 && sighted(crow.state.position, sight);
     rig.object.visible = shown;
     if (shown) rig.update(crow.state, isPerched(crow.state) ? 'perched' : 'gliding', frameTime);
   });
