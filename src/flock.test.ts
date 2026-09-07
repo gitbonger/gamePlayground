@@ -1492,3 +1492,61 @@ describe('a flock that comes down with him', () => {
     expect(flock.members.filter((m) => m.state.ending === null).length).toBeGreaterThan(5);
   });
 });
+
+describe('where the flock wheels, and where it comes from', () => {
+  it('picks its targets in front of the leader', () => {
+    // Centred on him, half a flock is behind him at all times -- and the
+    // camera is behind him too, so half of it was in the boom or out of
+    // frame.
+    const AHEAD = 30;
+    const flock = createFlock(1, still(0, 60, 0), {
+      ...defaultFlockOptions,
+      count: 6,
+      emitInterval: 0,
+      ahead: AHEAD,
+    });
+    const wind = createWind();
+    for (let t = 0; t < 2; t += DT) flock.update(DT, undefined, wind);
+
+    // Heading nought is north, which is -Z, so "in front" is -Z.
+    const aims = flock.members.map((member) => member.aiming.z);
+    const middle = aims.reduce((run, z) => run + z, 0) / aims.length;
+    expect(middle, 'the ball is ahead of him').toBeLessThan(-AHEAD / 2);
+  });
+
+  it('still lets them out behind him, where nobody is looking', () => {
+    // The half that was broken by moving the whole anchor forward: a bird is
+    // let out behind the leader precisely so that nobody watches one appear
+    // out of nothing, and measuring that from a point thirty metres ahead
+    // brought the loft thirty metres nearer the camera.
+    const away = defaultFlockOptions.spawn.kind === 'behind' ? defaultFlockOptions.spawn.away : 0;
+    expect(away, 'the default spawn is a distance behind').toBeGreaterThan(0);
+
+    const flock = createFlock(1, still(0, 60, 0), {
+      ...defaultFlockOptions,
+      count: 4,
+      emitInterval: 0,
+      ahead: 30,
+    });
+    // Read on the tick they are released, before they have flown anywhere.
+    flock.update(DT, undefined, createWind());
+    for (const member of flock.members) {
+      // Behind is +Z, and at the distance the spawn asks for -- not that
+      // distance minus the thirty the ball sits ahead by.
+      expect(member.state.position.z, 'let out behind him').toBeGreaterThan(away * 0.7);
+    }
+  });
+
+  it('leaves both alone when nothing has asked for an offset', () => {
+    const flock = createFlock(1, still(0, 60, 0), {
+      ...defaultFlockOptions,
+      count: 4,
+      emitInterval: 0,
+    });
+    const wind = createWind();
+    for (let t = 0; t < 2; t += DT) flock.update(DT, undefined, wind);
+    const aims = flock.members.map((member) => member.aiming.z);
+    const middle = aims.reduce((run, z) => run + z, 0) / aims.length;
+    expect(Math.abs(middle), 'centred on him').toBeLessThan(defaultFlockOptions.radius);
+  });
+});

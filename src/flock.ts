@@ -159,6 +159,22 @@ export interface FlockOptions {
    */
   minAltitude: number;
   /**
+   * How far in front of the anchor the flock wheels, in metres.
+   *
+   * Targets only. Centred on the leader, half a flock is behind him at all
+   * times -- and the camera is behind him too, so half of it was in the boom
+   * or out of frame.
+   *
+   * It moves where they *go*, not where they come from. A bird is let out
+   * behind the leader precisely so that nobody watches one appear out of
+   * nothing, and measuring that from a point thirty metres ahead would put
+   * the loft thirty metres nearer the camera and undo it -- which is what
+   * happened when this was done by handing the flock an anchor that was
+   * already shifted. The anchor is the leader; this is a fact about the ball
+   * of targets, and it lives here where only the targets can see it.
+   */
+  ahead: number;
+  /**
    * How near a target counts as reaching it, in metres.
    *
    * The autopilot's own arrival radius is 45 m, which is wider than the whole
@@ -309,6 +325,9 @@ export const defaultFlockOptions: FlockOptions = {
   spawn: { kind: 'behind', away: 10 },
   radius: 15,
   minAltitude: 10,
+  // Nought here, because the default flock is the one the tests use and a
+  // rule about where the camera is has no business in it. The game sets it.
+  ahead: 0,
   arrivalRadius: 8,
   attentionSpan: 4,
   strayDistance: 140,
@@ -589,6 +608,23 @@ export function createFlock(
     fell: Vec3 | null;
   }
 
+  /**
+   * The point the flock wheels around: the anchor, moved forward.
+   *
+   * Along the way the leader is *pointing* rather than the way it is going: a
+   * bird in a sideslip or a flare is still looking where its nose is, and a
+   * ball of targets that swung out sideways because of a gust would take the
+   * flock with it.
+   */
+  const wheelAbout = (at: Anchor): Anchor =>
+    options.ahead === 0
+      ? at
+      : {
+          ...at,
+          x: at.x + Math.sin(at.heading) * options.ahead,
+          z: at.z - Math.cos(at.heading) * options.ahead,
+        };
+
   /** Somewhere near the leader to make for, chosen fresh each time. */
   const target = (at: Anchor): Waypoint => {
     // Centred on where the leader will be, not where they are. Aiming at a
@@ -678,7 +714,10 @@ export function createFlock(
     pilot.member.state = createBird(from.where, 12 + rand() * 4, from.facing);
     pilot.member.down = 0;
     pilot.memory.beating = true;
-    aim(pilot, at);
+    // Placed from the anchor -- behind the leader, out of shot -- and aimed
+    // at the ball, which is in front of him. The two are different points and
+    // that is the whole of it.
+    aim(pilot, wheelAbout(at));
   };
 
   /** Pick somewhere new and start the clock on it. */
@@ -874,7 +913,7 @@ export function createFlock(
         if (member.hunting && (!quarry || away > hunt.loses)) {
           // Lost it: too far off, or gone altogether.
           member.hunting = false;
-          aim(pilot, at);
+          aim(pilot, wheelAbout(at));
         } else if (!member.hunting && quarry && quarry.y > hunt.above && away <= hunt.within) {
           // Seen. Once it is after something it stays after it: diving does
           // not call off an attack that has begun, it decides whether the
@@ -913,7 +952,7 @@ export function createFlock(
         (distanceTo(member.state, member.aiming) < options.arrivalRadius ||
           pilot.chasing > options.attentionSpan)
       ) {
-        aim(pilot, at);
+        aim(pilot, wheelAbout(at));
       }
 
       // A bird that is after something is moved rather than flown. Everything
@@ -995,7 +1034,7 @@ export function createFlock(
       pilot.member.down = 0;
       pilot.member.hunting = false;
       pilot.memory.beating = true;
-      aim(pilot, at);
+      aim(pilot, wheelAbout(at));
     });
   };
 

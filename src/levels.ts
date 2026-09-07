@@ -1017,11 +1017,12 @@ export const LEVELS: readonly Level[] = [
     escort: true,
     flock: 30,
     target: { kind: 'landmark', name: LOFT.name },
-    cast: [
-      { who: 'Black', on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 },
-      { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
-    ],
-    finish: { kind: 'meeting', who: 'Black', dialogue: GREETING },
+    // Her, and nobody else. The whole flight is for her, so the bird waiting
+    // at the end of it is the one in the cage -- there is no third party to
+    // be met on the roof and finding somebody else there would be the level
+    // handing the ending to a stranger.
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 }],
+    finish: { kind: 'meeting', who: PINK.name, dialogue: GREETING },
   },
   {
     // After it. The story is over, the map is still there, and this is the

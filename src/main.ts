@@ -46,6 +46,7 @@ import { createWaymarks, type Waymarks } from './waypoints';
 import { createWaymark } from './render/waymark';
 import { createDogRig } from './render/dog';
 import { CAGE, createCage } from './render/cage';
+import { beginRescue } from './rescue';
 import { createFlyover, type Flyover, type Framing } from './cutscene';
 import {
   bellyOnEntry,
@@ -799,20 +800,6 @@ const leaderOf = (of: BirdState): Anchor => ({
  */
 const FLOCK_AHEAD = 30;
 
-/** The point the flock wheels around: ahead of the bird, not on it. */
-const flockCentre = (): Anchor => {
-  const at = leaderOf(bird);
-  const way = heading(bird);
-  return {
-    ...at,
-    // Along the way he is pointing rather than the way he is going: a bird in
-    // a sideslip or a flare is still looking where its nose is, and the flock
-    // in front of it should not swing out sideways because of a gust.
-    x: at.x + Math.sin(way) * FLOCK_AHEAD,
-    z: at.z - Math.cos(way) * FLOCK_AHEAD,
-  };
-};
-
 /**
  * Built at the largest flock any level asks for.
  *
@@ -820,9 +807,15 @@ const flockCentre = (): Anchor => {
  * number the level wants -- see `Flock.only`.
  */
 const FLOCK_MOST = Math.max(...LEVELS.map((spec) => spec.flock ?? 0), PIGEON_MORPHS.length);
-const flock = createFlock(PIGEON_MORPHS.length, flockCentre, {
+const flock = createFlock(PIGEON_MORPHS.length, () => leaderOf(bird), {
   ...defaultFlockOptions,
   count: FLOCK_MOST,
+  // The anchor is the bird itself. Where the flock *wheels* is thirty metres
+  // in front of him and that is the flock's own business -- handed a
+  // pre-shifted anchor it also moved the loft they are let out of, which is
+  // behind him precisely so that nobody watches a pigeon appear out of
+  // nothing.
+  ahead: FLOCK_AHEAD,
 });
 const flockRigs = flock.members.map((member) => {
   const rig = createBirdRig(PIGEON_MORPHS[member.morph]);
@@ -1111,6 +1104,28 @@ let cageBox: ReturnType<typeof turnedBox> | null = null;
  * standing in the grain and thirty more overhead.
  */
 let ridersFlown = false;
+
+/**
+ * The end of the story, once he is standing on the roof: see `rescue.ts`.
+ *
+ * Null until then and on every other level, and thrown away whenever a level
+ * starts -- including a restart of this one, since the whole point of it is
+ * that it happens when he arrives.
+ */
+let rescue: ReturnType<typeof beginRescue> | null = null;
+/**
+ * A rig each for them, built once and reused.
+ *
+ * Thirty, which is what the last level asks for. They are hidden until there
+ * is a rescue and hidden again the moment any level starts, so they cost a
+ * scene object each and nothing else for the twelve levels they are not in.
+ */
+const helperRigs = Array.from({ length: 30 }, () => {
+  const rig = createBirdRig(PIGEON_MORPHS[0]);
+  scene.add(rig.object);
+  rig.object.visible = false;
+  return rig;
+});
 
 const riderRigs = riders.map((rider) => {
   const rig = createBirdRig(PIGEON_MORPHS[rider.morph]);
@@ -1448,6 +1463,10 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // Back into the air. A level that starts is a level whose flock is flying,
   // including a restart of the one they came down on.
   flock.land(null);
+  // And nobody has been rescued yet: the whole point of it is that it happens
+  // when he arrives, so a restart of that level has to arrive again.
+  rescue = null;
+  for (const rig of helperRigs) rig.object.visible = false;
   // And where they come from, this once.
   //
   // A conversation that hands a level over does it where the player stands,
@@ -2383,8 +2402,32 @@ function frame(nowMs: number) {
     // Only where the level says so, and only downwards: `land(null)` is never
     // called from here, because a bird that has put down should not be sent
     // back up by the player taking off again.
-    if (LEVELS[level]?.settles && isPerched(bird)) {
-      flock.land({ x: bird.position.x, z: bird.position.z, on: bird.position.y });
+    if (LEVELS[level]?.settles && isPerched(bird) && !rescue && cageBox) {
+      // The flock goes away and thirty birds appear behind him, already on
+      // their feet. See `rescue.ts` for why this is a cheat and why it is the
+      // right one: the last level is a hundred and fifty-five metres long, a
+      // flock lets one bird out at a time, and what arrives if you let it is
+      // four pigeons.
+      flock.only(0);
+      rescue = beginRescue({
+        behind: { x: bird.position.x, z: bird.position.z, heading: heading(bird) },
+        cage: { x: (cageBox.minX + cageBox.maxX) / 2, z: (cageBox.minZ + cageBox.maxZ) / 2 },
+        ground: bird.position.y,
+        many: LEVELS[level]?.flock ?? 0,
+        morphs: PIGEON_MORPHS.length,
+        flight: flightParams,
+      });
+    }
+    if (rescue) {
+      rescue.update(TICK, solid);
+      // And then it gives way. The bars are thrown outwards and dropped, and
+      // the box round them stops being solid at the same moment -- a cage you
+      // can see the pieces of and still cannot fly through would be the one
+      // thing worse than no cage at all.
+      if (rescue.broken && cageBox) {
+        cageBox = null;
+        cage.burst();
+      }
     }
     // And if the flight ended in the air, the bird still has to get down.
     // The model above has nothing more to say about it -- a finished flight
@@ -2680,6 +2723,19 @@ function frame(nowMs: number) {
   });
 
   waymark.update(now);
+  // The cage coming apart, if it is.
+  cage.update(frameTime);
+
+  // And the thirty who came to do it. Drawn from their own states rather than
+  // stepped here: `rescue.update` walks them in the tick loop, the same as
+  // everything else that moves.
+  rescue?.helpers.forEach((helper, i) => {
+    const rig = helperRigs[i];
+    if (!rig) return;
+    const shown = sighted(helper.state.position, sight);
+    rig.object.visible = shown;
+    if (shown) rig.update(helper.state, 'perched', frameTime);
+  });
 
   dogs.forEach((hound, i) => {
     const rig = dogRigs[i];
