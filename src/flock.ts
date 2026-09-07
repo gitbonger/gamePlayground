@@ -18,6 +18,7 @@ import {
   defaultParams,
   step,
   type BirdState,
+  type Ending,
   type Controls,
   type FlightParams,
 } from './sim/flight';
@@ -32,6 +33,8 @@ import {
 } from './sim/autopilot';
 import type { Collider } from './sim/collision';
 import type { WindField } from './sim/wind';
+import { neutralWalk, standStill, walk, type WalkControls } from './sim/walk';
+import { startWander, steerWander, type Wander } from './sim/wander';
 import {
   add,
   clamp,
@@ -240,6 +243,42 @@ export const escortAutopilot: AutopilotParams = {
  * along with it.
  */
 const CRUISE_FLOOR = 11;
+/**
+ * How high above the ground a landing bird spreads its wings, in metres.
+ *
+ * Eight. It has to be high enough that the brake has time to take the speed
+ * off -- the approach comes in at the flock's cruise and the landing limit is
+ * ten metres a second -- and low enough that the bird is committed rather than
+ * hanging about above the spot.
+ */
+const LANDING_FLARE = 8;
+
+/**
+ * And how fast they fly the approach, in metres a second.
+ *
+ * Slower than the flock's ordinary cruise, which tracks the leader's and is
+ * far too quick to arrive at: the flock is not keeping up with anybody any
+ * more, it is landing.
+ */
+const LANDING_CRUISE = 11;
+
+/**
+ * And how low before it beats to break the sink, in metres.
+ *
+ * The legs will take ten metres a second forward and only four downward, so
+ * the sink is what kills a landing and the sink is what this is for.
+ */
+const LANDING_BEAT = 3;
+
+/**
+ * How far below the surface counts as having missed it, in metres.
+ *
+ * Two. A bird that touches down on the roof is within a body of its height; a
+ * bird that went over the parapet is a storey or more below it, and there is
+ * nothing in between to be ambiguous about.
+ */
+const MISSED_BY = 2;
+
 const CRUISE_CEILING = 30;
 
 /**
@@ -352,6 +391,37 @@ export interface Flock {
    * Fewer places than birds is fine -- they are dealt round.
    */
   scramble(from: readonly Vec3[]): void;
+  /**
+   * Bring them down around a point on the ground, and leave them there.
+   *
+   * The other end of `scramble`, and the other thing a flock has to be able
+   * to do once it is a character in the story rather than scenery: thirty
+   * birds who came to help have to arrive.
+   *
+   * `on` is the height of the thing they are landing on, and it is what
+   * decides who dies. The flight model judges a touchdown by speed, sink and
+   * bank, and thirty birds dropping onto one roof at once fail it more or
+   * less every time -- measured, all ten of a test flock wrote themselves off
+   * on the sink alone, coming in at five metres a second against a limit of
+   * four. That is not "a few of them make a mess of it", it is a flock
+   * falling out of the sky, and it is the wrong question anyway: these are
+   * not birds learning to fly, they are birds who came to help.
+   *
+   * So the landing is lenient about *how* and strict about *where*. Come down
+   * anywhere near the height of the surface and you have arrived, however
+   * untidily. Come down well below it -- over the parapet, into the street --
+   * and you did not make the roof, which is the one way to be killed here and
+   * the one the player can see the reason for.
+   *
+   * A bird that is down stays down. Landed, it walks about; missed, it is
+   * left where it fell. The respawning that keeps a flock topped up is
+   * exactly wrong here: the point of the shot is that these are the birds off
+   * the train, and one blinking back into the air would say they were
+   * interchangeable.
+   *
+   * Pass null to call it off and go back to wheeling.
+   */
+  land(around: { x: number; z: number; on: number } | null): void;
   /**
    * Fly them for a tick.
    *
@@ -653,10 +723,9 @@ export function createFlock(
     letting = true,
   ) {
     const at = around();
-    flying.cruiseSpeed = Math.min(
-      CRUISE_CEILING,
-      Math.max(CRUISE_FLOOR, at.speed + CRUISE_SURPLUS),
-    );
+    flying.cruiseSpeed = landing
+      ? LANDING_CRUISE
+      : Math.min(CRUISE_CEILING, Math.max(CRUISE_FLOOR, at.speed + CRUISE_SURPLUS));
 
     for (const pilot of pilots) {
       const { member } = pilot;
@@ -666,6 +735,95 @@ export function createFlock(
       // does not quietly count its way to being released.
       if (pilot.index >= wanted) {
         member.down = Math.max(member.down, options.emitInterval);
+        continue;
+      }
+
+      // --- Coming down ------------------------------------------------------
+      // Handled before everything else, because everything else assumes a
+      // bird that is flying and looking for somewhere to be. A bird that has
+      // arrived is not doing either.
+      if (landing) {
+        // Already down, one way or the other. Landed, it walks about;
+        // crashed, it lies there. Neither is brought back: these are the
+        // birds off the train, and one blinking into the air again would say
+        // they were interchangeable.
+        if (member.state.ending) {
+          if (member.state.ending.kind !== 'landed') continue;
+          let about = wanders.get(pilot);
+          if (!about) {
+            about = startWander(
+              { x: member.state.position.x, z: member.state.position.z },
+              rand,
+            );
+            wanders.set(pilot, about);
+            walking.set(pilot, neutralWalk());
+          }
+          const feet = walking.get(pilot)!;
+          const wants = steerWander(member.state, about, dt, rand);
+          feet.forward = wants.forward;
+          feet.turn = wants.turn;
+          feet.launch = false;
+          walk(member.state, feet, flight, dt, collider);
+          member.state.health = 1;
+          continue;
+        }
+
+        // Still up. Aimed at its own patch of ground near the place given,
+        // picked once and kept: re-rolled every few seconds it would circle
+        // the spot for ever instead of arriving at it.
+        if (member.aiming.altitude > LANDING_BEAT) {
+          const away = 4 + rand() * 14;
+          const round = rand() * Math.PI * 2;
+          member.aiming = {
+            x: landing.x + Math.cos(round) * away,
+            z: landing.z + Math.sin(round) * away,
+            // A little above the ground rather than on it. Aimed at nought
+            // the autopilot flies a straight line into the dirt and arrives
+            // still descending; aimed just over it, the last metre is the
+            // bird settling rather than the bird arriving.
+            altitude: LANDING_BEAT / 2,
+          };
+          pilot.chasing = 0;
+        }
+        steer(member.state, member.aiming, pilot.memory, pilot.controls, flying);
+        // Braked on the way in, below the height a bird starts thinking about
+        // its feet. Without it they arrive at cruise -- fourteen metres a
+        // second against a landing limit of ten -- and every one of them
+        // writes itself off, which is not "a few of them make a mess of it",
+        // it is a flock falling out of the sky.
+        //
+        // Wings and tail spread, which is what the brake is: a real pigeon
+        // does the same thing on the same part of the approach.
+        if (member.state.position.y < LANDING_FLARE) {
+          pilot.controls.brake = true;
+          pilot.controls.tuck = false;
+          // And beating, in the last few metres. Measured: braking alone
+          // brought them in at six or seven metres a second, which is well
+          // inside the ten the legs will take -- and sinking at five, which
+          // is not inside the four they will. Every one of them wrote itself
+          // off on the sink alone.
+          //
+          // Beating is what arrests a sink; pulling the nose up at this
+          // height is what the game's own approach instruction says not to
+          // do, and for the same reason.
+          if (member.state.position.y < LANDING_BEAT) pilot.controls.flap = true;
+        }
+        step(member.state, pilot.controls, flight, dt, collider, wind);
+        member.state.health = 1;
+        // Just arrived, and the flight model has called it a crash. If it is
+        // on the roof it was aiming at, it is not: see `land`. `standStill`
+        // is the same call the game makes for a bird that is simply *there*.
+        //
+        // Read through a fresh binding because `step` is what sets it, and
+        // the compiler cannot see inside a call: the branch above has already
+        // narrowed this to null, so asking again would be asking `never`.
+        const arrived = member.state.ending as Ending | null;
+        if (
+          arrived?.kind === 'crashed' &&
+          Math.abs(member.state.position.y - landing.on) <= MISSED_BY
+        ) {
+          standStill(member.state);
+        }
         continue;
       }
 
@@ -811,6 +969,19 @@ export function createFlock(
     });
   }
 
+  /** Where they are coming down, or null while they are flying. */
+  let landing: { x: number; z: number; on: number } | null = null;
+  /** Each one's own patch of ground, once it is down. */
+  const wanders = new Map<Pilot, Wander>();
+  const walking = new Map<Pilot, WalkControls>();
+
+  const land = (around: { x: number; z: number; on: number } | null) => {
+    landing = around;
+    if (around) return;
+    wanders.clear();
+    walking.clear();
+  };
+
   const scramble = (from: readonly Vec3[]) => {
     if (from.length === 0) return;
     const at = around();
@@ -839,5 +1010,6 @@ export function createFlock(
     touching,
     only,
     scramble,
+    land,
   };
 }

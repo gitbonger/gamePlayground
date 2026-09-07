@@ -483,6 +483,16 @@ export interface Level {
    */
   flock?: number;
   /**
+   * Whether the flock comes down when he does.
+   *
+   * One level, and it is the last one. Everywhere else the flock is company
+   * and company keeps flying: it wheels overhead while he lands, which is
+   * right for an errand he is running and wrong for the end of a rescue.
+   * Thirty birds who came to help do not circle the roof while the thing
+   * they came for happens underneath them.
+   */
+  settles?: boolean;
+  /**
    * Who is standing where, for as long as this level is being flown.
    *
    * Applied every time the level begins -- picked from the menu, restarted
@@ -934,6 +944,8 @@ export const LEVELS: readonly Level[] = [
     // The end of it: the roof the eighth level landed on, flown again with
     // thirty birds and the trapper on it.
     name: 'The rescue',
+    // They came to help, so they arrive -- see `settles`.
+    settles: true,
     // On the line the level before hands over at, which is the checkpoint
     // rule every crossing in the game obeys.
     start: [47.496495, 19.082937],

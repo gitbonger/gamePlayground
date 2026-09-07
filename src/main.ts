@@ -44,6 +44,7 @@ import { createDog } from './dog';
 import { createWaymarks, type Waymarks } from './waypoints';
 import { createWaymark } from './render/waymark';
 import { createDogRig } from './render/dog';
+import { CAGE, createCage } from './render/cage';
 import { createFlyover, type Flyover, type Framing } from './cutscene';
 import {
   bellyOnEntry,
@@ -53,6 +54,7 @@ import {
   dialogueOf,
   LEVELS,
   metBy,
+  PINK,
   sceneNamed,
   standingOf,
   targetName,
@@ -85,6 +87,7 @@ import {
   aabb,
   combineColliders,
   createColliderField,
+  turnedBox,
   type Collider,
 } from './sim/collision';
 import { createChaseCamera, defaultCameraParams, defaultWatchParams } from './render/camera';
@@ -1044,6 +1047,32 @@ let waymarks: Waymarks = createWaymarks([]);
  * not fly, and where they are is entirely a fact about where their wagon is.
  */
 /**
+ * The trapper's cage, standing where she is.
+ *
+ * One of them, moved and hidden, because there is only ever one: she is in
+ * the same place in every level she appears in, and building a cage per level
+ * would be building the same cage eleven times.
+ *
+ * It exists from the moment she is off the home tree -- the story is that she
+ * was taken while he was away, so by the time he can see her at all she is in
+ * it. Which means the rule is simply "wherever she is standing", and there is
+ * nothing extra to keep in step: move her and the cage goes with her.
+ */
+const cage = createCage();
+scene.add(cage.object);
+/**
+ * The cage as something to fly into, or null while there is no cage.
+ *
+ * A single box round the whole thing rather than a box per bar. The bars are
+ * two centimetres thick and the gaps ten, which is a shape no sweep against a
+ * 22 cm bird can give a sensible answer for -- it would pass through the gaps
+ * at some angles and not others, and a wall you can sometimes fly through is
+ * worse than either. So it is solid to the collider and see-through to the
+ * eye, which is the honest version of what a cage is for here.
+ */
+let cageBox: ReturnType<typeof turnedBox> | null = null;
+
+/**
  * Whether the birds on the freight train have left it.
  *
  * They are the flock from the moment they agree to come, and a bird cannot be
@@ -1160,6 +1189,29 @@ const residents: Resident[] = CHARACTERS.map((who) => {
  * a chimney and the branch is still empty, because that level says so.
  */
 function stageCast(spec: Level): void {
+  // Her cage, wherever she is. Worked out from the same spot she is placed
+  // at, so the two cannot drift apart.
+  const hers = standingOf(spec, PINK.name);
+  const caged = hers ? standingSpot(hers) : null;
+  if (caged) {
+    // Sat on whatever she is standing on rather than centred on her: she
+    // stands a body radius above the surface, and a cage floating a radius
+    // clear of a roof is a cage nobody built.
+    const floor = caged.at.y - defaultParams.bodyRadius;
+    cage.show({ x: caged.at.x, y: floor, z: caged.at.z, yaw: caged.facing });
+    cageBox = turnedBox(caged.at.x, caged.at.z, CAGE.width, CAGE.height, CAGE.depth, caged.facing);
+    // Standing on the roof, not on the ground: the box is built from the
+    // ground up, so it is lifted onto whatever she is on.
+    cageBox = {
+      ...cageBox,
+      minY: floor,
+      maxY: floor + CAGE.height,
+    };
+  } else {
+    cage.show(null);
+    cageBox = null;
+  }
+
   for (const member of residents) {
     const spot = standingOf(spec, member.who.name);
     const stood = spot ? standingSpot(spot) : null;
@@ -1347,6 +1399,9 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // How many come. Set before the recall takes effect rather than after, so
   // the first bird let out on this level is already one of this level's.
   flock.only(spec.escort ? (spec.flock ?? 0) : 0);
+  // Back into the air. A level that starts is a level whose flock is flying,
+  // including a restart of the one they came down on.
+  flock.land(null);
   // And where they come from, this once.
   //
   // A conversation that hands a level over does it where the player stands,
@@ -1832,6 +1887,11 @@ function rememberWhereTrainsWere() {
 function moveTrains(dt: number) {
   clock += dt;
   const fields: Collider[] = [world.collider];
+  // The cage, while there is one. Built here with the trains rather than into
+  // the world's grid, for the same reason they are: the world's boxes are
+  // laid into that grid once and never touched, and this one comes and goes
+  // with the level.
+  if (cageBox) fields.push(createColliderField([cageBox]));
   rememberWhereTrainsWere();
   let tagged = 0;
   near.fill(false);
@@ -2254,6 +2314,19 @@ function frame(nowMs: number) {
     // else in the game has to know there is such a thing as a tireless
     // level.
     if (LEVELS[level]?.tireless) bird.stamina = 1;
+    // The flock comes down with him, on the level that ends the story.
+    //
+    // Told once, when his own feet touch: thirty birds who came to help do
+    // not circle a roof while the thing they came for happens underneath
+    // them. Some of them will make a mess of it and that is the shot -- a
+    // flock arriving all at once is not thirty clean landings.
+    //
+    // Only where the level says so, and only downwards: `land(null)` is never
+    // called from here, because a bird that has put down should not be sent
+    // back up by the player taking off again.
+    if (LEVELS[level]?.settles && isPerched(bird)) {
+      flock.land({ x: bird.position.x, z: bird.position.z, on: bird.position.y });
+    }
     // And if the flight ended in the air, the bird still has to get down.
     // The model above has nothing more to say about it -- a finished flight
     // is inert to it -- but a corpse hanging at sixty metres is not a death,
@@ -2522,7 +2595,12 @@ function frame(nowMs: number) {
     if (!shown) return;
     flockRigs[i]!.update(
       member.state,
-      isPerched(member.state) ? 'perched' : 'gliding',
+      // Three poses rather than two, now that a flock can arrive. One that
+      // made a mess of the landing is lying on the roof, and drawing it
+      // gliding would be a corpse in a flying pose -- which never came up
+      // while the only thing a flock did was wheel about, because a bird that
+      // hit something was taken away and let out again.
+      isPerched(member.state) ? 'perched' : hasCrashed(member.state) ? 'dead' : 'gliding',
       frameTime,
     );
   });

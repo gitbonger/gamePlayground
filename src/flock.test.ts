@@ -1382,3 +1382,113 @@ describe('a flock that is already there', () => {
     expect(flock.members.filter((m) => m.down <= 0).length).toBeLessThan(8);
   });
 });
+
+describe('a flock that comes down with him', () => {
+  const built = () =>
+    createFlock(1, still(0, 40, 0), {
+      ...defaultFlockOptions,
+      count: 10,
+      emitInterval: 0,
+    });
+
+  /** Fly it until everything that is going to settle has settled. */
+  const settle = (flock: ReturnType<typeof built>, seconds = 60) => {
+    const wind = createWind();
+    flock.land({ x: 0, z: 0, on: 0.22 });
+    for (let t = 0; t < seconds; t += DT) flock.update(DT, undefined, wind);
+    return {
+      down: flock.members.filter((m) => m.state.ending !== null).length,
+      landed: flock.members.filter((m) => m.state.ending?.kind === 'landed').length,
+      flying: flock.members.filter((m) => m.state.ending === null).length,
+    };
+  };
+
+  it('brings them out of the air when it is told to', () => {
+    // Thirty birds who came to help do not circle the roof while the thing
+    // they came for happens underneath them.
+    const flock = built();
+    for (let t = 0; t < 4; t += DT) flock.update(DT, undefined, createWind());
+    expect(settle(flock).flying, 'still up').toBeLessThan(3);
+  });
+
+  it('lands them however untidily, so long as they made the roof', () => {
+    // Lenient about *how* and strict about *where*. The flight model judges a
+    // touchdown by speed, sink and bank, and thirty birds dropping onto one
+    // roof at once fail it more or less every time -- measured, all ten of a
+    // test flock wrote themselves off on the sink alone, coming in at five
+    // metres a second against a limit of four. That is not "a few make a mess
+    // of it", it is a flock falling out of the sky, and it is the wrong
+    // question: these are not birds learning to fly, they came to help.
+    const flock = built();
+    const ends = settle(flock);
+    expect(ends.down, 'they all arrived somehow').toBeGreaterThan(7);
+    expect(ends.landed, 'and on their feet, not on their backs').toBeGreaterThan(7);
+  });
+
+  it('kills only the ones that missed the thing they were landing on', () => {
+    // The one way to be killed here, and the one the player can see the
+    // reason for: over the parapet and into the street. A bird put down two
+    // metres under the roof it was aiming at did not make the roof.
+    const flock = built();
+    const wind = createWind();
+    // Told the roof is thirty metres up, while the ground is where it always
+    // is -- so every one of them lands a long way below what it was aiming
+    // at, which is exactly the case this is about.
+    flock.land({ x: 0, z: 0, on: 30 });
+    for (let t = 0; t < 60; t += DT) flock.update(DT, undefined, wind);
+
+    const missed = flock.members.filter((m) => m.state.ending?.kind === 'crashed');
+    expect(missed.length, 'nobody made it').toBeGreaterThan(7);
+  });
+
+  it('leaves them where they came down rather than letting them out again', () => {
+    // The respawn is exactly wrong here: these are the birds off the train,
+    // and one blinking back into the air would say they were interchangeable.
+    const flock = built();
+    settle(flock);
+    const where = flock.members.map((m) => ({ ...m.state.position }));
+
+    const wind = createWind();
+    for (let t = 0; t < 30; t += DT) flock.update(DT, undefined, wind);
+    for (const [i, member] of flock.members.entries()) {
+      // On their feet they walk about, so this is a leash rather than a pin.
+      const moved = Math.hypot(
+        member.state.position.x - where[i]!.x,
+        member.state.position.z - where[i]!.z,
+      );
+      expect(moved, `bird ${i}`).toBeLessThan(40);
+      expect(member.state.position.y, `bird ${i} is not back in the sky`).toBeLessThan(5);
+    }
+  });
+
+  it('walks the ones that landed', () => {
+    // "And then they will turn into walking mode." A bird standing perfectly
+    // still on a roof is a model of a bird.
+    const flock = built();
+    settle(flock);
+    const standing = flock.members.filter((m) => m.state.ending?.kind === 'landed');
+    expect(standing.length).toBeGreaterThan(0);
+
+    const before = standing.map((m) => ({ ...m.state.position }));
+    const wind = createWind();
+    for (let t = 0; t < 25; t += DT) flock.update(DT, undefined, wind);
+    const stirred = standing.filter(
+      (m, i) =>
+        Math.hypot(m.state.position.x - before[i]!.x, m.state.position.z - before[i]!.z) > 0.5,
+    );
+    expect(stirred.length, 'somebody moved').toBeGreaterThan(0);
+  });
+
+  it('goes back to wheeling when it is called off', () => {
+    // Which is what a restart does: a level that starts is a level whose
+    // flock is flying.
+    const flock = built();
+    settle(flock);
+    flock.land(null);
+    flock.recall();
+
+    const wind = createWind();
+    for (let t = 0; t < 40; t += DT) flock.update(DT, undefined, wind);
+    expect(flock.members.filter((m) => m.state.ending === null).length).toBeGreaterThan(5);
+  });
+});
