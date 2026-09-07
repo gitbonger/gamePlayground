@@ -1075,6 +1075,32 @@ describe('what the levels aim at', () => {
     }
   });
 
+  it('ends the search on her rather than on somebody who lives there', () => {
+    // The hinge of the story: he crosses the district, comes down on the
+    // roof, and finds her behind bars. There used to be a third bird standing
+    // beside the cage, which made the arrival a hello from a stranger with
+    // his mate three metres away -- the wrong bird to be walked up to at the
+    // moment the search ends.
+    const loft = LEVELS.find((level) => level.name === 'The Loft')!;
+    expect(metBy(loft)).toBe(PINK.name);
+    expect(loft.cast.map((who) => who.who)).toEqual([PINK.name]);
+
+    const said = JSON.stringify(dialogueOf(loft));
+    expect(said).toContain('trapper got me');
+    expect(handovers(dialogueOf(loft)!)).toEqual(['Fiumei út']);
+  });
+
+  it('stands her in one place on the terrace, so her cage does not move', () => {
+    // The cage is placed from her spot, so two levels that put her a few
+    // metres apart are two levels whose cage is in different places -- and
+    // the trapper stands beside where it is, so he would be beside it on one
+    // and away from it on the next.
+    const spots = LEVELS.map((level) => cagedIn(level))
+      .filter((spot) => spot !== undefined)
+      .map((spot) => `${spot!.along},${spot!.across}`);
+    expect(new Set(spots).size, 'one spot').toBe(1);
+  });
+
   it('cages her on the roof and nowhere else', () => {
     // The cage and the bird in it are different things. The first version of
     // this put a cage wherever she was standing, which is a trap on the nest

@@ -2173,6 +2173,23 @@ let smoothedFps = 60;
  * from counting. `meeting` is where all three live; this only decides what
  * happens next.
  */
+/**
+ * Whether he is standing on the thing this level is pointed at.
+ *
+ * Which is a different question from whether the level is finished: the loft
+ * is finished by walking up to her, and this is true from the moment his feet
+ * touch the roof she is on.
+ */
+function arrived(): boolean {
+  if (!isPerched(bird)) return false;
+  const marker = objective(targetName(LEVELS[level]!));
+  if (!marker) return false;
+  return (
+    Math.hypot(bird.position.x - marker.position.x, bird.position.z - marker.position.z) <=
+    ARRIVED_WITHIN
+  );
+}
+
 function reachLevel(): void {
   // Anyone at all, not just the one this level is about: standing with a
   // pigeon is standing with a pigeon, and the camera should say so.
@@ -2548,6 +2565,18 @@ function frame(nowMs: number) {
     // the wreck is the game carrying on cheerfully around a corpse, which is
     // the one thing that moment should not do.
     flock.update(TICK, solid, wind, doing !== 'dead');
+    // And they leave once he is down on the thing the level is aimed at.
+    //
+    // A crow hunts a bird in the air; the flight it was a danger to is over.
+    // What that buys is the arrival at the loft: he comes out of them, lands,
+    // and finds her in a cage -- and eight crows still wheeling overhead
+    // would be the level going on around the moment it exists for.
+    //
+    // On the target rather than merely on its feet, so it cannot be used to
+    // shake them off: putting down in a street on the way across the district
+    // is not arriving anywhere, and the level that is *about* the crows ends
+    // at a line with nothing to land on at all.
+    if (hunted && arrived()) hunted = false;
     if (hunted) crows?.update(TICK, solid, wind, doing !== 'dead');
     // And if one of them gets to him, that is the flight. It is checked after
     // they have moved rather than before, so the tick a crow arrives is the

@@ -165,6 +165,23 @@ export const HEADING_OUT: Turn = {
 };
 
 /**
+ * Through the bars, at the end of the search.
+ *
+ * The hinge of the whole story and it is two lines, because it is not a
+ * conversation -- it is the moment he finds her, and neither of them has
+ * anything to work out. She says what happened and he says what he is going
+ * to do about it, and then he leaves to do it.
+ *
+ * He can reach her here, unlike at the end: the cage is between them and it
+ * is *meant* to be. Standing next to somebody you cannot get to is the point
+ * of the level.
+ */
+export const CAUGHT: Turn = {
+  them: 'The trapper got me!',
+  you: [{ text: 'Wait, I will bring some help!', opens: 'Fiumei út' }],
+};
+
+/**
  * The one out west, and the first news of the story since the empty nest.
  *
  * Five levels of looking end here. He has asked at three squares and found
@@ -233,10 +250,3 @@ export const SAVED: Turn = {
   you: [{ text: 'I am so happy you are alive!', opens: 'Everafter' }],
 };
 
-export const GREETING: Turn = {
-  them: "It's good to see you!",
-  you: [
-    { text: 'You too!', then: { them: 'Good luck on your quest!' } },
-    { text: 'It was not easy!', then: { them: 'Nothing is easy!' } },
-  ],
-};

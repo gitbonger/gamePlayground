@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { alone, begin, GREETING, isOver, reply, type Turn } from './dialogue';
+import { alone, begin, isOver, reply, type Turn } from './dialogue';
+
+/**
+ * Two branches that each end after one exchange: the shape most of this
+ * module's rules are about.
+ *
+ * It used to live in `dialogue.ts` as the placeholder every level ended on
+ * until it had a story. Every level has one now, so nothing in the game said
+ * it any more -- and a piece of production code that only the tests reach for
+ * is a piece of production code that has stopped being any.
+ */
+const GREETING: Turn = {
+  them: "It's good to see you!",
+  you: [
+    { text: 'You too!', then: { them: 'Good luck on your quest!' } },
+    { text: 'It was not easy!', then: { them: 'Nothing is easy!' } },
+  ],
+};
 import { dialogueOf, LEVELS } from './levels';
 
 /** What is on screen, as plain strings, for comparing against. */

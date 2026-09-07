@@ -11,7 +11,7 @@
  * joins them up can be different data in the same shape.
  */
 
-import { GREETING, HEADING_OUT, SAVED, THE_ASK, THE_TRAPPER, type Turn } from './dialogue';
+import { CAUGHT, HEADING_OUT, SAVED, THE_ASK, THE_TRAPPER, type Turn } from './dialogue';
 import {
   HOME_TREE,
   JANI_SQUARE,
@@ -825,7 +825,7 @@ export const LEVELS: readonly Level[] = [
     // on the loft. Nothing moves her: the level simply says she is there, so
     // starting this level -- first time, or after flying into a chimney --
     // has her there, and the branch is empty in every shot of it.
-    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 }],
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 }],
     // Nobody is waiting on the concrete. A pigeon that has flown nine hundred
     // metres for food has come for the food, so the level is the eating: over
     // when the belly is full.
@@ -856,7 +856,7 @@ export const LEVELS: readonly Level[] = [
     // Nobody on the square. That is the point of it: the level is finished by
     // getting there and finding it empty, and what he says about that is the
     // beat it hands over to.
-    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 }],
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 }],
     finish: { kind: 'arrival', opens: { scene: 'nobody at Mátyás tér' } },
   },
   {
@@ -877,7 +877,7 @@ export const LEVELS: readonly Level[] = [
     when: EVENING,
     escort: false,
     target: { kind: 'landmark', name: JANI_SQUARE.name },
-    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 }],
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 }],
     // And this one hands straight over to the flight back east, with nothing
     // said yet. What he works out here -- or who he bumps into -- is the next
     // thing to be written, and it goes in as another beat.
@@ -907,7 +907,7 @@ export const LEVELS: readonly Level[] = [
     // coordinate does that -- so what it is for here is the direction of
     // travel and the distance still to go.
     target: { kind: 'landmark', name: WEST_PATCH.name },
-    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 }],
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 }],
     // Three marks down the way west, which is a route through a district
     // with nothing else in it to steer by: the squares are behind him and
     // the line ahead is a stripe you cannot see until you are near it.
@@ -952,7 +952,7 @@ export const LEVELS: readonly Level[] = [
     target: { kind: 'landmark', name: WEST_PATCH.name },
     cast: [
       { who: 'Ginger', on: { kind: 'landmark', name: WEST_PATCH.name }, along: 2.4, across: 0 },
-      { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
+      { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 },
     ],
     finish: { kind: 'meeting', who: 'Ginger', dialogue: THE_TRAPPER },
   },
@@ -990,14 +990,12 @@ export const LEVELS: readonly Level[] = [
     // The one level the wings do not tire on -- see `tireless`.
     tireless: true,
     target: { kind: 'landmark', name: LOFT.name },
-    // Two of them on the terrace now: the one who lives here, and her. Three
-    // metres apart, which is more than the two a bird can be walked up to
-    // from -- so walking up to one of them is walking up to one of them.
-    cast: [
-      { who: 'Black', on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 },
-      { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
-    ],
-    finish: { kind: 'meeting', who: 'Black', dialogue: GREETING },
+    // Her, in the cage, and nobody else. There used to be somebody who lives
+    // here standing beside her, which made the arrival a hello from a
+    // stranger with his mate three metres away behind bars -- the wrong bird
+    // to be walked up to at the moment the search ends.
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 }],
+    finish: { kind: 'meeting', who: PINK.name, dialogue: CAUGHT },
   },
   {
     // Out along Fiumei út, over the roofs, looking for the big house.
@@ -1028,7 +1026,7 @@ export const LEVELS: readonly Level[] = [
     // has nobody standing there, which is the rule that keeps the three
     // finishes apart. She is on the loft terrace, as she is in every level
     // since the park: not somebody to meet, somebody who is there.
-    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 }],
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 }],
     finish: {
       kind: 'crossing',
       through: [47.499529, 19.083243],
@@ -1055,7 +1053,7 @@ export const LEVELS: readonly Level[] = [
     target: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' },
     cast: [
       { who: 'White', on: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' }, along: 2.5, across: 0 },
-      { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
+      { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 },
     ],
     finish: { kind: 'meeting', who: 'White', dialogue: THE_ASK },
   },
@@ -1087,7 +1085,7 @@ export const LEVELS: readonly Level[] = [
     // Nobody: a level finished by flying through a line has nobody standing
     // at the end of it. She is on the terrace, as she has been since the
     // park.
-    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 }],
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 }],
     finish: {
       kind: 'crossing',
       through: [47.496495, 19.082937],
