@@ -45,7 +45,84 @@ export interface MapData {
   rails?: Rail[];
   /** Parks, woods, playing fields and water. Absent on older baked maps. */
   areas?: Area[];
+  /**
+   * Real building outlines, each reduced to the turned box that covers it.
+   *
+   * `[x, z, width, depth, yaw, height]`, with `height` null where the building
+   * does not say how tall it is. Bare arrays rather than named fields because
+   * there are seven and a half thousand of them and the names would be three
+   * hundred kilobytes of the same six numbers repeated -- this is a generated
+   * file, and the only place the order has to be known is here and in the one
+   * loop that reads it.
+   *
+   * A box rather than the outline. What it keeps is where the building is,
+   * which way it faces and how big it is; what it loses is the notch in the
+   * corner, and nobody flying over a city at fifty metres has ever seen a
+   * notch. A block of them is still a ring round a courtyard, because the real
+   * ones are a ring round a courtyard.
+   *
+   * Absent on older baked maps, in which case the generator invents them.
+   */
+  buildings?: readonly (readonly (number | null)[])[];
+  /**
+   * Painted pedestrian crossings, as `[x, z]`.
+   *
+   * Marked ones only -- zebras and signalled crossings, which are painted too.
+   * A dropped kerb with nothing on the road is not something to draw.
+   */
+  crossings?: readonly (readonly number[])[];
+  /**
+   * Street trees, as `[x, z]`.
+   *
+   * The ones somebody has actually recorded standing in a street, as against
+   * the ones the generator plants in parks.
+   */
+  trees?: readonly (readonly number[])[];
 }
+
+/** A building outline, as the game wants it. */
+export interface MapBuilding {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  yaw: number;
+  /** Metres, or null where the map does not say. */
+  height: number | null;
+}
+
+/**
+ * The six numbers of a baked building, named.
+ *
+ * One place knows the order, and this is it.
+ */
+export const bakedBuildings = (map: MapData): MapBuilding[] =>
+  (map.buildings ?? []).flatMap((row) => {
+    const [x, z, width, depth, yaw, height] = row;
+    if (
+      x === null ||
+      x === undefined ||
+      z === null ||
+      z === undefined ||
+      width === null ||
+      width === undefined ||
+      depth === null ||
+      depth === undefined ||
+      yaw === null ||
+      yaw === undefined
+    ) {
+      return [];
+    }
+    return [{ x, z, width, depth, yaw, height: height ?? null }];
+  });
+
+/** And the pairs, for the two things that are only ever a place. */
+export const bakedPoints = (rows: readonly (readonly number[])[] | undefined): [number, number][] =>
+  (rows ?? []).flatMap((row) =>
+    row.length >= 2 && Number.isFinite(row[0]) && Number.isFinite(row[1])
+      ? [[row[0]!, row[1]!] as [number, number]]
+      : [],
+  );
 
 export interface NearestStreet {
   /** Distance from the query point to the road's centreline, in metres. */
