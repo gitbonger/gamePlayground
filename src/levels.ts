@@ -737,17 +737,21 @@ export const LEVELS: readonly Level[] = [
     // Twenty-four metres up, on a roof among other roofs. Still nothing
     // moving, but now you have to pick the right one and stop on it.
     name: 'The Loft',
-    // The same spot the crossing hands over at, though this is no longer the
-    // level it hands over *to* -- Blaha sits between them now. It is
-    // kept because it is a good place to start from and not because a rule
-    // requires it: six hundred and twenty metres out from the loft, which at
-    // a hundred metres up is the glide this level is built around.
-    start: [47.495543, 19.073687],
-    // Three hundred metres out and a hundred and twenty up, which is a good
-    // deal steeper than a pigeon glides: 1:2.5 against a best glide of 1:6.2,
-    // so the height has to be got rid of rather than merely flown off.
-    // High enough to see the whole approach and to reach it gliding.
-    release: 100,
+    // Out by the slab the level before finishes on -- sixty-one metres from
+    // it -- so this picks up where Blaha put the bird down, which is what
+    // every level in the second half does.
+    start: [47.496632, 19.069340],
+    // A hundred and fifty, which is the highest release in the game by half
+    // as much again. Nine hundred and fifty-eight metres out from that is a
+    // glide of 6.4:1 against a pigeon's measured best of about 5.6:1 -- so
+    // it is nearly reachable gliding and not quite, which is the same margin
+    // this level had at a hundred metres and six hundred and twenty out.
+    //
+    // The height is the point of it rather than a way of paying for the
+    // distance: from up here the whole district the last four levels were
+    // flown through is laid out at once, which is a thing worth being given
+    // once and is not worth being given twice.
+    release: 150,
     // After the errand, and the errand was food. These three are flown on a
     // full belly because the story says he has eaten.
     health: 1,

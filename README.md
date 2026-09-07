@@ -3177,3 +3177,4 @@ tests the real world the player flies through, in Node, with no WebGL.
    state.
 6. **A crash you can see.** The bird currently freezes at the impact point.
    Tumbling it, or leaving a puff of feathers, would cost little.
+

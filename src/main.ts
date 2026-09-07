@@ -64,7 +64,7 @@ import {
   type Scene,
   type Standing,
 } from './levels';
-import { HOME_TREE, JANI_SQUARE, LANDMARKS, PARK_PATCH } from './landmarks';
+import { HOME_TREE, JANI_SQUARE, LANDMARKS, PARK_PATCH, WEST_PATCH } from './landmarks';
 import { alone, begin, isOver, reply, type Exchange } from './dialogue';
 import { createDialoguePanel, speechColour } from './render/dialogue';
 import { browserSpeaker, createVoice } from './render/voice';
@@ -669,7 +669,7 @@ const flockRigs = flock.members.map((member) => {
  * eat the grain, and no level's condition mentions them. They are there
  * because a place with nothing standing about in it is a diagram of a place.
  */
-function crowdOn(landmark: string, count: number) {
+function crowdOn(landmark: string, count: number, spread = 0) {
   const on = layout.landmarks.find((l) => l.name === landmark);
   if (!on) return null;
   return createAmbient({
@@ -678,8 +678,13 @@ function crowdOn(landmark: string, count: number) {
       x: on.x,
       z: on.z,
       yaw: on.yaw ?? 0,
-      width: on.width,
-      depth: on.depth,
+      // Grown by `spread` on every side, so a crowd can stand *around* a
+      // thing rather than on it. A slab that a level ends by landing on has
+      // to stay landable: twenty pigeons scattered over nine metres square is
+      // not a busy square, it is a closed one, and the player would be
+      // touching down in the middle of them.
+      width: on.width + spread * 2,
+      depth: on.depth + spread * 2,
       // A flat thing has no top of its own, so it is the ground's.
       top: on.height > 0 ? on.height : defaultParams.groundHeight,
     },
@@ -696,8 +701,17 @@ function crowdOn(landmark: string, count: number) {
  * throwing food on the ground. Six on Jani Pali tér, because that is a square
  * with twenty people standing about on it and a dog trotting through, and a
  * city square with no pigeons on it is the one thing that would give it away.
+ * And twenty on the slab out west, which has twenty people round it too.
  */
-const crowds = [crowdOn(PARK_PATCH.name, 4), crowdOn(JANI_SQUARE.name, 6)].filter(
+const crowds = [
+  crowdOn(PARK_PATCH.name, 4),
+  crowdOn(JANI_SQUARE.name, 6),
+  // Twenty on the slab out west, spread nine metres past its edges so they
+  // fill the ground the twenty people are standing on rather than the nine
+  // metres of concrete in the middle of it. It is the busiest place in the
+  // game and the last thing the hero flies to before the loft.
+  crowdOn(WEST_PATCH.name, 20, 9),
+].filter(
   (crowd): crowd is NonNullable<typeof crowd> => crowd !== null,
 );
 
@@ -820,22 +834,54 @@ const crowRigs = (crows?.members ?? []).map(() => {
 });
 
 /**
- * The dog on Jani Pali tér.
+ * How many dogs are on Jani Pali tér.
  *
- * One, walking about among the people. It is scenery for now -- it collides
- * with nothing and nothing collides with it -- and it is here because a
- * square with twenty people standing about on it is a square, and a square
- * with a dog trotting through it is a place.
+ * Four. One was scenery -- a square with twenty people standing about on it
+ * is a square, and a square with a dog trotting through it is a place -- and
+ * four is a park at the end of the afternoon. They never stop, so four of
+ * them are four things moving in a square where everything else is standing
+ * still, which is most of what makes a place look inhabited rather than
+ * modelled.
  */
+const DOGS = 4;
+/**
+ * Where each of them starts, as an offset from the middle of the square.
+ *
+ * Spread rather than stacked: created at one point they would set off from
+ * the same spot on the same tick, and four dogs leaving one place together is
+ * a pack rather than four dogs. Each also gets its own random source, seeded
+ * off its index, so they wander independently -- sharing `Math.random` would
+ * work too, but a dog whose path depends on how many other dogs were built
+ * first is a dog that moves when something unrelated changes.
+ */
+const DOG_STARTS = [
+  { x: 0, z: 0 },
+  { x: 11, z: -6 },
+  { x: -9, z: 7 },
+  { x: 6, z: 9 },
+];
 const square = layout.landmarks.find((landmark) => landmark.name === JANI_SQUARE.name);
-const dog = square
-  ? createDog({
-      home: { x: square.x, z: square.z },
-      ground: defaultParams.groundHeight,
+const dogs = square
+  ? Array.from({ length: DOGS }, (_, i) => {
+      const from = DOG_STARTS[i % DOG_STARTS.length]!;
+      let seed = (0x9e3779b9 * (i + 1)) >>> 0;
+      return createDog({
+        home: { x: square.x + from.x, z: square.z + from.z },
+        ground: defaultParams.groundHeight,
+        random: () => {
+          seed = (seed + 0x6d2b79f5) >>> 0;
+          let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        },
+      });
     })
-  : null;
-const dogRig = dog ? createDogRig() : null;
-if (dogRig) scene.add(dogRig.object);
+  : [];
+const dogRigs = dogs.map(() => {
+  const rig = createDogRig();
+  scene.add(rig.object);
+  return rig;
+});
 
 /**
  * The waypoint that is showing, and the marks it is showing from.
@@ -1976,7 +2022,7 @@ function frame(nowMs: number) {
     if (crows && bird.ending === null && crows.touching(bird.position, CROW_TOUCH)) {
       caught(bird);
     }
-    dog?.update(TICK);
+    for (const hound of dogs) hound.update(TICK);
     for (const crowd of crowds) crowd.update(TICK, solid, wind);
     if (waymarks.update(bird.position.x, bird.position.z)) {
       waymark.show(waymarks.at, waymarks.next);
@@ -2215,11 +2261,13 @@ function frame(nowMs: number) {
 
   waymark.update(now);
 
-  if (dog && dogRig) {
-    const shown = sighted(dog.pose, sight);
-    dogRig.object.visible = shown;
-    if (shown) dogRig.update(dog.pose);
-  }
+  dogs.forEach((hound, i) => {
+    const rig = dogRigs[i];
+    if (!rig) return;
+    const shown = sighted(hound.pose, sight);
+    rig.object.visible = shown;
+    if (shown) rig.update(hound.pose);
+  });
 
   crowds.forEach((crowd, group) => {
     crowd.birds.forEach((pigeon, i) => {

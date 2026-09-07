@@ -110,24 +110,6 @@ export const PARK_PATCH: LandmarkSpec = {
 };
 
 /**
- * A second patch of concrete, on open ground across the city to the west.
- *
- * The same thing as the one in the park and laid the same way -- flush with
- * the ground, so landing on it, landing beside it and walking from one to the
- * other are all the same surface. What is different is where it is: twenty
- * metres of clear ground between a secondary road and a tramway, so the
- * approach is down a gap between buildings rather than across a field.
- */
-export const WEST_PATCH: LandmarkSpec = {
-  name: 'The Slab',
-  at: [47.496589, 19.070153],
-  width: 9,
-  depth: 9,
-  height: 0,
-  margin: 7,
-};
-
-/**
  * A crowd standing about on a square, scattered but not on top of each other.
  *
  * Generated rather than written out, because twenty hand-placed pairs of
@@ -172,6 +154,39 @@ function crowdAround(count: number, seed: number, inner: number, outer: number):
     };
   });
 }
+
+
+/**
+ * A second patch of concrete, on open ground across the city to the west.
+ *
+ * The same thing as the one in the park and laid the same way -- flush with
+ * the ground, so landing on it, landing beside it and walking from one to the
+ * other are all the same surface. What is different is where it is: twenty
+ * metres of clear ground between a secondary road and a tramway, so the
+ * approach is down a gap between buildings rather than across a field.
+ */
+export const WEST_PATCH: LandmarkSpec = {
+  name: 'The Slab',
+  at: [47.496589, 19.070153],
+  width: 9,
+  depth: 9,
+  height: 0,
+  // Sixteen, up from seven, and the crowd below is why: reserved ground is
+  // the only ground a person is certain not to be standing inside a wall on,
+  // and they stand out to eighteen metres from a slab that is four and a half
+  // to its own edge. Same reasoning as Jani Pali tér, one square along.
+  margin: 16,
+  // Twenty of them, in a ring with a hole in the middle.
+  //
+  // The hole is not decoration. This slab is a *target* -- a level ends by
+  // landing on it and walking up to somebody standing there -- and it is nine
+  // metres square, which is a good deal less than the twenty-six of Jani Pali
+  // tér. Twenty two-metre solids spread evenly over that is not a crowded
+  // square, it is a closed one. So the inner radius is eight: clear of the
+  // slab's own corners at six and a half, and clear of the person already
+  // standing on it.
+  people: crowdAround(20, 4232, 8, 18),
+};
 
 /**
  * Two squares in the eighth district, which are places to look rather than

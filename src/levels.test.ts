@@ -410,13 +410,15 @@ describe('what the levels aim at', () => {
       'Népszínház',
     ]);
 
-    // And the oldest are sky drops at a hundred, with the whole approach laid
-    // out beneath you.
+    // And the oldest are sky drops, with the whole approach laid out beneath
+    // you. The loft is the highest release in the game and the yard the
+    // ordinary hundred: a drop is a drop, and how far above the roofs it
+    // starts is that level's own business.
     const dropped = flown.filter((level) => !under.includes(level) && !district.includes(level));
-    for (const level of dropped) expect(level.release, level.name).toBe(100);
-    // Two of them: the loft and the yard. It was three until Blaha came down
-    // out of the sky and into the street.
-    expect(dropped).toHaveLength(2);
+    // Two of them. It was three until Blaha came down out of the sky and into
+    // the street.
+    expect(dropped.map((level) => level.name)).toEqual(['The Loft', 'The Yard']);
+    for (const level of dropped) expect(level.release, level.name).toBeGreaterThanOrEqual(100);
 
     // And the district ones are all above what is built on it, which is the
     // other half of what "low" means here: under the sky drops, over the
@@ -904,18 +906,24 @@ describe('what the levels aim at', () => {
     // a crowd that is all pointed one way is a queue, and a crowd all facing
     // the middle is an audience. Twenty people standing about should be
     // standing about.
-    const square = LANDMARKS.find((l) => l.people && l.people.length > 5);
-    expect(square, 'somewhere with a crowd in it').toBeDefined();
+    // Every crowd, not the first one found. This file has been caught by that
+    // exactly once before -- a `find` that was true of the one thing there
+    // was and quietly stopped covering anything the moment a second was
+    // added, which is what happened the moment a second square got a crowd.
+    const squares = LANDMARKS.filter((l) => l.people && l.people.length > 5);
+    expect(squares.length, 'somewhere with a crowd in it').toBeGreaterThan(0);
 
-    const facings = square!.people!.map((who) => who.facing);
-    // Spread over the whole circle rather than clustered: at least one of
-    // them in each quarter of it.
-    for (const quarter of [0, 1, 2, 3]) {
-      const some = facings.some((f) => {
-        const turned = ((f % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-        return Math.floor(turned / (Math.PI / 2)) === quarter;
-      });
-      expect(some, `nobody facing quarter ${quarter}`).toBe(true);
+    for (const square of squares) {
+      const facings = square.people!.map((who) => who.facing);
+      // Spread over the whole circle rather than clustered: at least one of
+      // them in each quarter of it.
+      for (const quarter of [0, 1, 2, 3]) {
+        const some = facings.some((f) => {
+          const turned = ((f % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+          return Math.floor(turned / (Math.PI / 2)) === quarter;
+        });
+        expect(some, `${square.name}: nobody facing quarter ${quarter}`).toBe(true);
+      }
     }
   });
 
