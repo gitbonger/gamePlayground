@@ -532,6 +532,20 @@ export interface Tree {
 export const SPECIES = 4;
 
 /**
+ * The one the generator never plants: the tree that came off the map.
+ *
+ * A street tree is a *record* -- somebody stood in Józsefváros and wrote down
+ * that there is a tree here -- and everything else in the world's greenery is
+ * invented. Giving it a sort of its own means the difference is visible from
+ * the air, which is the point: you can see at a glance what the map knows and
+ * what the generator made up.
+ *
+ * Numbered past the end of the generated range on purpose. `rand() * SPECIES`
+ * cannot reach it, so nothing invented can be mistaken for a real one.
+ */
+export const STREET_TREE = SPECIES;
+
+/**
  * A headstone, standing where a tree would otherwise have grown.
  *
  * The park the home tree stands in is a cemetery, and a cemetery from the air

@@ -41,6 +41,7 @@ import {
   PERSON_HEIGHT,
   PERSON_WIDTH,
   SPECIES,
+  STREET_TREE,
   type Building,
   type Bush,
   type Grave,
@@ -852,6 +853,33 @@ export function buildLayoutFromMap(
         });
       }
     }
+  }
+
+  // --- Street trees ---------------------------------------------------------
+  // The ones somebody actually recorded standing in a street, as against the
+  // ones the generator plants in parks. They get a sort of their own -- see
+  // `STREET_TREE` -- so that what the map knows can be told from what was made
+  // up, at a glance, from the air.
+  //
+  // Sized rather than random: a street tree is a street tree, and a row of
+  // them down a road wants to read as a row. The small variation is so they
+  // are not a stamp repeated.
+  for (const [x, z] of bakedPoints(map.trees)) {
+    // Not through a wall. A tree recorded on a pavement and a building
+    // recorded to the kerb can overlap by a metre in the data, and a plane
+    // tree growing out of a first-floor window is funnier than it is good.
+    if (built(x, z)) continue;
+    // And not on ground a described thing has taken, for the same reason a
+    // building may not stand there.
+    if (reserved(x, z)) continue;
+
+    trees.push({
+      x,
+      z,
+      radius: 2.6 + rand() * 0.9,
+      height: 9 + rand() * 4,
+      species: STREET_TREE,
+    });
   }
 
   // The gardens, in the middle of every block with room for one.

@@ -1353,11 +1353,29 @@ function treeShapes(): { geometry: THREE.BufferGeometry; color: number }[] {
     return geometry;
   };
 
+  // And the street tree: a plane, which is what actually lines the streets of
+  // this district. A long clear stem with a broad flat crown sitting on top of
+  // it, which is what pollarding does and what tells one apart from anything
+  // growing in a park.
+  //
+  // Deliberately the odd one out. Every other sort here is a cone or a ball
+  // on a stub, in a green between dark and mid; this is tall, flat-topped and
+  // markedly paler, so that a row of them down a street reads as a row of
+  // them down a street -- and so that what the map knows can be told from
+  // what the generator invented, at a glance, from the air.
+  const planeCrown = new THREE.IcosahedronGeometry(0.46, 0);
+  planeCrown.scale(1.25, 0.42, 1.25);
+  planeCrown.translate(0, 0.78, 0);
+  const planeStem = new THREE.CylinderGeometry(0.05, 0.08, 0.72, 6);
+  planeStem.translate(0, 0.36, 0);
+  const plane = merged([planeCrown, planeStem]);
+
   return [
     { geometry: spruce, color: 0x35512c },
     { geometry: wide(poplar, 0.55), color: 0x4a6b38 },
     { geometry: wide(broadleaf, 1.35), color: 0x4f7a3c },
     { geometry: wide(old, 1.7), color: 0x6b8a48 },
+    { geometry: wide(plane, 1.5), color: 0x8fae5a },
   ];
 }
 

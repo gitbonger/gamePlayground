@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
-import { CAR, nestOn, penthouseOf, pointOn, PUMP, terraceOf, type Landmark } from './layout';
+import {
+  CAR,
+  nestOn,
+  penthouseOf,
+  pointOn,
+  PUMP,
+  SPECIES,
+  STREET_TREE,
+  terraceOf,
+  type Landmark,
+} from './layout';
 import { indexStreets, type MapData, type Rail, type Road } from './streets';
 import { footprintSamples, type Area } from './areas';
 import { distanceToEdges, pointInPolygon } from './polygon';
@@ -1558,5 +1568,68 @@ describe('painted crossings', () => {
 
   it('has none where the map recorded none', () => {
     expect(buildLayoutFromMap(mapOf(EAST), defaultMapWorldOptions).crossings).toEqual([]);
+  });
+});
+
+describe('trees that came off the map', () => {
+  const EAST: Road[] = [{ kind: 'secondary', width: 13, points: [[-300, 0], [300, 0]] }];
+
+  const planted = (points: number[][], options = {}) =>
+    buildLayoutFromMap({ ...mapOf(EAST), trees: points } as MapData, {
+      ...defaultMapWorldOptions,
+      ...options,
+    });
+
+  it('gives them a sort the generator can never plant', () => {
+    // The point of the whole thing: a street tree is a *record* -- somebody
+    // stood in Józsefváros and wrote down that there is a tree here -- and
+    // every other piece of greenery in the world is invented. A sort of its
+    // own means the difference is visible from the air.
+    const world = planted([[0, 30]]);
+    const mine = world.trees.filter((tree) => tree.species === STREET_TREE);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]!.x).toBe(0);
+    expect(mine[0]!.z).toBe(30);
+
+    // And nothing invented can be mistaken for one: the generated range stops
+    // short of it, so `rand() * SPECIES` cannot reach it.
+    expect(STREET_TREE).toBeGreaterThanOrEqual(SPECIES);
+    const invented = world.trees.filter((tree) => tree.species !== STREET_TREE);
+    for (const tree of invented) expect(tree.species).toBeLessThan(SPECIES);
+  });
+
+  it('does not grow one through a wall', () => {
+    // A tree recorded on a pavement and a building recorded to the kerb can
+    // overlap by a metre in the data, and a plane tree coming out of a
+    // first-floor window is funnier than it is good.
+    const world = buildLayoutFromMap(
+      {
+        ...mapOf(EAST),
+        buildings: [[80, 40, 30, 20, 0, 15]],
+        trees: [[80, 40], [200, 40]],
+      } as MapData,
+      defaultMapWorldOptions,
+    );
+    const mine = world.trees.filter((tree) => tree.species === STREET_TREE);
+    expect(mine, 'the one in the building is gone').toHaveLength(1);
+    expect(mine[0]!.x).toBe(200);
+  });
+
+  it('keeps off ground a described thing has taken', () => {
+    // Same rule as a building: a level that names a place cannot have a tree
+    // standing in the middle of it.
+    const world = planted([[0, 30], [200, 30]], {
+      landmarks: [
+        { name: 'The Slab', x: 0, z: 30, width: 9, depth: 9, height: 0, margin: 10 },
+      ],
+    });
+    const mine = world.trees.filter((tree) => tree.species === STREET_TREE);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]!.x).toBe(200);
+  });
+
+  it('plants none where the map recorded none', () => {
+    const world = buildLayoutFromMap(mapOf(EAST), defaultMapWorldOptions);
+    expect(world.trees.some((tree) => tree.species === STREET_TREE)).toBe(false);
   });
 });
