@@ -20,6 +20,7 @@ import {
 } from './sim/flight';
 import {
   quat,
+  quatFromAxisAngle,
   vec,
   type Quat,
   type Vec3,
@@ -93,7 +94,7 @@ import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
 import { buildWorld, targetFlash, type TargetMarker } from './world/city';
 import { peopleOn, PERSON_HEIGHT, pointOn } from './world/layout';
-import { createScatter, seedWithin } from './world/seeds';
+import { createScatter, seedWithin, SEED_SIZE } from './world/seeds';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
 import {
   carryPassengers,
@@ -397,8 +398,114 @@ const scatter =
       })
     : null;
 
+/**
+ * The freight train: the rake of stake wagons, first in the list.
+ *
+ * Named once here rather than written as 0 in five places. A level picks it
+ * out by that index, and so now do the grain and the birds standing in it.
+ */
+const FREIGHT = 0;
+
+/**
+ * A patch of grain on the deck of every wagon of the freight train.
+ *
+ * Decoration, and deliberately nothing else: it is drawn by the same
+ * instanced mesh the thrown scatter uses, and grain has no collision of any
+ * kind, so the bird walks and lands straight through it. Only `scatter.seeds`
+ * is ever offered to `seedWithin`, so none of this can be eaten either -- it
+ * is the reason there are birds all over this train, not a meal.
+ *
+ * Placed in the wagon's own frame and turned into world coordinates every
+ * frame, because the train is somewhere else every tick.
+ */
+const WAGON_GRAIN = (() => {
+  const rake = layout.trains[FREIGHT];
+  if (!rake) return [];
+  let seed = 0x51ed270b;
+  const random = () => {
+    seed = (seed + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const on: { car: number; along: number; across: number }[] = [];
+  rake.vehicles.forEach((vehicle, car) => {
+    // The deck only. A locomotive has a hood rather than a floor, and grain
+    // heaped on the bonnet of a running diesel is a different picture.
+    if (vehicle.kind !== 'wagon') return;
+    for (let i = 0; i < 14; i += 1) {
+      on.push({
+        car,
+        // Inside the stakes, which stand along both sides: grain against the
+        // uprights reads as spillage rather than as a load.
+        along: (random() - 0.5) * (vehicle.length - 1.6),
+        across: (random() - 0.5) * (vehicle.width - 1),
+      });
+    }
+  });
+  return on;
+})();
+
+/**
+ * The birds standing on the freight train.
+ *
+ * Thirty of them, and they are the reason the grain is there: a rake of
+ * wagons with a patch of grain on every deck is somewhere pigeons would be,
+ * and thirty pigeons on it is the flock the story is about to ask for help.
+ *
+ * They stand rather than walk, and that is a decision rather than a
+ * limitation. A walking bird is steered by `wander`, which knows about ground
+ * and not about decks -- a wagon is fourteen metres long, two metres nine
+ * wide and somewhere else every tick, so a wanderer would need an edge test
+ * in a moving frame and would still eventually put a foot over the side.
+ * Standing on a spot on a wagon is exact: the spot is in the wagon's own
+ * frame, so it rides perfectly however the train moves and whatever it does
+ * at the end of the line.
+ *
+ * What keeps them from reading as ornaments is the turning: each one shifts
+ * its heading slowly and independently, which is what a bird standing about
+ * actually does with its time.
+ */
+const RIDERS = 30;
+const riders = (() => {
+  const rake = layout.trains[FREIGHT];
+  if (!rake) return [];
+  const decks = rake.vehicles
+    .map((vehicle, car) => ({ vehicle, car }))
+    .filter((each) => each.vehicle.kind === 'wagon');
+  if (decks.length === 0) return [];
+
+  let seed = 0x2f6ea1c3;
+  const random = () => {
+    seed = (seed + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
+  return Array.from({ length: RIDERS }, (_, i) => {
+    // Dealt round the wagons rather than scattered at random over them, so
+    // every deck has some: thirty random draws over twelve wagons leaves one
+    // or two of them empty, and an empty wagon in the middle of a rake reads
+    // as the one you are meant to land on.
+    const deck = decks[i % decks.length]!;
+    return {
+      car: deck.car,
+      along: (random() - 0.5) * (deck.vehicle.length - 2),
+      across: (random() - 0.5) * (deck.vehicle.width - 1.2),
+      /** Which way it is looking, in the wagon's own frame. */
+      facing: random() * Math.PI * 2,
+      /** And how fast it is drifting round, in radians a second. */
+      turning: (random() - 0.5) * 0.5,
+      morph: Math.floor(random() * PIGEON_MORPHS.length),
+    };
+  });
+})();
+
 const world = buildWorld(layout, {
-  seeds: SEEDS_AT_ONCE,
+  // The thrown scatter and the grain riding on the freight train, in one
+  // mesh: they are the same object drawn in two places.
+  seeds: SEEDS_AT_ONCE + WAGON_GRAIN.length,
   gates,
   // The described things need no list here: they arrive on the layout already
   // named, having been put there on purpose. Only the wagons do, because
@@ -654,7 +761,45 @@ const leaderOf = (of: BirdState): Anchor => ({
   climb: of.velocity.y,
 });
 
-const flock = createFlock(PIGEON_MORPHS.length, () => leaderOf(bird));
+/**
+ * How far ahead of the bird the flock is centred, in metres.
+ *
+ * Thirty. The ball of targets used to be centred on the player, which puts
+ * half the flock behind the camera at all times -- and the camera is behind
+ * the bird, so "behind the bird" is "in the boom, or out of frame". A flock
+ * you cannot see is a flock that costs what it costs and buys nothing.
+ *
+ * Moved forward rather than made bigger: a wider ball would put them further
+ * away in every direction including the two that were already working. Ahead
+ * is also where a bird flying with a flock actually looks.
+ */
+const FLOCK_AHEAD = 30;
+
+/** The point the flock wheels around: ahead of the bird, not on it. */
+const flockCentre = (): Anchor => {
+  const at = leaderOf(bird);
+  const way = heading(bird);
+  return {
+    ...at,
+    // Along the way he is pointing rather than the way he is going: a bird in
+    // a sideslip or a flare is still looking where its nose is, and the flock
+    // in front of it should not swing out sideways because of a gust.
+    x: at.x + Math.sin(way) * FLOCK_AHEAD,
+    z: at.z - Math.cos(way) * FLOCK_AHEAD,
+  };
+};
+
+/**
+ * Built at the largest flock any level asks for.
+ *
+ * A bird is a rig in the scene, so they are made once and let out in the
+ * number the level wants -- see `Flock.only`.
+ */
+const FLOCK_MOST = Math.max(...LEVELS.map((spec) => spec.flock ?? 0), PIGEON_MORPHS.length);
+const flock = createFlock(PIGEON_MORPHS.length, flockCentre, {
+  ...defaultFlockOptions,
+  count: FLOCK_MOST,
+});
 const flockRigs = flock.members.map((member) => {
   const rig = createBirdRig(PIGEON_MORPHS[member.morph]);
   scene.add(rig.object);
@@ -892,6 +1037,17 @@ const dogRigs = dogs.map(() => {
 const waymark = createWaymark();
 scene.add(waymark.object);
 let waymarks: Waymarks = createWaymarks([]);
+
+/**
+ * A rig each for the birds riding the freight train, and a state to draw it
+ * from. The state is written over every frame rather than simulated: they do
+ * not fly, and where they are is entirely a fact about where their wagon is.
+ */
+const riderRigs = riders.map((rider) => {
+  const rig = createBirdRig(PIGEON_MORPHS[rider.morph]);
+  scene.add(rig.object);
+  return { rig, state: createBird(vec(0, 0, 0), 0, 0) };
+});
 
 const crowdRigs = crowds.map((crowd) =>
   crowd.birds.map((pigeon) => {
@@ -1179,6 +1335,9 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // escorted levels in a row are one flight in two pieces, and a flock that
   // vanished and came back at the line would say otherwise.
   if (spec.escort && !escorted) flock.recall();
+  // How many come. Set before the recall takes effect rather than after, so
+  // the first bird let out on this level is already one of this level's.
+  flock.only(spec.escort ? (spec.flock ?? 0) : 0);
   escorted = spec.escort;
   // The marks, from the first one: they are help with *this* level, so they
   // start again with it -- including after a death, when the player is most
@@ -2235,7 +2394,25 @@ function frame(nowMs: number) {
   // the one that mattered.
   voice.update(saying?.spoken ? saying : null, clock);
   world.updateSmoke(allPuffs, camera.quaternion);
-  if (scatter) world.updateSeeds(scatter.seeds);
+  // The thrown grain, and the grain riding on the freight train. One list,
+  // one instanced mesh: the seeds on the wagons are worked out from where the
+  // wagons now are, which is why they cannot simply be placed once.
+  //
+  // Only while the rake is near enough to be laid out exactly -- a distant
+  // train keeps whatever pose it was last put in, and grain drawn from a pose
+  // that is a second old sits beside the wagon rather than on it. Nothing is
+  // lost: at that range a seed is well under a pixel.
+  const riding = near[FREIGHT] ? WAGON_GRAIN : [];
+  const rake = layout.trains[FREIGHT];
+  world.updateSeeds([
+    ...(scatter ? scatter.seeds : []),
+    ...riding.flatMap((grain) => {
+      const wagon = rake?.vehicles[grain.car];
+      if (!wagon) return [];
+      const at = onVehicle(wagon, grain.along, grain.across);
+      return [{ x: at.x, y: stockTop(wagon.kind) + SEED_SIZE / 2, z: at.z }];
+    }),
+  ]);
 
   // A bar over every bird on its feet nearby: the hero while he is walking,
   // and whoever he has walked up to. Standing still is when the belly is
@@ -2329,6 +2506,26 @@ function frame(nowMs: number) {
     const shown = sighted(hound.pose, sight);
     rig.object.visible = shown;
     if (shown) rig.update(hound.pose);
+  });
+
+  // The birds on the freight train. Their whole state is where their wagon
+  // is, so it is worked out here rather than stepped: no flight model, no
+  // walk model, nothing to go wrong at the end of the line.
+  riders.forEach((rider, i) => {
+    const drawn = riderRigs[i];
+    const wagon = layout.trains[FREIGHT]?.vehicles[rider.car];
+    if (!drawn || !wagon) return;
+    const at = onVehicle(wagon, rider.along, rider.across);
+    const shown = near[FREIGHT] && sighted({ x: at.x, y: stockTop(wagon.kind), z: at.z }, sight);
+    drawn.rig.object.visible = shown;
+    if (!shown) return;
+
+    drawn.state.position = vec(at.x, stockTop(wagon.kind) + defaultParams.bodyRadius, at.z);
+    // Turned in the wagon's frame and then with it, so a bird looking along
+    // the train goes on looking along the train round a curve.
+    rider.facing += rider.turning * frameTime;
+    drawn.state.orientation = quatFromAxisAngle(vec(0, 1, 0), -(wagon.yaw + rider.facing));
+    drawn.rig.update(drawn.state, 'perched', frameTime);
   });
 
   crowds.forEach((crowd, group) => {

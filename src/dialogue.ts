@@ -199,6 +199,24 @@ export const THE_TRAPPER: Turn = {
   ],
 };
 
+/**
+ * The ask, on the roof of a moving wagon.
+ *
+ * The shortest conversation in the game and the one the story has been going
+ * towards: he has found the birds, and what he needs from them is that they
+ * come. Three lines, no branches, and the middle one is the whole plot said
+ * out loud for the first time.
+ */
+export const THE_ASK: Turn = {
+  them: 'Eh?',
+  you: [
+    {
+      text: 'You need to help me, a crazy person kidnapped my girl!',
+      then: { them: "Let's go!", opens: 'The rescue' },
+    },
+  ],
+};
+
 export const GREETING: Turn = {
   them: "It's good to see you!",
   you: [

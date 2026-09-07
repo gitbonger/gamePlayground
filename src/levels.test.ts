@@ -422,11 +422,11 @@ describe('what the levels aim at', () => {
     // ordinary hundred: a drop is a drop, and how far above the roofs it
     // starts is that level's own business.
     const dropped = flown.filter((level) => !under.includes(level) && !district.includes(level));
-    // The two searches from a hundred and fifty metres over the roofs, which
-    // is what the end of the story is. The yard used to be here too and has
-    // come down to ninety: the searching from altitude is over by then and
-    // that one is an approach to a particular wagon.
-    expect(dropped.map((level) => level.name)).toEqual(['The Loft', 'Fiumei út']);
+    // The two searches from a hundred and fifty metres over the roofs, and
+    // the rescue at a hundred. The yard used to be here too and has come down
+    // to ninety: the searching from altitude is over by then and that one is
+    // an approach to a particular wagon.
+    expect(dropped.map((level) => level.name)).toEqual(['The Loft', 'Fiumei út', 'The rescue']);
     for (const level of dropped) expect(level.release, level.name).toBeGreaterThanOrEqual(100);
 
     // And the district ones are all above what is built on it, which is the
@@ -681,9 +681,23 @@ describe('what the levels aim at', () => {
     // kilometre of nothing but trees -- and it is noise everywhere else: over
     // a district, in among the crows, or standing on a branch in the middle
     // of a conversation. Stated by every level, defaulted by none.
+    //
+    // And the rescue, which is the other thing a flock can be: not company
+    // around the edge of a flight but the point of it. The story spends five
+    // levels alone and then arrives with thirty birds behind it.
     const escorted = LEVELS.filter((level) => level.escort);
-    expect(escorted.map((level) => level.name)).toEqual(['Temető', 'Teleki tér']);
+    expect(escorted.map((level) => level.name)).toEqual(['Temető', 'Teleki tér', 'The rescue']);
     for (const level of LEVELS) expect(typeof level.escort, level.name).toBe('boolean');
+
+    // Every escorted level says how many come, and nothing else does: a
+    // number on a level that flies alone is a number nobody reads.
+    for (const level of LEVELS) {
+      if (level.escort) expect(level.flock, level.name).toBeGreaterThan(0);
+      else expect(level.flock, level.name).toBeUndefined();
+    }
+    // And the rescue is the big one, by a lot.
+    const errand = LEVELS.find((level) => level.name === 'Temető')!.flock!;
+    expect(LEVELS.find((level) => level.name === 'The rescue')!.flock).toBeGreaterThan(errand * 2);
   });
 
   it('keeps the escort across a handover that is one flight in two pieces', () => {

@@ -11,7 +11,7 @@
  * joins them up can be different data in the same shape.
  */
 
-import { GREETING, HEADING_OUT, THE_TRAPPER, type Turn } from './dialogue';
+import { GREETING, HEADING_OUT, THE_ASK, THE_TRAPPER, type Turn } from './dialogue';
 import {
   HOME_TREE,
   JANI_SQUARE,
@@ -470,6 +470,19 @@ export interface Level {
    */
   tireless?: boolean;
   /**
+   * How many of the flock come along, when it comes along at all.
+   *
+   * Only read where `escort` is on. Ten is what an errand across a park
+   * wants: company, and few enough to see the bird you are flying. The rescue
+   * wants thirty, and that is the point of it -- the story has just spent
+   * five levels alone, and what arrives is the difference between a pigeon
+   * and a great many pigeons.
+   *
+   * The birds are built once at the largest number any level asks for, since
+   * each is a rig in the scene; this decides how many are let out.
+   */
+  flock?: number;
+  /**
    * Who is standing where, for as long as this level is being flown.
    *
    * Applied every time the level begins -- picked from the menu, restarted
@@ -622,6 +635,7 @@ export const LEVELS: readonly Level[] = [
     // Company for the long crossing of the park, which is the level that
     // most needs it: half a kilometre of nothing but trees.
     escort: true,
+    flock: 10,
     // The same slab the next level is about: the arrow points at the food for
     // the whole way there, because that is what he is doing. This half is
     // over when he is halfway, and nobody is standing on the line.
@@ -659,6 +673,7 @@ export const LEVELS: readonly Level[] = [
     // And on through the second half of the errand, since it is one flight
     // in two pieces and a flock that vanished at the line would say so.
     escort: true,
+    flock: 10,
     target: { kind: 'landmark', name: PARK_PATCH.name },
     // And this is where she goes. The park is behind him, he is a kilometre
     // west with his back to the tree, and by the time he turns round she is
@@ -880,6 +895,31 @@ export const LEVELS: readonly Level[] = [
       { who: 'White', on: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' }, along: 2.5, across: 0 },
       { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
     ],
-    finish: { kind: 'meeting', who: 'White', dialogue: GREETING },
+    finish: { kind: 'meeting', who: 'White', dialogue: THE_ASK },
+  },
+  {
+    // The end of it, and the only level flown with a crowd behind him.
+    //
+    // Everything since the empty nest has been one pigeon looking, and the
+    // last thing that happened was a rake full of them agreeing to come. So
+    // this is the same roof the eighth level landed on, flown again -- and
+    // what is different is that there are thirty of them.
+    name: 'The rescue',
+    start: [47.500249, 19.088921],
+    release: 100,
+    health: 1,
+    when: EVENING,
+    escort: true,
+    // Thirty. Ten is company on an errand; this is the flock as the point of
+    // the level rather than as scenery around the edge of it.
+    flock: 30,
+    // The loft, which is where the trapper is: the same target the eighth
+    // level had, arrived at with help this time.
+    target: { kind: 'landmark', name: LOFT.name },
+    cast: [
+      { who: 'Black', on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 },
+      { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
+    ],
+    finish: { kind: 'meeting', who: 'Black', dialogue: GREETING },
   },
 ];

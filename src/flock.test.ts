@@ -1218,3 +1218,61 @@ describe('letting them out', () => {
     );
   });
 });
+
+describe('how many of them come', () => {
+  /** A flock built big, so a level can ask for fewer. */
+  const built = (count: number) =>
+    createFlock(1, still(0, 60, 0), {
+      ...defaultFlockOptions,
+      count,
+      emitInterval: 0.5,
+    });
+
+  /** Fly it long enough for every bird that is coming to have come. */
+  const settle = (flock: ReturnType<typeof built>, seconds = 40) => {
+    const wind = createWind();
+    for (let t = 0; t < seconds; t += DT) flock.update(DT, undefined, wind);
+    return flock.members.filter((member) => member.down <= 0).length;
+  };
+
+  it('lets out the number asked for, out of the ones that were built', () => {
+    // The birds are rigs in the scene, so they are made once at the largest
+    // number any level wants and the level decides how many fly. Ten on an
+    // errand across a park; thirty when the flock is the point of the level.
+    const flock = built(30);
+    flock.only(10);
+    expect(settle(flock)).toBe(10);
+  });
+
+  it('lets out all of them when nobody has said otherwise', () => {
+    // The default has to be "all", or a caller that never calls `only` gets
+    // an empty sky and no clue why.
+    expect(settle(built(12))).toBe(12);
+  });
+
+  it('empties the sky when the level flies alone', () => {
+    // Which is most of them. It used to be that the flock flew on every level
+    // and the drawing was skipped, so ten birds were steered, stepped and
+    // collided against the city all the way through a level nobody could see
+    // them on.
+    const flock = built(20);
+    flock.only(0);
+    expect(settle(flock)).toBe(0);
+  });
+
+  it('takes the number up again without rebuilding anything', () => {
+    // A level asks for ten and the next asks for thirty, and the thirty are
+    // the same thirty birds: there is no second flock and no new rigs.
+    const flock = built(30);
+    flock.only(5);
+    expect(settle(flock, 20)).toBe(5);
+    flock.only(30);
+    expect(settle(flock, 40)).toBe(30);
+  });
+
+  it('never lets out more than were built', () => {
+    const flock = built(6);
+    flock.only(999);
+    expect(settle(flock)).toBe(6);
+  });
+});

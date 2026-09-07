@@ -320,6 +320,21 @@ export interface FlockMember {
 export interface Flock {
   readonly members: readonly FlockMember[];
   /**
+   * How many of them are in service, out of the ones that were built.
+   *
+   * The flock is made once, at the largest size any level asks for, because
+   * a bird is a rig in the scene and building and throwing those away at
+   * every level change is work for nothing. What changes per level is how
+   * many of them are let out: the rest are held down and never released, and
+   * `down > 0` is already how the rest of the game says "not in the air".
+   *
+   * Set it and the ones over the number go away at their own pace -- one
+   * already flying is not deleted mid-air, it simply is not let out again
+   * once it comes down. `recall` is what puts them all away at once, and a
+   * level change does that anyway.
+   */
+  only(many: number): void;
+  /**
    * Fly them for a tick.
    *
    * `letting` is whether any more may be let out. False stops the loft: the
@@ -476,6 +491,8 @@ export function createFlock(
 
   interface Pilot {
     member: FlockMember;
+    /** Its place in the flock, which is what `only` counts against. */
+    index: number;
     controls: Controls;
     memory: AutopilotState;
     /** Seconds spent on the current target. */
@@ -583,6 +600,8 @@ export function createFlock(
   };
 
   const pilots: Pilot[] = [];
+  /** How many are in service. All of them, until a caller says otherwise. */
+  let wanted = options.count;
   for (let i = 0; i < options.count; i += 1) {
     const pilot: Pilot = {
       member: {
@@ -593,6 +612,7 @@ export function createFlock(
         aiming: { x: 0, z: 0, altitude: options.minAltitude },
       },
       controls: neutralControls(),
+      index: i,
       memory: { beating: true },
       chasing: 0,
       fell: null,
@@ -622,6 +642,14 @@ export function createFlock(
 
     for (const pilot of pilots) {
       const { member } = pilot;
+
+      // Over this level's allowance: held down and never let out. Checked
+      // before the clock rather than after, so a bird that is over the number
+      // does not quietly count its way to being released.
+      if (pilot.index >= wanted) {
+        member.down = Math.max(member.down, options.emitInterval);
+        continue;
+      }
 
       // Waiting: either not let out yet, or down after hitting something.
       // Both are the same thing to everyone else -- a bird that is not in the
@@ -765,5 +793,9 @@ export function createFlock(
     });
   }
 
-  return { members: pilots.map((pilot) => pilot.member), update, recall, touching };
+  const only = (many: number) => {
+    wanted = Math.max(0, Math.min(pilots.length, Math.floor(many)));
+  };
+
+  return { members: pilots.map((pilot) => pilot.member), update, recall, touching, only };
 }
