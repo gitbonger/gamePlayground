@@ -785,7 +785,11 @@ export const LEVELS: readonly Level[] = [
     // ends the level.
     waypoints: [
       [47.494035, 19.094306],
-      [47.49405, 19.09205],
+      // Fifteen metres further on than the even spacing wanted, because the
+      // even spacing put it inside a house. These were laid down the middle of
+      // the route the night before the real buildings arrived, when there was
+      // nothing on the ground to be inside of.
+      [47.494051, 19.091851],
       [47.494063, 19.089927],
     ],
     // Six hundred metres along, which is where the second half of the errand
