@@ -574,6 +574,60 @@ describe('a bird that dies in the air', () => {
   });
 });
 
+describe('flying into something that is not a building', () => {
+  /** A wall from the ground up, and the same wall made of wire. */
+  const wall = (soft: boolean) =>
+    createColliderField([{ ...aabb(-20, 0, -8, 20, 12, -6), soft }]);
+
+  /** Fly north into it at `speed` and say how it went. */
+  const into = (speed: number, soft: boolean) => {
+    const bird = createBird(vec(0, 6, 0), speed, 0);
+    bird.velocity = vec(0, 0, -speed);
+    const field = wall(soft);
+    for (let t = 0; t < 3 && bird.ending === null; t += DT) {
+      step(bird, neutralControls(), defaultParams, DT, field);
+    }
+    return bird;
+  };
+
+  it('kills you against masonry, as it always did', () => {
+    // The rule this is an exception to, stated first so the exception can be
+    // told from the rule being broken.
+    const dead = into(defaultParams.crashSpeed + 6, false);
+    expect(dead.ending?.kind).toBe('crashed');
+    expect(dead.ending?.cause).toBe('building');
+  });
+
+  it('stops you against wire, however hard you hit it', () => {
+    // A metre and a half of birdcage is solid and is not a wall. The pigeon
+    // takes off from beside one at the end of the eighth level, and a launch
+    // leaves the roof at eleven metres a second: measured against the old
+    // rule, every launch from every distance ended in a dead pigeon inside a
+    // tenth of a second.
+    const bird = into(defaultParams.crashSpeed + 6, true);
+    // It may well end up on the ground afterwards -- it scraped to a stop in
+    // mid-air and then fell -- but it did not die *of the wall*.
+    expect(bird.ending?.cause, 'not killed by the wire').not.toBe('building');
+    // And it did stop him: he is on the near side of it, not through it.
+    expect(bird.position.z, 'not through the bars').toBeGreaterThan(-6.5);
+  });
+
+  it('still lets a soft thing run you over', () => {
+    // Softness is about what happens when you fly into it. Being hit by
+    // something that is itself moving is a different question, and a tram is
+    // not less fatal for being made of glass.
+    const moving = createColliderField([
+      { ...aabb(-20, 0, -8, 20, 12, -6), soft: true, speed: defaultParams.struckSpeed + 5 },
+    ]);
+    const bird = createBird(vec(0, 6, 0), 6, 0);
+    bird.velocity = vec(0, 0, -6);
+    for (let t = 0; t < 3 && bird.ending === null; t += DT) {
+      step(bird, neutralControls(), defaultParams, DT, moving);
+    }
+    expect(bird.ending?.cause).toBe('struck');
+  });
+});
+
 describe('landing readiness', () => {
   it('agrees with the verdict the touchdown actually gives', () => {
     // A bird held just above the ground in a good attitude reads as ready.

@@ -19,6 +19,8 @@
 
 import * as THREE from 'three';
 
+import { turnedBox, type Box } from '../sim/collision';
+
 /**
  * How big it is, in metres.
  *
@@ -45,6 +47,33 @@ export const CAGE = {
   /** And how thick they are. Thin, because she has to be visible past them. */
   bar: 0.022,
 };
+
+/**
+ * The cage as one solid, standing on a surface at `on`.
+ *
+ * A single box round the whole thing rather than a box per bar. The bars are
+ * two centimetres thick and the gaps ten, which is a shape no sweep against a
+ * 22 cm bird can give a sensible answer for -- it would pass between them at
+ * some angles and not others, and a wall you can sometimes fly through is
+ * worse than either.
+ *
+ * Soft, and that is the part that matters. Being unable to get through it is
+ * the whole point of the one on the loft roof; killing the bird that takes
+ * off from beside it is not. Measured before it was: every launch from every
+ * distance beside the cage ended in a dead pigeon within a tenth of a second,
+ * because the rule for flying into something is a closing speed written for
+ * buildings and a launch leaves the roof at eleven metres a second.
+ */
+export function cageSolid(at: { x: number; z: number; on: number; yaw: number }): Box {
+  return {
+    ...turnedBox(at.x, at.z, CAGE.width, CAGE.height, CAGE.depth, at.yaw),
+    // Lifted onto whatever it is standing on: `turnedBox` builds from the
+    // ground up, and this one is on a roof.
+    minY: at.on,
+    maxY: at.on + CAGE.height,
+    soft: true,
+  };
+}
 
 export interface Cage {
   object: THREE.Object3D;

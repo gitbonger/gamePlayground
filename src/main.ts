@@ -45,7 +45,7 @@ import { createDog } from './dog';
 import { createWaymarks, type Waymarks } from './waypoints';
 import { createWaymark } from './render/waymark';
 import { createDogRig } from './render/dog';
-import { CAGE, createCage } from './render/cage';
+import { cageSolid, createCage } from './render/cage';
 import { beginRescue } from './rescue';
 import { createFlyover, type Flyover, type Framing } from './cutscene';
 import {
@@ -1261,14 +1261,7 @@ function stageCast(spec: Level): void {
     // clear of a roof is a cage nobody built.
     const floor = caged.at.y - defaultParams.bodyRadius;
     cage.show({ x: caged.at.x, y: floor, z: caged.at.z, yaw: caged.facing });
-    cageBox = turnedBox(caged.at.x, caged.at.z, CAGE.width, CAGE.height, CAGE.depth, caged.facing);
-    // Standing on the roof, not on the ground: the box is built from the
-    // ground up, so it is lifted onto whatever she is on.
-    cageBox = {
-      ...cageBox,
-      minY: floor,
-      maxY: floor + CAGE.height,
-    };
+    cageBox = cageSolid({ x: caged.at.x, z: caged.at.z, on: floor, yaw: caged.facing });
   } else {
     cage.show(null);
     cageBox = null;

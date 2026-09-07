@@ -818,7 +818,12 @@ export function step(
       const aboard = state.restingOn !== null && hit.carrier === state.restingOn;
       const struck = hit.speed >= p.struckSpeed && !aboard;
       const impact = closingSpeed(state.velocity, hit.normal);
-      if (struck || impact >= p.crashSpeed) {
+      // A soft solid stops you and cannot kill you, however hard you hit it.
+      // The closing-speed rule is about masonry, and not everything solid in
+      // this world is masonry -- see `Box.soft`. It still overrides nothing
+      // about being *run over*: a soft thing travelling at you is a different
+      // question from a soft thing you flew into.
+      if (struck || (impact >= p.crashSpeed && !hit.soft)) {
         // Read the arrival before the velocity is spent on it, or the report
         // is of a bird that hit a wall at nothing.
         const arrival = {

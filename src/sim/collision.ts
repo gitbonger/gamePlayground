@@ -45,6 +45,26 @@ export interface Box extends Aabb {
   speed?: number;
   /** Radians about Y. Absent or zero means the extents are the solid. */
   yaw?: number;
+  /**
+   * Whether hitting it can only ever stop you, never kill you.
+   *
+   * Most of what a bird can fly into is a building, and the rule about those
+   * is a closing speed: above it you are dead, below it you scrape along and
+   * carry on. That rule is about masonry.
+   *
+   * Some of what is in this world is not masonry. A wire cage a metre and a
+   * half across is solid -- you cannot get through it, and being unable to
+   * get through it is the entire point of the one on the loft roof -- and it
+   * is not a wall. Flying into one at eleven metres a second is a bird
+   * bouncing off a birdcage, and that is exactly what a pigeon taking off
+   * from beside it does: measured, every launch from every distance ended in
+   * a dead pigeon on the first tenth of a second.
+   *
+   * Marked on the box rather than decided by size, because size is not the
+   * question -- a garden shed is small and would still kill you. What this
+   * says is what the thing is made of.
+   */
+  soft?: boolean;
 }
 
 /** A solid found overlapping a sphere, and what it is. */
@@ -71,6 +91,8 @@ export interface SweepHit {
   carrier: number | null;
   /** How fast the thing that was hit is itself moving, in m/s. */
   speed: number;
+  /** Whether it is the sort of solid that stops you rather than kills you. */
+  soft: boolean;
 }
 
 export interface Collider {
@@ -313,6 +335,7 @@ export function sweepBox(
       normal: vec(normalX, hit.normal.y, normalZ),
       carrier: box.carrier ?? null,
       speed: box.speed ?? 0,
+      soft: box.soft === true,
     };
   }
 
@@ -372,6 +395,7 @@ export function sweepBox(
     normal,
     carrier: box.carrier ?? null,
     speed: box.speed ?? 0,
+    soft: box.soft === true,
   };
 }
 
