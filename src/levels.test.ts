@@ -1010,6 +1010,37 @@ describe('what the levels aim at', () => {
     ]);
   });
 
+  it('ends the story on the two of them rather than on a greeting', () => {
+    // The last thing said in the game. Every other level ends on the same
+    // placeholder hello, which is right for a bird you have flown to and
+    // wrong for the one the whole thing was for -- and it is worth pinning,
+    // because a placeholder that survives to the end of a story is exactly
+    // the sort of thing nobody notices.
+    const last = LEVELS.find((level) => level.name === 'The rescue')!;
+    const said = JSON.stringify(dialogueOf(last));
+    expect(said).toContain('saved me');
+    expect(said).not.toContain("It's good to see you");
+
+    // And it goes somewhere: the level after the story.
+    expect(handovers(dialogueOf(last)!)).toEqual(['Everafter']);
+  });
+
+  it('stands the trapper over the cage rather than at the parapet', () => {
+    // He was scenery: a person on a roof to give the roof a size. He is a
+    // character now, and a character stands where the thing he did is. Close
+    // enough to be plainly with the cage, far enough that a pigeon can land
+    // between the two of them -- and it is her spot the cage is on, so the
+    // distance is measured from her.
+    const her = standingOf(LEVELS.find((level) => level.name === 'The rescue')!, PINK.name)!;
+    expect(her, 'she is on the loft').toBeDefined();
+    const him = LOFT.people?.[0];
+    expect(him, 'and he is up there too').toBeDefined();
+
+    const apart = Math.hypot(him!.along - her.along, him!.across - her.across);
+    expect(apart, 'plainly with the cage').toBeLessThan(3);
+    expect(apart, 'and not standing in it').toBeGreaterThan(1.2);
+  });
+
   it('gives the belly it takes to fly each level', () => {
     // Every level says how full the bird is on arriving, because the belly is
     // the one thing that carries between them and a level nobody can finish

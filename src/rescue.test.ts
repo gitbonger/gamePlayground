@@ -8,7 +8,7 @@ const DT = 1 / 120;
 /** Thirty of them behind a bird facing north, with the cage in front. */
 const staged = (many = 30) =>
   beginRescue({
-    behind: { x: 0, z: 0, heading: 0 },
+    terrace: { x: 0, z: -6, width: 40, depth: 20, yaw: 0 },
     cage: { x: 0, z: -6 },
     ground: defaultParams.groundHeight + defaultParams.bodyRadius,
     many,
@@ -40,14 +40,20 @@ describe('the thirty who came to help', () => {
     }
   });
 
-  it('appears behind him, where the camera is not looking', () => {
-    // The same trick the flock's own loft uses and for the same reason:
-    // nobody should watch a pigeon appear out of nothing. He faces north,
-    // which is -Z, so behind him is +Z.
+  it('appears all over the roof rather than round the cage', () => {
+    // They have to be seen to *come*. Thirty birds already standing round the
+    // cage is thirty birds who were always there, and the walk up to it is
+    // the piece of the story this whole cheat exists to buy.
     const rescue = staged();
     for (const helper of rescue.helpers) {
-      expect(helper.state.position.z, 'behind him').toBeGreaterThan(1);
+      const gap = Math.hypot(helper.state.position.x - 0, helper.state.position.z - -6);
+      expect(gap, 'not on top of it').toBeGreaterThan(4.5);
     }
+
+    // And spread over the terrace rather than in one corner of it: the
+    // furthest of them is most of the way to the far end.
+    const out = rescue.helpers.map((helper) => Math.abs(helper.state.position.x - 0));
+    expect(Math.max(...out), 'the far corners').toBeGreaterThan(14);
   });
 
   it('walks them to the cage', () => {

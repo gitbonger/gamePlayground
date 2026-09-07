@@ -137,6 +137,33 @@ export function createCage(): Cage {
     });
   }
 
+  /**
+   * How many of the pieces at the end of the list are him rather than it.
+   *
+   * The trapper stands beside the cage as an ordinary person, drawn by the
+   * same instanced crowd as everybody else on the map -- which is what makes
+   * him look like a person and not like a prop. He cannot be taken apart by
+   * that mesh, though: it is built once and never touched.
+   *
+   * So he is taken apart by this one. These pieces sit where he stands, at
+   * nothing at all until the cage goes, and on that frame he is hidden and
+   * they appear and fly. The swap happens inside a cloud of tumbling bars,
+   * which is the only reason it can be got away with -- and it is worth being
+   * plain that getting away with it is what this is.
+   */
+  const HIS_SIDE = { along: 0, across: -CAGE.depth / 2 - 1.0 };
+  const debrisFrom = bars.length;
+  for (let i = 0; i < 9; i += 1) {
+    bars.push({
+      x: HIS_SIDE.along + (Math.random() - 0.5) * 0.35,
+      y: 0.15 + i * 0.2,
+      z: HIS_SIDE.across + (Math.random() - 0.5) * 0.35,
+      w: 0.12 + Math.random() * 0.16,
+      h: 0.12 + Math.random() * 0.16,
+      d: 0.12 + Math.random() * 0.16,
+    });
+  }
+
   const mesh = new THREE.InstancedMesh(stock, iron, bars.length);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
@@ -183,7 +210,11 @@ export function createCage(): Cage {
       bar.y = home[i]!.y;
       bar.z = home[i]!.z;
       place.set(bar.x, bar.y, bar.z);
-      scale.set(bar.w, bar.h, bar.d);
+      // His pieces are nothing at all until he comes apart: there is a
+      // person standing there, drawn properly, and two of him would be worse
+      // than none.
+      if (i >= debrisFrom) scale.setScalar(0);
+      else scale.set(bar.w, bar.h, bar.d);
       matrix.compose(place, turn.identity(), scale);
       mesh.setMatrixAt(i, matrix);
     });
@@ -214,10 +245,14 @@ export function createCage(): Cage {
         // Outwards from the middle of the cage, which is what makes it read
         // as pushed apart from inside rather than dropped.
         const from = home[i]!;
-        const out = Math.hypot(from.x, from.z) || 1;
         const going = thrown[i]!;
-        going.x = (from.x / out) * (2.5 + Math.random() * 2.5);
-        going.z = (from.z / out) * (2.5 + Math.random() * 2.5);
+        // His pieces fly off him rather than off the middle of the cage.
+        const mid = i >= debrisFrom ? HIS_SIDE : { along: 0, across: 0 };
+        const outX = from.x - mid.along;
+        const outZ = from.z - mid.across;
+        const out = Math.hypot(outX, outZ) || 1;
+        going.x = (outX / out) * (2.5 + Math.random() * 2.5);
+        going.z = (outZ / out) * (2.5 + Math.random() * 2.5);
         going.y = 1.5 + Math.random() * 2.5;
         going.spin = (Math.random() - 0.5) * 14;
         going.turn

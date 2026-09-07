@@ -1467,6 +1467,35 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // when he arrives, so a restart of that level has to arrive again.
   rescue = null;
   for (const rig of helperRigs) rig.object.visible = false;
+  // And he is standing there again, because the story is the same story every
+  // time it is played -- the same reason the cage is whole again.
+  world.hidePersonNear(null);
+  // Thirty birds, all at once, on a ball behind him.
+  //
+  // The loft lets one out a second, which is right for a flock that drifts
+  // into an errand and useless here: this level is a hundred and fifty-five
+  // metres and about ten seconds long, so trickling them out puts four
+  // pigeons in a shot that is *about* the thirty. Behind him because that is
+  // where a bird is let out, and they wheel round in front of him within a
+  // second or two on their own.
+  if (spec.escort && spec.flockAtOnce && where !== 'in place') {
+    const start = releaseFor(spec);
+    const back = start.heading + Math.PI;
+    flock.scramble(
+      Array.from({ length: spec.flock ?? 0 }, () => {
+        // On a ball rather than in a line: a rank of thirty birds astern
+        // reads as a formation, and what is wanted is a flock.
+        const round = Math.random() * Math.PI * 2;
+        const up = Math.acos(2 * Math.random() - 1);
+        const away = 18 + Math.random() * 22;
+        return vec(
+          start.at.x + Math.sin(back) * away + Math.sin(round) * Math.sin(up) * 12,
+          Math.max(6, start.at.y + Math.cos(up) * 12),
+          start.at.z - Math.cos(back) * away + Math.cos(round) * Math.sin(up) * 12,
+        );
+      }),
+    );
+  }
   // And where they come from, this once.
   //
   // A conversation that hands a level over does it where the player stands,
@@ -2098,8 +2127,17 @@ let smoothedFps = 60;
 function reachLevel(): void {
   // Anyone at all, not just the one this level is about: standing with a
   // pigeon is standing with a pigeon, and the camera should say so.
-  talkingTo =
-    residents.find((resident) => resident.here && meeting(bird, resident.state)) ?? null;
+  // Nobody, while she is still behind bars. The last level's conversation is
+  // "you saved me", and it cannot be had before she has been: walking up to
+  // the cage and being greeted through it would be the ending happening on
+  // the wrong side of the thing the whole level is about.
+  //
+  // Only where there is a cage to open -- everywhere else `cageBox` is null
+  // because nothing is caged, and everywhere else this reads as "yes".
+  const shut = cageBox !== null && LEVELS[level]?.settles === true;
+  talkingTo = shut
+    ? null
+    : (residents.find((resident) => resident.here && meeting(bird, resident.state)) ?? null);
 
   const here = LEVELS[level];
   // Meeting them finishes the level and nothing else. What happens next is
@@ -2409,8 +2447,15 @@ function frame(nowMs: number) {
       // flock lets one bird out at a time, and what arrives if you let it is
       // four pigeons.
       flock.only(0);
+      const roof = layout.landmarks.find((mark) => mark.name === targetName(LEVELS[level]!));
       rescue = beginRescue({
-        behind: { x: bird.position.x, z: bird.position.z, heading: heading(bird) },
+        // The whole terrace, so they arrive at the far corners and walk in.
+        // Falling back to a patch round the hero if the level is not aimed at
+        // a described thing, which this one is and always will be -- but a
+        // crash here would be a crash at the end of the game.
+        terrace: roof
+          ? { x: roof.x, z: roof.z, width: roof.width, depth: roof.depth, yaw: roof.yaw ?? 0 }
+          : { x: bird.position.x, z: bird.position.z, width: 20, depth: 20, yaw: 0 },
         cage: { x: (cageBox.minX + cageBox.maxX) / 2, z: (cageBox.minZ + cageBox.maxZ) / 2 },
         ground: bird.position.y,
         many: LEVELS[level]?.flock ?? 0,
@@ -2425,8 +2470,17 @@ function frame(nowMs: number) {
       // can see the pieces of and still cannot fly through would be the one
       // thing worse than no cage at all.
       if (rescue.broken && cageBox) {
+        const middle = {
+          x: (cageBox.minX + cageBox.maxX) / 2,
+          z: (cageBox.minZ + cageBox.maxZ) / 2,
+        };
         cageBox = null;
         cage.burst();
+        // And him with it. He is drawn by the crowd every other person on the
+        // map is drawn by, so this is the only way he can be taken out of it
+        // -- and the frame he goes on is the frame the bars start tumbling,
+        // which is the only reason the swap is not visible.
+        world.hidePersonNear({ x: middle.x, z: middle.z, within: 4 });
       }
     }
     // And if the flight ended in the air, the bird still has to get down.

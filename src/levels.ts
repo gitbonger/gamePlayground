@@ -11,7 +11,7 @@
  * joins them up can be different data in the same shape.
  */
 
-import { GREETING, HEADING_OUT, THE_ASK, THE_TRAPPER, type Turn } from './dialogue';
+import { GREETING, HEADING_OUT, SAVED, THE_ASK, THE_TRAPPER, type Turn } from './dialogue';
 import {
   HOME_TREE,
   JANI_SQUARE,
@@ -235,7 +235,7 @@ export interface Scene {
  */
 export const HOMECOMING: Scene = {
   name: 'flying home',
-  endsOn: 'Heading out',
+  endsOn: 'Nest',
   seconds: 5,
   cruise: 60,
   // Said to nobody, on the branch, over an empty nest. It is the first time
@@ -550,6 +550,15 @@ export interface Level {
    */
   flockIs?: string;
   /**
+   * Whether the flock is all in the air from the first frame.
+   *
+   * The loft lets one bird out a second, which is right for a flock that
+   * drifts into an errand across a park and useless on a level that is over
+   * in ten seconds and is *about* the flock: trickled out, four of the thirty
+   * are up by the time it matters.
+   */
+  flockAtOnce?: boolean;
+  /**
    * Who is standing where, for as long as this level is being flown.
    *
    * Applied every time the level begins -- picked from the menu, restarted
@@ -650,7 +659,7 @@ export const LEVELS: readonly Level[] = [
     // with his mate and their egg, leaving. It is won on the instant it opens
     // -- he is already standing next to her -- so what the player does here
     // is read, answer, and take off.
-    name: 'Heading out',
+    name: 'Nest',
     // The tree itself. Unused for a perched start, which stands him on the
     // platform, but written down because a level without a place is not one.
     start: [47.493997, 19.096538],
@@ -1003,6 +1012,8 @@ export const LEVELS: readonly Level[] = [
     name: 'The rescue',
     // They came to help, so they arrive -- see `settles`.
     settles: true,
+    // And they are all there from the first frame: this one is about them.
+    flockAtOnce: true,
     // On the line the level before hands over at, which is the checkpoint
     // rule every crossing in the game obeys.
     start: [47.496495, 19.082937],
@@ -1022,7 +1033,7 @@ export const LEVELS: readonly Level[] = [
     // be met on the roof and finding somebody else there would be the level
     // handing the ending to a stranger.
     cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 }],
-    finish: { kind: 'meeting', who: PINK.name, dialogue: GREETING },
+    finish: { kind: 'meeting', who: PINK.name, dialogue: SAVED },
   },
   {
     // After it. The story is over, the map is still there, and this is the

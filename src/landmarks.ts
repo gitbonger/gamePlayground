@@ -65,10 +65,18 @@ export const LOFT: LandmarkSpec = {
   // Longer rows for a longer terrace: the spacing within a row is what makes
   // it read as a hedge rather than as a line of separate shrubs.
   planting: { rows: 2, perRow: 16, radius: 0.7 },
-  // Somebody at the parapet, looking out over the city. Beyond the near row
-  // of bushes rather than between them, so they are out of the strip the
-  // bird comes down on, and turned to face off the edge.
-  people: [{ along: -6, across: 17.5, facing: Math.PI }],
+  // The trapper, standing over the cage he put her in.
+  //
+  // He used to be at the far parapet looking out over the city, which was
+  // scenery: a person on a roof to give the roof a size. He is a character
+  // now, and a character stands where the thing he did is -- a metre and a
+  // half off the cage, close enough to be plainly with it and far enough that
+  // a pigeon can land between the two of them.
+  //
+  // The cage is where she is, which is `along: 2.6, across: 0` in this
+  // building's own frame; this is beside it, on the side away from the
+  // approach.
+  people: [{ along: 2.6, across: -1.7, facing: Math.PI / 2 }],
 };
 
 /**

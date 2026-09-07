@@ -108,6 +108,19 @@ export interface World {
   gates: { name: string; object: THREE.Object3D }[];
   /** Put the thrown grain where the simulation says it has got to. */
   updateSeeds(seeds: readonly { x: number; y: number; z: number }[]): void;
+  /**
+   * Take whoever is standing near here out of the crowd, or put them back.
+   *
+   * The people are one instanced mesh laid out once, which is right for two
+   * hundred figures who only ever stand there -- and no use at all for the
+   * one of them who is a character. The trapper stands over the cage he put
+   * her in, and when the cage goes he goes; this is how he goes.
+   *
+   * Hidden by being scaled to nothing rather than by being removed, because
+   * the mesh's instances are a fixed list and the story has to be tellable
+   * twice: `hidePersonNear(null)` puts everybody back.
+   */
+  hidePersonNear(at: { x: number; z: number; within: number } | null): void;
   /** Move the rolling stock to where the layout says the trains have got to. */
   updateTrains(trains: readonly Train[]): void;
   /**
@@ -808,6 +821,11 @@ export function buildWorld(
   // Two metres of somebody, which is the only thing in the world with a size
   // you already know. A roof is whatever size you decide it is until there is
   // a person standing on it.
+  /** The crowd, and how to put one of them back, once there is one. */
+  let people: {
+    crowd: THREE.InstancedMesh;
+    stand: (i: number, tall: number) => void;
+  } | null = null;
   if (layout.people.length) {
     const figure = personShape();
     const skin = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
@@ -820,14 +838,17 @@ export function buildWorld(
     crowd.name = 'people';
     group.add(crowd);
 
-    layout.people.forEach((person, i) => {
+    const standPerson = (i: number, tall: number) => {
+      const person = layout.people[i]!;
       rotation.setFromAxisAngle(up, person.facing);
       position.set(person.x, person.base, person.z);
-      scale.setScalar(PERSON_HEIGHT);
+      scale.setScalar(tall);
       matrix.compose(position, rotation, scale);
       crowd.setMatrixAt(i, matrix);
-    });
+    };
+    layout.people.forEach((_person, i) => standPerson(i, PERSON_HEIGHT));
     crowd.instanceMatrix.needsUpdate = true;
+    people = { crowd, stand: standPerson };
   }
 
   // --- Parks, woods and water ----------------------------------------------
@@ -973,6 +994,15 @@ export function buildWorld(
     collider: createColliderField(layout.boxes),
     markers,
     gates,
+    hidePersonNear(at) {
+      if (!people) return;
+      layout.people.forEach((person, i) => {
+        const gone =
+          at !== null && Math.hypot(person.x - at.x, person.z - at.z) <= at.within;
+        people!.stand(i, gone ? 0 : PERSON_HEIGHT);
+      });
+      people.crowd.instanceMatrix.needsUpdate = true;
+    },
     updateSeeds(seeds) {
       scattered.count = Math.min(seeds.length, scattered.instanceMatrix.count);
       for (let i = 0; i < scattered.count; i += 1) {

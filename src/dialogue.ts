@@ -217,6 +217,22 @@ export const THE_ASK: Turn = {
   ],
 };
 
+/**
+ * On the roof, with the bars on the floor around them.
+ *
+ * The shortest one in the game after the ask, and it is meant to be: the
+ * thing that had to happen has happened, and the beat is that they are both
+ * still here. Anything longer would be the game explaining its own ending.
+ *
+ * It cannot be reached until the cage is open -- see the rescue -- so by the
+ * time either of them says anything the player has watched thirty birds walk
+ * up to it and take it apart.
+ */
+export const SAVED: Turn = {
+  them: 'You saved me!',
+  you: [{ text: 'I am so happy you are alive!', opens: 'Everafter' }],
+};
+
 export const GREETING: Turn = {
   them: "It's good to see you!",
   you: [
