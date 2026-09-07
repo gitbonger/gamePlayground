@@ -11,6 +11,7 @@ import {
   LEVELS,
   characterNamed,
   metBy,
+  cagedIn,
   opensOf,
   PINK,
   SCENES,
@@ -1008,6 +1009,29 @@ describe('what the levels aim at', () => {
     expect(LEVELS.filter((level) => level.crows === false).map((l) => l.name)).toEqual([
       'Everafter',
     ]);
+  });
+
+  it('cages her on the roof and nowhere else', () => {
+    // The cage and the bird in it are different things. The first version of
+    // this put a cage wherever she was standing, which is a trap on the nest
+    // for the first two levels of the game -- she is on the branch at home
+    // then, and nobody has taken anything yet.
+    const caged = LEVELS.filter((level) => cagedIn(level) !== undefined).map((l) => l.name);
+    const onTheTree = LEVELS.filter((level) => {
+      const spot = standingOf(level, PINK.name);
+      return spot?.on.kind === 'landmark' && spot.on.name === HOME_TREE.name;
+    }).map((level) => level.name);
+
+    expect(onTheTree, 'at home to begin with').toEqual(['Nest', 'Temető']);
+    for (const name of onTheTree) expect(caged, `no cage on the nest`).not.toContain(name);
+
+    // And caged for every level she spends on the trapper's roof, which is
+    // the whole of the middle of the story.
+    expect(caged.length).toBeGreaterThan(8);
+    expect(caged).toContain('The rescue');
+
+    // She is not caged on the level after, because she is flying it.
+    expect(caged).not.toContain('Everafter');
   });
 
   it('ends the story on the two of them rather than on a greeting', () => {

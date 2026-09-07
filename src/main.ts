@@ -54,6 +54,7 @@ import {
   crossed,
   lineThrough,
   dialogueOf,
+  cagedIn,
   LEVELS,
   metBy,
   PINK,
@@ -69,7 +70,7 @@ import {
   type Scene,
   type Standing,
 } from './levels';
-import { HOME_TREE, JANI_SQUARE, LANDMARKS, PARK_PATCH, WEST_PATCH } from './landmarks';
+import { HOME_TREE, JANI_SQUARE, LANDMARKS, LOFT, PARK_PATCH, WEST_PATCH } from './landmarks';
 import { alone, begin, isOver, reply, type Exchange } from './dialogue';
 import { createDialoguePanel, speechColour } from './render/dialogue';
 import { browserSpeaker, createVoice } from './render/voice';
@@ -1104,6 +1105,15 @@ let cageBox: ReturnType<typeof turnedBox> | null = null;
  * standing in the grain and thirty more overhead.
  */
 let ridersFlown = false;
+/**
+ * Whether the trapper has been taken apart with his cage.
+ *
+ * Kept because the level after the rescue is the level that exists because he
+ * is gone, and he is drawn by a crowd that is laid out once: without this,
+ * walking on into the ever after puts him back on the roof and undoes the
+ * ending in its first frame.
+ */
+let trapperGone = false;
 
 /**
  * The end of the story, once he is standing on the roof: see `rescue.ts`.
@@ -1235,9 +1245,15 @@ const residents: Resident[] = CHARACTERS.map((who) => {
  * a chimney and the branch is still empty, because that level says so.
  */
 function stageCast(spec: Level): void {
-  // Her cage, wherever she is. Worked out from the same spot she is placed
-  // at, so the two cannot drift apart.
-  const hers = standingOf(spec, PINK.name);
+  // Her cage, which is a different thing from her.
+  //
+  // "Wherever she is" was the first version of this rule and it was wrong in
+  // the first two levels of the game: she is on the branch at home then, and
+  // the cage came with her -- a trap on the nest, before anybody had taken
+  // anything. The trapper's roof is the only place she is *in* one, so that
+  // is the condition, and the position still comes from her own spot so the
+  // two cannot drift apart.
+  const hers = cagedIn(spec);
   const caged = hers ? standingSpot(hers) : null;
   if (caged) {
     // Sat on whatever she is standing on rather than centred on her: she
@@ -1456,7 +1472,14 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // Let out only when the escort is starting rather than continuing: two
   // escorted levels in a row are one flight in two pieces, and a flock that
   // vanished and came back at the line would say otherwise.
-  if (spec.escort && !escorted) flock.recall();
+  //
+  // Except where the level puts the bird somewhere new every time it is
+  // played. She is let out behind him, and "behind him" is a fact about where
+  // he is: left flying, she would be wherever the last attempt ended -- which
+  // on that level is anywhere in the city -- and would spend the first minute
+  // of the ever after crossing the map to catch up, if the stray rule brought
+  // her at all.
+  if (spec.escort && (!escorted || spec.startsAnywhere)) flock.recall();
   // How many come. Set before the recall takes effect rather than after, so
   // the first bird let out on this level is already one of this level's.
   flock.only(spec.escort ? (spec.flock ?? 0) : 0);
@@ -1467,9 +1490,27 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // when he arrives, so a restart of that level has to arrive again.
   rescue = null;
   for (const rig of helperRigs) rig.object.visible = false;
-  // And he is standing there again, because the story is the same story every
-  // time it is played -- the same reason the cage is whole again.
-  world.hidePersonNear(null);
+  // And he is standing there again -- unless he has been taken apart and this
+  // is what comes after that.
+  //
+  // The story is the same story every time it is played, so replaying any of
+  // it puts him back on the roof the way replaying it puts the cage back
+  // together. What must not put him back is walking on into the level that
+  // exists *because* he is gone: a person standing over an empty roof in the
+  // ever after is the ending being undone in the first frame of the epilogue.
+  //
+  // Told by the order of the levels rather than by naming one, so inserting
+  // another after the rescue does not quietly bring him back to life.
+  const rescued = LEVELS.findIndex((each) => each.settles === true);
+  if (rescued < 0 || at <= rescued) {
+    trapperGone = false;
+    world.hidePersonNear(null);
+  } else if (trapperGone) {
+    const roof = layout.landmarks.find((mark) => mark.name === LOFT.name);
+    if (roof) world.hidePersonNear({ x: roof.x, z: roof.z, within: 40 });
+  } else {
+    world.hidePersonNear(null);
+  }
   // Thirty birds, all at once, on a ball behind him.
   //
   // The loft lets one out a second, which is right for a flock that drifts
@@ -2481,6 +2522,7 @@ function frame(nowMs: number) {
         // -- and the frame he goes on is the frame the bars start tumbling,
         // which is the only reason the swap is not visible.
         world.hidePersonNear({ x: middle.x, z: middle.z, within: 4 });
+        trapperGone = true;
       }
     }
     // And if the flight ended in the air, the bird still has to get down.

@@ -386,6 +386,24 @@ export const dialogueOf = (level: Level): Turn | undefined =>
   level.finish.kind === 'meeting' ? level.finish.dialogue : undefined;
 
 /** What this one hands over to without being asked, if it does. */
+/**
+ * Where she is caged on this level, or nothing if she is not.
+ *
+ * A rule about the story rather than about drawing, which is why it is here:
+ * the cage and the bird in it are different things, and the first version of
+ * this put a cage wherever she was standing. That is a trap on the nest for
+ * the first two levels of the game -- she is on the branch at home then, and
+ * nobody has taken anything yet.
+ *
+ * The trapper's roof is the only place she is in one. She is put there from
+ * the level after the errand, which is the story: taken while he was away.
+ */
+export const cagedIn = (level: Level): Standing | undefined => {
+  const hers = standingOf(level, PINK.name);
+  if (!hers || hers.on.kind !== 'landmark' || hers.on.name !== LOFT.name) return undefined;
+  return hers;
+};
+
 export const opensOf = (level: Level): Opens | undefined =>
   // Asked of the shape rather than of the kind. It used to name the one kind
   // that has no `opens`, which is a list that has to be kept in step with the
