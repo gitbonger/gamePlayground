@@ -1574,6 +1574,13 @@ const laidOut = layout.trains.map(() => Number.NEGATIVE_INFINITY);
 const trainBoxSets = layout.trains.map((train) =>
   Array.from({ length: boxCount(train.cars, train.stock) }, () => aabb(0, 0, 0, 0, 0, 0)),
 );
+/**
+ * The attitude the bird was in when its flight ended, or null while it flies.
+ *
+ * Only the camera reads it: see where it is set.
+ */
+let dyingAttitude: { x: number; y: number; z: number; w: number } | null = null;
+
 /** And the pose each is drawn in, between one tick and the next. */
 const drawnVehicles = layout.trains.map((train) =>
   layOutTrain(train.line, train.along, train.cars, train.stock),
@@ -2042,7 +2049,15 @@ function frame(nowMs: number) {
 
   // Only a crash ends the run. A clean landing leaves the bird perched, which
   // is a place to watch it from rather than a screen to dismiss.
-  if (wasAlive && hasCrashed(bird)) outcome.show(bird.ending!);
+  if (wasAlive && hasCrashed(bird)) {
+    outcome.show(bird.ending!);
+    // The attitude it died in, kept for the camera. A body knocked out of the
+    // air tumbles, and the boom hangs off the bird's own quaternion -- so
+    // followed literally, the shot would roll end-over-end with the corpse
+    // all the way to the pavement. What the player wants to watch is the bird
+    // turning, which means the camera has to be the thing that does not.
+    dyingAttitude = { ...bird.orientation };
+  }
 
   // Blend between the last two ticks so motion is smooth at any refresh rate.
   const alpha = accumulator / TICK;
@@ -2323,6 +2338,15 @@ function frame(nowMs: number) {
     cutTo = false;
   } else if (talkingTo) {
     chase.watch(interpolatedState.position, talkingTo.state.position, watchParams, frameTime);
+  } else if (dyingAttitude && bird.ending?.settled === false) {
+    // Following a body that is tumbling, so the camera is handed the attitude
+    // the bird died in rather than the one it is spinning through. Same
+    // position, same easing; it just does not roll with the corpse.
+    chase.update(
+      { ...interpolatedState, orientation: dyingAttitude },
+      activeCamera,
+      frameTime,
+    );
   } else {
     chase.update(interpolatedState, activeCamera, frameTime);
   }

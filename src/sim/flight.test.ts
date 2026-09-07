@@ -520,16 +520,57 @@ describe('a bird that dies in the air', () => {
     expect(bird.position).toEqual(was);
   });
 
-  it('keeps the attitude it died in', () => {
-    // Deliberately not tumbling. What is drawn is not this attitude anyway
-    // -- the rig lays a dead bird out level and inverted, keeping only the
-    // direction it was facing -- and the camera hangs its boom off this same
-    // quaternion, so a tumble nobody can see would swing the whole shot
-    // round the corpse all the way down.
-    const bird = drop(0);
+  it('is set spinning by whatever killed it', () => {
+    // A body that has just been hit hard turns. Held at the attitude it died
+    // in it reads as a model being lowered rather than as a bird that has
+    // been knocked out of the sky.
+    const bird = createBird(vec(0, 60, 0), 16, 0);
+    caught(bird, () => 0.5);
     const held = { ...bird.orientation };
-    for (let t = 0; t < 3; t += DT) fall(bird, defaultParams, DT);
-    expect(bird.orientation).toEqual(held);
+    for (let t = 0; t < 1; t += DT) fall(bird, defaultParams, DT);
+    expect(bird.orientation).not.toEqual(held);
+  });
+
+  it('goes end over end rather than spinning flat', () => {
+    // Two axes and not three. A bird knocked out of the air pitches and
+    // rolls; what it does not do is turn flat about its own vertical, which
+    // is a helicopter coming down rather than a bird that has been hit.
+    for (const r of [0.1, 0.35, 0.6, 0.9]) {
+      const bird = createBird(vec(0, 60, 0), 16, 0);
+      caught(bird, () => r);
+      expect(bird.angularVelocity.y, `yaw at ${r}`).toBe(0);
+      expect(
+        Math.hypot(bird.angularVelocity.x, bird.angularVelocity.z),
+        `some spin at ${r}`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it('turns between one and three times over a fall', () => {
+    // The number, and it is a rate rather than a count: a bird killed near
+    // the ground makes a fraction of a turn and one dropped from the top of
+    // the loft level makes several. It is spinning because something hit it,
+    // not because it owes anybody three rotations.
+    const rates: number[] = [];
+    for (let i = 0; i < 40; i += 1) {
+      const bird = createBird(vec(0, 60, 0), 16, 0);
+      caught(bird, () => i / 40);
+      rates.push(length(bird.angularVelocity));
+    }
+    const turns = rates.map((rate) => (rate * 4) / (Math.PI * 2));
+    expect(Math.min(...turns)).toBeGreaterThanOrEqual(1);
+    expect(Math.max(...turns)).toBeLessThanOrEqual(3);
+    // And spread across the range rather than sitting at one value.
+    expect(Math.max(...turns) - Math.min(...turns)).toBeGreaterThan(1.5);
+  });
+
+  it('stops turning once it is down', () => {
+    // A corpse on a pavement is not still going round.
+    const bird = createBird(vec(0, 60, 0), 16, 0);
+    caught(bird, () => 0.5);
+    for (let t = 0; t < 20; t += DT) fall(bird, defaultParams, DT);
+    expect(bird.ending?.settled).toBe(true);
+    expect(bird.angularVelocity).toEqual(vec(0, 0, 0));
   });
 });
 

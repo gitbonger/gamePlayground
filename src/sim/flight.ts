@@ -829,7 +829,11 @@ export function step(
         state.position = hit.point;
         work.collision -= kinetic(state.velocity, p);
         state.velocity = vec(0, 0, 0);
-        state.angularVelocity = vec(0, 0, 0);
+        // Set spinning, unless this was the ground: hitting a wall at speed
+        // is the same sort of event as being hit by a crow, and what follows
+        // is the same fall.
+        state.angularVelocity =
+          hit.normal.y >= ROOF_NORMAL ? vec(0, 0, 0) : tumbling(Math.random);
         state.ending = {
           kind: 'crashed',
           cause: struck ? 'struck' : 'building',
@@ -1021,7 +1025,7 @@ export const hasCrashed = (state: BirdState): boolean => state.ending?.kind === 
  * hunting it caught up. The numbers recorded are the ones it was flying at,
  * because that is what happened -- it was flying, and then it was not.
  */
-export function caught(state: BirdState): void {
+export function caught(state: BirdState, random: () => number = Math.random): void {
   state.ending = {
     kind: 'crashed',
     cause: 'caught',
@@ -1036,8 +1040,41 @@ export function caught(state: BirdState): void {
   // death and a freeze-frame. It was doing twenty metres a second and
   // something hit it; it does not stop in the air, it carries on and comes
   // down. `fall` takes it from here.
-  state.angularVelocity = vec(0, 0, 0);
+  state.angularVelocity = tumbling(random);
   state.restingOn = null;
+}
+
+/**
+ * How many full turns a body knocked out of the air makes on the way down.
+ *
+ * One to three, drawn flat. Spread over four seconds, which is about what a
+ * fall from the height these levels are flown at comes to -- sixty metres at
+ * a terminal of 16.7 is three and a half, plus the second or so it takes to
+ * get there. So the number is a rate rather than a count, and a bird killed
+ * near the ground makes a fraction of a turn while one dropped from the top
+ * of the loft level makes several. That is the right way round: it is spinning
+ * because something hit it, not because it has a quota.
+ */
+const TUMBLE_TURNS = { least: 1, most: 3, over: 4 };
+
+/**
+ * Set a body spinning, the way a thing that has just been hit spins.
+ *
+ * About two axes and not three. A bird knocked out of the sky goes
+ * end-over-end and rolls; what it does not do is spin flat about its own
+ * vertical, which reads as a helicopter coming down rather than as a bird
+ * that has been hit. So the angular velocity is a random mix of pitch and
+ * roll -- the body's X and Z -- with the yaw left at nothing.
+ */
+function tumbling(random: () => number): Vec3 {
+  const turns = TUMBLE_TURNS.least + random() * (TUMBLE_TURNS.most - TUMBLE_TURNS.least);
+  const rate = (turns * Math.PI * 2) / TUMBLE_TURNS.over;
+  // How the spin is split between going end-over-end and rolling, and which
+  // way round each of them goes.
+  const share = random();
+  const pitch = Math.cos(share * Math.PI * 2);
+  const roll = Math.sin(share * Math.PI * 2);
+  return vec(pitch * rate, 0, roll * rate);
 }
 
 /**
@@ -1080,6 +1117,10 @@ export function fall(
   const push = 0.5 * p.airDensity * speed * speed * p.deadDragArea;
   const drag = speed > 1e-6 ? scale(state.velocity, -push / (p.mass * speed)) : vec(0, 0, 0);
   state.velocity = add(state.velocity, scale(add(vec(0, -p.gravity, 0), drag), dt));
+  // Turning as it goes. Undamped: over the three or four seconds this lasts,
+  // the air does almost nothing to a spin, and a tumble that visibly slowed
+  // would read as the bird recovering.
+  state.orientation = integrateOrientation(state.orientation, state.angularVelocity, dt);
 
   const from = state.position;
   const to = add(from, scale(state.velocity, dt));
@@ -1113,6 +1154,8 @@ export function fall(
 
   state.position = down;
   state.velocity = vec(0, 0, 0);
+  // Down, and still. Whatever it was doing on the way, a body on the ground
+  // is a body on the ground.
   state.angularVelocity = vec(0, 0, 0);
   // Whatever it came to rest on, it goes with. A pigeon that falls onto a
   // moving wagon rides it, the same as a live one standing there.

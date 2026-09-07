@@ -581,9 +581,12 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
 
   function update(state: BirdState, wingPose: WingPose, dt: number) {
     const dead = wingPose === 'dead';
-    // Lying on something either way, so it is dropped onto the surface the
-    // same as a bird standing on it -- what differs is which way up.
-    const standing = wingPose === 'perched' || dead;
+    // Still coming down: killed in the air and not yet arrived anywhere.
+    const falling = dead && state.ending?.settled === false;
+    // Lying on something, so it is dropped onto the surface the same as a
+    // bird standing on it -- what differs is which way up. Not while it is
+    // still falling: there is nothing under it to be dropped onto.
+    const standing = wingPose === 'perched' || (dead && !falling);
     stand += ((standing ? 1 : 0) - stand) * Math.min(1, dt * 7);
 
     object.position.set(
@@ -591,14 +594,24 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
       state.position.y - STANDING_DROP * stand,
       state.position.z,
     );
-    if (dead) {
-      // On its back, feet up, whatever it was doing when it stopped. The
-      // simulation still holds the attitude it died in -- nose down out of a
-      // dive, banked into whatever it hit -- and that is the truth about the
-      // last instant of the flight, but it is not what a dead bird looks
-      // like. So the drawn one keeps only the direction it was facing and is
-      // laid out level and inverted, which is what everyone has seen a dead
-      // pigeon do and what nobody has to be told the meaning of.
+    if (falling) {
+      // Whatever it is doing, which is turning. A body knocked out of the air
+      // goes end-over-end, and the simulation is the thing that knows how far
+      // round it has got -- so this is the one time a dead bird is drawn in
+      // its own attitude rather than in a pose.
+      object.quaternion.set(
+        state.orientation.x,
+        state.orientation.y,
+        state.orientation.z,
+        state.orientation.w,
+      );
+    } else if (dead) {
+      // On its back, feet up, once it has arrived. The simulation still holds
+      // the attitude it came down in, and that is the truth about the last
+      // instant of the fall, but it is not what a dead bird on a pavement
+      // looks like. So the drawn one keeps only the direction it was facing
+      // and is laid out level and inverted, which is what everyone has seen a
+      // dead pigeon do and what nobody has to be told the meaning of.
       turn.setFromAxisAngle(UP, -heading(state));
       object.quaternion.copy(turn).multiply(UPSIDE_DOWN);
     } else {
