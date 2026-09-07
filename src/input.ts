@@ -94,6 +94,8 @@ export interface InputSource {
   consumeStep(): number;
   /** Whether the highlighted thing has been chosen since last asked. */
   consumeConfirm(): boolean;
+  /** Whether whatever is open has been asked to go away since last asked. */
+  consumeDismiss(): boolean;
   /**
    * Whether any of these keys is down, by `KeyboardEvent.code`.
    *
@@ -127,6 +129,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
   let voiceRequested = false;
   let stepped = 0;
   let confirmed = false;
+  let dismissed = false;
   const digits: number[] = [];
 
   const anyHeld = (codes: readonly string[]) => codes.some((code) => held.has(code));
@@ -160,6 +163,10 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     if (e.code === 'ArrowUp') stepped -= 1;
     if (e.code === 'ArrowDown') stepped += 1;
     if (e.code === 'Enter' || e.code === 'NumpadEnter') confirmed = true;
+    // The key everybody presses to get out of a thing, and the one this game
+    // did not read: the level list opened with L and closed with L, which is
+    // a rule you have to have been told.
+    if (e.code === 'Escape') dismissed = true;
     // Space and the arrows scroll the page otherwise, which fights the controls.
     if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
   };
@@ -224,6 +231,12 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     return requested;
   }
 
+  function consumeDismiss() {
+    const requested = dismissed;
+    dismissed = false;
+    return requested;
+  }
+
   function consumeDigit() {
     return digits.shift() ?? null;
   }
@@ -239,6 +252,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     consumeDigit,
     consumeStep,
     consumeConfirm,
+    consumeDismiss,
     anyDown,
     dispose() {
       target.removeEventListener('keydown', onKeyDown);

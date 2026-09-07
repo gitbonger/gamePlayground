@@ -87,6 +87,16 @@ export interface ChaseCamera {
   watch(a: Vec3, b: Vec3, params: WatchParams, dt: number): void;
   /** Jump straight to the ideal pose, with no easing. */
   snap(state: BirdState, params: CameraParams): void;
+  /**
+   * The point it is looking at, right now.
+   *
+   * For anything that has to hand the shot back without a jump. The boom does
+   * not aim at the bird -- it aims `lookAhead` metres past it, which is what
+   * puts the bird low in frame with the ground it is flying at above it -- so
+   * a caller that framed the bird itself and then let go would turn the camera
+   * on the frame it let go. That was the seam at the end of every scene.
+   */
+  aim(): Vec3;
 }
 
 /**
@@ -194,6 +204,10 @@ export function createChaseCamera(camera: THREE.PerspectiveCamera): ChaseCamera 
     desiredUp.copy(up).lerp(birdUp, params.rollFollow).normalize();
   }
 
+  function aim(): Vec3 {
+    return { x: target.x, y: target.y, z: target.z };
+  }
+
   function snap(state: BirdState, params: CameraParams) {
     computeIdeal(state, params);
     position.copy(desiredPos);
@@ -270,5 +284,5 @@ export function createChaseCamera(camera: THREE.PerspectiveCamera): ChaseCamera 
     }
   }
 
-  return { update, watch, snap };
+  return { update, watch, snap, aim };
 }

@@ -162,7 +162,7 @@ export function createLevelMenu(
 
     const hint = document.createElement('p');
     hint.className = 'menu-hint';
-    hint.textContent = 'number or ↑↓ and Enter to fly it, or click. L to close';
+    hint.textContent = 'number or ↑↓ and Enter to fly it, or click. ESC or L to close';
     card.appendChild(hint);
 
     root.appendChild(card);

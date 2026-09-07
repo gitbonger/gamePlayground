@@ -944,6 +944,22 @@ describe('what the levels aim at', () => {
     }
   });
 
+  it('tells the food level what to do once the feet are down', () => {
+    // The one thing that level cannot be finished without, and the only
+    // lesson in the game that waits for a landing rather than a distance:
+    // walking onto grain is what eating grain looks like, so there is nothing
+    // to press and no way to work it out by pressing things.
+    //
+    // What it says is what to *do*. It used to say what it achieves -- "eat
+    // the seeds to restore your health" -- and the panel is for the first.
+    const landed = courseFor('Teleki tér').filter((lesson) => lesson.landed === true);
+    expect(landed, 'exactly one, at the moment of landing').toHaveLength(1);
+    expect(landed[0]!.text).toContain('Collect');
+    expect(landed[0]!.text).toContain('seeds');
+    // And spoken, because the level cannot go on without it.
+    expect(landed[0]!.spoken).toBe(true);
+  });
+
   it('tells the yard the three things that landing there needs', () => {
     // The last level and the only target in the game that will not wait for
     // you: it has to be landed on, it reverses, and only one wagon counts.
@@ -998,14 +1014,27 @@ describe('what the levels aim at', () => {
     expect(others.has(wanders[0]!.start.join(','))).toBe(true);
   });
 
-  it('stops teaching and calls off the crows exactly once', () => {
-    // Both are the same thought: the game has finished explaining itself and
-    // finished threatening the player. Being killed by a crow on the level
-    // that exists because the story is over would be the game not having
-    // noticed it ended.
-    expect(LEVELS.filter((level) => level.teaches === false).map((l) => l.name)).toEqual([
-      'Everafter',
-    ]);
+  it('stops teaching after the fourth level, and never starts again', () => {
+    // Not because the player is ready. From the fifth level on the levels
+    // have things of their own to say -- "Crows! Fly low!", "Keep high!",
+    // "You need to land on the train!" -- and a caution watching the flight
+    // takes the panel from them. Being told to pull up in the second a crow
+    // warning was due is the game talking over the only line that could have
+    // saved the flight.
+    const teaching = LEVELS.map((level) => level.teaches ?? true);
+    const last = teaching.lastIndexOf(true);
+    expect(LEVELS[last]!.name, 'the last level that explains itself').toBe('Mátyás tér');
+
+    // And it is a cut rather than a scattering: on for everything up to
+    // there, off for everything after.
+    for (const [i, on] of teaching.entries()) {
+      expect(on, LEVELS[i]!.name).toBe(i <= last);
+    }
+  });
+
+  it('calls off the crows exactly once', () => {
+    // Being killed by a crow on the level that exists because the story is
+    // over would be the game not having noticed it ended.
     expect(LEVELS.filter((level) => level.crows === false).map((l) => l.name)).toEqual([
       'Everafter',
     ]);
@@ -1022,6 +1051,27 @@ describe('what the levels aim at', () => {
       expect(level.waypoints, level.name).toHaveLength(3);
       // And they are the levels that end at a line, which is the reason.
       expect(level.finish.kind, level.name).toBe('crossing');
+    }
+  });
+
+  it('climbs out of a beat that ends on the ground under a level in the air', () => {
+    // A scene that says something puts the bird down and waits, and then
+    // whatever follows it has to get him to the next release. Where that
+    // release is over the same ground he is standing on, the difference is
+    // all height -- and cutting from standing on paving to hanging sixty
+    // metres above it is the seam this is here to stop.
+    for (const scene of SCENES) {
+      if (scene.says === undefined) continue;
+      const next = scene.opens;
+      if ('level' in next) {
+        // Straight into a level from a standing beat: only allowed where the
+        // level is not above him, or the cut is the jump described above.
+        const to = LEVELS.find((level) => level.name === next.level)!;
+        expect(to.begins, `${scene.name} hands straight to ${to.name}`).toBe('perched');
+        continue;
+      }
+      // Otherwise it hands to another scene, which is where the climb lives.
+      expect(SCENES.map((each) => each.name), scene.name).toContain(next.scene);
     }
   });
 

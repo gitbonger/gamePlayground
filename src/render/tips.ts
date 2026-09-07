@@ -171,7 +171,12 @@ export const COURSES: Record<string, readonly Lesson[]> = {
     // because there is nothing to press: walking onto grain is what eating
     // grain looks like. Said aloud as well, which most lessons are not --
     // this is the one thing the level cannot be finished without.
-    { landed: true, keys: [], text: 'Eat the seeds to restore your health!', spoken: true },
+    //
+    // "Collect some seeds!" rather than "eat the seeds to restore your
+    // health": the second is what it does and the first is what to do, and
+    // the panel is for what to do. What it costs is the *why*, which the
+    // player gets anyway from the bar in the corner going up as they walk.
+    { landed: true, keys: [], text: 'Collect some seeds!', spoken: true },
   ],
   // Fifty metres out of the square, which is three or four seconds: long
   // enough to have got the wings working and short enough that the warning

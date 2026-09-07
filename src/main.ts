@@ -1741,7 +1741,10 @@ function beginScene(scene: Scene): void {
   const ends = releaseFor(closing);
   const from: Framing = {
     eye: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-    look: { ...interpolatedState.position },
+    // Where the camera is looking, not where the bird is. The boom aims a way
+    // past the bird, so framing the bird itself would turn the camera on the
+    // first frame of the scene.
+    look: chase.aim(),
   };
 
   // And where the camera has to get to, asked of the camera rather than
@@ -1758,7 +1761,12 @@ function beginScene(scene: Scene): void {
   chase.snap(stand, ends.perched ? { ...cameraParams, ...perchedCamera(false) } : cameraParams);
   const to: Framing = {
     eye: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-    look: { ...ends.at },
+    // And the same at the far end, which is where the seam was. The eye asked
+    // the camera and the aim did not: the scene closed looking at the bird
+    // and the chase camera then took over looking a good way past it, so
+    // every scene in the game ended on a flick. Two calculations of one shot
+    // were one too many, and this was the one that was doing it by hand.
+    look: chase.aim(),
   };
 
   cutscene = {
@@ -2358,6 +2366,11 @@ function frame(nowMs: number) {
 
   input.update(frameTime);
   if (input.consumeMenu()) menu.toggle(level, mode);
+  // And Escape shuts it, which is the key everybody reaches for. It does
+  // nothing when the list is not up: there is nothing else on screen that can
+  // be dismissed, and a key that quietly did something in flight would be a
+  // key nobody could press by accident and get away with.
+  if (input.consumeDismiss() && menu.open) menu.close();
   // A digit is a level while the menu is up and a thing to say while a
   // conversation is waiting on one. Offered to the menu first, because the
   // menu is the thing the player has just deliberately opened.

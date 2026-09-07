@@ -242,7 +242,7 @@ export const HOMECOMING: Scene = {
   // the hero says anything without somebody to say it to, and it is what
   // turns the empty nest into an errand -- he is not going for help, he is
   // going to look, and the looking is what the next few levels are.
-  says: ['Where did she go?', 'Maybe she is on Mátyás tér.'],
+  says: ['OMG! Where did she go?', 'Maybe she is on Mátyás tér.'],
   opens: { scene: 'flying to Mátyás tér' },
 };
 
@@ -275,9 +275,31 @@ export const NOT_AT_MATYAS: Scene = {
   seconds: 0,
   cruise: 0,
   says: ['She is not here.', 'Maybe on Jani Pali tér.'],
-  // Straight into the level, with no flight between: the next one starts over
-  // the square he is standing on, so a camera taking him there would be a
-  // camera going nowhere. He says it and he goes.
+  // Into the climb rather than into the level. It used to go straight on --
+  // "the next one starts over the square he is standing on, so a camera
+  // taking him there would be a camera going nowhere" -- which was true about
+  // the ground and wrong about the air: it starts sixty metres over that
+  // square, and the player was cut from standing on the paving to hanging
+  // above it. There is somewhere to go, and the somewhere is up.
+  opens: { scene: 'up off Mátyás tér' },
+};
+
+/**
+ * Off the square he has just searched, to the height the next one is flown
+ * from.
+ *
+ * A climb, like the one out of Blaha: sixty metres straight up over the same
+ * paving, so it has no arc -- an arc on a nearly vertical move is a camera
+ * wandering off to one side and coming back. Nothing said over it, so it does
+ * not hold; the take-off that ends the beat runs into this and this runs into
+ * the level, and what the player sees is one movement.
+ */
+export const UP_OFF_MATYAS: Scene = {
+  name: 'up off Mátyás tér',
+  endsOn: 'Jani Pali tér',
+  seconds: 2.5,
+  cruise: 0,
+  climbs: true,
   opens: { level: 'Jani Pali tér' },
 };
 
@@ -308,7 +330,13 @@ export const UP_TO_THE_ROOFS: Scene = {
   opens: { level: 'The Loft' },
 };
 
-export const SCENES: readonly Scene[] = [HOMECOMING, TO_MATYAS, NOT_AT_MATYAS, UP_TO_THE_ROOFS];
+export const SCENES: readonly Scene[] = [
+  HOMECOMING,
+  TO_MATYAS,
+  NOT_AT_MATYAS,
+  UP_OFF_MATYAS,
+  UP_TO_THE_ROOFS,
+];
 
 export const sceneNamed = (name: string): Scene | undefined =>
   SCENES.find((scene) => scene.name === name);
@@ -543,11 +571,19 @@ export interface Level {
   /**
    * Whether the game is still teaching on this level.
    *
-   * On everywhere but the last. What it gates is the instructions that watch
-   * the flight rather than its distance -- pull up, keep flapping, slow down
-   * -- which are exactly right for somebody learning and exactly wrong for
-   * somebody who has just finished the game, since a pigeon spends half its
-   * life low, slow or tired on purpose.
+   * On for the first four and off for the rest. What it gates is the
+   * instructions that watch the *flight* rather than its distance -- pull up,
+   * keep flapping, slow down -- which are right for somebody learning and
+   * wrong for somebody who has learned: a pigeon spends half its life low,
+   * slow or tired on purpose.
+   *
+   * The reason it stops where it does is not that the player is ready. It is
+   * that from the fifth level on, the levels have things of their own to say
+   * -- "Crows! Fly low!", "Keep high!", "You need to land on the train!" --
+   * and those are the ones that matter. A caution and a level's own
+   * instruction cannot both be on screen, and the caution outranks nothing:
+   * being told to pull up in the second a crow warning was due is the game
+   * talking over the only line that could have saved the flight.
    */
   teaches?: boolean;
   /**
@@ -829,6 +865,8 @@ export const LEVELS: readonly Level[] = [
     // shape the searching has -- a run of hops round a district, each one
     // beginning where the last one gave up.
     name: 'Jani Pali tér',
+    // Past the point the game explains itself -- see `teaches`.
+    teaches: false,
     // Straight up off Mátyás tér, which is where the last level left him
     // standing. There is no camera flight into this one because there is
     // nowhere to fly: he has said what he is going to do and the level is him
@@ -851,6 +889,8 @@ export const LEVELS: readonly Level[] = [
     // ground to arrive at. He leaves the square he has just searched, and the
     // crows are between him and the line.
     name: 'Népszínház',
+    // Past the point the game explains itself -- see `teaches`.
+    teaches: false,
     // Straight up off Jani Pali tér: the square the last level ended on.
     start: [47.495871, 19.077971],
     // Sixty metres, which is well over the roofline -- the houses come to
@@ -889,6 +929,8 @@ export const LEVELS: readonly Level[] = [
     // before this one ends by flying through a line, and this one picks the
     // bird up on it.
     name: 'Blaha',
+    // Past the point the game explains itself -- see `teaches`.
+    teaches: false,
     // On that line, which is the whole point of a checkpoint -- dying just
     // after the crossing puts the bird back where it crossed rather than
     // somewhere it has never been. It used to start two hundred and fifty
@@ -918,10 +960,17 @@ export const LEVELS: readonly Level[] = [
     // Twenty-four metres up, on a roof among other roofs. Still nothing
     // moving, but now you have to pick the right one and stop on it.
     name: 'The Loft',
-    // Out by the slab the level before finishes on -- sixty-one metres from
-    // it -- so this picks up where Blaha put the bird down, which is what
-    // every level in the second half does.
-    start: [47.496632, 19.069340],
+    // Past the point the game explains itself -- see `teaches`.
+    teaches: false,
+    // Out past the slab the level before finishes on: a hundred metres further
+    // west than it was, so the roofs of the district are the whole of the
+    // view rather than something off to one side.
+    //
+    // It costs the glide. A thousand and fifty-seven metres from the loft at
+    // a hundred and fifty up is 7.0:1 against a pigeon's measured best of
+    // about 5.6, where it was 6.4 -- so where the last stretch used to be
+    // nearly reachable on the wings folded, it now has to be flown.
+    start: [47.496632, 19.068013],
     // A hundred and fifty, which is the highest release in the game by half
     // as much again. Nine hundred and fifty-eight metres out from that is a
     // glide of 6.4:1 against a pigeon's measured best of about 5.6:1 -- so
@@ -958,6 +1007,8 @@ export const LEVELS: readonly Level[] = [
     // been told there is a trapper on the top of a big house, and this is him
     // going up to find out which one.
     name: 'Fiumei út',
+    // Past the point the game explains itself -- see `teaches`.
+    teaches: false,
     start: [47.494320, 19.081098],
     // A hundred and fifty, the same as the level before it. Two drops in a
     // row from the same height is the pair of them reading as one search from
@@ -988,6 +1039,8 @@ export const LEVELS: readonly Level[] = [
     // A wagon of a running train, which is the first target that will not
     // wait for you.
     name: 'Keleti',
+    // Past the point the game explains itself -- see `teaches`.
+    teaches: false,
     // On the line Fiumei út hands over at, which is the checkpoint rule every
     // crossing in the game obeys: dying just after the line puts the bird
     // back where it crossed rather than somewhere it has never been.
@@ -1015,6 +1068,8 @@ export const LEVELS: readonly Level[] = [
     // at anything: crossing it is the flock committing, and what is on the
     // far side is the loft.
     name: 'Coming on strong',
+    // Past the point the game explains itself -- see `teaches`.
+    teaches: false,
     start: [47.500249, 19.088921],
     release: 100,
     health: 1,
@@ -1043,6 +1098,8 @@ export const LEVELS: readonly Level[] = [
     // The end of it: the roof the eighth level landed on, flown again with
     // thirty birds and the trapper on it.
     name: 'The rescue',
+    // Past the point the game explains itself -- see `teaches`.
+    teaches: false,
     // They came to help, so they arrive -- see `settles`.
     settles: true,
     // And they are all there from the first frame: this one is about them.
