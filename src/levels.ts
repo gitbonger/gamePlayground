@@ -827,6 +827,36 @@ export const LEVELS: readonly Level[] = [
     finish: { kind: 'meeting', who: 'Black', dialogue: GREETING },
   },
   {
+    // Out along Fiumei út, over the roofs, looking for the big house.
+    //
+    // The start is a hundred and twenty-four metres from the loft, which is
+    // to say directly over the district the level before came down in: he has
+    // been told there is a trapper on the top of a big house, and this is him
+    // going up to find out which one.
+    name: 'Fiumei út',
+    start: [47.494320, 19.081098],
+    // A hundred and fifty, the same as the level before it. Two drops in a
+    // row from the same height is the pair of them reading as one search from
+    // altitude rather than as two errands.
+    release: 150,
+    health: 1,
+    when: EVENING,
+    escort: false,
+    // TARGET AND ENDING ARE PLACEHOLDERS. The level was asked for by name,
+    // place and height, and those are what is set here; what it aims at and
+    // how it finishes were not given, and a level cannot exist without them.
+    // Grey is the one member of the cast nobody has met yet, and the loft is
+    // the only described thing within reach that an arrival could use -- so
+    // this is the smallest arrangement that runs, not a decision about the
+    // story. It is two lines to repoint.
+    target: { kind: 'landmark', name: LOFT.name },
+    cast: [
+      { who: 'Grey', on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: -3 },
+      { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
+    ],
+    finish: { kind: 'meeting', who: 'Grey', dialogue: GREETING },
+  },
+  {
     // A wagon of a running train, which is the first target that will not
     // wait for you.
     name: 'The Yard',

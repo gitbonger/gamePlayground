@@ -420,9 +420,9 @@ describe('what the levels aim at', () => {
     // ordinary hundred: a drop is a drop, and how far above the roofs it
     // starts is that level's own business.
     const dropped = flown.filter((level) => !under.includes(level) && !district.includes(level));
-    // Two of them. It was three until Blaha came down out of the sky and into
-    // the street.
-    expect(dropped.map((level) => level.name)).toEqual(['The Loft', 'The Yard']);
+    // The last three, which is what the end of the story is: two searches
+    // from a hundred and fifty metres over the roofs, and the yard.
+    expect(dropped.map((level) => level.name)).toEqual(['The Loft', 'Fiumei út', 'The Yard']);
     for (const level of dropped) expect(level.release, level.name).toBeGreaterThanOrEqual(100);
 
     // And the district ones are all above what is built on it, which is the
