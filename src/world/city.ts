@@ -907,8 +907,13 @@ export function buildWorld(
 
       // Soot at the stack, thinning to a grey haze as it disperses -- and
       // never black, which reads as a hole in the sky rather than as smoke.
+      //
+      // It stays dark for longer than it did. The old ramp reached a light
+      // grey by the top of the plume, which against a pale sky is very nearly
+      // nothing at all: what was drawn was the bottom two seconds of a
+      // chimney and then air.
       const through = Math.min(1, puff.risen / defaultSmokeOptions.reach);
-      const grey = 0.09 + 0.34 * through;
+      const grey = 0.07 + 0.2 * through;
       puffTint.setRGB(grey, grey, grey * 1.06);
       plume.mesh.setColorAt(drawn, puffTint);
 
@@ -2083,8 +2088,15 @@ function buildRoads(roads: readonly Road[]): {
  * so each has to be most of the way to solid on its own -- and still short of
  * it, because smoke you can see into is the difference between a plume and a
  * silhouette.
+ *
+ * Nine tenths rather than seven, because seven was not enough. This is the
+ * last of three numbers multiplied together to get what reaches the screen --
+ * the texture's own falloff, then how far the puff has risen, then this -- so
+ * a puff at the stack was 0.85 x 1 x 0.7 at its very centre and a tenth of
+ * solid two thirds of the way out. Three plausible numbers, and the plume
+ * they made was a smudge you had to look for.
  */
-const PUFF_ALPHA = 0.7;
+const PUFF_ALPHA = 0.92;
 
 /**
  * A soft round smudge, drawn to a canvas.
@@ -2105,9 +2117,9 @@ function makePuffTexture(): THREE.Texture {
   // Soft all the way out. A hard rim makes a disc, and a few hundred discs
   // make a blob with an outline; what is wanted is a bubble whose edge you
   // cannot find.
-  gradient.addColorStop(0, 'rgba(255, 255, 255, 0.85)');
-  gradient.addColorStop(0.35, 'rgba(255, 255, 255, 0.55)');
-  gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.16)');
+  gradient.addColorStop(0, 'rgba(255, 255, 255, 0.97)');
+  gradient.addColorStop(0.35, 'rgba(255, 255, 255, 0.82)');
+  gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.38)');
   gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, size, size);

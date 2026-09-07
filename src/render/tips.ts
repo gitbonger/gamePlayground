@@ -208,6 +208,25 @@ export const COURSES: Record<string, readonly Lesson[]> = {
   // without; a player who misses this one finds out by not being attacked,
   // which is the same news a moment later.
   'Fiumei út': [{ at: 50, keys: [], text: 'Chill, no crows here' }],
+  // The last level, and the only target in the game that will not wait for
+  // you. Three things, and none of them is a control: they are the rules of
+  // the one landing that is different from every other landing.
+  'The Yard': [
+    // Spoken: there is no version of this level that is finished on the
+    // ground beside the train.
+    { at: 50, keys: [], text: 'You need to land on the train!', spoken: true },
+    // And spoken, because it is the one that can kill. A rake running at
+    // eleven metres a second that reaches the end of its line comes back the
+    // other way, and being caught by something already moving is fatal --
+    // it is its own crash cause.
+    { at: 100, keys: [], text: "Careful, it's changing directions!", spoken: true },
+    // Not spoken, and the difference is the rule: put down on the wrong
+    // wagon and you are standing on a moving train with the right one a few
+    // metres away, which costs a walk. Missing this one is not fatal and
+    // does not end the level, so it stays on the screen where something can
+    // be ignored without the voice being spent on it.
+    { at: 150, keys: [], text: 'Only land at the marked car!' },
+  ],
 };
 
 /** What a level teaches, which for most levels is nothing. */

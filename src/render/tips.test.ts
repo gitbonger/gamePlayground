@@ -175,12 +175,32 @@ describe('handing out the flying lessons', () => {
     const tutor = createTutor(COURSE, 7, 1.5);
     expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.text).toBe('up');
 
-    // A level with nothing to teach teaches nothing, however far it is flown.
+    // Handed another level's course, the old one is gone -- however far this
+    // flight is taken, and whether or not the new level has anything of its
+    // own to say.
+    //
+    // Asked of a real level rather than of an empty list, because the empty
+    // list is the easy half. This used to use the goods yard as its example
+    // of a level with nothing to teach, which was true of it right up until
+    // the yard was given three lessons of its own -- and then the test was
+    // checking that nothing came back from a course that was no longer
+    // empty, which is a different and much weaker thing.
     tutor.teach(courseFor('The Yard'), 0);
     for (const travelled of [20, 100, 900]) {
-      expect(tutor.update({ flown: travelled, toGo: 9999 }, 1 / 60), `${travelled} m`).toBeNull();
+      const said = tutor.update({ flown: travelled, toGo: 9999 }, 1 / 60);
+      expect(said?.text, `${travelled} m`).not.toBe('up');
+      expect(said?.text, `${travelled} m`).not.toBe('down');
     }
-    expect(courseFor('The Yard')).toEqual([]);
+
+    // And a name with no course at all teaches nothing, which is the other
+    // half of it: every level that says nothing says nothing by default
+    // rather than by having an empty list written out for it.
+    expect(courseFor('a level that teaches nothing')).toEqual([]);
+    const quiet = createTutor(COURSE, 7, 1.5);
+    quiet.teach(courseFor('a level that teaches nothing'), 0);
+    for (const travelled of [20, 100, 900]) {
+      expect(quiet.update({ flown: travelled, toGo: 9999 }, 1 / 60), `${travelled} m`).toBeNull();
+    }
   });
 
   it('holds a landing lesson back until the feet are down', () => {

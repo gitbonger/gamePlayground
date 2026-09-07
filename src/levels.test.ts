@@ -30,6 +30,7 @@ import { indexStreets, type Road } from './world/streets';
 import { footprintSamples } from './world/areas';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
 import type { MapData } from './world/streets';
+import { COURSES, courseFor } from './render/tips';
 
 describe('what the levels aim at', () => {
   it('names a described thing that exists', () => {
@@ -889,6 +890,35 @@ describe('what the levels aim at', () => {
     const ways = handovers(said!);
     expect(ways.length).toBeGreaterThan(0);
     for (const way of ways) expect(SCENES.map((scene) => scene.name)).toContain(way);
+  });
+
+  it('teaches its lessons to a level that exists', () => {
+    // The courses are keyed by level name, the way a conversation reaches for
+    // a level by name and a level reaches for a landmark by name -- and the
+    // cost is the same: a typo is a set of instructions that silently never
+    // appear, on a level that quietly teaches nothing. Three of these were
+    // written in one sitting while the levels were being renamed around them,
+    // which is exactly when that happens.
+    const names = new Set(LEVELS.map((level) => level.name));
+    for (const taught of Object.keys(COURSES)) {
+      expect(names, `${taught} teaches, and is not a level`).toContain(taught);
+    }
+  });
+
+  it('tells the yard the three things that landing there needs', () => {
+    // The last level and the only target in the game that will not wait for
+    // you: it has to be landed on, it reverses, and only one wagon counts.
+    // None of the three is a control and none can be worked out by looking,
+    // which is what a one-off is for.
+    const said = courseFor('The Yard').map((lesson) => lesson.text);
+    expect(said).toHaveLength(3);
+    expect(said.join(' | ')).toContain('land on the train');
+    expect(said.join(' | ')).toContain('changing directions');
+    expect(said.join(' | ')).toContain('marked car');
+
+    // And they are spread across the flight rather than arriving together.
+    const marks = courseFor('The Yard').map((lesson) => lesson.at);
+    expect(marks).toEqual([50, 100, 150]);
   });
 
   it('gives the belly it takes to fly each level', () => {
