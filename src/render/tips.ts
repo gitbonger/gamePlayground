@@ -148,7 +148,7 @@ export const COURSES: Record<string, readonly Lesson[]> = {
   // is straight ahead down half a kilometre of empty park -- which is exactly
   // what makes it the flight to be asked on. The cost of getting it wrong is
   // a few seconds of going the wrong way over some trees.
-  'Across the park': [
+  'Temető': [
     { at: 80, keys: ['→'], text: 'Try right!' },
     { at: 120, keys: ['←'], text: 'Try left!' },
   ],
@@ -157,7 +157,7 @@ export const COURSES: Record<string, readonly Lesson[]> = {
   // which is where the park thins out and the first roofs come up, and said
   // without a key because it is not a control -- it is the rule the next
   // eight hundred metres are flown under.
-  'Grabbing food': [
+  'Teleki tér': [
     { at: 30, keys: [], text: 'Fly through trees. Avoid buildings and vehicles.' },
     // Not an instruction at all: the market he was sent for, named as it
     // comes up. The panel has been telling him how to fly for two levels, so

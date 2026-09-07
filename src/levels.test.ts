@@ -27,9 +27,9 @@ import { begin, isOver, reply, type Turn } from './dialogue';
 import { project } from './world/geo';
 import HOME_MAP from './world/data/home.json';
 import { indexStreets, type Road } from './world/streets';
-import { footprintSamples, type Area } from './world/areas';
-import { pointInPolygon } from './world/polygon';
-import { defaultMapWorldOptions } from './world/from-map';
+import { footprintSamples } from './world/areas';
+import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
+import type { MapData } from './world/streets';
 
 describe('what the levels aim at', () => {
   it('names a described thing that exists', () => {
@@ -391,9 +391,12 @@ describe('what the levels aim at', () => {
     const flown = LEVELS.filter((level) => level.begins !== 'perched');
 
     // Under the roofline: the two halves of the errand, which is what makes
-    // them a flight *through* a park rather than a look down at one.
+    // them a flight *through* a park rather than a look down at one -- and
+    // Blaha, which is the same idea applied to a street. It comes straight
+    // out of the crows, and the answer to a crow is to be low, so it is
+    // released where the level wants the player to stay.
     const under = flown.filter((level) => level.release < defaultMapWorldOptions.maxHeight * 2);
-    expect(under.map((level) => level.name)).toEqual(['Across the park', 'Grabbing food']);
+    expect(under.map((level) => level.name)).toEqual(['Temető', 'Teleki tér', 'Blaha']);
 
     // Over the roofs but well short of a sky drop: the search, which is a run
     // of short hops round a district. High enough to see the next square,
@@ -411,7 +414,9 @@ describe('what the levels aim at', () => {
     // out beneath you.
     const dropped = flown.filter((level) => !under.includes(level) && !district.includes(level));
     for (const level of dropped) expect(level.release, level.name).toBe(100);
-    expect(dropped).toHaveLength(3);
+    // Two of them: the loft and the yard. It was three until Blaha came down
+    // out of the sky and into the street.
+    expect(dropped).toHaveLength(2);
 
     // And the district ones are all above what is built on it, which is the
     // other half of what "low" means here: under the sky drops, over the
@@ -424,21 +429,62 @@ describe('what the levels aim at', () => {
 
   it('releases nobody into a roof', () => {
     // A level released below the roofline has to be released over ground
-    // nothing is built on, and the generator builds nowhere green. The bird is
-    // raised clear of anything solid underneath it as a backstop, but a level
-    // that needs the backstop every time is a level released inside a
-    // building, which is not a difficulty -- it is a bug that reads as one.
+    // nothing is built on. The bird is raised clear of anything solid
+    // underneath it as a backstop, but a level that needs the backstop every
+    // time is a level released inside a building, which is not a difficulty
+    // -- it is a bug that reads as one.
+    //
+    // Asked of the buildings themselves rather than of the parks. This used
+    // to require the release point to be inside a green area, on the grounds
+    // that the generator builds nowhere green -- which was true and was a
+    // proxy, and the proxy stopped covering the rule the moment a level was
+    // released low over a *street*. A street is clear ground too: nothing is
+    // built on it, it is eleven metres wide, and being released into one is
+    // the whole idea of flying a level down at roof height. So the question
+    // is now the one the paragraph above actually asks.
     const centre = HOME_MAP.centre as [number, number];
-    const green = (HOME_MAP.areas ?? []) as Area[];
+    const city = buildLayoutFromMap(HOME_MAP as unknown as MapData, defaultMapWorldOptions);
 
     for (const level of LEVELS) {
       if (level.begins === 'perched') continue;
       if (level.release > defaultMapWorldOptions.maxHeight) continue;
 
       const at = project(level.start[0], level.start[1], centre);
-      const over = green.some((area) => pointInPolygon(at.x, at.z, area.points));
-      expect(over, `${level.name} at ${level.release} m`).toBe(true);
+      const inside = city.buildings.find((building) => {
+        // Into the building's own frame, since they are turned to their
+        // street rather than to the axes.
+        const dx = at.x - building.x;
+        const dz = at.z - building.z;
+        const cos = Math.cos(-(building.yaw ?? 0));
+        const sin = Math.sin(-(building.yaw ?? 0));
+        return (
+          Math.abs(dx * cos - dz * sin) <= building.width / 2 &&
+          Math.abs(dx * sin + dz * cos) <= building.depth / 2 &&
+          building.height >= level.release
+        );
+      });
+      expect(inside, `${level.name} at ${level.release} m`).toBeUndefined();
     }
+
+    // And the question has teeth. Every level start is pinned by two or three
+    // other rules in this file -- the crossing checkpoint, the distance to
+    // the target, the belly -- so moving one to prove this one fails proves
+    // one of those instead. Asked here of a point chosen to be inside a
+    // building: the middle of one, at half its height.
+    const solid = city.buildings.find((building) => building.height > 10)!;
+    const middle = { x: solid.x, z: solid.z };
+    const found = city.buildings.find((building) => {
+      const dx = middle.x - building.x;
+      const dz = middle.z - building.z;
+      const cos = Math.cos(-(building.yaw ?? 0));
+      const sin = Math.sin(-(building.yaw ?? 0));
+      return (
+        Math.abs(dx * cos - dz * sin) <= building.width / 2 &&
+        Math.abs(dx * sin + dz * cos) <= building.depth / 2 &&
+        building.height >= solid.height / 2
+      );
+    });
+    expect(found, 'a release in the middle of a building is caught').toBeDefined();
   });
 
   it('draws the finishing line square across the way to the target', () => {
@@ -608,7 +654,7 @@ describe('what the levels aim at', () => {
     // a district, in among the crows, or standing on a branch in the middle
     // of a conversation. Stated by every level, defaulted by none.
     const escorted = LEVELS.filter((level) => level.escort);
-    expect(escorted.map((level) => level.name)).toEqual(['Across the park', 'Grabbing food']);
+    expect(escorted.map((level) => level.name)).toEqual(['Temető', 'Teleki tér']);
     for (const level of LEVELS) expect(typeof level.escort, level.name).toBe('boolean');
   });
 
@@ -682,7 +728,7 @@ describe('what the levels aim at', () => {
     const eating = LEVELS.filter((level) => level.finish.kind === 'fed');
     expect(eating).toHaveLength(1);
     const level = eating[0]!;
-    expect(level.name).toBe('Grabbing food');
+    expect(level.name).toBe('Teleki tér');
     expect(level.target.kind).toBe('landmark');
     // Arrived at hungry: a level won by filling the belly has to begin with
     // it unfilled, or it is won on the tick it opens.

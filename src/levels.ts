@@ -542,7 +542,7 @@ export const LEVELS: readonly Level[] = [
     // level that reaches the hard part twenty seconds in asks the player to
     // learn flying and landing at the same time. Nine hundred metres of
     // flapping first, and the slab is still there when he arrives.
-    name: 'Across the park',
+    name: 'Temető',
     // Twenty metres the far side of the home tree, so that the tree is the
     // first thing in front of him: he is released facing his target, the
     // target is most of a kilometre west, and the tree stands between. Being
@@ -578,7 +578,7 @@ export const LEVELS: readonly Level[] = [
     finish: {
       kind: 'crossing',
       through: [47.49407, 19.088865],
-      opens: { level: 'Grabbing food' },
+      opens: { level: 'Teleki tér' },
     },
   },
   {
@@ -587,7 +587,7 @@ export const LEVELS: readonly Level[] = [
     // the last twenty. Crossing the line hands this over in the air -- so it
     // costs nothing while the flight is going well, and when it is not, this
     // is where the flight starts again.
-    name: 'Grabbing food',
+    name: 'Teleki tér',
     // On the line, which is where he was when this became his level.
     start: [47.49407, 19.088865],
     // Forty metres: about what a bird has under it after six hundred metres
@@ -700,14 +700,14 @@ export const LEVELS: readonly Level[] = [
     finish: {
       kind: 'crossing',
       through: [47.495543, 19.073687],
-      opens: { level: 'The Crossing' },
+      opens: { level: 'Blaha' },
     },
   },
   {
     // Straight on west, out of the crows and over the open ground: the level
     // before this one ends by flying through a line, and this one picks the
     // bird up on it.
-    name: 'The Crossing',
+    name: 'Blaha',
     // On that line, which is the whole point of a checkpoint -- dying just
     // after the crossing puts the bird back where it crossed rather than
     // somewhere it has never been. It used to start two hundred and fifty
@@ -716,8 +716,13 @@ export const LEVELS: readonly Level[] = [
     // here against the 286 m it was, so the approach is the same shot from a
     // slightly different bearing.
     start: [47.495543, 19.073687],
-    // High enough to see the whole approach and to reach it gliding.
-    release: 100,
+    // Twenty. Under the roofline rather than over it, which makes this the
+    // first level since the food that is flown down in the streets -- and it
+    // is flown, not glided: two hundred and ninety-one metres out from twenty
+    // metres up is a glide of 14.6:1 against a pigeon's best of 6.2:1, so the
+    // wings have to do the rest of it. That is the point of coming out of the
+    // crows at low level and staying there.
+    release: 20,
     health: 1,
     when: EVENING,
     escort: false,
@@ -733,7 +738,7 @@ export const LEVELS: readonly Level[] = [
     // moving, but now you have to pick the right one and stop on it.
     name: 'The Loft',
     // The same spot the crossing hands over at, though this is no longer the
-    // level it hands over *to* -- The Crossing sits between them now. It is
+    // level it hands over *to* -- Blaha sits between them now. It is
     // kept because it is a good place to start from and not because a rule
     // requires it: six hundred and twenty metres out from the loft, which at
     // a hundred metres up is the glide this level is built around.

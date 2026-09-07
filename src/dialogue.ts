@@ -153,12 +153,12 @@ export function reply(exchange: Exchange, choice: number): Exchange {
 export const HEADING_OUT: Turn = {
   them: 'Could you get some food from Teleki tér?',
   you: [
-    { text: 'Yes, sure!', then: { them: 'See you!', opens: 'Across the park' } },
+    { text: 'Yes, sure!', then: { them: 'See you!', opens: 'Temető' } },
     {
       text: 'I would watch the egg, while you go!',
       then: {
         them: "I'd rather stay",
-        you: [{ text: 'Okay.', opens: 'Across the park' }],
+        you: [{ text: 'Okay.', opens: 'Temető' }],
       },
     },
   ],
