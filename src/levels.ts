@@ -981,13 +981,13 @@ export const LEVELS: readonly Level[] = [
     finish: {
       kind: 'crossing',
       through: [47.499529, 19.083243],
-      opens: { level: 'The Yard' },
+      opens: { level: 'Keleti' },
     },
   },
   {
     // A wagon of a running train, which is the first target that will not
     // wait for you.
-    name: 'The Yard',
+    name: 'Keleti',
     // On the line Fiumei út hands over at, which is the checkpoint rule every
     // crossing in the game obeys: dying just after the line puts the bird
     // back where it crossed rather than somewhere it has never been.

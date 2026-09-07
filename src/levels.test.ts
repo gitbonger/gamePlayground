@@ -423,7 +423,7 @@ describe('what the levels aim at', () => {
       'Mátyás tér',
       'Jani Pali tér',
       'Népszínház',
-      'The Yard',
+      'Keleti',
       'The rescue',
     ]);
 
@@ -949,14 +949,14 @@ describe('what the levels aim at', () => {
     // you: it has to be landed on, it reverses, and only one wagon counts.
     // None of the three is a control and none can be worked out by looking,
     // which is what a one-off is for.
-    const said = courseFor('The Yard').map((lesson) => lesson.text);
+    const said = courseFor('Keleti').map((lesson) => lesson.text);
     expect(said).toHaveLength(3);
     expect(said.join(' | ')).toContain('land on the train');
     expect(said.join(' | ')).toContain('changing directions');
     expect(said.join(' | ')).toContain('marked car');
 
     // And they are spread across the flight rather than arriving together.
-    const marks = courseFor('The Yard').map((lesson) => lesson.at);
+    const marks = courseFor('Keleti').map((lesson) => lesson.at);
     expect(marks).toEqual([50, 100, 150]);
   });
 

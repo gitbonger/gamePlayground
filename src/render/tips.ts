@@ -211,7 +211,7 @@ export const COURSES: Record<string, readonly Lesson[]> = {
   // The last level, and the only target in the game that will not wait for
   // you. Three things, and none of them is a control: they are the rules of
   // the one landing that is different from every other landing.
-  'The Yard': [
+  'Keleti': [
     // Spoken: there is no version of this level that is finished on the
     // ground beside the train.
     { at: 50, keys: [], text: 'You need to land on the train!', spoken: true },

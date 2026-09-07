@@ -185,7 +185,7 @@ describe('handing out the flying lessons', () => {
     // the yard was given three lessons of its own -- and then the test was
     // checking that nothing came back from a course that was no longer
     // empty, which is a different and much weaker thing.
-    tutor.teach(courseFor('The Yard'), 0);
+    tutor.teach(courseFor('Keleti'), 0);
     for (const travelled of [20, 100, 900]) {
       const said = tutor.update({ flown: travelled, toGo: 9999 }, 1 / 60);
       expect(said?.text, `${travelled} m`).not.toBe('up');
