@@ -122,6 +122,27 @@ export const ARTICULATION = 0.25;
  */
 export type Stock = 'wagon' | 'carriage' | 'tram';
 
+/**
+ * What a train does when it runs out of line.
+ *
+ * A yard train shuttles: it reverses at the buffers and works back, which is
+ * what shunting is and what a locomotive at one end is for. A tram does not.
+ * A tram is a *service* -- it runs one way down a line and that is the whole
+ * of its job -- and a shuttling tram is wrong twice over: it spends half its
+ * life on the wrong side of a double track, and it does it by reversing in
+ * the middle of a street, which no tram has ever done.
+ *
+ * So a tram recycles instead. It reaches the end of the route, goes, and
+ * another comes on at the beginning. It is openly a cheat -- the same vehicle
+ * reappearing, not a new one -- and the ends of these routes are at the edge
+ * of the map where there is nobody to see it.
+ */
+export type Turnaround = 'shuttle' | 'recycle';
+
+/** Which of those a given sort of stock does. */
+export const stockTurnaround = (stock: Stock): Turnaround =>
+  stock === 'tram' ? 'recycle' : 'shuttle';
+
 /** The length and width of one vehicle of a given sort. */
 export const stockSize = (stock: Stock): { length: number; width: number } =>
   stock === 'carriage'
@@ -199,6 +220,15 @@ export interface Train {
    * because the next tick asked for one fewer car than the last.
    */
   cars: number;
+  /**
+   * What it does at the end of the line.
+   *
+   * Written down rather than worked out from the stock at the point of use.
+   * The stock is what decides it today, but "what this train does when it
+   * runs out of line" is a fact about the train, and a caller that re-derived
+   * it would be a second place to keep in step with the first.
+   */
+  turnaround: Turnaround;
   vehicles: Vehicle[];
 }
 
@@ -238,6 +268,49 @@ export function shuttle(
     } else break;
   }
   return { along: at, direction: way };
+}
+
+/**
+ * Where a train has got to when it runs off the end and comes round again.
+ *
+ * The other thing a train can do at the end of a line, and the one a tram
+ * does. It keeps its direction for ever -- that is the entire point, since
+ * the direction is the one that keeps it on the right-hand track -- and where
+ * `shuttle` reflects at the ends, this wraps.
+ *
+ * The band it wraps over is `consist` to `lineLength`, which is the run over
+ * which the whole rake is on the rails; `layOutTrain` refuses anything else,
+ * so a tram cannot slide off the end a car at a time and has to go all at
+ * once. That is the visible cost of the cheat.
+ *
+ * It says whether it wrapped, because two things upstream have to know. The
+ * frame between two ticks is drawn by interpolating along the line, and
+ * interpolating across a wrap sweeps the tram backwards over the whole city
+ * for one frame; and anything standing on a tram is carried by the difference
+ * between where its vehicle was and where it is, which across a wrap would
+ * fling a pigeon the length of the route. Both want the same answer -- that
+ * this was not a movement -- and neither can tell without being told.
+ */
+export function recycle(
+  lineLength: number,
+  consist: number,
+  along: number,
+  direction: number,
+  step: number,
+): { along: number; wrapped: boolean } {
+  const band = lineLength - consist;
+  if (band <= 0) return { along, wrapped: false };
+
+  const at = along + direction * step;
+  // Modulo rather than one subtraction, so a step longer than the route --
+  // which the speed slider in the debug panel can ask for -- comes out
+  // somewhere on the line rather than somewhere off it.
+  const round = (((at - consist) % band) + band) % band;
+  const put = consist + round;
+  // Compared against the step rather than against the ends: a tram that
+  // wrapped moved by the width of the route in a tick, and nothing that ran
+  // normally moved by more than its step.
+  return { along: put, wrapped: Math.abs(put - along) > Math.abs(step) + 1e-9 };
 }
 
 /**
@@ -505,8 +578,30 @@ export function traceRoute(
    * that nothing can be put on.
    */
   avoid?: ReadonlySet<Rail>,
+  /**
+   * Which way each way may be travelled: +1 as drawn, -1 against it.
+   *
+   * Given, the trace is one-way, and the points come back in the order they
+   * are travelled rather than in the order the seed happened to be drawn.
+   *
+   * This is what stops a route weaving between the two tracks of a pair.
+   * Without it, the trace follows the straightest continuation, and at a
+   * junction the straightest continuation is quite often the *other* track --
+   * so a route is track one for a kilometre, track two for the next, and
+   * back. That does not show while the route is only a shape to run along,
+   * and it is fatal the moment the route has a side of the road to be on:
+   * measured over this map, the two longest routes ran beside each other for
+   * six hundred and fifty samples and swapped sides halfway, 318 to 332. No
+   * single direction is right for a line like that, because it is not a line,
+   * it is two half-lines spliced.
+   */
+  oneWay?: ReadonlyMap<Rail, number>,
 ): Route {
   const points = from.points.map((point) => [...point] as Point2);
+  // Laid in the order it is travelled, so that everything downstream -- the
+  // chainage, the direction, where a tram comes on and where it goes off --
+  // is in one sense and not in whichever sense the way was drawn.
+  if (oneWay && oneWay.get(from) === -1) points.reverse();
   if (points.length < 2) return { points, over: [from] };
 
   const used = new Set<Rail>([from]);
@@ -525,6 +620,17 @@ export function traceRoute(
       for (const end of network.at(tip)) {
         // Same sort of line only, so nothing finds its way onto a tramway.
         if (end.rail.kind !== from.kind || used.has(end.rail) || avoid?.has(end.rail)) continue;
+        if (oneWay) {
+          // Leaving this node along that way means travelling it head to
+          // tail when its head is the end that is here, and tail to head
+          // when it is not. Growing the far end of the route we have to be
+          // able to go that way; growing the near end we have to be able to
+          // have come from it, which is the same test with the sign turned
+          // over. Either way, the oncoming track is refused, because at the
+          // node between them it runs towards us.
+          const sense = end.fromHead ? 1 : -1;
+          if (oneWay.get(end.rail) !== (forward ? sense : -sense)) continue;
+        }
         const on = end.rail.points as readonly Point2[];
         const leaving = end.fromHead
           ? heading(on[0]!, on[1]!)

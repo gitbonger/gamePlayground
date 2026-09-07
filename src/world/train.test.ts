@@ -3,6 +3,7 @@ import {
   carriedBy,
   carryPassengers,
   chainageOf,
+  recycle,
   shuttle,
   turnedBetween,
   consistLength,
@@ -294,6 +295,76 @@ describe('running along the line', () => {
     expect(after[0]!.kind).toBe('engine');
     // The engine leads the leading coupling whichever way it happens to run.
     expect(after[0]!.x).toBeGreaterThan(after[1]!.x);
+  });
+});
+
+describe('running off the end and coming round again', () => {
+  const LINE = 400;
+  const CONSIST = 100;
+  /** The run over which the whole rake is on the rails: what it wraps over. */
+  const BAND = LINE - CONSIST;
+
+  it('runs on without turning round', () => {
+    // The difference from a shuttle, and the reason the tramway needed one.
+    // A tram's direction is what keeps it on the correct track of a pair, so
+    // it is the one thing about a tram that must never change: reversed at
+    // the end of the line it comes back down the same rails the wrong way,
+    // which is two trams abreast going one way as seen from the street.
+    expect(recycle(LINE, CONSIST, 200, 1, 6).along).toBe(206);
+    expect(recycle(LINE, CONSIST, 200, -1, 6).along).toBe(194);
+    expect(recycle(LINE, CONSIST, 200, 1, 6).wrapped).toBe(false);
+  });
+
+  it('comes back on at the beginning when it runs off the end', () => {
+    const off = recycle(LINE, CONSIST, LINE - 2, 1, 6);
+    expect(off.along).toBeCloseTo(CONSIST + 4, 6);
+    expect(off.wrapped).toBe(true);
+  });
+
+  it('comes back on at the far end when it is running the other way', () => {
+    const off = recycle(LINE, CONSIST, CONSIST + 2, -1, 6);
+    expect(off.along).toBeCloseTo(LINE - 4, 6);
+    expect(off.wrapped).toBe(true);
+  });
+
+  it('says so when it wrapped, because two things upstream cannot tell', () => {
+    // A wrap is the one movement in the game that is not a movement. The
+    // frame drawn between two ticks interpolates along the line, and across
+    // a wrap that sweeps the tram backwards over the whole city; anything
+    // standing on it is carried by the difference between where its vehicle
+    // was and where it is, which across a wrap flings a pigeon the length of
+    // the route. Neither can work it out from the number alone -- a tram at
+    // 106 might have run there from 100 or wrapped there from 394.
+    expect(recycle(LINE, CONSIST, 300, 1, 6).wrapped).toBe(false);
+    expect(recycle(LINE, CONSIST, LINE, 1, 6).wrapped).toBe(true);
+  });
+
+  it('lands somewhere on the line however big the step', () => {
+    // The debug panel has a speed slider, and a step longer than the route
+    // subtracted once is still off the end of it.
+    const far = recycle(LINE, CONSIST, 150, 1, BAND * 7 + 30);
+    expect(far.along).toBeGreaterThanOrEqual(CONSIST);
+    expect(far.along).toBeLessThanOrEqual(LINE);
+    expect(far.along).toBeCloseTo(180, 6);
+  });
+
+  it('leaves a train alone on a line too short to hold it', () => {
+    expect(recycle(80, CONSIST, 90, 1, 6)).toEqual({ along: 90, wrapped: false });
+  });
+
+  it('keeps its spacing for ever, which is what makes it a service', () => {
+    // Three trams evenly spaced round the ring, run for six circuits. They
+    // all go at one speed and each wraps on its own, so the pattern has to
+    // come back exactly -- otherwise a headway is only true until the first
+    // one reaches the end.
+    const start = [0, 1, 2].map((i) => CONSIST + (BAND / 3) * i);
+    let at = [...start];
+    for (let tick = 0; tick < 6 * BAND; tick += 1)
+      at = at.map((along) => recycle(LINE, CONSIST, along, 1, 1).along);
+
+    const round = at.map((along) => along - CONSIST).sort((a, b) => a - b);
+    const gaps = round.map((along, i) => (i === 0 ? along + BAND - round[2]! : along - round[i - 1]!));
+    for (const gap of gaps) expect(gap).toBeCloseTo(BAND / 3, 6);
   });
 });
 

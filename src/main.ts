@@ -104,7 +104,9 @@ import {
   moveTrainBoxes,
   onVehicle,
   rakeNear,
+  recycle,
   shuttle,
+  vehicleCount,
   stackTop,
   stockIsHauled,
   stockTop,
@@ -266,11 +268,22 @@ const layout = buildLayoutFromMap(map, {
   // And then the rest of the network, which nothing in the game names or
   // cares about. A city with a hundred and thirty kilometres of tramway and
   // three trams on it reads as a model of a city; these are what make it a
-  // working one. They go wherever there is a line long enough, one to a
-  // route, and nobody decides where.
+  // working one. They go wherever there is a line long enough, and nobody
+  // decides where.
+  //
+  // The headway is the dial on how alive the city looks, and the only thing
+  // in here that costs anything: ninety seconds over the hundred and eighteen
+  // kilometres of tram route on this map comes to about a hundred and sixteen
+  // trams, where a hundred and twenty seconds would be eighty-three. Stepping
+  // them is nothing -- 250 trams is 3 us of a tick that has 8300 -- and
+  // laying them out is 75 us at thirty times a second. What it really buys is
+  // paid in draw calls, four to a tram, for the handful in shot at any moment.
   fill: [
-    { stock: 'tram', cars: 4, speed: 10, minRoute: 320, most: 30 },
-    { stock: 'carriage', cars: 5, speed: 14, minRoute: 1200, most: 8 },
+    { stock: 'tram', cars: 4, speed: 10, minRoute: 320, most: 30, headway: 90 },
+    // One to a route: a carriage train shuttles, so a second on the same
+    // rails would be met head-on. The headway is here because the shape
+    // requires it and is not read.
+    { stock: 'carriage', cars: 5, speed: 14, minRoute: 1200, most: 8, headway: 0 },
   ],
 });
 /**
@@ -914,7 +927,12 @@ function carrierOf(train: number, vehicle: number): number {
   // which wagon it is on drifts off the wagon.
   for (let i = 0; i < train; i += 1) {
     const each = layout.trains[i];
-    base += each ? each.cars + 1 : 0;
+    // A rake is its engine and its cars -- except a tram's, which has no
+    // engine, every section of it being powered. Counted as though it had
+    // one, every tag after the first tram pointed at the vehicle before the
+    // one it meant, and a pigeon riding the third tram on the map was carried
+    // by a tram three hundred metres away.
+    base += each ? vehicleCount(each.cars, each.stock) : 0;
   }
   return base + vehicle;
 }
@@ -1538,6 +1556,16 @@ const drawnVehicles = layout.trains.map((train) =>
 );
 /** And which of them were near enough to be worth it, this tick. */
 const near = layout.trains.map(() => false);
+/**
+ * And which of them went off the end of the line and came round again.
+ *
+ * Cleared at the top of every tick. A wrap is the one movement in the game
+ * that is not a movement, and two things have to know: the frame drawn
+ * between two ticks, which would otherwise interpolate the tram backwards
+ * across the whole city, and whatever is riding on it, which is carried by
+ * the difference between where its vehicle was and where it is.
+ */
+const wrapped = layout.trains.map(() => false);
 
 /**
  * Every vehicle on the map, flattened. The index is its carrier tag.
@@ -1578,6 +1606,7 @@ function moveTrains(dt: number) {
   rememberWhereTrainsWere();
   let tagged = 0;
   near.fill(false);
+  wrapped.fill(false);
 
   layout.trains.forEach((train, index) => {
     previousAlong[index] = train.along;
@@ -1586,21 +1615,37 @@ function moveTrains(dt: number) {
     // while your back was turned would be in the wrong place when you came
     // back. It is also the cheap half -- a step along a line and a reflection
     // at the ends -- so there is nothing to gain by skipping it.
-    const run = shuttle(
-      lineLength(train.line.points),
-      consistLength(train.cars, train.stock),
-      train.along,
-      train.direction,
-      train.speed * dt,
-    );
-    train.along = run.along;
-    train.direction = run.direction;
+    const consist = consistLength(train.cars, train.stock);
+    const line = lineLength(train.line.points);
+    if (train.turnaround === 'recycle') {
+      const run = recycle(line, consist, train.along, train.direction, train.speed * dt);
+      train.along = run.along;
+      // A wrap is not a movement, and everything downstream that works from
+      // the difference between two ticks has to be told so. Setting the
+      // previous position to the new one says it once, for all of them: the
+      // frame between the ticks is drawn where the tram now is rather than
+      // swept backwards across the city, and the copy below is taken after
+      // the vehicles have been moved rather than before, so nothing standing
+      // on the tram is carried the length of the route with it.
+      //
+      // Which means a pigeon on the roof of a tram that reaches the end of
+      // the line is left standing in the air, and falls. That is the right
+      // answer: the tram it was on has gone.
+      if (run.wrapped) {
+        wrapped[index] = true;
+        previousAlong[index] = run.along;
+      }
+    } else {
+      const run = shuttle(line, consist, train.along, train.direction, train.speed * dt);
+      train.along = run.along;
+      train.direction = run.direction;
+    }
 
     // The tags are handed out for every train in turn whatever happens next,
     // so that skipping one does not renumber the rest -- a resident's idea of
     // which wagon it is standing on is one of these numbers.
     const base = tagged;
-    tagged += train.cars + 1;
+    tagged += vehicleCount(train.cars, train.stock);
 
     // And what it looks like, which is only worth working out near the bird.
     // Laying a rake out in world coordinates and boxing it for collision is
@@ -1627,6 +1672,23 @@ function moveTrains(dt: number) {
     moveTrainBoxes(boxes, train.vehicles, base, train.speed);
     fields.push(createColliderField(boxes));
   });
+
+  // A tram that wrapped is put back into the "where it was" copy exactly as
+  // it now stands, so the difference across this tick comes to nothing and
+  // nothing riding it is dragged the length of the route behind it. Done here
+  // rather than in the loop because the loop has two places a rake can be
+  // laid out in and this is true of both.
+  for (const [index, went] of wrapped.entries()) {
+    if (!went) continue;
+    const base = carrierOf(index, 0);
+    layout.trains[index]?.vehicles.forEach((vehicle, v) => {
+      const kept = wasAt[base + v];
+      if (!kept) return;
+      kept.x = vehicle.x;
+      kept.z = vehicle.z;
+      kept.yaw = vehicle.yaw;
+    });
+  }
 
   // Anything standing on a wagon goes where the wagon goes.
   carryPassengers(

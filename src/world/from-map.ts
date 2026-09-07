@@ -51,10 +51,12 @@ import {
   pointAlong,
   railNetwork,
   stockRuns,
+  stockTurnaround,
   traceRoute,
   type Train,
   type Stock,
 } from './train';
+import { departures, keepRight } from './service';
 import type { Point } from './geo';
 
 export interface MapWorldOptions {
@@ -233,8 +235,25 @@ export interface FillSpec {
   speed: number;
   /** Only take a route at least this long, in metres. */
   minRoute: number;
-  /** How many to place at most. */
+  /** How many routes to put a service on at most. */
   most: number;
+  /**
+   * Seconds between one tram and the next on the same route.
+   *
+   * What turns a route with a tram on it into a line with a service on it.
+   * Before this there was one tram to a route however long the route was, so
+   * a player standing on a street watched one go by and then waited for it to
+   * run to the end of the line and all the way back -- on the longest route
+   * on this map, eight and a half kilometres, that is a wait of a
+   * quarter of an hour.
+   *
+   * Required, with no default, because it is what decides how many trams
+   * exist: at ten metres a second over the hundred and eighteen kilometres of
+   * route on this map, ninety seconds is a hundred and sixteen trams and two
+   * minutes is eighty-three. A default would be that number chosen by
+   * whoever forgot to pass it.
+   */
+  headway: number;
 }
 
 export interface MapWorld extends CityLayout {
@@ -819,6 +838,7 @@ export function buildLayoutFromMap(
       speed: spec.speed ?? 6,
       stock,
       cars: spec.cars,
+      turnaround: stockTurnaround(stock),
       vehicles,
     });
   }
@@ -832,7 +852,21 @@ export function buildLayoutFromMap(
   for (const want of options.fill ?? []) {
     const runs = stockRuns(want.stock);
     const length = consistLength(want.cars, want.stock);
-    const spread = 0.618033988749895;
+
+    // Which way each *track* runs, before any route is traced over it.
+    //
+    // The track and not the route, which is the whole of the fix. A traced
+    // route follows the straightest continuation, and at a junction the
+    // straightest continuation is often the other track of the pair -- so a
+    // route weaves, and there is no direction that is right for the whole of
+    // it. A way in the map is one physical track and stays one, so it is the
+    // thing that can be given a side of the road; the routes are then traced
+    // along those directions rather than across them.
+    const ways = (map.rails ?? []).filter((rail) => rail.kind === runs);
+    const handed = keepRight(ways.map((way) => way.points));
+    const oneWay = new Map<Rail, number>(
+      ways.map((way, index) => [way, handed[index]?.direction ?? 1]),
+    );
 
     const routes: { line: Rail; over: Rail[]; run: number }[] = [];
     for (const rail of map.rails ?? []) {
@@ -853,7 +887,7 @@ export function buildLayoutFromMap(
       // They pass through each other where they meet; nothing here models a
       // collision, and a tram reversing in a street looks far worse than two
       // of them occupying it.
-      const route = traceRoute(network, rail);
+      const route = traceRoute(network, rail, undefined, oneWay);
       const run = lineLength(route.points);
       if (run < Math.max(want.minRoute, length * 2)) continue;
       // Claimed as they are found, so a route is only offered once.
@@ -868,20 +902,40 @@ export function buildLayoutFromMap(
     });
 
     routes.slice(0, want.most).forEach((route, index) => {
-      const along = length + (route.run - length) * ((index * spread) % 1);
-      const vehicles = layOutTrain(route.line, along, want.cars, want.stock);
-      if (!vehicles.length) return;
-      trains.push({
-        line: route.line,
-        along,
-        // Alternating, so the network has traffic both ways rather than a
-        // parade all going the same direction.
-        direction: index % 2 === 0 ? 1 : -1,
-        speed: want.speed,
-        stock: want.stock,
-        cars: want.cars,
-        vehicles,
-      });
+      // Several to a route, spaced evenly round it -- but only for stock
+      // that recycles. A shuttling train cannot share a route with another:
+      // it reverses at the end and works back down the line it came up, so
+      // the second one it met would be head-on. Those get one apiece, put at
+      // a different fraction of each route so eight of them are not eight
+      // trains standing at eight buffer stops.
+      //
+      // Trams hold their spacing for ever, which is what makes this a
+      // service rather than a queue: they all run at one speed, and the one
+      // that wraps rejoins the ring exactly where the ring has its opening.
+      const spread = 0.618033988749895;
+      const stops =
+        stockTurnaround(want.stock) === 'recycle'
+          ? departures(route.run, length, want.speed * want.headway)
+          : [length + (route.run - length) * ((index * spread) % 1)];
+
+      for (const along of stops) {
+        const vehicles = layOutTrain(route.line, along, want.cars, want.stock);
+        if (!vehicles.length) continue;
+        trains.push({
+          line: route.line,
+          along,
+          // Always up the route, because the route was traced in the
+          // direction it is travelled: the side of the road was settled on
+          // the track, one level down, and by the time there is a line here
+          // there is nothing left to decide.
+          direction: 1,
+          speed: want.speed,
+          stock: want.stock,
+          cars: want.cars,
+          turnaround: stockTurnaround(want.stock),
+          vehicles,
+        });
+      }
     });
   }
 

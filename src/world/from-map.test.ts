@@ -4,7 +4,16 @@ import { CAR, nestOn, penthouseOf, pointOn, PUMP, terraceOf, type Landmark } fro
 import { indexStreets, type MapData, type Rail, type Road } from './streets';
 import { footprintSamples, type Area } from './areas';
 import { distanceToEdges, pointInPolygon } from './polygon';
-import { consistLength, layOutTrain, lineLength, shuttle, trainBoxes, WAGON } from './train';
+import {
+  consistLength,
+  layOutTrain,
+  lineLength,
+  pointAlong,
+  shuttle,
+  trainBoxes,
+  WAGON,
+} from './train';
+import homeMap from './data/home.json';
 import { combineColliders, createColliderField, worldBounds } from '../sim/collision';
 import { createBird, defaultParams, neutralControls, step } from '../sim/flight';
 import { vec } from '../sim/math3';
@@ -319,7 +328,10 @@ describe('filling the network with trams', () => {
   const filled = () =>
     buildLayoutFromMap(mapOf(BLOCK, [], [TRUNK_A, TRUNK_B, BRANCH]), {
       ...defaultMapWorldOptions,
-      fill: [{ stock: 'tram', cars: 2, speed: 10, minRoute: 320, most: 4 }],
+      // A headway longer than any of these routes, so each comes out with
+      // one tram on it: these two tests are about which routes are found,
+      // and how many trams go on each is the business of another.
+      fill: [{ stock: 'tram', cars: 2, speed: 10, minRoute: 320, most: 4, headway: 600 }],
     }).trains ?? [];
 
   it('runs a second tram through the line the first one is on', () => {
@@ -955,6 +967,168 @@ describe('leaving green space alone', () => {
   });
 });
 
+
+describe('a tram service on the real map', () => {
+  /**
+   * The whole map, because this is a claim about the map and not about a
+   * shape invented to make the claim come true. Built once: it is the most
+   * expensive thing any test in this file does.
+   */
+  const city = buildLayoutFromMap(homeMap as unknown as MapData, {
+    ...defaultMapWorldOptions,
+    trains: [],
+    fill: [{ stock: 'tram', cars: 4, speed: 10, minRoute: 320, most: 30, headway: 90 }],
+  });
+  const trams = city.trains.filter((train) => train.stock === 'tram');
+  const routes = [...new Set(trams.map((tram) => tram.line))];
+
+  /**
+   * How far each pair of routes runs abreast, and whether it runs the same
+   * way while it does.
+   *
+   * Every two metres, which is as fine as `keepRight` itself has to look and
+   * for the same reason: the tracks of a pair are three metres apart and a
+   * look on one has to land beside a look on the other rather than up the
+   * line from it, or the two are not abeam and nothing is counted at all.
+   *
+   * Measured from the lower-numbered route of each pair only, so a stretch of
+   * street is counted once rather than once from each side.
+   */
+  const abreast = (() => {
+    const STEP = 2;
+    const BAND = 9;
+    interface Look {
+      route: number;
+      x: number;
+      z: number;
+      dx: number;
+      dz: number;
+    }
+    const looks: Look[] = [];
+    routes.forEach((line, route) => {
+      const run = lineLength(line.points);
+      for (let along = 0; along <= run; along += STEP) {
+        const here = pointAlong(line.points, along);
+        const ahead = pointAlong(line.points, Math.min(along + 1, run));
+        if (!here || !ahead) continue;
+        const dx = ahead.x - here.x;
+        const dz = ahead.z - here.z;
+        const span = Math.hypot(dx, dz);
+        if (span < 1e-6) continue;
+        looks.push({ route, x: here.x, z: here.z, dx: dx / span, dz: dz / span });
+      }
+    });
+
+    const cells = new Map<string, Look[]>();
+    const key = (x: number, z: number) => `${Math.floor(x / BAND)},${Math.floor(z / BAND)}`;
+    for (const look of looks) {
+      const cell = cells.get(key(look.x, look.z));
+      if (cell) cell.push(look);
+      else cells.set(key(look.x, look.z), [look]);
+    }
+
+    const together = new Map<string, { same: number; opposed: number }>();
+    for (const look of looks) {
+      let best: { gap: number; along: number; other: number } | null = null;
+      for (let cx = -BAND; cx <= BAND; cx += BAND)
+        for (let cz = -BAND; cz <= BAND; cz += BAND)
+          for (const other of cells.get(key(look.x + cx, look.z + cz)) ?? []) {
+            if (other.route <= look.route) continue;
+            const ax = other.x - look.x;
+            const az = other.z - look.z;
+            const gap = Math.hypot(ax, az);
+            // Nearer than two metres is the same rails under another route's
+            // name, which is allowed and is not a pair of tracks.
+            if (gap < 2 || gap > BAND) continue;
+            const along = look.dx * other.dx + look.dz * other.dz;
+            if (Math.abs(along) < 0.9) continue;
+            // Beside it and not in front of it: two ways of one line meeting
+            // end to end are parallel and near, and are not a pair either.
+            if (Math.abs((ax * look.dx + az * look.dz) / gap) > 0.35) continue;
+            if (best && best.gap <= gap) continue;
+            best = { gap, along, other: other.route };
+          }
+      if (!best) continue;
+      const at = `${look.route}:${best.other}`;
+      const run = together.get(at) ?? { same: 0, opposed: 0 };
+      if (best.along > 0) run.same += STEP;
+      else run.opposed += STEP;
+      together.set(at, run);
+    }
+    return [...together.values()];
+  })();
+
+  it('never runs two trams the same way down one street', () => {
+    // The bug, as it looks from the cockpit: two trams abreast on the two
+    // tracks of a street, both going the same way.
+    //
+    // The direction used to come from a route's index in a list, which is
+    // not related to the geometry at all -- measured over this map, sixty-
+    // nine of the hundred and thirty-nine parallel pairs came out agreeing,
+    // and the two longest routes ran together the same way for four
+    // kilometres nine hundred.
+    //
+    // What is left is junctions. Where two tracks converge to cross or to
+    // merge they are briefly beside each other pointing the same way, which
+    // is not two tracks of a street and is nothing anyone can see from a
+    // pigeon. A street is hundreds of metres; the bar is a hundred and
+    // fifty, and the longest that survives is a hundred.
+    const worst = Math.max(...abreast.map((run) => run.same));
+    expect(worst, 'metres of one street run the same way').toBeLessThan(150);
+  });
+
+  it('finds the pairs of tracks at all, so the test above can fail', () => {
+    // Without this, a rule that paired nothing with anything would sail
+    // through the one above: no pairs, no disagreements, no failures. This
+    // is the same measurement asked the other way round.
+    const paired = abreast.reduce((run, pair) => run + pair.opposed, 0);
+    expect(paired, 'metres of double track running opposite ways').toBeGreaterThan(5000);
+  });
+
+  it('runs a service on the long routes rather than one tram each', () => {
+    // A player standing in a street watched one tram go by and then waited
+    // for it to reach the end of the line and come all the way back: on the
+    // longest route here, eight and a half kilometres, a quarter of an hour.
+    const perRoute = new Map<unknown, number>();
+    for (const tram of trams) perRoute.set(tram.line, (perRoute.get(tram.line) ?? 0) + 1);
+
+    expect(Math.max(...perRoute.values()), 'the longest route carries several').toBeGreaterThan(5);
+    expect(trams.length).toBeGreaterThan(perRoute.size * 2);
+  });
+
+  it('sends every tram off to come round again, and never to reverse', () => {
+    // A tram that shuttles is wrong twice over: it spends half its life on
+    // the wrong side of a double track, and it gets there by reversing in
+    // the middle of a street.
+    expect(trams.every((tram) => tram.turnaround === 'recycle')).toBe(true);
+  });
+});
+
+describe('filling a railway rather than a tramway', () => {
+  const SIDINGS: Rail[] = [
+    { kind: 'rail', width: 8, points: [[-900, 112], [900, 112]] },
+    { kind: 'rail', width: 8, points: [[-900, 120], [900, 120]] },
+  ];
+
+  it('leaves the heavy railway shunting up and down, one train to a line', () => {
+    // Not everything on rails is a service. A yard train reverses at the
+    // buffers and works back, which is what shunting is and what the
+    // locomotive on one end is for -- and it is why a second train may not
+    // be put on the same line behind it, however long the line: the two
+    // would meet head-on the first time either turned round.
+    const world = buildLayoutFromMap(mapOf(BLOCK, [], SIDINGS), {
+      ...defaultMapWorldOptions,
+      fill: [{ stock: 'carriage', cars: 3, speed: 14, minRoute: 1200, most: 8, headway: 30 }],
+    });
+
+    expect(world.trains).toHaveLength(2);
+    expect(world.trains.every((train) => train.turnaround === 'shuttle')).toBe(true);
+    // A headway of thirty seconds at fourteen metres a second would be a
+    // train every 420 m on an 1800 m line, if this listened to it. It must
+    // not.
+    expect(new Set(world.trains.map((train) => train.line)).size).toBe(2);
+  });
+});
 
 describe('two trains in one yard', () => {
   /** Three parallel sidings, as a yard has. */
