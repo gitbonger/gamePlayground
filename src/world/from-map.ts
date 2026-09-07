@@ -15,7 +15,13 @@
  */
 
 import { aabb, turnedBox, type Box } from '../sim/collision';
-import { indexStreets, type MapData, type Rail, type StreetIndex } from './streets';
+import {
+  bakedBuildings,
+  indexStreets,
+  type MapData,
+  type Rail,
+  type StreetIndex,
+} from './streets';
 import { footprintSamples, indexAreas, type AreaIndex } from './areas';
 import { extractBlocks, type Block } from './blocks';
 import {
@@ -459,6 +465,98 @@ export function buildLayoutFromMap(
   const gardens: Block[] = [];
   const bare: Block[] = [];
 
+  /**
+   * The real buildings, where the map has any.
+   *
+   * The generator's whole job was to invent a city that looked like one, and
+   * it did it well: frontages along the block edges, mitred at the corners,
+   * with a courtyard behind. What it could not do is be *this* city. Every
+   * house it placed was a plausible house in a plausible place, and the whole
+   * came out as a European district that could have been anywhere.
+   *
+   * With the outlines baked into the map there is nothing left to invent. The
+   * shape a building arrives in is the shape the game already used --
+   * `{x, z, width, depth, yaw}` -- so nothing downstream knows the difference:
+   * the same collision boxes, the same instanced mesh, the same roofs.
+   */
+  const fromMap = bakedBuildings(map);
+  for (const each of fromMap) {
+    const footprint = footprintSamples(each.x, each.z, each.width, each.depth, each.yaw, 4);
+
+    // The story wins. A described thing -- the loft, the home tree, a square
+    // with a name -- keeps its ground against a real building exactly as it
+    // kept it against an invented one, because a level that names a building
+    // cannot have a block of flats standing through it.
+    if (footprint.some(([sx, sz]) => reserved(sx, sz))) continue;
+
+    // And nothing across a railway. There is little of this in real data --
+    // it is mostly platform canopies and signal boxes -- but the goods yard
+    // has to stay a goods yard.
+    if (onTrack(each.x, each.z, each.width, each.depth, each.yaw)) continue;
+
+    // A height where the building gives one, and otherwise the range the
+    // generator used: about half of them say, and a district where only the
+    // ones that say are tall would read as half-finished.
+    const height =
+      each.height ?? options.minHeight + rand() * (options.maxHeight - options.minHeight);
+
+    buildings.push({ x: each.x, z: each.z, width: each.width, depth: each.depth, height, yaw: each.yaw });
+    boxes.push(turnedBox(each.x, each.z, each.width, height, each.depth, each.yaw));
+  }
+
+  /**
+   * Whether any building stands inside a block.
+   *
+   * Only needed where the map supplied them: the generator knows what it built
+   * in a block because it counts what it pushed, and these were all placed
+   * before any block was looked at.
+   *
+   * Asked of the buildings rather than of the ground, which is the whole
+   * point. Sampling the ground says "nothing here" for the middle of every
+   * courtyard block in the district -- the middle of one is a courtyard --
+   * and the block would be planted as though it were an empty plot. The first
+   * version of this did exactly that and put fourteen thousand trees on the
+   * map, most of them inside people's houses.
+   *
+   * Gridded by the block's own bounds, so each block looks at the few dozen
+   * buildings near it rather than at all thirteen thousand.
+   */
+  const blockIsBuilt = (() => {
+    if (fromMap.length === 0) return () => false;
+    const cell = 60;
+    const grid = new Map<number, number[]>();
+    const key = (cx: number, cz: number) => cx * 100003 + cz;
+    buildings.forEach((building, i) => {
+      const cx = Math.floor(building.x / cell);
+      const cz = Math.floor(building.z / cell);
+      const bucket = grid.get(key(cx, cz));
+      if (bucket) bucket.push(i);
+      else grid.set(key(cx, cz), [i]);
+    });
+
+    return (ring: readonly [number, number][]) => {
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      for (const point of ring) {
+        minX = Math.min(minX, point[0]!);
+        maxX = Math.max(maxX, point[0]!);
+        minZ = Math.min(minZ, point[1]!);
+        maxZ = Math.max(maxZ, point[1]!);
+      }
+      for (let cx = Math.floor(minX / cell); cx <= Math.floor(maxX / cell); cx += 1) {
+        for (let cz = Math.floor(minZ / cell); cz <= Math.floor(maxZ / cell); cz += 1) {
+          for (const i of grid.get(key(cx, cz)) ?? []) {
+            const building = buildings[i]!;
+            if (pointInPolygon(building.x, building.z, ring)) return true;
+          }
+        }
+      }
+      return false;
+    };
+  })();
+
   const blocks = extractBlocks(map.roads, {
     minArea: options.minBlockArea,
     maxArea: options.maxBlockArea,
@@ -509,6 +607,11 @@ export function buildLayoutFromMap(
 
     const before = buildings.length;
     const centre = polygonCentroid(ring);
+    // Nothing to invent where the map said what is here. The rest of this
+    // block's work still runs: what is planted in a courtyard and what fills a
+    // plot too small to build on are decisions about the *ground*, and the
+    // ground is the same either way.
+    const inventing = fromMap.length === 0;
     const reach = distanceToEdges(centre[0], centre[1], ring) - widest;
 
     // Deep enough for a wing and a courtyard, or too small for both, in which
@@ -516,7 +619,7 @@ export function buildLayoutFromMap(
     const roomy = reach > options.wingDepth + options.minCourtyard / 2;
     const depth = roomy ? options.wingDepth : Math.max(Math.min(reach, options.wingDepth), 4);
 
-    for (let i = 0; i < sides; i += 1) {
+    for (let i = 0; inventing && i < sides; i += 1) {
       const line = lines[i]!;
       if (line.run < 6) continue;
 
@@ -589,7 +692,15 @@ export function buildLayoutFromMap(
     // their room is not left as bare grass between four roads. In a real city
     // that plot is a garden square, a yard or a stand of trees -- something,
     // rather than nothing.
-    if (buildings.length === before) bare.push(block);
+    //
+    // "Nothing was built here" is asked two ways for one reason: the generator
+    // knows what it built in this block because it counts what it pushed, and
+    // the map's buildings were all placed before any block was looked at. A
+    // handful of samples rather than the whole ring -- this decides whether to
+    // plant a plot, and a plot with a house in one corner is not a garden
+    // square whichever corner is sampled.
+    const empty = inventing ? buildings.length === before : !blockIsBuilt(ring);
+    if (empty) bare.push(block);
     else if (roomy) gardens.push(block);
   }
 

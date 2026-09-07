@@ -1443,3 +1443,78 @@ describe('two trains in one yard', () => {
     expect(lines.size).toBe(world.trains.length);
   });
 });
+
+describe('buildings the map already knows about', () => {
+  /** Two real outlines, as the baker writes them: [x, z, w, d, yaw, height]. */
+  const OUTLINES = [
+    [60, 60, 20, 12, 0, 18.6],
+    [140, 60, 24, 14, 0.4, null],
+  ];
+
+  const withBuildings = (options: Partial<typeof defaultMapWorldOptions> = {}) =>
+    buildLayoutFromMap({ ...mapOf(BLOCK), buildings: OUTLINES } as MapData, {
+      ...defaultMapWorldOptions,
+      ...options,
+    });
+
+  it('puts them where the map says, and stops inventing any', () => {
+    // The generator's whole job was to invent a city that looked like one, and
+    // it did that well -- frontages along the block edges, mitred at the
+    // corners. What it could not do is be *this* city: every house it placed
+    // was a plausible house in a plausible place, and the whole came out as a
+    // European district that could have been anywhere.
+    const world = withBuildings();
+    expect(world.buildings).toHaveLength(OUTLINES.length);
+
+    const first = world.buildings.find((b) => Math.abs(b.x - 60) < 0.001)!;
+    expect(first, 'the outline arrived').toBeDefined();
+    expect(first.z).toBe(60);
+    expect(first.width).toBe(20);
+    expect(first.depth).toBe(12);
+
+    // And it is solid: a building the player can fly through is scenery.
+    expect(world.boxes.length).toBeGreaterThanOrEqual(OUTLINES.length);
+  });
+
+  it('takes the height the building states, and invents only the rest', () => {
+    // About half of them say how tall they are, and a district where only the
+    // ones that say are tall would read as half-finished.
+    const world = withBuildings();
+    const stated = world.buildings.find((b) => Math.abs(b.x - 60) < 0.001)!;
+    expect(stated.height, 'as the map says').toBeCloseTo(18.6, 6);
+
+    const silent = world.buildings.find((b) => Math.abs(b.x - 140) < 0.001)!;
+    expect(silent.height, 'invented, but in the range').toBeGreaterThanOrEqual(
+      defaultMapWorldOptions.minHeight,
+    );
+    expect(silent.height).toBeLessThanOrEqual(defaultMapWorldOptions.maxHeight);
+  });
+
+  it('lets a described thing keep its ground against a real one', () => {
+    // The story wins. A level that names a building cannot have a block of
+    // flats standing through it, and that was already true of the invented
+    // ones -- it has to stay true now the buildings are real, because the map
+    // has never heard of the loft.
+    const world = withBuildings({
+      landmarks: [
+        { name: 'The Loft', x: 60, z: 60, width: 30, depth: 20, height: 24, margin: 8 },
+      ],
+    });
+
+    expect(
+      world.buildings.some((b) => Math.abs(b.x - 60) < 0.001),
+      'the one standing on the loft is gone',
+    ).toBe(false);
+    expect(
+      world.buildings.some((b) => Math.abs(b.x - 140) < 0.001),
+      'and the one that is not, is not',
+    ).toBe(true);
+  });
+
+  it('still invents them where the map has none', () => {
+    // Every map baked before this had no buildings in it, and a test suite
+    // full of hand-written road grids still has none.
+    const world = buildLayoutFromMap(mapOf(BLOCK), defaultMapWorldOptions);
+    expect(world.buildings.length).toBeGreaterThan(10);
+  });
+});
