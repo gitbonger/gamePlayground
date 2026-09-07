@@ -778,9 +778,48 @@ export function buildLayoutFromMap(
   // dozen roads is fifty walks of the network, and the junctions are a fact
   // about the map rather than about any one of them.
   const network = railNetwork(map.rails ?? []);
+
+  /**
+   * Which way each *track* runs, worked out once for each sort of line.
+   *
+   * The track and not the route, which is the whole of it. A traced route
+   * follows the straightest continuation, and at a junction the straightest
+   * continuation is often the other track of the pair -- so a route weaves,
+   * and there is no one direction that is right for the whole of it. A way in
+   * the map is one physical track and stays one, so it is the thing that can
+   * be given a side of the road; routes are then traced along those
+   * directions rather than across them.
+   *
+   * Worked out on demand and kept, because it is the most expensive thing in
+   * building the world that is not building the buildings: 37 ms over the two
+   * hundred and thirty tram ways on this map, against 451 for the whole of it.
+   */
+  const handedness = new Map<string, Map<Rail, number>>();
+  const oneWayFor = (kind: string): Map<Rail, number> => {
+    const known = handedness.get(kind);
+    if (known) return known;
+    const ways = (map.rails ?? []).filter((rail) => rail.kind === kind);
+    const hands = keepRight(ways.map((way) => way.points));
+    const made = new Map<Rail, number>(
+      ways.map((way, index) => [way, hands[index]?.direction ?? 1]),
+    );
+    handedness.set(kind, made);
+    return made;
+  };
+
   for (const spec of options.trains ?? []) {
     const stock = spec.stock ?? 'wagon';
     const length = consistLength(spec.cars, stock);
+    // A named tram is a tram: it keeps right like the rest of them, and
+    // `setOff` has nothing left to say about it. It was saying the wrong
+    // thing -- the one placed beside the fourth level's patch of concrete ran
+    // three thousand one hundred and forty-six metres alongside another tram
+    // going the same way, and six metres opposed.
+    //
+    // Nothing is lost by that. The pair asked for at the double-track spot
+    // were given opposite bearings by hand to make them pass each other, and
+    // opposite is what the track gives them anyway, now on the correct sides.
+    const oneWay = stockTurnaround(stock) === 'recycle' ? oneWayFor(stockRuns(stock)) : undefined;
 
     let line: Rail | null = null;
     let over: readonly Rail[] = [];
@@ -801,7 +840,7 @@ export function buildLayoutFromMap(
       // One that leaves is judged on where the whole route gets to, not on
       // how long its own way happens to be: the way out of this yard is cut
       // into pieces and the piece that starts the longest run is a short one.
-      const route = spec.runsOut ? traceRoute(network, rail) : null;
+      const route = spec.runsOut ? traceRoute(network, rail, undefined, oneWay) : null;
       const laid = route ? route.over : [rail];
       if (laid.some((part) => taken.has(part))) continue;
 
@@ -829,8 +868,14 @@ export function buildLayoutFromMap(
     // otherwise the next train stands itself in a platform this one comes
     // through at fifty kilometres an hour.
     for (const part of over) taken.add(part);
-    const direction =
-      spec.setOff === undefined ? 1 : directionFor(line.points, along, spec.setOff);
+    const direction = oneWay
+      ? // A traced route already runs the way it is travelled, so up it. One
+        // that was not traced is a single way, taken as the side of the road
+        // says.
+        (spec.runsOut ? 1 : (oneWay.get(line) ?? 1))
+      : spec.setOff === undefined
+        ? 1
+        : directionFor(line.points, along, spec.setOff);
     trains.push({
       line,
       along,
@@ -853,20 +898,7 @@ export function buildLayoutFromMap(
     const runs = stockRuns(want.stock);
     const length = consistLength(want.cars, want.stock);
 
-    // Which way each *track* runs, before any route is traced over it.
-    //
-    // The track and not the route, which is the whole of the fix. A traced
-    // route follows the straightest continuation, and at a junction the
-    // straightest continuation is often the other track of the pair -- so a
-    // route weaves, and there is no direction that is right for the whole of
-    // it. A way in the map is one physical track and stays one, so it is the
-    // thing that can be given a side of the road; the routes are then traced
-    // along those directions rather than across them.
-    const ways = (map.rails ?? []).filter((rail) => rail.kind === runs);
-    const handed = keepRight(ways.map((way) => way.points));
-    const oneWay = new Map<Rail, number>(
-      ways.map((way, index) => [way, handed[index]?.direction ?? 1]),
-    );
+    const oneWay = oneWayFor(runs);
 
     const routes: { line: Rail; over: Rail[]; run: number }[] = [];
     for (const rail of map.rails ?? []) {

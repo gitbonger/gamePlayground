@@ -9,6 +9,7 @@ import {
   layOutTrain,
   lineLength,
   pointAlong,
+  recycle,
   shuttle,
   trainBoxes,
   WAGON,
@@ -1326,15 +1327,22 @@ describe('two trains in one yard', () => {
   });
 
   it('sets off the way it was asked to, whichever way the line was drawn', () => {
-    // Two tramways over the same ground, traced in opposite orders. A tram
+    // Two railways over the same ground, traced in opposite orders. A train
     // asked to head south has to go south on both.
+    //
+    // A railway rather than a tramway, which it used to be. A bearing is for
+    // stock that shuttles: it says which way to set off up and down a line,
+    // and setting off is the only choice such a train has. A tram does not
+    // get to choose -- the side of the road decides, from the track, and a
+    // hand-written bearing there was a way of being wrong that looked like
+    // being deliberate.
     for (const points of [
       [[0, -300], [0, 300]] as [number, number][],
       [[0, 300], [0, -300]] as [number, number][],
     ]) {
-      const world = buildLayoutFromMap(mapOf(BLOCK, [], [{ kind: 'tram', width: 6, points }]), {
+      const world = buildLayoutFromMap(mapOf(BLOCK, [], [{ kind: 'rail', width: 8, points }]), {
         ...defaultMapWorldOptions,
-        trains: [{ near: { x: 0, z: 0 }, cars: 4, stock: 'tram', speed: 10, setOff: 180 }],
+        trains: [{ near: { x: 0, z: 0 }, cars: 4, stock: 'carriage', speed: 10, setOff: 180 }],
       });
       const tram = world.trains[0]!;
       expect(tram).toBeDefined();
@@ -1358,9 +1366,13 @@ describe('two trains in one yard', () => {
     // A double-track tramway. Its two roads are tried both ways round --
     // traced in the same order and in opposite orders -- because the order
     // somebody traced them into OpenStreetMap is the thing that must not be
-    // what decides which way a tram goes. Both trams are asked for at the
-    // same point and told which way to go; each takes a road, and they run
-    // against each other either way the map happens to be drawn.
+    // what decides which way a tram goes.
+    //
+    // Both trams are asked for at the same point and *not* told which way to
+    // go. They used to be, by hand, and that is what this is really about:
+    // the bearings made the pair pass each other, so the test went green,
+    // while saying nothing about whether either was on the correct side. The
+    // track says it now, and the trams take what it says.
     const east: [number, number][] = [[-300, 120], [300, 120]];
     const tracings: Record<string, Rail[]> = {
       'drawn the same way': [
@@ -1377,31 +1389,39 @@ describe('two trains in one yard', () => {
       const world = buildLayoutFromMap(mapOf(BLOCK, [], rails), {
         ...defaultMapWorldOptions,
         trains: [
-          { near: { x: 0, z: 122 }, cars: 4, stock: 'tram', speed: 10, setOff: 90 },
-          { near: { x: 0, z: 122 }, cars: 4, stock: 'tram', speed: 10, setOff: 270 },
+          { near: { x: 0, z: 122 }, cars: 4, stock: 'tram', speed: 10 },
+          { near: { x: 0, z: 122 }, cars: 4, stock: 'tram', speed: 10 },
         ],
       });
 
       expect(world.trains, how).toHaveLength(2);
       // One road each, and the roads are a pair rather than the same one
       // twice.
-      const [up, down] = world.trains as [(typeof world.trains)[0], (typeof world.trains)[0]];
-      expect(Math.abs(up.vehicles[0]!.z - down.vehicles[0]!.z), how).toBeCloseTo(4, 6);
+      const [first, second] = world.trains as [(typeof world.trains)[0], (typeof world.trains)[0]];
+      expect(Math.abs(first.vehicles[0]!.z - second.vehicles[0]!.z), how).toBeCloseTo(4, 6);
 
       /** How far east the front of a tram moves over a step. */
       const travel = (tram: (typeof world.trains)[0]) => {
-        const run = shuttle(
+        const along = recycle(
           lineLength(tram.line.points),
           consistLength(tram.cars, tram.stock),
           tram.along,
           tram.direction,
           20,
-        );
-        const after = layOutTrain(tram.line, run.along, tram.cars, tram.stock)[0]!;
+        ).along;
+        const after = layOutTrain(tram.line, along, tram.cars, tram.stock)[0]!;
         return after.x - tram.vehicles[0]!.x;
       };
-      expect(travel(up), how).toBeGreaterThan(0);
-      expect(travel(down), how).toBeLessThan(0);
+
+      // Opposed, whichever way the map was drawn.
+      expect(travel(first) * travel(second), how).toBeLessThan(0);
+
+      // And on the correct sides of each other, which the bearings never
+      // said. Hungary drives on the right, so the eastbound one is the
+      // southerly of the pair: +Z is south, north being -Z.
+      const eastbound = travel(first) > 0 ? first : second;
+      const westbound = eastbound === first ? second : first;
+      expect(eastbound.vehicles[0]!.z, how).toBeGreaterThan(westbound.vehicles[0]!.z);
     }
   });
 

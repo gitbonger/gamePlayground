@@ -256,14 +256,19 @@ const layout = buildLayoutFromMap(map, {
     // followed. Set off south, which the line does not know how to be -- a
     // polyline is drawn in whatever order somebody traced it -- so it is
     // asked for as a bearing and worked out from the tangent.
-    { near: tram, cars: 4, stock: 'tram', speed: 10, runsOut: true, setOff: 180 },
+    { near: tram, cars: 4, stock: 'tram', speed: 10, runsOut: true },
     // Two more where the line is double track, one on each road, set off
     // against each other the way a pair of tracks is worked. They would come
     // out opposed anyway, the two roads having been traced in opposite
     // orders -- which is exactly the thing not to rely on, since it is a fact
     // about the map's editing history rather than about the tramway.
-    { near: trams, cars: 4, stock: 'tram', speed: 10, runsOut: true, setOff: 110 },
-    { near: trams, cars: 4, stock: 'tram', speed: 10, runsOut: true, setOff: 290 },
+    // No bearings on these any more. They were here to make the pair at the
+    // double-track spot pass each other rather than run abreast, and the side
+    // of the road does that on its own now -- correctly, which the bearings
+    // did not: the first of these three ran three kilometres alongside
+    // another tram going the same way.
+    { near: trams, cars: 4, stock: 'tram', speed: 10, runsOut: true },
+    { near: trams, cars: 4, stock: 'tram', speed: 10, runsOut: true },
   ],
   // And then the rest of the network, which nothing in the game names or
   // cares about. A city with a hundred and thirty kilometres of tramway and
