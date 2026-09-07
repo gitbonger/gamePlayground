@@ -898,13 +898,14 @@ export const LEVELS: readonly Level[] = [
     finish: { kind: 'meeting', who: 'White', dialogue: THE_ASK },
   },
   {
-    // The end of it, and the only level flown with a crowd behind him.
+    // The turn, and the first level in the game flown with a crowd behind
+    // him. Everything since the empty nest has been one pigeon looking; the
+    // last thing that happened was a rake full of them agreeing to come.
     //
-    // Everything since the empty nest has been one pigeon looking, and the
-    // last thing that happened was a rake full of them agreeing to come. So
-    // this is the same roof the eighth level landed on, flown again -- and
-    // what is different is that there are thirty of them.
-    name: 'The rescue',
+    // It is the long half of the way back and it ends at a line rather than
+    // at anything: crossing it is the flock committing, and what is on the
+    // far side is the loft.
+    name: 'Coming on strong',
     start: [47.500249, 19.088921],
     release: 100,
     health: 1,
@@ -913,8 +914,39 @@ export const LEVELS: readonly Level[] = [
     // Thirty. Ten is company on an errand; this is the flock as the point of
     // the level rather than as scenery around the edge of it.
     flock: 30,
-    // The loft, which is where the trapper is: the same target the eighth
-    // level had, arrived at with help this time.
+    // The loft, a hundred and fifty metres beyond the line and on almost the
+    // same bearing -- 224 against the line's 227 -- so what the arrow points
+    // at and where the flight is going are the same way. It is not this
+    // level's objective; it is this level's direction, which is what a
+    // target is for on a level that ends at a line.
+    target: { kind: 'landmark', name: LOFT.name },
+    // Nobody: a level finished by flying through a line has nobody standing
+    // at the end of it. She is on the terrace, as she has been since the
+    // park.
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 }],
+    finish: {
+      kind: 'crossing',
+      through: [47.496495, 19.082937],
+      opens: { level: 'The rescue' },
+    },
+  },
+  {
+    // The end of it: the roof the eighth level landed on, flown again with
+    // thirty birds and the trapper on it.
+    name: 'The rescue',
+    // On the line the level before hands over at, which is the checkpoint
+    // rule every crossing in the game obeys.
+    start: [47.496495, 19.082937],
+    // Sixty. The loft is a hundred and fifty-five metres away and thirty-one
+    // metres tall, so this is twenty-nine metres of height to lose over a
+    // hundred and fifty-five of ground -- 5.3:1 against a best glide of about
+    // 5.6:1, which is an approach rather than a drop. The height was not
+    // given with the coordinate; this is the number the geometry asks for.
+    release: 60,
+    health: 1,
+    when: EVENING,
+    escort: true,
+    flock: 30,
     target: { kind: 'landmark', name: LOFT.name },
     cast: [
       { who: 'Black', on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 },

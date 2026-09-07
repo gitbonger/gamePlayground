@@ -1276,3 +1276,109 @@ describe('how many of them come', () => {
     expect(settle(flock)).toBe(6);
   });
 });
+
+describe('a flock that is already there', () => {
+  const wagons = [
+    { x: 0, y: 2, z: 0 },
+    { x: 0, y: 2, z: -15 },
+    { x: 0, y: 2, z: -30 },
+    { x: 0, y: 2, z: -45 },
+  ];
+
+  const built = () =>
+    createFlock(1, still(0, 3, 0), {
+      ...defaultFlockOptions,
+      count: 8,
+      // Long, so that anything in the air after one tick got there by being
+      // scrambled rather than by the ordinary trickle.
+      emitInterval: 30,
+    });
+
+  it('puts them all in the air at once, where they were standing', () => {
+    // The story beat: thirty birds standing on a goods train agree to help,
+    // and what that has to look like is thirty birds leaving a goods train.
+    // The ordinary rule lets one out at a time from behind the leader, which
+    // would be the flock arriving from somewhere else to join a bird who is
+    // standing in the middle of them.
+    const flock = built();
+    flock.scramble(wagons);
+
+    const up = flock.members.filter((member) => member.down <= 0);
+    expect(up).toHaveLength(8);
+    for (const member of up) {
+      const near = wagons.some(
+        (spot) =>
+          Math.hypot(
+            member.state.position.x - spot.x,
+            member.state.position.y - spot.y,
+            member.state.position.z - spot.z,
+          ) < 1e-6,
+      );
+      expect(near, 'left from one of the wagons').toBe(true);
+    }
+  });
+
+  it('deals them round when there are more birds than places', () => {
+    // Eight birds and four wagons: every wagon is left from, twice.
+    const flock = built();
+    flock.scramble(wagons);
+    const from = new Set(flock.members.map((member) => member.state.position.z));
+    expect(from.size).toBe(wagons.length);
+  });
+
+  it('sends them the way the leader is going', () => {
+    // Thirty birds coming off a train in thirty directions is a startle
+    // rather than a departure.
+    const flock = createFlock(1, still(0, 3, 0, Math.PI / 2), {
+      ...defaultFlockOptions,
+      count: 4,
+      emitInterval: 30,
+    });
+    flock.scramble(wagons);
+    for (const member of flock.members) {
+      // Heading east, which in this world is +X.
+      expect(member.state.velocity.x).toBeGreaterThan(0);
+      expect(Math.abs(member.state.velocity.z)).toBeLessThan(Math.abs(member.state.velocity.x));
+    }
+  });
+
+  it('lets out only as many as the level asked for', () => {
+    // `only` still decides how many fly; this decides where they start.
+    const flock = built();
+    flock.only(3);
+    flock.scramble(wagons);
+    expect(flock.members.filter((member) => member.down <= 0)).toHaveLength(3);
+  });
+
+  it('does not change where they come back from afterwards', () => {
+    // One-off, and this is the half that matters for a player who dies: the
+    // train is a mile away by then, and a second departure from it would be
+    // thirty birds appearing out of nothing.
+    const flock = built();
+    flock.scramble(wagons);
+    const member = flock.members[0]!;
+
+    // Knock it down, and wait out the interval it comes back on.
+    member.down = 0.01;
+    const wind = createWind();
+    for (let t = 0; t < 40; t += DT) flock.update(DT, undefined, wind);
+
+    // It came back at all -- "not on a wagon" is also true of a bird that
+    // never returned, which would make this test pass for the wrong reason.
+    expect(member.down, 'it is back in the air').toBeLessThanOrEqual(0);
+    // And it came back where the spawn rule puts it: behind the leader,
+    // which for the default spawn is a known distance.
+    const behind = Math.hypot(member.state.position.x - 0, member.state.position.z - 0);
+    expect(behind, 'at the ordinary spawn distance').toBeGreaterThan(5);
+    const onAWagon = wagons.some(
+      (spot) => Math.abs(member.state.position.z - spot.z) < 1e-6,
+    );
+    expect(onAWagon, 'and not off a wagon again').toBe(false);
+  });
+
+  it('does nothing at all when there is nowhere to leave from', () => {
+    const flock = built();
+    flock.scramble([]);
+    expect(flock.members.filter((m) => m.down <= 0).length).toBeLessThan(8);
+  });
+});

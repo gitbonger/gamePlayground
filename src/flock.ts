@@ -335,6 +335,24 @@ export interface Flock {
    */
   only(many: number): void;
   /**
+   * Put every bird that is coming into the air at once, at these places.
+   *
+   * The other way a flock can start, and it is a story beat rather than a
+   * spawn rule: thirty pigeons standing on a goods train agree to help, and
+   * what that has to look like is thirty pigeons leaving a goods train. The
+   * ordinary rule lets one out at a time from behind the leader, which is
+   * right for a flock joining an errand and quite wrong for a flock that is
+   * already here.
+   *
+   * One-off, and it does not change the spawn: a bird that goes down after
+   * this comes back the way every other bird comes back. So a player who
+   * dies gets the usual flock rather than a second departure from a train
+   * that is now a mile away.
+   *
+   * Fewer places than birds is fine -- they are dealt round.
+   */
+  scramble(from: readonly Vec3[]): void;
+  /**
    * Fly them for a tick.
    *
    * `letting` is whether any more may be let out. False stops the loft: the
@@ -793,9 +811,33 @@ export function createFlock(
     });
   }
 
+  const scramble = (from: readonly Vec3[]) => {
+    if (from.length === 0) return;
+    const at = around();
+    pilots.forEach((pilot, i) => {
+      if (i >= wanted) return;
+      const where = from[i % from.length]!;
+      // Facing the way the leader is: they are leaving with him, and thirty
+      // birds coming off a train in thirty directions is a startle rather
+      // than a departure.
+      pilot.member.state = createBird(where, 12 + rand() * 4, at.heading);
+      pilot.member.down = 0;
+      pilot.member.hunting = false;
+      pilot.memory.beating = true;
+      aim(pilot, at);
+    });
+  };
+
   const only = (many: number) => {
     wanted = Math.max(0, Math.min(pilots.length, Math.floor(many)));
   };
 
-  return { members: pilots.map((pilot) => pilot.member), update, recall, touching, only };
+  return {
+    members: pilots.map((pilot) => pilot.member),
+    update,
+    recall,
+    touching,
+    only,
+    scramble,
+  };
 }

@@ -415,6 +415,7 @@ describe('what the levels aim at', () => {
       'Jani Pali tér',
       'Népszínház',
       'The Yard',
+      'The rescue',
     ]);
 
     // And the oldest are sky drops, with the whole approach laid out beneath
@@ -423,10 +424,14 @@ describe('what the levels aim at', () => {
     // starts is that level's own business.
     const dropped = flown.filter((level) => !under.includes(level) && !district.includes(level));
     // The two searches from a hundred and fifty metres over the roofs, and
-    // the rescue at a hundred. The yard used to be here too and has come down
-    // to ninety: the searching from altitude is over by then and that one is
-    // an approach to a particular wagon.
-    expect(dropped.map((level) => level.name)).toEqual(['The Loft', 'Fiumei út', 'The rescue']);
+    // the long way back at a hundred. The end of the story comes down as it
+    // goes: the yard at ninety and the rescue at sixty, both of them
+    // approaches to a particular thing rather than searches from altitude.
+    expect(dropped.map((level) => level.name)).toEqual([
+      'The Loft',
+      'Fiumei út',
+      'Coming on strong',
+    ]);
     for (const level of dropped) expect(level.release, level.name).toBeGreaterThanOrEqual(100);
 
     // And the district ones are all above what is built on it, which is the
@@ -686,7 +691,12 @@ describe('what the levels aim at', () => {
     // around the edge of a flight but the point of it. The story spends five
     // levels alone and then arrives with thirty birds behind it.
     const escorted = LEVELS.filter((level) => level.escort);
-    expect(escorted.map((level) => level.name)).toEqual(['Temető', 'Teleki tér', 'The rescue']);
+    expect(escorted.map((level) => level.name)).toEqual([
+      'Temető',
+      'Teleki tér',
+      'Coming on strong',
+      'The rescue',
+    ]);
     for (const level of LEVELS) expect(typeof level.escort, level.name).toBe('boolean');
 
     // Every escorted level says how many come, and nothing else does: a
@@ -697,7 +707,9 @@ describe('what the levels aim at', () => {
     }
     // And the rescue is the big one, by a lot.
     const errand = LEVELS.find((level) => level.name === 'Temető')!.flock!;
-    expect(LEVELS.find((level) => level.name === 'The rescue')!.flock).toBeGreaterThan(errand * 2);
+    for (const name of ['Coming on strong', 'The rescue']) {
+      expect(LEVELS.find((level) => level.name === name)!.flock, name).toBeGreaterThan(errand * 2);
+    }
   });
 
   it('keeps the escort across a handover that is one flight in two pieces', () => {

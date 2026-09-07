@@ -1043,6 +1043,15 @@ let waymarks: Waymarks = createWaymarks([]);
  * from. The state is written over every frame rather than simulated: they do
  * not fly, and where they are is entirely a fact about where their wagon is.
  */
+/**
+ * Whether the birds on the freight train have left it.
+ *
+ * They are the flock from the moment they agree to come, and a bird cannot be
+ * in two places: drawn on the wagons as well, there would be thirty of them
+ * standing in the grain and thirty more overhead.
+ */
+let ridersFlown = false;
+
 const riderRigs = riders.map((rider) => {
   const rig = createBirdRig(PIGEON_MORPHS[rider.morph]);
   scene.add(rig.object);
@@ -1338,6 +1347,34 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // How many come. Set before the recall takes effect rather than after, so
   // the first bird let out on this level is already one of this level's.
   flock.only(spec.escort ? (spec.flock ?? 0) : 0);
+  // And where they come from, this once.
+  //
+  // A conversation that hands a level over does it where the player stands,
+  // and the yard's conversation is had standing on a moving goods wagon
+  // surrounded by thirty birds. So they leave the train: the ordinary rule
+  // lets one out at a time from behind the leader, which is right for a
+  // flock joining an errand and quite wrong for a flock that is already
+  // here and has just said yes.
+  //
+  // Only on a handover in place -- a death restarts the level at its own
+  // coordinate, half a mile from the yard, and thirty birds materialising
+  // off a train that is not there is worse than the ordinary spawn. That is
+  // what `where` distinguishes and it is the whole of the condition.
+  // Back on the train for any level that flies alone, which is every level up
+  // to and including the yard: replay one of those and the birds are standing
+  // in the grain again, because that is where they are until they are asked.
+  if (!spec.escort) ridersFlown = false;
+  if (spec.escort && where === 'in place' && riders.length > 0) {
+    ridersFlown = true;
+    flock.scramble(
+      riders.flatMap((rider) => {
+        const wagon = layout.trains[FREIGHT]?.vehicles[rider.car];
+        if (!wagon) return [];
+        const at = onVehicle(wagon, rider.along, rider.across);
+        return [vec(at.x, stockTop(wagon.kind) + defaultParams.bodyRadius, at.z)];
+      }),
+    );
+  }
   escorted = spec.escort;
   // The marks, from the first one: they are help with *this* level, so they
   // start again with it -- including after a death, when the player is most
@@ -2516,7 +2553,10 @@ function frame(nowMs: number) {
     const wagon = layout.trains[FREIGHT]?.vehicles[rider.car];
     if (!drawn || !wagon) return;
     const at = onVehicle(wagon, rider.along, rider.across);
-    const shown = near[FREIGHT] && sighted({ x: at.x, y: stockTop(wagon.kind), z: at.z }, sight);
+    const shown =
+      !ridersFlown &&
+      near[FREIGHT] &&
+      sighted({ x: at.x, y: stockTop(wagon.kind), z: at.z }, sight);
     drawn.rig.object.visible = shown;
     if (!shown) return;
 

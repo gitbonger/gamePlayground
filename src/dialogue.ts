@@ -212,7 +212,7 @@ export const THE_ASK: Turn = {
   you: [
     {
       text: 'You need to help me, a crazy person kidnapped my girl!',
-      then: { them: "Let's go!", opens: 'The rescue' },
+      then: { them: "Let's go!", opens: 'Coming on strong' },
     },
   ],
 };
