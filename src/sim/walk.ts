@@ -271,6 +271,8 @@ function runOver(state: BirdState, p: FlightParams, where: Vec3): void {
   state.ending = {
     kind: 'crashed',
     cause: 'struck',
+    // Run over on the ground: there is nowhere left to fall to.
+    settled: true,
     speed: p.walkSpeed,
     sink: 0,
     bank: 0,
@@ -333,6 +335,7 @@ export function standStill(state: BirdState): void {
   state.ending = {
     kind: 'landed',
     cause: null,
+    settled: true,
     speed: 0,
     sink: 0,
     bank: 0,

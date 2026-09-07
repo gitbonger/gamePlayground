@@ -8,6 +8,7 @@ import {
   createBird,
   defaultParams,
   caught,
+  fall,
   hasCrashed,
   heading,
   landingReadiness,
@@ -1957,6 +1958,12 @@ function frame(nowMs: number) {
       }
     }
     telemetry = step(bird, asFlight(input.controls, doing), flightParams, TICK, solid, wind);
+    // And if the flight ended in the air, the bird still has to get down.
+    // The model above has nothing more to say about it -- a finished flight
+    // is inert to it -- but a corpse hanging at sixty metres is not a death,
+    // it is a bug with a story attached. Does nothing to one that is perched
+    // or already on the ground, so it is safe here every tick.
+    fall(bird, flightParams, TICK, solid);
     // The loft shuts while the player is dead. A fresh pigeon appearing over
     // the wreck is the game carrying on cheerfully around a corpse, which is
     // the one thing that moment should not do.

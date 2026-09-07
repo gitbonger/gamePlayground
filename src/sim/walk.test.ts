@@ -32,7 +32,7 @@ const STANDING = p.groundHeight + p.bodyRadius;
 function landed(at = vec(0, STANDING, 0), bearing = 0): BirdState {
   const bird = createBird(at, 0, bearing);
   bird.velocity = vec(0, 0, 0);
-  bird.ending = { kind: 'landed', cause: null, speed: 0, sink: 0, bank: 0, position: at };
+  bird.ending = { kind: 'landed', cause: null, settled: true, speed: 0, sink: 0, bank: 0, position: at };
   return bird;
 }
 

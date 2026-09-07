@@ -704,6 +704,7 @@ describe('a bird close enough to touch', () => {
 
     flock.members[0]!.state.ending = {
       kind: 'crashed',
+      settled: true,
       cause: 'building',
       speed: 0,
       sink: 0,
@@ -1199,6 +1200,7 @@ describe('letting them out', () => {
     const where = { ...victim.state.position };
     victim.state.ending = {
       kind: 'crashed',
+      settled: true,
       cause: 'hard-impact',
       speed: 12,
       sink: 6,

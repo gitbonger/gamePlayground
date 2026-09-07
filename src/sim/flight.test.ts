@@ -4,6 +4,7 @@ import {
   bankAngle,
   createBird,
   defaultParams,
+  fall,
   hasCrashed,
   heading,
   isPerched,
@@ -351,9 +352,184 @@ describe('being caught in the air', () => {
     // flying, and then it was not.
     expect(bird.ending?.speed).toBeCloseTo(Math.hypot(3, 16), 6);
     expect(bird.ending?.sink).toBeCloseTo(3, 6);
-    // And it stops dead rather than carrying on with the wings out.
-    expect(bird.velocity).toEqual(vec(0, 0, 0));
+    // And it keeps the momentum it had, which is the difference between a
+    // death and a freeze-frame. It used to be stopped where it stood, and
+    // what that looked like was a pigeon hanging in the air at sixty metres
+    // for as long as you cared to watch it. `fall` takes it from here.
+    expect(bird.velocity).toEqual(vec(0, -3, -16));
     expect(bird.restingOn).toBeNull();
+  });
+});
+
+describe('a bird that dies in the air', () => {
+  /** Drop it for `seconds` and say where it got to. */
+  const drop = (
+    seconds: number,
+    from = vec(0, 60, 0),
+    velocity = vec(0, 0, 0),
+    collider?: Parameters<typeof fall>[3],
+  ) => {
+    const bird = createBird(from, 16, 0);
+    bird.velocity = velocity;
+    caught(bird);
+    for (let t = 0; t < seconds; t += DT) fall(bird, defaultParams, DT, collider);
+    return bird;
+  };
+
+  it('keeps falling instead of hanging where it died', () => {
+    // The whole of it. A crow catches the pigeon at sixty metres and the
+    // flight is over -- but the bird is not where the flight ended, it is on
+    // its way to the pavement. Stopped in the air it read as a bug rather
+    // than as a death.
+    const bird = drop(1);
+    expect(bird.position.y).toBeLessThan(60);
+    expect(bird.velocity.y).toBeLessThan(-4);
+  });
+
+  it('carries the speed it was flying at into the fall', () => {
+    // Caught while going somewhere, so it goes on going there. A body that
+    // loses all its speed the instant it dies is a freeze-frame with gravity
+    // switched on afterwards, and the eye reads the stop rather than the
+    // fall.
+    const bird = drop(0.5, vec(0, 60, 0), vec(0, 0, -18));
+    expect(bird.position.z, 'still travelling').toBeLessThan(-6);
+  });
+
+  it('settles at a speed rather than accelerating for ever', () => {
+    // It has air around it. Left on gravity alone a pigeon dropped from any
+    // height a level is played at arrives doing whatever the drop allows,
+    // and from the top of a tall building that is well past anything a bird
+    // has ever done.
+    const terminal = Math.sqrt(
+      (2 * defaultParams.mass * defaultParams.gravity) /
+        (defaultParams.airDensity * defaultParams.deadDragArea),
+    );
+    // Long enough to be at it: from rest it is within a whisker after four
+    // seconds, and a fall of any interesting height is longer than that.
+    const bird = drop(8, vec(0, 400, 0));
+    expect(-bird.velocity.y).toBeGreaterThan(terminal * 0.95);
+    expect(-bird.velocity.y).toBeLessThanOrEqual(terminal + 1e-6);
+
+    // And the number itself is a bird's, not a stone's: a pigeon comes down
+    // at about sixty kilometres an hour, not two hundred.
+    expect(terminal).toBeGreaterThan(12);
+    expect(terminal).toBeLessThan(22);
+  });
+
+  it('comes to rest on the ground and stays there', () => {
+    // Not through it, and not bouncing. A corpse is somewhere the player can
+    // fly back and look at.
+    const bird = drop(20, vec(0, 60, 0));
+    const resting = defaultParams.groundHeight + defaultParams.bodyRadius;
+    expect(bird.position.y).toBeCloseTo(resting, 6);
+    expect(bird.velocity).toEqual(vec(0, 0, 0));
+
+    // And another twenty seconds does not move it.
+    const where = { ...bird.position };
+    for (let t = 0; t < 20; t += DT) fall(bird, defaultParams, DT);
+    expect(bird.position).toEqual(where);
+  });
+
+  it('lands on what is under it rather than falling through it', () => {
+    // Swept rather than tested at the end of the tick: seventeen metres a
+    // second is fourteen centimetres between two looks, and a roof is not
+    // much thicker than that to something that only checks its feet.
+    const roof = createColliderField([aabb(-20, 0, -20, 20, 30, 20)]);
+    const bird = drop(20, vec(0, 60, 0), vec(0, 0, 0), roof);
+    expect(bird.position.y, 'stopped on the roof, not on the street').toBeGreaterThan(29);
+    expect(bird.velocity).toEqual(vec(0, 0, 0));
+  });
+
+  it('drops down the face of a wall rather than sticking to it', () => {
+    // The same problem as the crow's, met a different way: a bird that flies
+    // into the fourth floor of a building has ended its flight forty metres
+    // up, and what it does next is fall to the street. Pinned to the
+    // brickwork it read as a decal.
+    const wall = createColliderField([aabb(-30, 0, -30, 30, 60, 30)]);
+    const bird = createBird(vec(0, 40, -31), 20, 0);
+    bird.velocity = vec(0, 0, 18);
+    // Flown into it, so the model itself decides this is a crash.
+    for (let t = 0; t < 0.5 && !bird.ending; t += DT)
+      step(bird, neutralControls(), defaultParams, DT, wall);
+    expect(bird.ending?.cause, 'it hit the building').toBe('building');
+    expect(bird.ending?.settled, 'and it is nowhere near the ground').toBe(false);
+
+    const struckAt = bird.position.y;
+    for (let t = 0; t < 20; t += DT) fall(bird, defaultParams, DT, wall);
+    expect(bird.position.y).toBeLessThan(struckAt - 30);
+    expect(bird.ending?.settled).toBe(true);
+  });
+
+  it('does not come to rest against a wall on the way down', () => {
+    // The half of the rule the test above cannot see. A body dropping
+    // straight down the face of a building never touches it, so both "a wall
+    // stops it" and "a wall does not" get it to the street and the test is
+    // happy either way. This one is thrown at the wall while it falls: the
+    // sideways travel has to come off and the downward travel has to carry
+    // on, or the corpse stops in mid-air with its shoulder against the
+    // brickwork, which is the thing that was wrong in the first place.
+    const wall = createColliderField([aabb(-30, 0, -30, 30, 60, 30)]);
+    const bird = createBird(vec(0, 50, -34), 16, 0);
+    caught(bird);
+    // Straight at it, and level, so the only thing that can take it downwards
+    // is gravity after the wall has taken the rest away.
+    bird.velocity = vec(0, 0, 14);
+
+    for (let t = 0; t < 0.6; t += DT) fall(bird, defaultParams, DT, wall);
+    expect(bird.ending?.settled, 'still on its way down').toBe(false);
+    expect(bird.position.y, 'and lower than it was').toBeLessThan(49);
+    // Stopped *against* the wall rather than inside it or through it.
+    expect(bird.position.z).toBeLessThan(-30);
+    expect(bird.position.z).toBeGreaterThan(-31);
+  });
+
+  it('leaves a perched bird alone', () => {
+    // It is called every tick whatever the bird is doing, so what it does to
+    // a bird that is not falling matters as much as what it does to one that
+    // is. A clean landing is not a death and must not start sinking.
+    const perched = createBird(vec(0, 30, 0), 16, 0);
+    perched.ending = {
+      kind: 'landed',
+      settled: true,
+      cause: null,
+      speed: 0,
+      sink: 0,
+      bank: 0,
+      position: perched.position,
+    };
+    const was = { ...perched.position };
+    for (let t = 0; t < 2; t += DT) fall(perched, defaultParams, DT);
+    expect(perched.position).toEqual(was);
+  });
+
+  it('leaves a bird that is still flying alone', () => {
+    const flying = createBird(vec(0, 30, 0), 16, 0);
+    const was = { ...flying.position };
+    for (let t = 0; t < 2; t += DT) fall(flying, defaultParams, DT);
+    expect(flying.position).toEqual(was);
+  });
+
+  it('rides whatever it is lying on rather than sinking through it', () => {
+    // A corpse on the roof of a moving tram goes where the tram goes. That
+    // is the carrier's business -- and a fall that kept pulling it down
+    // would fight the carrier for it every tick.
+    const bird = drop(0);
+    bird.restingOn = 3;
+    const was = { ...bird.position };
+    for (let t = 0; t < 2; t += DT) fall(bird, defaultParams, DT);
+    expect(bird.position).toEqual(was);
+  });
+
+  it('keeps the attitude it died in', () => {
+    // Deliberately not tumbling. What is drawn is not this attitude anyway
+    // -- the rig lays a dead bird out level and inverted, keeping only the
+    // direction it was facing -- and the camera hangs its boom off this same
+    // quaternion, so a tumble nobody can see would swing the whole shot
+    // round the corpse all the way down.
+    const bird = drop(0);
+    const held = { ...bird.orientation };
+    for (let t = 0; t < 3; t += DT) fall(bird, defaultParams, DT);
+    expect(bird.orientation).toEqual(held);
   });
 });
 

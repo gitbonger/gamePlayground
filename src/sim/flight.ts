@@ -175,6 +175,22 @@ export interface FlightParams {
   /** Collision radius of the bird, in metres. */
   bodyRadius: number;
   /**
+   * Drag area of a bird that is no longer flying, in square metres.
+   *
+   * The product of a drag coefficient and a frontal area, kept as one number
+   * because neither half means anything on its own for a limp body: it is not
+   * a wing any more, it is a bundle. What it is really setting is the speed
+   * the fall settles at, and that is the number to think in --
+   *
+   *   terminal = sqrt(2 m g / (rho * deadDragArea))
+   *
+   * which at 0.35 kg and 0.02 m^2 is 16.7 m/s, or 60 km/h. Small birds come
+   * down at fifteen to twenty-five metres a second, so this is a pigeon at
+   * the slow end of it, which is right: a dead one does not fold up neatly,
+   * its wings half open and catch air the whole way down.
+   */
+  deadDragArea: number;
+  /**
    * Closing speed at which hitting a wall kills rather than bumps, in m/s.
    * Below this the bird scrapes to a stop and slides along the surface.
    * Touching the ground is judged by the landing limits below instead.
@@ -295,6 +311,7 @@ export const defaultParams: FlightParams = {
   groundHeight: 0,
 
   bodyRadius: 0.22,
+  deadDragArea: 0.02,
   crashSpeed: 7.5,
   struckSpeed: 0.5,
 
@@ -374,6 +391,23 @@ export interface Ending {
   kind: 'landed' | 'crashed';
   /** Null on a clean landing. */
   cause: CrashCause | null;
+  /**
+   * Whether the body has finished moving.
+   *
+   * A flight can end while the bird is still a long way up -- caught by a
+   * crow at sixty metres, or dashed against the fourth floor of a building --
+   * and what happens next is that it falls. So "the flight is over" and "the
+   * bird has stopped" are two different facts, and this is the second one.
+   *
+   * `fall` reads it to know whether there is anything left to do, and sets it
+   * when the body comes to rest. It has to be written down rather than worked
+   * out: a body lying on a roof is not moving and is not penetrating
+   * anything, so a sweep from where it lies finds nothing under it and the
+   * next tick's gravity walks it straight through the roof. That was the
+   * first version, and the corpse went through the building and landed in the
+   * street.
+   */
+  settled: boolean;
   /** Airspeed at contact, in m/s. */
   speed: number;
   /** Descent rate at contact, in m/s; negative if still climbing. */
@@ -799,6 +833,10 @@ export function step(
         state.ending = {
           kind: 'crashed',
           cause: struck ? 'struck' : 'building',
+          // Against a wall rather than on the ground: it stops here and then
+          // it drops to the street, which is what a bird that flies into the
+          // fourth floor of a building does.
+          settled: hit.normal.y >= ROOF_NORMAL,
           ...arrival,
           position: hit.point,
         };
@@ -924,6 +962,9 @@ function touchdown(state: BirdState, p: FlightParams): Ending {
   return {
     kind: cause ? 'crashed' : 'landed',
     cause,
+    // Touching down is by definition the end of the moving: this is the
+    // ground, or a roof, and there is nothing under it to fall to.
+    settled: true,
     speed: r.speed,
     sink: r.sink,
     bank: r.bank,
@@ -984,14 +1025,99 @@ export function caught(state: BirdState): void {
   state.ending = {
     kind: 'crashed',
     cause: 'caught',
+    // In the air, always: this is what a thing that hunts in the air does.
+    settled: false,
     speed: length(state.velocity),
     sink: -state.velocity.y,
     bank: Math.abs(bankAngle(state)),
     position: state.position,
   };
-  state.velocity = vec(0, 0, 0);
+  // The velocity is *not* thrown away, which is the difference between a
+  // death and a freeze-frame. It was doing twenty metres a second and
+  // something hit it; it does not stop in the air, it carries on and comes
+  // down. `fall` takes it from here.
   state.angularVelocity = vec(0, 0, 0);
   state.restingOn = null;
+}
+
+/**
+ * Carry a dead bird down to the ground.
+ *
+ * Because it was in the air. A crow catches the pigeon at sixty metres and
+ * the flight is over -- but the *bird* is not where the flight ended, it is
+ * on its way to the pavement, and leaving it hanging there is the one thing
+ * that moment cannot afford to look like. It read as a bug rather than as a
+ * death.
+ *
+ * This is not flying and does not pretend to be. There is no lift, no wing,
+ * no attitude worked out from the airflow and nothing the player can do about
+ * any of it: a mass, gravity, and the drag of a body that has stopped being a
+ * wing. It settles at `deadDragArea`'s terminal speed on the way down, which
+ * for a pigeon is a little under seventeen metres a second.
+ *
+ * The attitude is left exactly as it was. A falling body ought to tumble, and
+ * this deliberately does not: what is drawn is not this attitude anyway --
+ * the rig lays a dead bird out level and inverted, keeping only the direction
+ * it was facing -- and the camera hangs its boom off the same quaternion, so
+ * a tumble that nobody can see would swing the whole shot round the corpse
+ * all the way to the ground.
+ *
+ * Does nothing at all to a bird that is perched, or already down, or still
+ * flying, so it is safe to call every tick.
+ */
+export function fall(
+  state: BirdState,
+  p: FlightParams,
+  dt: number,
+  collider?: Collider,
+): void {
+  if (state.ending?.kind !== 'crashed' || state.ending.settled) return;
+  // Riding something is not falling: a corpse on the roof of a tram goes
+  // where the tram goes, which is the carrier's business and not this.
+  if (state.restingOn !== null) return;
+
+  const speed = length(state.velocity);
+  const push = 0.5 * p.airDensity * speed * speed * p.deadDragArea;
+  const drag = speed > 1e-6 ? scale(state.velocity, -push / (p.mass * speed)) : vec(0, 0, 0);
+  state.velocity = add(state.velocity, scale(add(vec(0, -p.gravity, 0), drag), dt));
+
+  const from = state.position;
+  const to = add(from, scale(state.velocity, dt));
+
+  // Swept, like the flight model's own step, because a body doing seventeen
+  // metres a second covers most of a roof between two ticks.
+  const hit = collider?.sweep(from, to, p.bodyRadius);
+  const resting = p.groundHeight + p.bodyRadius;
+  const down =
+    hit && hit.normal.y >= ROOF_NORMAL
+      ? hit.point
+      : to.y <= resting
+        ? vec(to.x, resting, to.z)
+        : null;
+
+  if (!down) {
+    // A wall, or nothing at all. Glancing off something upright is not
+    // arriving: it keeps going down the face of it. The sideways travel is
+    // taken off, so it slides down the wall rather than pressing into it.
+    if (hit) {
+      state.position = add(hit.point, scale(hit.normal, 1e-3));
+      state.velocity = sub(
+        state.velocity,
+        scale(hit.normal, dot(state.velocity, hit.normal)),
+      );
+    } else {
+      state.position = to;
+    }
+    return;
+  }
+
+  state.position = down;
+  state.velocity = vec(0, 0, 0);
+  state.angularVelocity = vec(0, 0, 0);
+  // Whatever it came to rest on, it goes with. A pigeon that falls onto a
+  // moving wagon rides it, the same as a live one standing there.
+  state.restingOn = hit ? hit.carrier : null;
+  state.ending.settled = true;
 }
 
 /** Heading in radians, measured clockwise from north (-Z). */
