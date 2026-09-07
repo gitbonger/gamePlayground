@@ -1011,6 +1011,20 @@ describe('what the levels aim at', () => {
     ]);
   });
 
+  it('marks the two long flights that have nothing to steer by', () => {
+    // Both of them end at a stripe on the ground you cannot see until you are
+    // nearly on it, and both cross ground with nothing else to aim at: half a
+    // kilometre of park, and a district whose squares are all behind you.
+    // Every other level is pointed at something you can see from the release.
+    const marked = LEVELS.filter((level) => (level.waypoints ?? []).length > 0);
+    expect(marked.map((level) => level.name)).toEqual(['Temető', 'Népszínház']);
+    for (const level of marked) {
+      expect(level.waypoints, level.name).toHaveLength(3);
+      // And they are the levels that end at a line, which is the reason.
+      expect(level.finish.kind, level.name).toBe('crossing');
+    }
+  });
+
   it('cages her on the roof and nowhere else', () => {
     // The cage and the bird in it are different things. The first version of
     // this put a cage wherever she was standing, which is a trap on the nest

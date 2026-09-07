@@ -737,6 +737,21 @@ export const LEVELS: readonly Level[] = [
     // Still on the branch, exactly where the conversation left her: she said
     // she would rather stay, and she is staying. He can look back and see it.
     cast: [{ who: PINK.name, on: { kind: 'landmark', name: HOME_TREE.name }, along: -0.4, across: 0.08 }],
+    // Three marks down the park, the same as the marks over the district
+    // later on. This is the first long flight in the game and it ends at a
+    // stripe on the ground six hundred metres away that you cannot see until
+    // you are nearly on it -- so what the player has to steer by is a line of
+    // columns, one at a time.
+    //
+    // At a hundred and ninety, three hundred and sixty and five hundred and
+    // twenty metres out, which is short of the line by eighty: a mark past
+    // the stripe is one nobody can ever reach, because reaching the stripe
+    // ends the level.
+    waypoints: [
+      [47.494035, 19.094306],
+      [47.49405, 19.09205],
+      [47.494063, 19.089927],
+    ],
     // Six hundred metres along, which is where the second half of the errand
     // begins -- the same point, said once. It used to be said twice, as a
     // distance here and as a coordinate there, and a test kept them in step.
