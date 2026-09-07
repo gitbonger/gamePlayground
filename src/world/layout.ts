@@ -236,6 +236,24 @@ export interface Person {
   facing: number;
 }
 
+/**
+ * A painted pedestrian crossing, laid across a carriageway.
+ *
+ * A place and a bearing, worked out once when the world is built: the map
+ * gives the place, and the road under it gives the bearing and how wide to
+ * paint. Bars are drawn from these rather than stored, because a zebra is
+ * six identical bars and storing six of everything would be storing the same
+ * arithmetic four thousand times.
+ */
+export interface Crossing {
+  x: number;
+  z: number;
+  /** Which way the road runs, in the collider's yaw convention. */
+  yaw: number;
+  /** The carriageway to paint across, in metres. */
+  width: number;
+}
+
 /** How tall a person is, in metres. */
 export const PERSON_HEIGHT = 2;
 
@@ -541,6 +559,8 @@ export interface CityLayout {
   bushes: Bush[];
   /** People standing about on them. */
   people: Person[];
+  /** Painted pedestrian crossings, where the map recorded any. */
+  crossings?: Crossing[];
   /** Solid volumes for every object above, in simulation coordinates. */
   boxes: Box[];
   /** Streets to draw, when the world was built from a real map. */

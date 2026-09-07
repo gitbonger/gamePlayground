@@ -17,6 +17,7 @@
 import { aabb, turnedBox, type Box } from '../sim/collision';
 import {
   bakedBuildings,
+  bakedPoints,
   indexStreets,
   type MapData,
   type Rail,
@@ -44,6 +45,7 @@ import {
   type Bush,
   type Grave,
   type CityLayout,
+  type Crossing,
   type Landmark,
   type Person,
   type Tree,
@@ -556,6 +558,31 @@ export function buildLayoutFromMap(
       return false;
     };
   })();
+
+  /**
+   * The painted crossings, given a bearing by the road they are on.
+   *
+   * The map says where they are and nothing else. Which way to paint them and
+   * how wide are facts about the carriageway underneath, so they are asked of
+   * the street index -- once, here, rather than every frame.
+   *
+   * A crossing whose road cannot be found is dropped rather than guessed at:
+   * a zebra painted across nothing, at a bearing nobody chose, is worse than
+   * a junction with no zebra on it.
+   */
+  const crossings: Crossing[] = [];
+  for (const [x, z] of bakedPoints(map.crossings)) {
+    const road = streets.nearest(x, z, 22);
+    if (!road) continue;
+    crossings.push({
+      x,
+      z,
+      // Square across the carriageway, which is what a zebra is: the road runs
+      // one way and the bars go the other.
+      yaw: Math.atan2(-road.dirZ, road.dirX),
+      width: road.width,
+    });
+  }
 
   const blocks = extractBlocks(map.roads, {
     minArea: options.minBlockArea,
@@ -1090,6 +1117,7 @@ export function buildLayoutFromMap(
     bushes,
     people,
     boxes,
+    crossings,
     roads: map.roads,
     rails: map.rails ?? [],
     trains,

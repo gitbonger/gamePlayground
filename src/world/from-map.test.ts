@@ -1518,3 +1518,45 @@ describe('buildings the map already knows about', () => {
     expect(world.buildings.length).toBeGreaterThan(10);
   });
 });
+
+describe('painted crossings', () => {
+  /** A road running due east, with a crossing on it and one out in a field. */
+  const EAST: Road[] = [
+    { kind: 'secondary', width: 13, points: [[-200, 0], [200, 0]] },
+  ];
+
+  const withCrossings = (points: number[][]) =>
+    buildLayoutFromMap({ ...mapOf(EAST), crossings: points } as MapData, defaultMapWorldOptions);
+
+  it('lays them square across the carriageway', () => {
+    // Which is what a zebra is: the stripes run the depth of the crossing,
+    // the way the traffic goes, and repeat across the road so you step over
+    // them rather than along them. Getting the two axes the wrong way round
+    // paints a ladder lying down the middle of the street, and it is not the
+    // sort of mistake a number will tell you about.
+    const world = withCrossings([[0, 0]]);
+    expect(world.crossings).toHaveLength(1);
+
+    const crossing = world.crossings![0]!;
+    // Local +X in world is (cos yaw, -sin yaw) -- the collider's convention --
+    // and it has to run along the road, which here is due east.
+    expect(Math.cos(crossing.yaw)).toBeCloseTo(1, 3);
+    expect(-Math.sin(crossing.yaw)).toBeCloseTo(0, 3);
+  });
+
+  it('takes the width to paint from the road, not from a guess', () => {
+    const world = withCrossings([[40, 0]]);
+    expect(world.crossings![0]!.width).toBe(13);
+  });
+
+  it('drops one that is not on a road at all', () => {
+    // A zebra painted across nothing, at a bearing nobody chose, is worse
+    // than a junction with no zebra on it.
+    const world = withCrossings([[0, 0], [0, 900]]);
+    expect(world.crossings).toHaveLength(1);
+  });
+
+  it('has none where the map recorded none', () => {
+    expect(buildLayoutFromMap(mapOf(EAST), defaultMapWorldOptions).crossings).toEqual([]);
+  });
+});

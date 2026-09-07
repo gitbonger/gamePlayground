@@ -652,6 +652,73 @@ export function buildWorld(
     );
   }
 
+  // --- Zebra crossings ------------------------------------------------------
+  // The first paint on the roads. Until now a street was a flat coloured
+  // triangle with nothing on it at all, which reads fine from a hundred metres
+  // and reads as tarmac-coloured nothing from twenty -- and one level is flown
+  // at twenty on purpose.
+  //
+  // One instanced bar for the whole map. A zebra is half a dozen identical
+  // white bars, so seven hundred crossings is four thousand instances and a
+  // single draw call, which is cheaper than the roads they are painted on.
+  if (layout.crossings?.length) {
+    const bar = new THREE.PlaneGeometry(1, 1);
+    bar.rotateX(-Math.PI / 2);
+    const paint = new THREE.MeshLambertMaterial({
+      color: 0xd8d5cc,
+      side: THREE.DoubleSide,
+    });
+    disposables.push(bar, paint);
+
+    // Worked out first so the mesh can be sized exactly: an instanced mesh is
+    // allocated once and cannot grow.
+    const bars: { x: number; z: number; yaw: number; long: number }[] = [];
+    for (const crossing of layout.crossings) {
+      // Bars along the road and gaps between them, across its full width. A
+      // zebra is about as much white as black, and the bar count comes from
+      // the width so a wide road gets more bars rather than fatter ones.
+      const many = Math.max(3, Math.min(9, Math.round(crossing.width / 1.4)));
+      const pitch = crossing.width / many;
+      for (let i = 0; i < many; i += 1) {
+        // Every other one, which is what makes it stripes rather than a slab.
+        if (i % 2 === 1) continue;
+        const across = (i + 0.5) * pitch - crossing.width / 2;
+        bars.push({
+          // Offset along the road's own direction, which `yaw` is square to.
+          x: crossing.x - Math.sin(crossing.yaw) * across,
+          z: crossing.z - Math.cos(crossing.yaw) * across,
+          yaw: crossing.yaw,
+          long: pitch * 0.62,
+        });
+      }
+    }
+
+    const zebra = new THREE.InstancedMesh(bar, asDecal(paint), bars.length);
+    zebra.name = 'crossings';
+    zebra.receiveShadow = true;
+    zebra.renderOrder = CROSSING_ORDER;
+    // Same reason the seeds are never culled: the bounds are worked out once
+    // from the instance matrices and these are spread over four kilometres.
+    zebra.frustumCulled = false;
+    bars.forEach((each, i) => {
+      rotation.setFromAxisAngle(up, each.yaw);
+      position.set(each.x, 0, each.z);
+      // A stripe runs the depth of the crossing -- along the road, the way the
+      // traffic goes -- and the stripes repeat *across* the carriageway. That
+      // is what a zebra is, and it is the way round you step over them rather
+      // than along them. The two were swapped the first time and it painted
+      // ladders lying down the middle of the street.
+      //
+      // `yaw` puts the road's own direction on local X, so the depth goes
+      // there and the stripe's width goes on Z.
+      scale.set(CROSSING_LENGTH, 1, each.long);
+      matrix.compose(position, rotation, scale);
+      zebra.setMatrixAt(i, matrix);
+    });
+    zebra.instanceMatrix.needsUpdate = true;
+    group.add(zebra);
+  }
+
   // --- Finishing lines ------------------------------------------------------
   // Painted like the road markings are, and over them: this is the one flat
   // thing in the world that is not part of the city, and a stripe that a
@@ -1558,7 +1625,16 @@ const PATCH_ORDER = 2;
 const ROAD_ORDER = 3;
 const RAIL_ORDER = 4;
 /** Over all of them: a finishing line is painted on the city, not in it. */
-const GATE_ORDER = 5;
+/**
+ * How far a crossing reaches along the road, in metres.
+ *
+ * Three and a half: a zebra is about the width of a pavement, and one that
+ * reached further would read as a painted junction rather than as a place to
+ * walk across.
+ */
+const CROSSING_LENGTH = 3.5;
+const CROSSING_ORDER = 5;
+const GATE_ORDER = 6;
 /** How deep the band is along the flight, in metres. */
 const GATE_THICKNESS = 8;
 /** Road-marking yellow, which is what it is. */
