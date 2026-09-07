@@ -58,6 +58,17 @@ export interface Mode {
    */
   bankLiftRecovery: number;
   /**
+   * Whether flying costs the belly.
+   *
+   * The belly is spent recovering stamina, which is what makes food a
+   * constraint: fly hard enough for long enough and you land to eat or you
+   * come down. In the basic mode it is not spent at all, so health stops
+   * being a thing that can be lost and becomes a thing that only the story
+   * moves -- the bar is still there, it still fills at Teleki tér, and it
+   * still says how the morning has gone. It simply cannot kill you.
+   */
+  spendsBelly: boolean;
+  /**
    * How much harder an arrival may be than the realistic rule allows.
    *
    * One number for both the sink and the speed, because they are the same
@@ -71,9 +82,10 @@ export const MODES: Record<ModeName, Mode> = {
   basic: {
     name: 'basic',
     title: 'Basic',
-    says: 'still air, free turns, forgiving landings',
+    says: 'still air, free turns, soft landings, no hunger',
     windy: false,
     bankLiftRecovery: 1,
+    spendsBelly: false,
     // Ten metres a second of sink and twenty-five of speed, against four and
     // ten. A bird can arrive at a run rather than having to be placed.
     landingAllowance: 2.5,
@@ -81,9 +93,10 @@ export const MODES: Record<ModeName, Mode> = {
   realistic: {
     name: 'realistic',
     title: 'Realistic',
-    says: 'wind, turns that cost height, landings that have to be flown',
+    says: 'wind, turns that cost height, landings and meals that have to be flown',
     windy: true,
     bankLiftRecovery: 0,
+    spendsBelly: true,
     landingAllowance: 1,
   },
 };
@@ -110,6 +123,9 @@ export function paramsFor(mode: Mode, base: FlightParams = defaultParams): Fligh
   return {
     ...base,
     bankLiftRecovery: mode.bankLiftRecovery,
+    // Nothing at all rather than less: the belly is either a constraint or it
+    // is scenery, and half a constraint is a thing a player cannot plan for.
+    bellyPerStamina: mode.spendsBelly ? base.bellyPerStamina : 0,
     landingSink: base.landingSink * mode.landingAllowance,
     landingSpeed: base.landingSpeed * mode.landingAllowance,
   };

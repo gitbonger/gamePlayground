@@ -10,7 +10,7 @@
  */
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { merged, painted } from '../render/painted';
 
 import { createColliderField, type Box, type Collider } from '../sim/collision';
 import {
@@ -1075,45 +1075,6 @@ function createMarker(
       arrow.position.set(over.x, over.y + size * 0.55 * bob + 1.5, over.z);
     },
   };
-}
-
-/**
- * One geometry out of several.
- *
- * Everything is flattened to non-indexed first: a cylinder comes indexed and
- * an icosahedron does not, and merging refuses to mix the two. Nothing here is
- * big enough for the indices to have been saving anything.
- */
-function merged(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const flat = parts.map((part) => (part.index ? part.toNonIndexed() : part));
-  const one = mergeGeometries(flat);
-  // A part that was already flat is its own flattening, so the two lists
-  // overlap and disposing both by hand would free it twice.
-  for (const part of new Set([...parts, ...flat])) part.dispose();
-  return one;
-}
-
-/**
- * Merge parts of different colours into one vertex-coloured geometry.
- *
- * Which is what lets a thing made of several colours still be one instanced
- * draw. A material per colour would mean a mesh per colour and a matrix
- * written per colour, all of them describing the same object.
- */
-function painted(parts: { geometry: THREE.BufferGeometry; color: number }[]): THREE.BufferGeometry {
-  const tint = new THREE.Color();
-  for (const part of parts) {
-    tint.set(part.color);
-    const count = part.geometry.getAttribute('position').count;
-    const colours = new Float32Array(count * 3);
-    for (let i = 0; i < count; i += 1) {
-      colours[i * 3] = tint.r;
-      colours[i * 3 + 1] = tint.g;
-      colours[i * 3 + 2] = tint.b;
-    }
-    part.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
-  }
-  return merged(parts.map((part) => part.geometry));
 }
 
 /**

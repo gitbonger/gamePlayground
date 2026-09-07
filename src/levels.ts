@@ -12,7 +12,14 @@
  */
 
 import { GREETING, HEADING_OUT, type Turn } from './dialogue';
-import { HOME_TREE, LOFT, PARK_PATCH, WEST_PATCH } from './landmarks';
+import {
+  HOME_TREE,
+  JANI_SQUARE,
+  LOFT,
+  MATYAS_SQUARE,
+  PARK_PATCH,
+  WEST_PATCH,
+} from './landmarks';
 
 /**
  * What a level asks you to land on. Always a thing, never a place.
@@ -64,6 +71,64 @@ export interface LevelPerson {
 }
 
 /**
+ * Somebody the story keeps track of, wherever they happen to be standing.
+ *
+ * A character is not a level's property. Pink stands on the home tree for the
+ * first two levels and on the loft's terrace for the rest, and she is the
+ * same bird throughout -- which is the whole reason this exists. Where each
+ * of them is *during* a level is the level's `cast`, so a level that is
+ * started, lost and started again puts everybody back where that level says
+ * they are. There is no state anywhere saying who has moved.
+ */
+export interface Character {
+  /** What the story calls them. */
+  name: string;
+  /** Which of the renderer's `CHARACTER_MORPHS` they wear. */
+  morph: number;
+}
+
+/**
+ * Everybody the story has, in one list.
+ *
+ * Four strangers and Pink. The strangers are named after what they look like
+ * because that is all there is to them yet: a pigeon standing on the thing a
+ * level is about, who says hello.
+ */
+export const PINK: Character = { name: 'Pink', morph: 4 };
+export const CHARACTERS: readonly Character[] = [
+  { name: 'Grey', morph: 0 },
+  { name: 'Black', morph: 1 },
+  { name: 'White', morph: 2 },
+  { name: 'Ginger', morph: 3 },
+  PINK,
+];
+
+export const characterNamed = (name: string): Character | undefined =>
+  CHARACTERS.find((who) => who.name === name);
+
+/**
+ * Where somebody is standing while a level is being flown.
+ *
+ * `on` is the same kind of thing a level can be aimed at -- a described
+ * landmark or a wagon -- so a character can stand on a roof, on a slab of
+ * concrete or on a goods wagon, and the machinery that works out where that
+ * is does not care which.
+ */
+export interface Standing {
+  /** Which character, by name. */
+  who: string;
+  on: LevelTarget;
+  /**
+   * Where on it, along it and across it, in its own frame.
+   *
+   * Along and across the thing rather than along and across the world, so
+   * turning the building turns whoever is standing on it.
+   */
+  along: number;
+  across: number;
+}
+
+/**
  * What finishes a level: the one thing a level cannot be without.
  *
  * There are three ways, and they used to be three optional fields that were
@@ -101,18 +166,45 @@ export type Opens = { level: string } | { scene: string };
 export interface Scene {
   name: string;
   /**
-   * The level whose opening shot this closes on.
+   * The level whose opening shot this closes on, if the camera goes anywhere.
    *
    * Stated as a level rather than as a place, so the shot cannot drift from
    * the one the player remembers: move the home tree and both move together.
+   *
+   * Left out for a beat that happens where the bird already is -- a line said
+   * standing on the square he has just landed on. Then there is no move and
+   * nothing is placed: the world simply stops and somebody says something.
    */
-  endsOn: string;
+  endsOn?: string;
   /** How long the camera takes to get there, in seconds. */
   seconds: number;
   /** How high it arcs over the city on the way, in metres. */
   cruise: number;
-  /** The line over the closing shot. */
-  says: string;
+  /**
+   * What he says over the closing shot, if anything: a monologue.
+   *
+   * Lines rather than a line, because a monologue is a conversation with one
+   * speaker -- it is shown in the same panel, in his own colour, as though he
+   * were talking to somebody, which is what he is doing except that nobody is
+   * there. That is also the whole of the beat: a man alone on a branch saying
+   * where he is going next.
+   *
+   * Saying something is what makes a scene *hold*: lines the player has not
+   * read yet are worth waiting for, so a scene with them puts the bird down
+   * in the closing shot and waits for the take-off key, and a scene without
+   * any runs straight on into whatever it opens. That is one field doing the
+   * work of two, and it is the right one -- there is no such thing as a beat
+   * with nothing to say.
+   */
+  says?: readonly string[];
+  /**
+   * What follows it: the next scene, or the level it hands over to.
+   *
+   * The same `Opens` a level's finish uses, so a chapter can be told as a
+   * flight, a beat and another flight without any of the three knowing it is
+   * in a chain.
+   */
+  opens: Opens;
 }
 
 /**
@@ -130,24 +222,89 @@ export const HOMECOMING: Scene = {
   endsOn: 'Heading out',
   seconds: 5,
   cruise: 60,
-  says: 'she is not here',
+  // Said to nobody, on the branch, over an empty nest. It is the first time
+  // the hero says anything without somebody to say it to, and it is what
+  // turns the empty nest into an errand -- he is not going for help, he is
+  // going to look, and the looking is what the next few levels are.
+  says: ['Where did she go?', 'Maybe she is on Mátyás tér.'],
+  opens: { scene: 'flying to Mátyás tér' },
 };
 
-export const SCENES: readonly Scene[] = [HOMECOMING];
+/**
+ * Off to the eighth district to look.
+ *
+ * Nothing to say, so it does not hold: the take-off that ends the beat at the
+ * nest runs straight into this, and this runs straight into the level. What
+ * the player sees is one movement -- he leaves the tree, the city goes past,
+ * and he is over Népszínház utca with the controls back.
+ */
+export const TO_MATYAS: Scene = {
+  name: 'flying to Mátyás tér',
+  endsOn: 'Mátyás tér',
+  seconds: 4,
+  cruise: 60,
+  opens: { level: 'Mátyás tér' },
+};
+
+/**
+ * The first square, and she is not on it.
+ *
+ * A beat with nowhere to go: no `endsOn`, so the camera stays where it is and
+ * the hero says it standing on the square he has just come down on. The
+ * search is going to be a run of these, and the shape of one is: fly there,
+ * land, find nothing, name the next place.
+ */
+export const NOT_AT_MATYAS: Scene = {
+  name: 'nobody at Mátyás tér',
+  seconds: 0,
+  cruise: 0,
+  says: ['She is not here.', 'Maybe on Jani Pali tér.'],
+  // Straight into the level, with no flight between: the next one starts over
+  // the square he is standing on, so a camera taking him there would be a
+  // camera going nowhere. He says it and he goes.
+  opens: { level: 'Jani Pali tér' },
+};
+
+export const SCENES: readonly Scene[] = [HOMECOMING, TO_MATYAS, NOT_AT_MATYAS];
 
 export const sceneNamed = (name: string): Scene | undefined =>
   SCENES.find((scene) => scene.name === name);
 
 export type Finish =
-  /** Walk up to the pigeon waiting at the target and talk to it. */
-  | { kind: 'meeting'; person: LevelPerson; dialogue: Turn }
   /**
-   * Cross a line drawn square across the route, so far along it.
+   * Walk up to one of the cast and talk to them.
    *
-   * `at` is metres from the release point. It exists to break a long flight
-   * into pieces you do not have to fly twice.
+   * Named rather than described: who it is comes from the level's `cast`,
+   * which is also what puts them there. A level cannot be finished by meeting
+   * somebody who is not in it.
    */
-  | { kind: 'crossing'; at: number; opens: Opens }
+  | { kind: 'meeting'; who: string; dialogue: Turn }
+  /**
+   * Cross a line drawn square across the route, through a named point.
+   *
+   * Stated as the coordinate the stripe passes through rather than as a
+   * distance along the way to something else. The distance came first, and it
+   * was the wrong way round twice over: it made the line depend on a
+   * *target*, so a level whose whole business is a line still had to name a
+   * building somewhere beyond it and point an arrow at it -- and it said
+   * where the line was in a unit nobody can look at on a map.
+   *
+   * The stripe runs square across the way in from the release point, which is
+   * the same thing as tangent to the circle drawn round it: any path from the
+   * release point to the far side crosses the line, however it wanders.
+   */
+  | { kind: 'crossing'; through: [number, number]; opens: Opens }
+  /**
+   * Get there and land, and find nothing.
+   *
+   * The searching kind. The hero is going round the district looking for his
+   * mate, and what finishes one of those levels is not meeting anybody -- it
+   * is arriving somewhere and her not being there. So there is nobody in the
+   * cast to walk up to and no conversation to have: the level is over when
+   * the feet are down on the place it named, and what it hands to is the beat
+   * where he says so.
+   */
+  | { kind: 'arrival'; opens: Opens }
   /**
    * Eat until the belly is full.
    *
@@ -157,9 +314,19 @@ export type Finish =
    */
   | { kind: 'fed'; opens: Opens };
 
-/** Who is waiting at the target, if the level ends by meeting somebody. */
-export const personOf = (level: Level): LevelPerson | undefined =>
-  level.finish.kind === 'meeting' ? level.finish.person : undefined;
+/** Whose name finishes the level, if it ends by meeting somebody. */
+export const metBy = (level: Level): string | undefined =>
+  level.finish.kind === 'meeting' ? level.finish.who : undefined;
+
+/** Where somebody is standing during a level, if they are in it at all. */
+export const standingOf = (level: Level, who: string): Standing | undefined =>
+  level.cast.find((spot) => spot.who === who);
+
+/** Where the one who finishes the level is standing. */
+export const waitingIn = (level: Level): Standing | undefined => {
+  const who = metBy(level);
+  return who === undefined ? undefined : standingOf(level, who);
+};
 
 /** What they say, likewise. */
 export const dialogueOf = (level: Level): Turn | undefined =>
@@ -221,6 +388,41 @@ export interface Level {
   when: string;
   target: LevelTarget;
   /**
+   * Marks along the way, shown one at a time, as help and nothing else.
+   *
+   * Optional, unlike the release height and the escort -- and the difference
+   * is worth stating, because both of those are required on purpose. Those
+   * are decisions about what a level *is*, and a default would let one be
+   * made by nobody. These are a hand held out to a player who cannot see
+   * where to go: a level without them is a level that does not need them,
+   * which is a perfectly ordinary thing for a level to be, and writing
+   * `waypoints: []` on eight of them would be nine lines of nothing.
+   *
+   * Nothing in the story knows about them. Passing the last one does not do
+   * anything at all.
+   */
+  waypoints?: readonly [number, number][];
+  /**
+   * Whether the flock flies with him on this one.
+   *
+   * Stated by every level and defaulted by none, for the same reason the
+   * release height is: it is a decision about what the level is, and a
+   * default would let one be written without anybody making it. Ten pigeons
+   * wheeling about is company on a long crossing of a park and it is noise
+   * over a district, in among the crows, or on a branch in a conversation.
+   */
+  escort: boolean;
+  /**
+   * Who is standing where, for as long as this level is being flown.
+   *
+   * Applied every time the level begins -- picked from the menu, restarted
+   * after a death, or walked into from the level before -- so this is the
+   * whole truth about where the cast is, and there is no history to get out
+   * of step with it. Moving somebody between two chapters of the story is
+   * writing them into a different place in the later one.
+   */
+  cast: readonly Standing[];
+  /**
    * How this one is finished: met, crossed, or eaten.
    *
    * Exactly one of the three, which is the point of its being a union rather
@@ -270,6 +472,23 @@ export interface Line {
 export const bellyOnEntry = (level: Level, carried: number): number =>
   Math.max(carried, level.health);
 
+/**
+ * The line through a point, square across the way in to it.
+ *
+ * Which is the same thing as the line through that point tangent to the
+ * circle drawn round the release point -- a tangent is perpendicular to the
+ * radius, and the radius is the way in. Saying it either way describes the
+ * same stripe, and the second way is what makes it the *right* stripe: any
+ * path from the release point to the far side of it crosses it, whatever
+ * detour it takes.
+ */
+export function lineThrough(from: { x: number; z: number }, at: { x: number; z: number }): Line {
+  const dx = at.x - from.x;
+  const dz = at.z - from.z;
+  const span = Math.hypot(dx, dz) || 1;
+  return { x: at.x, z: at.z, ux: dx / span, uz: dz / span };
+}
+
 /** The line `at` metres along the way from `from` to `to`. */
 export function crossingLine(
   from: { x: number; z: number },
@@ -307,14 +526,12 @@ export const LEVELS: readonly Level[] = [
     // them have been on this branch all night.
     health: 0.2,
     when: EVENING,
+    escort: false,
     target: { kind: 'landmark', name: HOME_TREE.name },
     // The pink one, and the only bird in the game wearing her colours. She
     // stands beside the nest rather than on it.
-    finish: {
-      kind: 'meeting',
-      person: { morph: 4, along: -0.4, across: 0.08 },
-      dialogue: HEADING_OUT,
-    },
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: HOME_TREE.name }, along: -0.4, across: 0.08 }],
+    finish: { kind: 'meeting', who: PINK.name, dialogue: HEADING_OUT },
     begins: 'perched',
   },
   {
@@ -345,11 +562,24 @@ export const LEVELS: readonly Level[] = [
     // Still hungry, which is the half of it the story needs.
     health: 0.25,
     when: EVENING,
+    // Company for the long crossing of the park, which is the level that
+    // most needs it: half a kilometre of nothing but trees.
+    escort: true,
     // The same slab the next level is about: the arrow points at the food for
     // the whole way there, because that is what he is doing. This half is
     // over when he is halfway, and nobody is standing on the line.
     target: { kind: 'landmark', name: PARK_PATCH.name },
-    finish: { kind: 'crossing', at: 600, opens: { level: 'Grabbing food' } },
+    // Still on the branch, exactly where the conversation left her: she said
+    // she would rather stay, and she is staying. He can look back and see it.
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: HOME_TREE.name }, along: -0.4, across: 0.08 }],
+    // Six hundred metres along, which is where the second half of the errand
+    // begins -- the same point, said once. It used to be said twice, as a
+    // distance here and as a coordinate there, and a test kept them in step.
+    finish: {
+      kind: 'crossing',
+      through: [47.49407, 19.088865],
+      opens: { level: 'Grabbing food' },
+    },
   },
   {
     // The second half of the same errand, and the reason it is a level of its
@@ -369,7 +599,16 @@ export const LEVELS: readonly Level[] = [
     // still counts for something.
     health: 0.25,
     when: EVENING,
+    // And on through the second half of the errand, since it is one flight
+    // in two pieces and a flock that vanished at the line would say so.
+    escort: true,
     target: { kind: 'landmark', name: PARK_PATCH.name },
+    // And this is where she goes. The park is behind him, he is a kilometre
+    // west with his back to the tree, and by the time he turns round she is
+    // on the loft. Nothing moves her: the level simply says she is there, so
+    // starting this level -- first time, or after flying into a chimney --
+    // has her there, and the branch is empty in every shot of it.
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 }],
     // Nobody is waiting on the concrete. A pigeon that has flown nine hundred
     // metres for food has come for the food, so the level is the eating: over
     // when the belly is full.
@@ -381,25 +620,117 @@ export const LEVELS: readonly Level[] = [
     finish: { kind: 'fed', opens: { scene: HOMECOMING.name } },
   },
   {
+    // Into the eighth district to look for her. He is put down over
+    // Népszínház utca, which is where the camera has just brought him, and
+    // Mátyás tér is five hundred metres south-west: the first place he thinks
+    // of, and the first place she is not.
+    name: 'Mátyás tér',
+    start: [47.493404, 19.085858],
+    // Eighty metres for five hundred of ground, which is 1:6.2 -- a pigeon's
+    // own best glide, so he arrives with nothing in hand and has to have
+    // worked for it. Low enough to be a flight through the district rather
+    // than a look down at it.
+    release: 80,
+    // He has just eaten a whole belly and flown home on it.
+    health: 1,
+    when: EVENING,
+    escort: false,
+    target: { kind: 'landmark', name: MATYAS_SQUARE.name },
+    // Nobody on the square. That is the point of it: the level is finished by
+    // getting there and finding it empty, and what he says about that is the
+    // beat it hands over to.
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 }],
+    finish: { kind: 'arrival', opens: { scene: 'nobody at Mátyás tér' } },
+  },
+  {
+    // The second square, four hundred and fifty metres north-west of the
+    // first: he takes off from one and flies to the other, which is the
+    // shape the searching has -- a run of hops round a district, each one
+    // beginning where the last one gave up.
+    name: 'Jani Pali tér',
+    // Straight up off Mátyás tér, which is where the last level left him
+    // standing. There is no camera flight into this one because there is
+    // nowhere to fly: he has said what he is going to do and the level is him
+    // doing it, from the square he said it on.
+    start: [47.491961, 19.079619],
+    release: 60,
+    health: 1,
+    when: EVENING,
+    escort: false,
+    target: { kind: 'landmark', name: JANI_SQUARE.name },
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 }],
+    // And this one hands straight over to the flight back east, with nothing
+    // said yet. What he works out here -- or who he bumps into -- is the next
+    // thing to be written, and it goes in as another beat.
+    finish: { kind: 'arrival', opens: { level: 'Népszínház' } },
+  },
+  {
+    // West, out over the open ground beyond the district, and the first level
+    // with something in the air to worry about rather than something on the
+    // ground to arrive at. He leaves the square he has just searched, and the
+    // crows are between him and the line.
+    name: 'Népszínház',
+    // Straight up off Jani Pali tér: the square the last level ended on.
+    start: [47.495871, 19.077971],
+    // Sixty metres, which is well over the roofline -- the houses come to
+    // twenty-four and the loft to thirty-one -- because the point of this
+    // one is that height is the danger. Crows are above you.
+    release: 60,
+    health: 1,
+    when: EVENING,
+    // Nobody. The sky over this one has crows in it, and a flock of ten
+    // pigeons milling about would bury them.
+    escort: false,
+    // West, which is where the line is: the slab out on the open ground
+    // beyond the district. The target no longer draws the line -- the
+    // coordinate does that -- so what it is for here is the direction of
+    // travel and the distance still to go.
+    target: { kind: 'landmark', name: WEST_PATCH.name },
+    cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 }],
+    // Three marks down the way west, which is a route through a district
+    // with nothing else in it to steer by: the squares are behind him and
+    // the line ahead is a stripe you cannot see until you are near it.
+    waypoints: [
+      [47.494767, 19.07711],
+      [47.495094, 19.075731],
+      [47.495327, 19.074701],
+    ],
+    // Three hundred and twenty metres west of the square he takes off from,
+    // and the stripe runs square across the way in to it.
+    finish: {
+      kind: 'crossing',
+      through: [47.495543, 19.073687],
+      opens: { level: 'The Loft' },
+    },
+  },
+  {
     // Twenty-four metres up, on a roof among other roofs. Still nothing
     // moving, but now you have to pick the right one and stop on it.
     name: 'The Loft',
+    // On the line the level before hands over at, which is the whole point of
+    // a checkpoint: dying just after the crossing puts the bird back where it
+    // crossed rather than somewhere it has never been. It follows that line
+    // wherever it goes, and the line has moved twice.
+    start: [47.495543, 19.073687],
     // Three hundred metres out and a hundred and twenty up, which is a good
     // deal steeper than a pigeon glides: 1:2.5 against a best glide of 1:6.2,
     // so the height has to be got rid of rather than merely flown off.
-    start: [47.494610, 19.086245],
     // High enough to see the whole approach and to reach it gliding.
     release: 100,
     // After the errand, and the errand was food. These three are flown on a
     // full belly because the story says he has eaten.
     health: 1,
     when: EVENING,
+    escort: false,
     target: { kind: 'landmark', name: LOFT.name },
-    finish: {
-      kind: 'meeting',
-      person: { morph: 1, along: 2.6, across: 0 },
-      dialogue: GREETING,
-    },
+    // Two of them on the terrace now: the one who lives here, and her. Three
+    // metres apart, which is more than the two a bird can be walked up to
+    // from -- so walking up to one of them is walking up to one of them.
+    cast: [
+      { who: 'Black', on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 },
+      { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
+    ],
+    finish: { kind: 'meeting', who: 'Black', dialogue: GREETING },
   },
   {
     // A wagon of a running train, which is the first target that will not
@@ -410,12 +741,13 @@ export const LEVELS: readonly Level[] = [
     release: 100,
     health: 1,
     when: EVENING,
+    escort: false,
     target: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' },
-    finish: {
-      kind: 'meeting',
-      person: { morph: 2, along: 2.5, across: 0 },
-      dialogue: GREETING,
-    },
+    cast: [
+      { who: 'White', on: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' }, along: 2.5, across: 0 },
+      { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
+    ],
+    finish: { kind: 'meeting', who: 'White', dialogue: GREETING },
   },
   {
     // Across the city to the west, and the first level flown in the morning:
@@ -427,11 +759,12 @@ export const LEVELS: readonly Level[] = [
     release: 100,
     health: 1,
     when: EVENING,
+    escort: false,
     target: { kind: 'landmark', name: WEST_PATCH.name },
-    finish: {
-      kind: 'meeting',
-      person: { morph: 3, along: 2.4, across: 0 },
-      dialogue: GREETING,
-    },
+    cast: [
+      { who: 'Ginger', on: { kind: 'landmark', name: WEST_PATCH.name }, along: 2.4, across: 0 },
+      { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 3 },
+    ],
+    finish: { kind: 'meeting', who: 'Ginger', dialogue: GREETING },
   },
 ];

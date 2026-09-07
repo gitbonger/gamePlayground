@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  caught,
   bankAngle,
   createBird,
   defaultParams,
@@ -331,6 +332,28 @@ describe('landing', () => {
     const bird = approach(5, 0.7);
     expect(length(bird.velocity)).toBe(0);
     expect(bird.position.y).toBe(defaultParams.groundHeight + defaultParams.bodyRadius);
+  });
+});
+
+describe('being caught in the air', () => {
+  it('ends the flight, and says what ended it', () => {
+    // Not a landing and not a collision with the scenery: a thing that was
+    // hunting it caught up. The player is owed the difference, because the
+    // advice is different -- there is nothing to fly better, there is
+    // somewhere not to be.
+    const bird = createBird(vec(0, 60, 0), 16, 0);
+    bird.velocity = vec(0, -3, -16);
+    caught(bird);
+
+    expect(bird.ending?.kind).toBe('crashed');
+    expect(bird.ending?.cause).toBe('caught');
+    // The numbers it was flying at, because that is what happened: it was
+    // flying, and then it was not.
+    expect(bird.ending?.speed).toBeCloseTo(Math.hypot(3, 16), 6);
+    expect(bird.ending?.sink).toBeCloseTo(3, 6);
+    // And it stops dead rather than carrying on with the wings out.
+    expect(bird.velocity).toEqual(vec(0, 0, 0));
+    expect(bird.restingOn).toBeNull();
   });
 });
 

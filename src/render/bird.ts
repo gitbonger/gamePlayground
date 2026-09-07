@@ -9,7 +9,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { defaultParams, type BirdState } from '../sim/flight';
+import { defaultParams, heading, type BirdState } from '../sim/flight';
 
 /**
  * The colour model, which is a legibility model rather than a taxonomy.
@@ -169,6 +169,44 @@ export const PINK_MORPH: PigeonMorph = {
 export const CHARACTER_MORPHS: readonly PigeonMorph[] = [...PIGEON_MORPHS, PINK_MORPH];
 
 /**
+ * The hooded crow: grey body, black head, wings and tail.
+ *
+ * Which is the crow Budapest actually has. The all-black one is the carrion
+ * crow and belongs further west; a *dolmányos varjú* wears a grey waistcoat,
+ * and it is the bird anybody who has stood in a park here has watched taking
+ * something off a bin.
+ *
+ * It also happens to be the most useful thing that could have been true: an
+ * all-black bird against roofs at a hundred metres is a silhouette, and two
+ * tones read as a *shape* at that distance. A crow you can see is a crow you
+ * can avoid.
+ */
+export const CROW_MORPH: PigeonMorph = {
+  ...DEFAULT_MORPH,
+  body: 0x8c8d92,
+  wing: 0x26272b,
+  bar: 0x1b1c1f,
+  head: 0x1f2023,
+  neck: 0x232427,
+  rump: 0x97989d,
+  tail: 0x1b1c1f,
+  beak: 0x141416,
+  leg: 0x2a2b2e,
+};
+
+/**
+ * How much bigger than a pigeon a crow is.
+ *
+ * Twice, which is about right: a hooded crow is fifty centimetres to a
+ * pigeon's thirty and half again the wingspan, and doubling one number is a
+ * better lie than a second set of proportions nobody would check. The rig is
+ * the pigeon's, scaled -- a crow at a hundred metres is a big grey and black
+ * bird, and the shape of its tail is not what tells you to get out of the
+ * way.
+ */
+export const CROW_SCALE = 2;
+
+/**
  * How far the body sits above the surface when standing, in metres.
  *
  * A rendering concern rather than a physical one, so it lives here rather
@@ -223,7 +261,7 @@ const LEG_SWING = 0.026;
 const LEG_LIFT = 0.012;
 
 /** What the wings are doing, which is most of what the bird reads as. */
-export type WingPose = 'tucked' | 'gliding' | 'braking' | 'perched';
+export type WingPose = 'tucked' | 'gliding' | 'braking' | 'perched' | 'dead';
 
 /** The red a marked bird is washed with when it is the one to go and see. */
 const MARKED = new THREE.Color(0xd0281c);
@@ -231,6 +269,16 @@ const MARKED = new THREE.Color(0xd0281c);
 /** Scratch constants for laying out the tail: the axis it fans about, and no scale. */
 const UP = new THREE.Vector3(0, 1, 0);
 const ONE = new THREE.Vector3(1, 1, 1);
+
+/**
+ * Half a turn about the model's own length: what makes a dead bird dead.
+ *
+ * The model faces -Z, so rolling it about Z puts its feet where its back was.
+ */
+const UPSIDE_DOWN = new THREE.Quaternion().setFromAxisAngle(
+  new THREE.Vector3(0, 0, 1),
+  Math.PI,
+);
 
 export interface BirdRig {
   object: THREE.Object3D;
@@ -532,7 +580,10 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
   let stand = 0;
 
   function update(state: BirdState, wingPose: WingPose, dt: number) {
-    const standing = wingPose === 'perched';
+    const dead = wingPose === 'dead';
+    // Lying on something either way, so it is dropped onto the surface the
+    // same as a bird standing on it -- what differs is which way up.
+    const standing = wingPose === 'perched' || dead;
     stand += ((standing ? 1 : 0) - stand) * Math.min(1, dt * 7);
 
     object.position.set(
@@ -540,14 +591,28 @@ export function createBirdRig(morph: PigeonMorph = DEFAULT_MORPH): BirdRig {
       state.position.y - STANDING_DROP * stand,
       state.position.z,
     );
-    object.quaternion.set(
-      state.orientation.x,
-      state.orientation.y,
-      state.orientation.z,
-      state.orientation.w,
-    );
+    if (dead) {
+      // On its back, feet up, whatever it was doing when it stopped. The
+      // simulation still holds the attitude it died in -- nose down out of a
+      // dive, banked into whatever it hit -- and that is the truth about the
+      // last instant of the flight, but it is not what a dead bird looks
+      // like. So the drawn one keeps only the direction it was facing and is
+      // laid out level and inverted, which is what everyone has seen a dead
+      // pigeon do and what nobody has to be told the meaning of.
+      turn.setFromAxisAngle(UP, -heading(state));
+      object.quaternion.copy(turn).multiply(UPSIDE_DOWN);
+    } else {
+      object.quaternion.set(
+        state.orientation.x,
+        state.orientation.y,
+        state.orientation.z,
+        state.orientation.w,
+      );
+    }
 
-    // Flying pose first, on one axis: -1 folded, 0 gliding, +1 braking.
+    // Flying pose first, on one axis: -1 folded, 0 gliding, +1 braking. Dead
+    // sits at the neutral one and stays there, because nothing is holding the
+    // wings in any shape at all.
     const target = wingPose === 'tucked' ? -1 : wingPose === 'braking' ? 1 : 0;
     pose += (target - pose) * Math.min(1, dt * 9);
 

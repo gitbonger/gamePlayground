@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  asFlight,
   asStance,
   MEET_RADIUS,
   meeting,
@@ -115,10 +116,12 @@ describe('walking into things', () => {
 
   it('stops at a wall instead of walking through it', () => {
     const bird = landed();
-    walked(bird, forward(), 10, wall as never);
+    walked(bird, forward(), 12 / p.walkSpeed, wall as never);
     expect(isPerched(bird)).toBe(true);
-    // Stopped its own radius short of the wall's near face, having had ten
-    // seconds -- twelve metres of walking -- to get through it.
+    // Stopped its own radius short of the wall's near face, having had twelve
+    // metres of walking to get through it. Counted in metres rather than in
+    // seconds, so that changing how fast a pigeon walks does not change what
+    // this is asking.
     expect(bird.position.z).toBeCloseTo(-3.5 + p.bodyRadius, 2);
   });
 
@@ -130,7 +133,10 @@ describe('walking into things', () => {
     // The near face is the one at z = -3.5, approached from z = 0.
     const touch = -3.5 + p.bodyRadius;
     const bird = landed(vec(0, STANDING, 0), -Math.PI / 4);
-    walked(bird, forward(), 10, wall as never);
+    // Twelve metres of it, which is far enough along the wall to be sliding
+    // and not so far as to reach the end of a wall eighteen metres wide and
+    // walk out past it.
+    walked(bird, forward(), 12 / p.walkSpeed, wall as never);
 
     expect(bird.position.x).toBeLessThan(touch - 3);
     // Still hard against the wall, rather than having drifted away from it.
@@ -555,11 +561,14 @@ describe('the three stances', () => {
     expect(stanceOf(down, true)).toBe('talking');
   });
 
-  it('says a crashed bird is doing nothing at all', () => {
+  it('says a crashed bird is dead, whoever it is standing next to', () => {
+    // A stance of its own rather than the absence of one. Being dead is a
+    // thing the game has to ask about -- the pose, the keys, whether the
+    // flock may let another bird out -- and nothing can be asked of a null.
     const dead = landed();
     dead.ending = { ...dead.ending!, kind: 'crashed', cause: 'struck' };
-    expect(stanceOf(dead, false)).toBeNull();
-    expect(stanceOf(dead, true)).toBeNull();
+    expect(stanceOf(dead, false)).toBe('dead');
+    expect(stanceOf(dead, true)).toBe('dead');
   });
 
   it('lets a walking bird do everything', () => {
@@ -580,14 +589,26 @@ describe('the three stances', () => {
     });
   });
 
-  it('gives a flying or crashed bird nothing on foot at all', () => {
+  it('gives a flying or dead bird nothing on foot at all', () => {
     const held = { forward: 1, turn: -1, launch: true };
-    for (const stance of ['flying', null] as const) {
+    for (const stance of ['flying', 'dead'] as const) {
       expect(asStance(held, stance), `${stance}`).toEqual({
         forward: 0,
         turn: 0,
         launch: false,
       });
+    }
+  });
+
+  it('takes the wing off a dead bird, and leaves every other stance its keys', () => {
+    // Not about movement: the flight model already ignores a bird whose
+    // flight has ended, so a dead one was never going anywhere. It is about
+    // the wings, which are drawn from these -- holding the brake over a
+    // corpse spread them to brake, and holding tuck folded them away.
+    const held = { ...neutralControls(), flap: true, brake: true, tuck: true, pitch: 1 };
+    expect(asFlight(held, 'dead')).toEqual(neutralControls());
+    for (const stance of ['flying', 'walking', 'talking'] as const) {
+      expect(asFlight(held, stance), stance).toBe(held);
     }
   });
 

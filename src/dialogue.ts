@@ -83,6 +83,26 @@ export interface Exchange {
 const ending = (ends: boolean, opens: Opens | undefined) =>
   ends && opens !== undefined ? { opens } : {};
 
+/**
+ * A monologue: somebody with nobody to say it to.
+ *
+ * A special case of a conversation rather than a thing of its own, which is
+ * both true and the reason it is one line of code: it is an exchange in which
+ * every line is the hero's and there is nothing to say back. Everything that
+ * already knows how to show a conversation shows it -- his colour, the same
+ * card in the same place -- and everything that asks whether a conversation
+ * is finished gets "yes", because a man talking to himself is never waiting
+ * for an answer.
+ *
+ * The alternative was a second panel with its own rules, showing the same
+ * kind of thing in a different place, and that is how a game ends up with two
+ * ways of putting words on the screen.
+ */
+export const alone = (...lines: readonly string[]): Exchange => ({
+  said: lines.map((text) => ({ who: 'you', text })),
+  replies: [],
+});
+
 /** Open with their line. */
 export function begin(turn: Turn): Exchange {
   const replies = turn.you ?? [];

@@ -97,6 +97,25 @@ describe('the two ways of flying it', () => {
     expect(stalled).toBe(true);
   });
 
+  it('spends the belly on flying in realistic, and never in basic', () => {
+    // What makes food a constraint is that stamina is recovered out of it, so
+    // a long flight has to be paid for. Basic does not charge, which leaves
+    // health as a thing only the story moves: still there, still filled at
+    // Teleki tér, but never lost.
+    const flap = { ...neutralControls(), flap: true };
+    const spent = (mode: keyof typeof MODES) => {
+      const p = paramsFor(MODES[mode]);
+      const bird = cruising();
+      // Beat the wings down, then glide: recovery is where the belly goes.
+      for (let t = 0; t < 20 / TICK; t += 1) step(bird, flap, p, TICK, undefined, calm);
+      const full = bird.health;
+      for (let t = 0; t < 60 / TICK; t += 1) step(bird, neutralControls(), p, TICK, undefined, calm);
+      return full - bird.health;
+    };
+    expect(spent('realistic')).toBeGreaterThan(0.1);
+    expect(spent('basic')).toBe(0);
+  });
+
   it('flies basic in still air and realistic in whatever there is', () => {
     expect(windFor(MODES.basic, gale)).toBe(calm);
     expect(windFor(MODES.realistic, gale)).toBe(gale);

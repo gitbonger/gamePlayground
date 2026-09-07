@@ -298,11 +298,20 @@ export const defaultParams: FlightParams = {
   crashSpeed: 7.5,
   struckSpeed: 0.5,
 
-  walkSpeed: 1.2,
+  // Three times what it was, which is a pigeon trotting rather than
+  // strolling. It is a playability figure and not a measured one: the bird
+  // walks the length of a roof terrace or across a patch of grain, and at a
+  // stroll that is a job rather than a move.
+  walkSpeed: 3.6,
   walkTurnRate: 2.5,
   walkStepUp: 0.12,
   walkStepDown: 0.25,
-  walkStride: 0.16,
+  // Lengthened with it, but by root three rather than by three. An animal
+  // going faster does both -- longer strides and more of them -- and holding
+  // the stride at 0.16 while trebling the speed would treble the cadence
+  // alone, which at twenty-two leg cycles a second is not a walk cycle, it is
+  // a blur. Split evenly, each goes up by about seventy per cent.
+  walkStride: 0.28,
   launchSpeed: 11,
   launchAngle: 0.4,
 
@@ -350,7 +359,9 @@ export type CrashCause =
   /** Touched down with a wing well down. */
   | 'not-level'
   /** Run into by something that was already moving. */
-  | 'struck';
+  | 'struck'
+  /** Caught in the air by something that was hunting it. */
+  | 'caught';
 
 /**
  * How a flight finished.
@@ -961,6 +972,27 @@ export const isPerched = (state: BirdState): boolean => state.ending?.kind === '
 
 /** True once the flight has ended badly and the run is over. */
 export const hasCrashed = (state: BirdState): boolean => state.ending?.kind === 'crashed';
+
+/**
+ * Ended by something catching it in the air.
+ *
+ * Not a landing and not a collision with the scenery: a thing that was
+ * hunting it caught up. The numbers recorded are the ones it was flying at,
+ * because that is what happened -- it was flying, and then it was not.
+ */
+export function caught(state: BirdState): void {
+  state.ending = {
+    kind: 'crashed',
+    cause: 'caught',
+    speed: length(state.velocity),
+    sink: -state.velocity.y,
+    bank: Math.abs(bankAngle(state)),
+    position: state.position,
+  };
+  state.velocity = vec(0, 0, 0);
+  state.angularVelocity = vec(0, 0, 0);
+  state.restingOn = null;
+}
 
 /** Heading in radians, measured clockwise from north (-Z). */
 export function heading(state: BirdState): number {

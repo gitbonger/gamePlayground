@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { createFlock, defaultFlockOptions } from './flock';
+import { createFlock, defaultFlockOptions, type Hunt } from './flock';
 import { defaultAutopilotParams, distanceTo, headingError, steer } from './sim/autopilot';
 import { bankAngle, createBird, defaultParams, neutralControls, step } from './sim/flight';
 import { createColliderField, turnedBox } from './sim/collision';
 import { calm, createWind } from './sim/wind';
-import { vec } from './sim/math3';
+import { vec, type Vec3 } from './sim/math3';
 
 const DT = 1 / 120;
 
 /** A leader that stays put, so what the flock does is the only thing moving. */
 const still = (x = 0, y = 60, z = 0, heading = 0) => () => ({ x, y, z, heading, speed: 0, climb: 0 });
+
+/** How far behind the leader the escort comes in, unwrapped from its spawn. */
+const SPAWN_BEHIND =
+  defaultFlockOptions.spawn.kind === 'behind' ? defaultFlockOptions.spawn.away : 0;
 
 describe('heading error', () => {
   it('takes the short way round', () => {
@@ -194,7 +198,7 @@ describe('the flock', () => {
         const away = Math.hypot(member.state.position.x, member.state.position.z);
         // A jump from well out to exactly the release point is a respawn:
         // nothing flies thirty metres in a hundred and twentieth of a second.
-        if (out[i]! > 30 && Math.abs(away - defaultFlockOptions.spawnBehind) < 0.01) {
+        if (out[i]! > 30 && Math.abs(away - SPAWN_BEHIND) < 0.01) {
           returns += 1;
         }
         out[i] = away;
@@ -206,6 +210,538 @@ describe('the flock', () => {
     // And none of them is left lying there.
     expect(flock.members.every((m) => !m.state.ending)).toBe(true);
   });
+
+  it('lets nobody out while the loft is shut', () => {
+    // What the player sees when they have just flown into a building: the sky
+    // stops restocking itself. A fresh pigeon appearing over the wreck is the
+    // game carrying on cheerfully around a corpse.
+    //
+    // The same wall, so the same deaths happen -- and this time nobody comes
+    // back from them.
+    const flock = createFlock(8, still(0, 60, 0));
+    const ring = Array.from({ length: 64 }, (_, i) => {
+      const around = (i / 64) * Math.PI * 2;
+      return turnedBox(Math.cos(around) * 45, Math.sin(around) * 45, 40, 400, 6, around);
+    });
+    const wall = createColliderField(ring);
+    const wind = createWind();
+
+    // Let them out first, so there is a flock to stop restocking.
+    for (let t = 0; t < 20; t += DT) flock.update(DT, wall, wind);
+    const flying = flock.members.filter((m) => !m.state.ending && m.down <= 0).length;
+    expect(flying).toBeGreaterThan(0);
+
+    for (let t = 0; t < 120; t += DT) flock.update(DT, wall, wind, false);
+    // They have all hit the wall by now and stayed down, which is the claim:
+    // dead where they fell, and no new ones.
+    expect(flock.members.some((m) => m.state.ending !== null)).toBe(true);
+    const left = flock.members.filter((m) => !m.state.ending && m.down <= 0).length;
+    expect(left).toBeLessThan(flying);
+
+    // And it is shut rather than broken: open it again and they come back.
+    for (let t = 0; t < 20; t += DT) flock.update(DT, wall, wind);
+    expect(flock.members.every((m) => !m.state.ending)).toBe(true);
+  });
+
+  it('holds back the ones that have not been let out yet', () => {
+    // The other half, and the one that matters at the start of a level: they
+    // come out one a second, so a player who dies in the first few seconds
+    // has most of the flock still waiting. Those must wait, and they must
+    // wait *properly* -- the wait is how everything else knows a bird is not
+    // in the air yet, so a bird held at nought would be drawn sitting at its
+    // spawn point in the middle of the shot.
+    const flock = createFlock(8, still(0, 60, 0));
+    const wind = createWind();
+    const waiting = () => flock.members.filter((m) => m.down > 0).length;
+    expect(waiting()).toBeGreaterThan(4);
+
+    const held = waiting();
+    for (let t = 0; t < 30; t += DT) flock.update(DT, undefined, wind, false);
+    expect(waiting(), 'nobody let out, and nobody counted down').toBe(held);
+
+    // Opened again, they come out at the spacing they would have had.
+    for (let t = 0; t < 30; t += DT) flock.update(DT, undefined, wind);
+    expect(waiting()).toBe(0);
+  });
+});
+
+describe('where a bird appears', () => {
+  /** A ring they cannot climb out of, so every one of them dies. */
+  const cage = () => {
+    const ring = Array.from({ length: 64 }, (_, i) => {
+      const around = (i / 64) * Math.PI * 2;
+      return turnedBox(Math.cos(around) * 45, Math.sin(around) * 45, 40, 400, 6, around);
+    });
+    return createColliderField(ring);
+  };
+
+  it('brings the escort in behind whatever it is following', () => {
+    // The original, and still the one the player's flock uses: they are
+    // following somebody, so they come in behind them going the same way. A
+    // bird released nose-on spends its first seconds turning round in shot.
+    const flock = createFlock(4, still(0, 60, 0, 0), {
+      ...defaultFlockOptions,
+      count: 4,
+      spawn: { kind: 'behind', away: 12 },
+    });
+    for (const member of flock.members) {
+      expect(Math.hypot(member.state.position.x, member.state.position.z)).toBeCloseTo(12, 6);
+      // Behind is the heading reversed: at a heading of nought that is +Z.
+      expect(member.state.position.z).toBeGreaterThan(0);
+    }
+  });
+
+  it('puts one back at its place, wherever it died', () => {
+    const flock = createFlock(2, still(0, 60, 0), {
+      ...defaultFlockOptions,
+      count: 2,
+      emitInterval: 0,
+      spawn: { kind: 'at', x: 30, y: 80, z: -10 },
+    });
+    const wind = createWind();
+    for (let t = 0; t < 60; t += DT) flock.update(DT, cage(), wind);
+
+    for (const member of flock.members) {
+      // Wherever it got to, it has been put back here at least once, and it
+      // is a place rather than a distance -- so they arrive on top of each
+      // other and fly apart, which is what a loft looks like.
+      expect(member.state.ending).toBeNull();
+    }
+    const fresh = createFlock(1, still(0, 60, 0), {
+      ...defaultFlockOptions,
+      count: 1,
+      spawn: { kind: 'at', x: 30, y: 80, z: -10 },
+    });
+    expect(fresh.members[0]!.state.position).toEqual({ x: 30, y: 80, z: -10 });
+  });
+
+  it('leaves one that dies for good where it fell', () => {
+    // A flock you can lose. Nothing puts them back, so the sky thins out --
+    // which is the whole difference between scenery and something at stake.
+    const flock = createFlock(4, still(0, 60, 0), {
+      ...defaultFlockOptions,
+      count: 4,
+      emitInterval: 0,
+      spawn: { kind: 'gone' },
+    });
+    const wind = createWind();
+    for (let t = 0; t < 60; t += DT) flock.update(DT, cage(), wind);
+    expect(flock.members.every((m) => m.state.ending !== null)).toBe(true);
+  });
+
+  it('puts one back exactly so far from where it went down', () => {
+    // "A random point exactly fifty metres from the point of death." Exactly
+    // is the word that matters, so it is measured from the point of death --
+    // which means giving them half a second on the ground first. Measured
+    // across the tick they die on, the answer comes out a few centimetres
+    // short, because the bird flies part of that tick before it hits
+    // anything and the jump is from where it started the tick rather than
+    // from where it stopped.
+    const away = 50;
+    const flock = createFlock(3, still(0, 90, 0), {
+      ...defaultFlockOptions,
+      count: 3,
+      emitInterval: 0,
+      minAltitude: 20,
+      respawnDelay: 0.5,
+      spawn: { kind: 'nearby', away },
+    });
+    const wind = createWind();
+    const walls = cage();
+
+    const died: (Vec3 | null)[] = flock.members.map(() => null);
+    let seen = 0;
+    const bearings: number[] = [];
+
+    for (let t = 0; t < 120; t += DT) {
+      flock.update(DT, walls, wind);
+      flock.members.forEach((member, i) => {
+        if (member.state.ending) {
+          died[i] = { ...member.state.position };
+          return;
+        }
+        const fell = died[i];
+        if (!fell) return;
+        died[i] = null;
+        seen += 1;
+        // Fifty, plus at most one tick of flying: a bird is put back at the
+        // top of the update and then flown for the rest of that same tick,
+        // so the first look anybody gets at it is already a hundred and
+        // thirty millimetres downstream at cruise. Held to a third of a
+        // metre, which that accounts for and a wrong radius would not.
+        const back = Math.hypot(
+          member.state.position.x - fell.x,
+          member.state.position.z - fell.z,
+        );
+        expect(Math.abs(back - away), `${back.toFixed(3)} m from where it fell`).toBeLessThan(0.3);
+        bearings.push(
+          Math.atan2(member.state.position.x - fell.x, member.state.position.z - fell.z),
+        );
+      });
+    }
+
+    expect(seen, 'some of them came back').toBeGreaterThan(2);
+    // Random rather than always the same way round: two of them landing on
+    // the same bearing would be a flock stacking up in one place.
+    expect(new Set(bearings.map((b) => b.toFixed(3))).size).toBeGreaterThan(1);
+  });
+});
+
+describe('going for something', () => {
+  /** A pigeon sitting still at a place and a height, or nothing at all. */
+  const quarry = (x: number, y: number, z: number, heading = 0) => () => ({
+    x,
+    y,
+    z,
+    heading,
+    speed: 0,
+    climb: 0,
+  });
+
+  const hunters = (hunt: Hunt) =>
+    createFlock(1, still(0, 60, 0), {
+      ...defaultFlockOptions,
+      count: 2,
+      emitInterval: 0,
+      radius: 20,
+      spawn: { kind: 'at', x: 0, y: 60, z: 0 },
+      hunt,
+    });
+
+  const rules = { within: 50, above: 20, floor: 20, loses: 250, speed: 23, turn: 2.5 };
+
+  it('goes for something that comes close enough, high enough', () => {
+    const flock = hunters({ ...rules, quarry: quarry(10, 60, 10) });
+    flock.update(DT, undefined, createWind());
+    expect(flock.members.every((m) => m.hunting)).toBe(true);
+  });
+
+  it('lets a low one alone, however near it comes', () => {
+    // The rule the level is built on: the warning says fly low, so flying low
+    // has to keep one off you in the first place.
+    const flock = hunters({ ...rules, quarry: quarry(0, 10, 0) });
+    for (let t = 0; t < 5; t += DT) flock.update(DT, undefined, createWind());
+    expect(flock.members.some((m) => m.hunting)).toBe(false);
+  });
+
+  it('lets a far one alone, however high it flies', () => {
+    const flock = hunters({ ...rules, quarry: quarry(500, 90, 500) });
+    for (let t = 0; t < 5; t += DT) flock.update(DT, undefined, createWind());
+    expect(flock.members.some((m) => m.hunting)).toBe(false);
+  });
+
+  it('aims at the bird itself, and moves the aim with it', () => {
+    // Not at a point it picked once. A crow that flew at where you were is a
+    // crow you can leave behind by carrying on.
+    let where = { x: 0, y: 60, z: 0 };
+    const flock = hunters({
+      ...rules,
+      quarry: () => ({ ...where, heading: 0, speed: 0, climb: 0 }),
+    });
+    flock.update(DT, undefined, createWind());
+    for (const member of flock.members) {
+      expect(member.aiming.x).toBeCloseTo(0, 6);
+      expect(member.aiming.z).toBeCloseTo(0, 6);
+      expect(member.aiming.altitude).toBeCloseTo(60, 6);
+    }
+
+    where = { x: 40, y: 70, z: -25 };
+    flock.update(DT, undefined, createWind());
+    for (const member of flock.members) {
+      expect(member.aiming.x).toBeCloseTo(40, 6);
+      expect(member.aiming.z).toBeCloseTo(-25, 6);
+      expect(member.aiming.altitude).toBeCloseTo(70, 6);
+    }
+  });
+
+  it('keeps at it once it has started, however long it takes', () => {
+    // It used to break off on arriving, which made an attack a single pass.
+    // Now the chase is the thing: nothing but losing you ends it.
+    const flock = hunters({ ...rules, quarry: quarry(30, 70, 0) });
+    const wind = createWind();
+    flock.update(DT, undefined, wind);
+    expect(flock.members.every((m) => m.hunting)).toBe(true);
+
+    for (let t = 0; t < 60; t += DT) flock.update(DT, undefined, wind);
+    expect(flock.members.every((m) => m.hunting), 'still after it').toBe(true);
+  });
+
+  it('follows a bird that dives, but will not go down after it', () => {
+    // The safety, and the whole shape of the level. Diving does not call off
+    // an attack that has begun -- it puts the bird under the floor the crow
+    // will not cross, so what was an attack becomes an escort.
+    let where = { x: 0, y: 60, z: 0 };
+    const flock = hunters({
+      ...rules,
+      quarry: () => ({ ...where, heading: 0, speed: 0, climb: 0 }),
+    });
+    flock.update(DT, undefined, createWind());
+    expect(flock.members.every((m) => m.hunting)).toBe(true);
+
+    // Down on the deck. Still hunted, still followed in plan -- and aimed at
+    // no lower than the floor.
+    where = { x: 0, y: 3, z: 0 };
+    flock.update(DT, undefined, createWind());
+    for (const member of flock.members) {
+      expect(member.hunting, 'still after it').toBe(true);
+      expect(member.aiming.x).toBeCloseTo(0, 6);
+      expect(member.aiming.altitude).toBe(rules.floor);
+    }
+  });
+
+  it('loses one that gets far enough away', () => {
+    // Or a bird that saw you once follows you for the rest of the game, which
+    // is not tenacity, it is a bug with a story attached.
+    let where = { x: 0, y: 60, z: 0 };
+    const flock = hunters({
+      ...rules,
+      quarry: () => ({ ...where, heading: 0, speed: 0, climb: 0 }),
+    });
+    flock.update(DT, undefined, createWind());
+    expect(flock.members.every((m) => m.hunting)).toBe(true);
+
+    where = { x: 0, y: 60, z: rules.loses + 50 };
+    flock.update(DT, undefined, createWind());
+    expect(flock.members.some((m) => m.hunting)).toBe(false);
+  });
+
+  it('closes on something that is running away from it', () => {
+    // The whole complaint that started this: flown properly, a bird banks to
+    // turn, and a bank is a circle sixteen metres across -- so it arrives
+    // where the pigeon was, sails past, and comes round again. A hunting bird
+    // is moved rather than flown, and this is the difference stated as a
+    // number: the gap shuts.
+    // Started off the crows' own spot, or the gap begins at nought and
+    // "the gap shuts" is not a claim about anything.
+    let where = { x: 0, y: 60, z: -30 };
+    const flock = hunters({
+      ...rules,
+      quarry: () => ({ ...where, heading: 0, speed: 19, climb: 0 }),
+    });
+    const wind = createWind();
+    flock.update(DT, undefined, wind);
+
+    const gap = () =>
+      Math.min(
+        ...flock.members.map((m) =>
+          Math.hypot(
+            m.state.position.x - where.x,
+            m.state.position.y - where.y,
+            m.state.position.z - where.z,
+          ),
+        ),
+      );
+    const first = gap();
+
+    // Running for it at a pigeon's cruise, in a straight line.
+    for (let t = 0; t < 12; t += DT) {
+      where = { ...where, z: where.z - 19 * DT };
+      flock.update(DT, undefined, wind);
+    }
+    expect(gap(), `was ${first.toFixed(0)} m`).toBeLessThan(first);
+    // Caught, and that is the claim: four metres a second of overtake against
+    // a thirty-metre head start is a run-down rather than a tail chase, so a
+    // player who answers a crow by flying flat out in a straight line loses.
+    // Running is not the defence -- height is.
+    expect(gap()).toBeLessThan(3);
+  });
+
+  it('turns onto it rather than sailing past', () => {
+    // Started pointed the wrong way entirely. What it must not do is hold its
+    // course, overshoot, and come round: that is the behaviour this replaced.
+    const flock = hunters({ ...rules, quarry: quarry(0, 60, -40) });
+    const wind = createWind();
+    for (const member of flock.members) member.state.velocity = { x: 0, y: 0, z: 23 };
+
+    let closest = Infinity;
+    for (let t = 0; t < 6; t += DT) {
+      flock.update(DT, undefined, wind);
+      closest = Math.min(
+        closest,
+        ...flock.members.map((m) =>
+          Math.hypot(m.state.position.x, m.state.position.y - 60, m.state.position.z + 40),
+        ),
+      );
+    }
+    expect(closest).toBeLessThan(2);
+  });
+
+  it('comes round in its own length, not in one tick', () => {
+    // The cap on the cheat. A moved bird could be pointed at its quarry
+    // instantly, and something that reverses between two frames is not a
+    // crow, it is a homing missile -- the player sees a sprite snap round and
+    // stops believing in any of it. So the course bends at a rate, and this
+    // is that rate: nothing it does may turn it faster.
+    //
+    // Started dead astern on purpose, which is the hardest case and the one
+    // an unbent version gets wrong most visibly.
+    const flock = hunters({ ...rules, quarry: quarry(0, 60, -40) });
+    const wind = createWind();
+    for (const member of flock.members) member.state.velocity = { x: 0, y: 0, z: 23 };
+
+    const bearing = (m: (typeof flock.members)[number]) => ({ ...m.state.velocity });
+    let sharpest = 0;
+    let was = flock.members.map(bearing);
+    for (let t = 0; t < 3; t += DT) {
+      flock.update(DT, undefined, wind);
+      const now = flock.members.map(bearing);
+      for (let i = 0; i < now.length; i += 1) {
+        const a = was[i]!;
+        const b = now[i]!;
+        const ends = Math.hypot(a.x, a.y, a.z) * Math.hypot(b.x, b.y, b.z);
+        if (ends < 1e-6) continue;
+        const turned = Math.acos(
+          Math.min(1, Math.max(-1, (a.x * b.x + a.y * b.y + a.z * b.z) / ends)),
+        );
+        sharpest = Math.max(sharpest, turned);
+      }
+      was = now;
+    }
+
+    // A hair over the cap for the arithmetic, and nowhere near the half-turn
+    // an uncapped one would take on the first tick.
+    expect(sharpest).toBeLessThan(rules.turn * DT * 1.05);
+    // And it did turn -- a bird frozen on its heading would also pass the
+    // line above.
+    expect(sharpest).toBeGreaterThan(rules.turn * DT * 0.5);
+  });
+
+  it('holds its speed and keeps above the floor while it chases', () => {
+    // The cheat has limits, and this is the one that matters: it may ignore
+    // the wind and the buildings, but it may not follow a bird onto the deck.
+    const flock = hunters({ ...rules, quarry: quarry(0, 2, 0) });
+    const wind = createWind();
+    // Seen while it was still high, then straight down to the pavement.
+    const seen = hunters({ ...rules, quarry: quarry(0, 60, 0) });
+    seen.update(DT, undefined, wind);
+
+    for (let t = 0; t < 8; t += DT) flock.update(DT, undefined, wind);
+    for (const member of flock.members) {
+      // It never saw this one -- two metres up is below the trigger -- so it
+      // is still flying the ordinary model and is where the flock lives.
+      expect(member.hunting).toBe(false);
+    }
+
+    const chasing = hunters({ ...rules, quarry: quarry(0, 60, 0) });
+    chasing.update(DT, undefined, wind);
+    expect(chasing.members.every((m) => m.hunting)).toBe(true);
+    for (let t = 0; t < 8; t += DT) {
+      chasing.update(DT, undefined, wind);
+      for (const member of chasing.members) {
+        expect(member.state.position.y).toBeGreaterThanOrEqual(rules.floor - 0.5);
+        const going = Math.hypot(
+          member.state.velocity.x,
+          member.state.velocity.y,
+          member.state.velocity.z,
+        );
+        expect(going).toBeCloseTo(rules.speed, 6);
+      }
+    }
+  });
+
+  it('stops going for something that is no longer there', () => {
+    // The quarry can vanish -- a level ends, the bird dies, the game stops
+    // caring. A crow still diving at where it used to be is a crow flying at
+    // a memory.
+    let alive = true;
+    const flock = hunters({
+      ...rules,
+      quarry: () => (alive ? { x: 10, y: 60, z: 10, heading: 0, speed: 0, climb: 0 } : null),
+    });
+    flock.update(DT, undefined, createWind());
+    expect(flock.members.every((m) => m.hunting)).toBe(true);
+
+    alive = false;
+    flock.update(DT, undefined, createWind());
+    expect(flock.members.some((m) => m.hunting)).toBe(false);
+  });
+});
+
+describe('a bird close enough to touch', () => {
+  it('says so for one in the air, and not for one that is out of it', () => {
+    // Asked by whoever owns the consequences. A flock knows where its birds
+    // are; what happens to something they touch is not its business.
+    const flock = createFlock(1, still(0, 60, 0), {
+      ...defaultFlockOptions,
+      count: 2,
+      emitInterval: 0,
+      spawn: { kind: 'at', x: 0, y: 60, z: 0 },
+    });
+
+    expect(flock.touching({ x: 0, y: 60, z: 0 }, 1.25)).toBe(true);
+    expect(flock.touching({ x: 0, y: 60, z: 2 }, 1.25)).toBe(false);
+    // Through the air rather than on the ground: something directly below is
+    // not touching, whatever the map says.
+    expect(flock.touching({ x: 0, y: 20, z: 0 }, 1.25)).toBe(false);
+  });
+
+  it('touches nothing while it is waiting to be let out', () => {
+    // The spawn point is a real place, and a bird that has not come out yet
+    // is sitting on it as far as its coordinates are concerned. Flying
+    // through that spot should not kill anybody.
+    const flock = createFlock(1, still(0, 60, 0), {
+      ...defaultFlockOptions,
+      count: 2,
+      emitInterval: 5,
+      spawn: { kind: 'at', x: 0, y: 60, z: 0 },
+    });
+    flock.recall();
+    expect(flock.members.every((m) => m.down > 0)).toBe(true);
+    expect(flock.touching({ x: 0, y: 60, z: 0 }, 1.25)).toBe(false);
+  });
+
+  it('touches nothing once it is dead', () => {
+    // Same rule, other end: a bird lying where it fell is scenery, and flying
+    // over it is flying over scenery.
+    const flock = createFlock(1, still(0, 60, 0), {
+      ...defaultFlockOptions,
+      count: 1,
+      emitInterval: 0,
+      spawn: { kind: 'at', x: 0, y: 60, z: 0 },
+    });
+    const at = flock.members[0]!.state.position;
+    expect(flock.touching(at, 1.25)).toBe(true);
+
+    flock.members[0]!.state.ending = {
+      kind: 'crashed',
+      cause: 'building',
+      speed: 0,
+      sink: 0,
+      bank: 0,
+      position: at,
+    };
+    expect(flock.touching(at, 1.25)).toBe(false);
+  });
+});
+
+describe('putting the flock away', () => {
+  it('takes them all out of the air, and lets them back one at a time', () => {
+    // For a flock that has been off duty. Left alone while nobody updated it,
+    // it is frozen where it was two levels ago -- so resuming would either
+    // strand it out of sight or, once the stray rule noticed, hand back all
+    // ten at once in a lump behind the player.
+    const flock = createFlock(4, still(0, 60, 0), {
+      ...defaultFlockOptions,
+      count: 4,
+      emitInterval: 1,
+    });
+    const wind = createWind();
+    for (let t = 0; t < 10; t += DT) flock.update(DT, undefined, wind);
+    expect(flock.members.every((m) => m.down <= 0), 'all out to begin with').toBe(true);
+
+    flock.recall();
+    expect(flock.members.every((m) => m.down > 0), 'and all away again').toBe(true);
+
+    // Then back in order rather than in a lump: after a second and a half,
+    // some of them are flying and some are still waiting.
+    for (let t = 0; t < 1.5; t += DT) flock.update(DT, undefined, wind);
+    const out = flock.members.filter((m) => m.down <= 0).length;
+    expect(out).toBeGreaterThan(0);
+    expect(out).toBeLessThan(flock.members.length);
+
+    for (let t = 0; t < 10; t += DT) flock.update(DT, undefined, wind);
+    expect(flock.members.every((m) => m.down <= 0), 'and all out again').toBe(true);
+  });
 });
 
 describe('keeping the player company', () => {
@@ -213,18 +749,18 @@ describe('keeping the player company', () => {
     const flock = createFlock(4, still(0, 60, 0, 0));
     for (const member of flock.members) {
       const back = Math.hypot(member.state.position.x, member.state.position.z);
-      expect(back).toBeCloseTo(defaultFlockOptions.spawnBehind, 6);
+      expect(back).toBeCloseTo(SPAWN_BEHIND, 6);
     }
   });
 
   it('behind means behind whichever way the leader is facing', () => {
     // Facing north, "behind" is south, which is +Z. Facing east it is west.
     const north = createFlock(2, still(0, 60, 0, 0)).members[0]!;
-    expect(north.state.position.z).toBeCloseTo(defaultFlockOptions.spawnBehind, 6);
+    expect(north.state.position.z).toBeCloseTo(SPAWN_BEHIND, 6);
     expect(north.state.position.x).toBeCloseTo(0, 6);
 
     const east = createFlock(2, still(0, 60, 0, Math.PI / 2)).members[0]!;
-    expect(east.state.position.x).toBeCloseTo(-defaultFlockOptions.spawnBehind, 6);
+    expect(east.state.position.x).toBeCloseTo(-SPAWN_BEHIND, 6);
     expect(east.state.position.z).toBeCloseTo(0, 6);
   });
 
@@ -315,7 +851,7 @@ describe('keeping the player company', () => {
     flock.update(DT, undefined, wind);
 
     expect(Math.hypot(stray.state.position.x, stray.state.position.z)).toBeCloseTo(
-      defaultFlockOptions.spawnBehind,
+      SPAWN_BEHIND,
       6,
     );
   });
@@ -445,7 +981,7 @@ describe('where they are aiming', () => {
       flock.members.forEach((member, i) => {
         if (member.down > 0) return;
         const away = Math.hypot(member.state.position.x - along, member.state.position.z);
-        if (was[i]! > 30 && Math.abs(away - defaultFlockOptions.spawnBehind) < 0.01) recycles += 1;
+        if (was[i]! > 30 && Math.abs(away - SPAWN_BEHIND) < 0.01) recycles += 1;
         was[i] = away;
       });
     }
@@ -675,7 +1211,7 @@ describe('letting them out', () => {
     expect(victim.down).toBe(0);
     // Back behind the leader, not left where it fell.
     expect(Math.hypot(victim.state.position.x, victim.state.position.z)).toBeCloseTo(
-      defaultFlockOptions.spawnBehind,
+      SPAWN_BEHIND,
       6,
     );
   });

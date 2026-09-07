@@ -1,10 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import { begin, GREETING, isOver, reply, type Turn } from './dialogue';
+import { alone, begin, GREETING, isOver, reply, type Turn } from './dialogue';
 import { dialogueOf, LEVELS } from './levels';
 
 /** What is on screen, as plain strings, for comparing against. */
 const lines = (exchange: ReturnType<typeof begin>) =>
   exchange.said.map((said) => `${said.who}: ${said.text}`);
+
+describe('a monologue', () => {
+  it('is a conversation with one speaker and nothing to say back', () => {
+    // Which is what makes it worth having as a special case rather than as a
+    // second kind of thing: the panel that shows conversations shows this,
+    // and everything that asks whether the talking is finished gets "yes".
+    const said = alone('Where did she go?', 'Maybe she is on Mátyás tér.');
+    expect(said.said).toEqual([
+      { who: 'you', text: 'Where did she go?' },
+      { who: 'you', text: 'Maybe she is on Mátyás tér.' },
+    ]);
+    expect(said.replies).toEqual([]);
+    expect(isOver(said)).toBe(true);
+  });
+
+  it('hands nothing over by itself', () => {
+    // A conversation can open a level, because an answer can lead somewhere.
+    // Nobody answers a monologue, so what follows it is the scene's business
+    // and not the words'.
+    expect(alone('...').opens).toBeUndefined();
+  });
+
+  it('is still a monologue when there is only one thing to say', () => {
+    expect(alone('She is not here.').said).toHaveLength(1);
+    expect(isOver(alone('She is not here.'))).toBe(true);
+  });
+});
 
 describe('holding a conversation', () => {
   it('opens on their line, with yours to choose from', () => {

@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { LEVELS } from '../levels';
+import { project } from '../world/geo';
+import HOME_MAP from '../world/data/home.json';
 import {
   approachFor,
   CAUTIONS,
@@ -127,6 +130,38 @@ describe('handing out the flying lessons', () => {
         for (const key of lesson.keys) {
           expect(codesFor({ keys: [key], text: '' }).length, key).toBeGreaterThan(0);
         }
+      }
+    }
+  });
+
+  it('teaches nothing to a level that does not exist', () => {
+    // A course is keyed by a level's name, the way everything else in this
+    // game that points at a level is, and the cost of that is a typo being a
+    // lesson nobody is ever given -- silently, because a course that is never
+    // looked up is indistinguishable from a level with nothing to teach.
+    const levels = new Set(LEVELS.map((level) => level.name));
+    for (const name of Object.keys(COURSES)) {
+      expect(levels, `${name} has a course but is not a level`).toContain(name);
+    }
+  });
+
+  it('gives every lesson long enough to be given', () => {
+    // A lesson counted from the take-off has to come round before the level
+    // can end, or it is a lesson nobody is ever shown -- and nothing would
+    // say so: an ungiven lesson looks exactly like a level with less to
+    // teach. The crow warning is fifty metres into a flight that ends at four
+    // hundred and fifty, which is the shape this is guarding.
+    for (const level of LEVELS) {
+      const ends = level.finish;
+      if (ends.kind !== 'crossing') continue;
+      // How far the level actually is: the release point to the line.
+      const centre = HOME_MAP.centre as [number, number];
+      const from = project(level.start[0], level.start[1], centre);
+      const line = project(ends.through[0], ends.through[1], centre);
+      const flown = Math.hypot(line.x - from.x, line.z - from.z);
+      for (const lesson of courseFor(level.name)) {
+        if (lesson.at === undefined) continue;
+        expect(lesson.at, `${level.name}: ${lesson.text}`).toBeLessThan(flown);
       }
     }
   });

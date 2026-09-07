@@ -57,11 +57,24 @@ describe('a pigeon pottering about', () => {
     expect(first.forward).toBe(0);
     expect(Math.abs(first.turn)).toBe(1);
 
-    // And once it has come round, it walks.
+    // And once it has come round, it walks: pointed at the goal, and closer
+    // to it than it was.
+    //
+    // Measured against the bearing to the goal rather than against the half
+    // turn it started with. They are not the same thing -- the bird walks
+    // while it turns, so it curves out and the goal is no longer dead astern
+    // by the time it is round -- and the bearing is what the claim is
+    // actually about. Stated as a heading it would be a test that failed
+    // whenever a pigeon's walking pace changed, which tells you it was
+    // measuring the wrong thing.
     for (let t = 0; t < 2 / TICK; t += 1) {
       walk(bird, steerWander(bird, wander, TICK, () => 0.5), p, TICK);
     }
-    expect(Math.abs(heading(bird) - Math.PI)).toBeLessThan(0.2);
+    const bearing = Math.atan2(
+      wander.goal.x - bird.position.x,
+      -(wander.goal.z - bird.position.z),
+    );
+    expect(Math.abs(heading(bird) - bearing)).toBeLessThan(0.2);
     expect(bird.position.z).toBeGreaterThan(0.5);
   });
 

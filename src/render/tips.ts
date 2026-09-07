@@ -56,6 +56,13 @@ export interface Tip {
    * only what is about to go wrong or what the flight cannot continue
    * without. Everything else is on the screen, where something can be
    * ignored without being silenced.
+   *
+   * The test, when adding one: what happens if the player does not read it?
+   * If they die, or the level cannot be finished, it is spoken. If they miss
+   * a nicety or find out a second later, it is not. A danger is not the same
+   * thing as a resource running down -- the stall, the sink and the crows are
+   * spoken; the stamina warning is not, because a red bar is already saying
+   * it and there are seconds in hand.
    */
   spoken?: boolean;
 }
@@ -166,6 +173,15 @@ export const COURSES: Record<string, readonly Lesson[]> = {
     // this is the one thing the level cannot be finished without.
     { landed: true, keys: [], text: 'Eat the seeds to restore your health!', spoken: true },
   ],
+  // Fifty metres out of the square, which is three or four seconds: long
+  // enough to have got the wings working and short enough that the warning
+  // arrives before the trouble does.
+  //
+  // Not a control and not a caution -- the flight is fine, and nothing about
+  // the bird's own state says so. It is the one thing on this route that the
+  // player could not have worked out by looking, which is exactly what a
+  // one-off is for. Said aloud, because it is about staying alive.
+  'Népszínház': [{ at: 50, keys: [], text: 'Crows! Fly low!', spoken: true }],
 };
 
 /** What a level teaches, which for most levels is nothing. */

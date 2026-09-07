@@ -32,12 +32,111 @@ import {
 } from './sim/autopilot';
 import type { Collider } from './sim/collision';
 import type { WindField } from './sim/wind';
-import { vec } from './sim/math3';
+import {
+  add,
+  clamp,
+  cross,
+  dot,
+  length,
+  normalize,
+  quatFromAxisAngle,
+  quatMultiply,
+  scale,
+  vec,
+  type Quat,
+  type Vec3,
+} from './sim/math3';
+
+/**
+ * Where a bird appears: the first time, and after it has died.
+ *
+ * Four ways, and they are four different things a flock can be. The escort
+ * comes in behind the player because it is following them; a flock over a
+ * square is put back where it fell because that is where it lives; something
+ * that dies for good is a thing you can lose.
+ */
+export type Spawn =
+  /** At a fixed place and height, however many times it takes. */
+  | { kind: 'at'; x: number; y: number; z: number }
+  /**
+   * Behind whatever it is flying around, going the same way.
+   *
+   * Facing the same way rather than at it, because a bird released nose-on
+   * spends its first seconds turning round in front of the camera.
+   */
+  | { kind: 'behind'; away: number }
+  /** Nowhere. Once it is down it stays down, and the flock thins out. */
+  | { kind: 'gone' }
+  /**
+   * A random bearing, exactly this far from where it died.
+   *
+   * In plan rather than through the air, and at the height it died at or the
+   * floor, whichever is higher -- so "exactly fifty metres" stays exactly
+   * fifty metres instead of becoming whatever is left after the ground has
+   * been argued with. The first time, when nothing has died yet, it is
+   * measured from the thing the flock is flying around.
+   */
+  | { kind: 'nearby'; away: number };
+
+/**
+ * Something the flock may go for, and the rules about when.
+ *
+ * A crow that dives at a pigeon is not flying a different way -- it is the
+ * same autopilot with a different waypoint, which is the whole reason this
+ * fits in twenty lines rather than in a second flight model.
+ */
+export interface Hunt {
+  quarry: () => Anchor | null;
+  /** How near it has to come before a bird notices, in metres. */
+  within: number;
+  /**
+   * And how high it has to be for a chase to start, in metres.
+   *
+   * The trigger only. Once a bird is after something it stays after it, so
+   * diving does not call off an attack that has already begun -- it decides
+   * whether the next one starts.
+   */
+  above: number;
+  /**
+   * The lowest a hunter will follow it, in metres.
+   *
+   * Where the safety is. It aims at the quarry itself, but never at a point
+   * below this -- so a pigeon on the deck has a crow keeping station over it
+   * rather than a crow arriving. Going low does not shake it off; it stops it
+   * reaching you.
+   */
+  floor: number;
+  /**
+   * How fast it goes once it is after something, in m/s.
+   *
+   * This is where the flight model is put aside. A hunting bird is moved
+   * straight at its quarry at this speed rather than flown -- see `dive`.
+   */
+  speed: number;
+  /**
+   * And how sharply it can bend its course, in radians a second.
+   *
+   * The whole of what makes a chase a chase. Flown properly, a bird at
+   * fourteen metres a second banked as far as it dares turns inside about
+   * sixteen metres, so a pigeon that jinks is a pigeon it sails past and has
+   * to come round for -- which is what it did, repeatedly, looking exactly as
+   * stupid as it sounds.
+   */
+  turn: number;
+  /**
+   * How far away the quarry has to get before it is lost, in metres.
+   *
+   * Otherwise a bird that has once seen something follows it for the rest of
+   * the game and across every level, which is not tenacity, it is a bug with
+   * a story attached.
+   */
+  loses: number;
+}
 
 export interface FlockOptions {
   count: number;
-  /** How far behind the leader a bird is released, in metres. */
-  spawnBehind: number;
+  /** Where a bird comes from, the first time and every time after. */
+  spawn: Spawn;
   /**
    * Radius of the ball around the leader that targets are picked inside, in
    * metres.
@@ -104,6 +203,8 @@ export interface FlockOptions {
   seed: number;
   /** How they fly. Their own, because escorting is not crossing a city. */
   autopilot: AutopilotParams;
+  /** What they go for, if they go for anything. */
+  hunt?: Hunt;
 }
 
 /**
@@ -166,7 +267,7 @@ const LOOKAHEAD = 3;
 
 export const defaultFlockOptions: FlockOptions = {
   count: 10,
-  spawnBehind: 10,
+  spawn: { kind: 'behind', away: 10 },
   radius: 15,
   minAltitude: 10,
   arrivalRadius: 8,
@@ -179,13 +280,20 @@ export const defaultFlockOptions: FlockOptions = {
 };
 
 /**
- * The bird they are keeping company, as it is right now.
+ * The thing they are flying around, as it is right now.
  *
- * Read through a function rather than held as an object, because the player's
- * bird is replaced outright when the run restarts: anything holding the old
- * one keeps flying escort to a pigeon nobody can see any more.
+ * Read through a function rather than held as an object, because what a flock
+ * circles may be replaced outright -- the player's bird is, whenever the run
+ * restarts, and anything holding the old one keeps escorting a pigeon nobody
+ * can see any more.
+ *
+ * It need not move. A stationary anchor is one whose speed is nought, and the
+ * arithmetic falls out: the flock aims at a ball centred on it and stays
+ * there, which is what a few crows over a rooftop do. It was written for the
+ * player and read as "the leader" throughout; it is the same shape, asked a
+ * more general question.
  */
-export interface Leader {
+export interface Anchor {
   x: number;
   y: number;
   z: number;
@@ -199,6 +307,8 @@ export interface Leader {
 
 export interface FlockMember {
   state: BirdState;
+  /** Whether it is going for something rather than wheeling about. */
+  hunting: boolean;
   /** Which colour scheme to draw it in, as an index into PIGEON_MORPHS. */
   morph: number;
   /** Seconds until it is released again; zero while it is flying. */
@@ -209,7 +319,140 @@ export interface FlockMember {
 
 export interface Flock {
   readonly members: readonly FlockMember[];
-  update(dt: number, collider: Collider | undefined, wind: WindField): void;
+  /**
+   * Fly them for a tick.
+   *
+   * `letting` is whether any more may be let out. False stops the loft: the
+   * ones already in the air carry on, and one that goes down stays down. It
+   * is for the moment the player is dead, when a fresh pigeon appearing over
+   * the wreck is the game carrying on cheerfully around a corpse -- which is
+   * the one thing that moment should not do.
+   */
+  update(
+    dt: number,
+    collider: Collider | undefined,
+    wind: WindField,
+    letting?: boolean,
+  ): void;
+  /**
+   * Put every bird away, to come out again one at a time.
+   *
+   * For a flock that has been off duty. Left alone while nobody was updating
+   * it, it is frozen wherever it was two levels ago, and letting it simply
+   * resume would either strand it out of sight or -- once the stray rule
+   * noticed -- hand back all ten at once, in a lump, behind the player. This
+   * is the same staggered start they get when the game begins.
+   */
+  recall(): void;
+  /**
+   * Whether any bird in the air is this close to a point.
+   *
+   * Asked by whoever owns the consequences rather than answered here: a flock
+   * knows where its birds are and has no business deciding what happens to
+   * something they touch.
+   */
+  touching(at: { x: number; y: number; z: number }, within: number): boolean;
+}
+
+/**
+ * Turn one direction towards another, by at most `most` radians.
+ *
+ * A rotation about the axis between them, which is the part that has to be
+ * done properly. The obvious version -- slide a fraction of the way from one
+ * to the other and normalise -- is a chord rather than an arc, and it has a
+ * hole in it exactly where a hunt needs it most: for a bird pointed *directly
+ * away* from its quarry the two directions are opposite, the chord between
+ * them runs down the axis itself, and normalising puts it back where it
+ * started. It flies away in a straight line for ever, at full speed, never
+ * turning. That is what "they just fly by me" looked like from the outside.
+ *
+ * So: rotate. Where there is no axis to rotate about, because the bird is
+ * pointed dead astern of where it wants to be, it turns flat -- a bird comes
+ * round in yaw, not by looping over its own back.
+ */
+function bend(heading: Vec3, want: Vec3, most: number): Vec3 {
+  const off = Math.acos(clamp(dot(heading, want), -1, 1));
+  if (off <= most || off < 1e-6) return want;
+
+  const between = cross(heading, want);
+  let axis = length(between) > 1e-6 ? normalize(between) : vec(0, 0, 0);
+  if (length(axis) < 0.5) {
+    // Dead astern. Any axis across the heading will bring it round; pick the
+    // one that keeps the turn level, falling back to something arbitrary for
+    // a bird going straight up or straight down.
+    const flat = cross(heading, vec(0, 1, 0));
+    axis = length(flat) > 1e-6 ? normalize(flat) : vec(1, 0, 0);
+  }
+
+  // Rodrigues, with the term in (k.v) kept because the fallback axis above is
+  // square to the heading but the general one need not be trusted to be.
+  const c = Math.cos(most);
+  const s = Math.sin(most);
+  return normalize(
+    add(
+      add(scale(heading, c), scale(cross(axis, heading), s)),
+      scale(axis, dot(axis, heading) * (1 - c)),
+    ),
+  );
+}
+
+/**
+ * Move a hunting bird straight at what it is after.
+ *
+ * The cheat, and it is worth being plain about what is being cheated. This
+ * does not fly: it ignores the wind, it ignores the collider, it holds one
+ * speed whatever the attitude, and nothing it does costs it stamina. It is a
+ * thing being moved along a line that bends.
+ *
+ * The reason is that the honest version does not work. A crow flying the real
+ * model banks to turn, and a bank is a circle: at fourteen metres a second
+ * and the steepest angle it dares, that circle is sixteen metres across. A
+ * pigeon is smaller than that and moving, so the crow arrives where the
+ * pigeon was, sails past, and comes round -- over and over, looking like an
+ * idiot rather than like a predator. Every trick that would fix it inside the
+ * flight model (more speed, more bank, a lead on the target) makes the circle
+ * *bigger*, because radius goes with the square of speed.
+ *
+ * So the hunt gets its own motion and the honest model keeps the rest of the
+ * game. The bird still looks right -- it is pointed along its own course, and
+ * its wings beat -- and the player still has the one defence that matters,
+ * which is height: this is only ever aimed at the floor or above it.
+ */
+function dive(state: BirdState, at: Waypoint, hunt: Hunt, p: FlightParams, dt: number): void {
+  const to = vec(at.x - state.position.x, at.altitude - state.position.y, at.z - state.position.z);
+  const span = length(to);
+  const want = span > 1e-6 ? scale(to, 1 / span) : vec(0, 0, -1);
+
+  const going = length(state.velocity);
+  const heading = going > 1e-6 ? scale(state.velocity, 1 / going) : want;
+
+  // Bend the course towards it, by no more than it can turn in a tick. The
+  // cap is what keeps it a bird rather than a homing missile: it still has to
+  // come round, it just comes round in its own length instead of a street.
+  const course = bend(heading, want, hunt.turn * dt);
+
+  state.velocity = scale(course, hunt.speed);
+  state.position = add(state.position, scale(state.velocity, dt));
+  state.orientation = lookAlong(course);
+  // Beating, because it is working. The rig draws the wings from this and a
+  // bird crossing the sky with its wings frozen reads as a paper aeroplane.
+  state.flapPhase = (state.flapPhase + p.flapFrequency * dt) % 1;
+  state.age += dt;
+}
+
+/**
+ * The attitude of something flying along `course`, nose first and wings level.
+ *
+ * Yaw then pitch, in the order and the signs the rest of the game uses: the
+ * model faces -Z at a heading of nought, and a positive pitch is nose up.
+ */
+function lookAlong(course: Vec3): Quat {
+  const yaw = Math.atan2(course.x, -course.z);
+  const pitch = Math.asin(clamp(course.y, -1, 1));
+  return quatMultiply(
+    quatFromAxisAngle(vec(0, 1, 0), -yaw),
+    quatFromAxisAngle(vec(1, 0, 0), pitch),
+  );
 }
 
 /** Small deterministic PRNG, so a flock is the same flock every run. */
@@ -225,7 +468,7 @@ function mulberry32(seed: number): () => number {
 
 export function createFlock(
   morphCount: number,
-  leader: () => Leader = () => ({ x: 0, y: 60, z: 0, heading: 0, speed: 0, climb: 0 }),
+  around: () => Anchor = () => ({ x: 0, y: 60, z: 0, heading: 0, speed: 0, climb: 0 }),
   options: FlockOptions = defaultFlockOptions,
   flight: FlightParams = defaultParams,
 ): Flock {
@@ -237,10 +480,12 @@ export function createFlock(
     memory: AutopilotState;
     /** Seconds spent on the current target. */
     chasing: number;
+    /** Where it last went down, for the spawn that measures from there. */
+    fell: Vec3 | null;
   }
 
   /** Somewhere near the leader to make for, chosen fresh each time. */
-  const target = (at: Leader): Waypoint => {
+  const target = (at: Anchor): Waypoint => {
     // Centred on where the leader will be, not where they are. Aiming at a
     // point somebody is standing on is pure pursuit, and pure pursuit always
     // arrives behind them: by the time the bird gets there the leader has
@@ -274,29 +519,65 @@ export function createFlock(
     };
   };
 
-  /** Appear behind the leader, going the same way, and pick somewhere to go. */
-  const release = (pilot: Pilot) => {
-    const at = leader();
-    // Behind is the leader's heading reversed. Facing the same way as the
-    // leader rather than at it, because a bird released nose-on would spend
-    // its first seconds turning round in front of the camera.
-    const behind = at.heading + Math.PI;
-    pilot.member.state = createBird(
-      vec(
-        at.x + Math.sin(behind) * options.spawnBehind,
-        Math.max(at.y, options.minAltitude),
-        at.z - Math.cos(behind) * options.spawnBehind,
+  /** Where this bird comes back, and which way it is pointed when it does. */
+  const appears = (pilot: Pilot, at: Anchor): { where: Vec3; facing: number } | null => {
+    const spawn = options.spawn;
+    if (spawn.kind === 'gone') return null;
+
+    if (spawn.kind === 'at') {
+      return {
+        where: vec(spawn.x, Math.max(spawn.y, options.minAltitude), spawn.z),
+        facing: rand() * Math.PI * 2,
+      };
+    }
+
+    if (spawn.kind === 'behind') {
+      const behind = at.heading + Math.PI;
+      return {
+        where: vec(
+          at.x + Math.sin(behind) * spawn.away,
+          Math.max(at.y, options.minAltitude),
+          at.z - Math.cos(behind) * spawn.away,
+        ),
+        facing: at.heading,
+      };
+    }
+
+    // Somewhere else near where it went down -- or near the anchor, the first
+    // time, when nothing has gone down yet.
+    const from = pilot.fell ?? { x: at.x, y: at.y, z: at.z };
+    const around = rand() * Math.PI * 2;
+    return {
+      where: vec(
+        from.x + Math.sin(around) * spawn.away,
+        Math.max(from.y, options.minAltitude),
+        from.z - Math.cos(around) * spawn.away,
       ),
-      12 + rand() * 4,
-      at.heading,
-    );
+      // Facing back towards where it came from, which for something knocked
+      // out of the sky is the direction it has business in.
+      facing: around + Math.PI,
+    };
+  };
+
+  /** Put a bird in the air and give it somewhere to go. */
+  const release = (pilot: Pilot) => {
+    const at = around();
+    const from = appears(pilot, at);
+    if (!from) {
+      // Gone for good: left where it fell, and not counted as waiting for
+      // anything either.
+      pilot.member.down = 0;
+      return;
+    }
+
+    pilot.member.state = createBird(from.where, 12 + rand() * 4, from.facing);
     pilot.member.down = 0;
     pilot.memory.beating = true;
     aim(pilot, at);
   };
 
   /** Pick somewhere new and start the clock on it. */
-  const aim = (pilot: Pilot, at: Leader) => {
+  const aim = (pilot: Pilot, at: Anchor) => {
     pilot.member.aiming = target(at);
     pilot.chasing = 0;
   };
@@ -306,6 +587,7 @@ export function createFlock(
     const pilot: Pilot = {
       member: {
         state: createBird(),
+        hunting: false,
         morph: Math.floor(rand() * morphCount),
         down: 0,
         aiming: { x: 0, z: 0, altitude: options.minAltitude },
@@ -313,6 +595,7 @@ export function createFlock(
       controls: neutralControls(),
       memory: { beating: true },
       chasing: 0,
+      fell: null,
     };
     // Released so it has a real position to sit at, then held back: one comes
     // out every `emitInterval` seconds rather than all of them at once.
@@ -325,8 +608,13 @@ export function createFlock(
   // object, reused, rather than one per bird per tick.
   const flying: AutopilotParams = { ...options.autopilot };
 
-  function update(dt: number, collider: Collider | undefined, wind: WindField) {
-    const at = leader();
+  function update(
+    dt: number,
+    collider: Collider | undefined,
+    wind: WindField,
+    letting = true,
+  ) {
+    const at = around();
     flying.cruiseSpeed = Math.min(
       CRUISE_CEILING,
       Math.max(CRUISE_FLOOR, at.speed + CRUISE_SURPLUS),
@@ -339,6 +627,12 @@ export function createFlock(
       // Both are the same thing to everyone else -- a bird that is not in the
       // air -- so they are the same thing here.
       if (member.down > 0) {
+        // Shut: the clock does not run either. Held at nought instead, the
+        // wait would read as *out* to everything that asks -- `down <= 0` is
+        // how the rest of the game knows a bird is in the air -- and a bird
+        // that is out but has never been released is drawn sitting at the
+        // spawn point, motionless, in the middle of the shot.
+        if (!letting) continue;
         member.down -= dt;
         if (member.down > 0) continue;
         release(pilot);
@@ -349,19 +643,82 @@ export function createFlock(
         member.state.position.x - at.x,
         member.state.position.z - at.z,
       );
-      if (adrift > options.strayDistance) {
-        release(pilot);
+      if (adrift > options.strayDistance && !member.hunting) {
+        // Brought back is being let out again, so it waits with the rest --
+        // but not while it is after something. A bird chasing a thing across
+        // the district has not wandered off, and snatching it home mid-chase
+        // is the one moment the seams would show.
+        if (letting) release(pilot);
         continue;
       }
 
+      // --- Going for something ---------------------------------------------
+      // Checked before the wheeling, because a bird that has seen something
+      // stops wheeling. The rules are the hunt's: near enough, and high
+      // enough to be worth leaving the sky for.
+      const hunt = options.hunt;
+      if (hunt) {
+        const quarry = hunt.quarry();
+        const away = quarry
+          ? Math.hypot(
+              member.state.position.x - quarry.x,
+              member.state.position.y - quarry.y,
+              member.state.position.z - quarry.z,
+            )
+          : Infinity;
+
+        if (member.hunting && (!quarry || away > hunt.loses)) {
+          // Lost it: too far off, or gone altogether.
+          member.hunting = false;
+          aim(pilot, at);
+        } else if (!member.hunting && quarry && quarry.y > hunt.above && away <= hunt.within) {
+          // Seen. Once it is after something it stays after it: diving does
+          // not call off an attack that has begun, it decides whether the
+          // next one starts.
+          member.hunting = true;
+          pilot.chasing = 0;
+        }
+
+        // Aimed here rather than in either branch above, so that being after
+        // something and being pointed at it are the same instant. Split
+        // between the two, a bird spent the tick it noticed you still flying
+        // at wherever it had been wandering.
+        if (member.hunting && quarry) {
+          // At the bird itself, re-worked every tick, so the point it is
+          // flying at moves with what it is chasing rather than being where
+          // that was a moment ago.
+          //
+          // Except downwards. It will not aim below its floor, which is the
+          // whole of the safety in this: a pigeon on the deck has a crow
+          // keeping station over it rather than a crow arriving.
+          member.aiming = {
+            x: quarry.x,
+            z: quarry.z,
+            altitude: Math.max(quarry.y, hunt.floor),
+          };
+          pilot.chasing = 0;
+        }
+      }
+
       // Arrived, or given up on it: somewhere else near the leader, who has
-      // moved on since.
+      // moved on since. Not while it is going for something -- that has its
+      // own aim and its own reason to stop.
       pilot.chasing += dt;
       if (
-        distanceTo(member.state, member.aiming) < options.arrivalRadius ||
-        pilot.chasing > options.attentionSpan
+        !member.hunting &&
+        (distanceTo(member.state, member.aiming) < options.arrivalRadius ||
+          pilot.chasing > options.attentionSpan)
       ) {
         aim(pilot, at);
+      }
+
+      // A bird that is after something is moved rather than flown. Everything
+      // else in this game obeys the aerodynamics; this one thing does not,
+      // deliberately, because a hunting bird that obeyed them could not hunt.
+      if (member.hunting && hunt) {
+        dive(member.state, member.aiming, hunt, flight, dt);
+        member.state.health = 1;
+        continue;
       }
 
       steer(member.state, member.aiming, pilot.memory, pilot.controls, flying);
@@ -376,12 +733,37 @@ export function createFlock(
       member.state.health = 1;
 
       if (member.state.ending) {
+        pilot.fell = { ...member.state.position };
         member.down = options.respawnDelay;
-        // Nothing to wait for: back in the air on the spot.
-        if (member.down <= 0) release(pilot);
+        // Nothing to wait for: back in the air on the spot, unless the loft
+        // is shut, in which case it lies where it fell.
+        if (member.down <= 0 && letting) release(pilot);
       }
     }
   }
 
-  return { members: pilots.map((pilot) => pilot.member), update };
+  function recall() {
+    pilots.forEach((pilot, i) => {
+      // Anything above nought reads as "not in the air" to everything else,
+      // which is what puts them away; the timer is what spaces them out.
+      pilot.member.down = i * options.emitInterval + 1e-3;
+    });
+  }
+
+  function touching(at: { x: number; y: number; z: number }, within: number) {
+    return pilots.some(({ member }) => {
+      // A bird that is waiting its turn or lying dead is not touching
+      // anything: it is not in the air, whatever its last position says.
+      if (member.down > 0 || member.state.ending !== null) return false;
+      return (
+        Math.hypot(
+          member.state.position.x - at.x,
+          member.state.position.y - at.y,
+          member.state.position.z - at.z,
+        ) <= within
+      );
+    });
+  }
+
+  return { members: pilots.map((pilot) => pilot.member), update, recall, touching };
 }

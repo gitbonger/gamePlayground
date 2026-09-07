@@ -12,7 +12,7 @@
  * coordinate, rather than whichever house happened to come out nearest to a
  * point.
  */
-import type { Landmark } from './world/layout';
+import type { Landmark, Standing } from './world/layout';
 
 /**
  * A described thing, in degrees, before it is projected into local metres.
@@ -54,8 +54,12 @@ export const LOFT: LandmarkSpec = {
   depth: 42,
   // The terrace. The penthouse stands three and a bit above this.
   height: 31,
-  // Turned to face the way the pigeon comes in, which is from the east.
-  yaw: Math.PI,
+  // Turned to face the way the pigeon comes in, which is now from the west:
+  // the level before it ends at a line out on the open ground, and a
+  // checkpoint puts the next level's start on that line. Left facing east the
+  // penthouse stood between the approach and the terrace, so the thing you
+  // are aiming at was hidden until the last second.
+  yaw: 0,
   margin: 9,
   penthouse: { cover: 0.5, rise: 3.2 },
   // Longer rows for a longer terrace: the spacing within a row is what makes
@@ -121,6 +125,99 @@ export const WEST_PATCH: LandmarkSpec = {
   depth: 9,
   height: 0,
   margin: 7,
+};
+
+/**
+ * A crowd standing about on a square, scattered but not on top of each other.
+ *
+ * Generated rather than written out, because twenty hand-placed pairs of
+ * coordinates are twenty chances to put somebody in a wall and no way to tell
+ * which -- and because what is wanted is not any particular arrangement, it
+ * is *an* arrangement with nobody in the middle of the landing.
+ *
+ * Seeded, so it is the same crowd every run: a square where the people have
+ * moved since you last flew over it is a square that is lying about being a
+ * place.
+ *
+ * The hole in the middle is the point of the two radii. A pigeon has to come
+ * down on this thing, and twenty two-metre solids spread evenly over it is a
+ * square you cannot land on -- so they stand in a ring round the edges and
+ * off across the paving, and the middle is left to the bird.
+ *
+ * The outer radius is not free either: a person outside the ground the
+ * landmark has reserved is a person the generator is entitled to build a
+ * house through.
+ */
+function crowdAround(count: number, seed: number, inner: number, outer: number): Standing[] {
+  // The same small generator the flock uses, for the same reason.
+  let a = seed >>> 0;
+  const random = () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
+  return Array.from({ length: count }, () => {
+    const around = random() * Math.PI * 2;
+    // Square-rooted between the two radii, so they fill the ring evenly
+    // rather than bunching against its inner edge.
+    const away = Math.sqrt(inner * inner + random() * (outer * outer - inner * inner));
+    return {
+      along: Math.cos(around) * away,
+      across: Math.sin(around) * away,
+      // Facing anywhere. A crowd all pointed the same way is a queue, and a
+      // crowd all facing the middle is an audience waiting for something.
+      facing: random() * Math.PI * 2,
+    };
+  });
+}
+
+/**
+ * Two squares in the eighth district, which are places to look rather than
+ * places to land on.
+ *
+ * The hero is going round the neighbourhood asking after his mate, and what
+ * he needs from each of them is only that it is somewhere he can arrive: open
+ * ground, big enough to come down on without threading a gap, and named --
+ * because a level names it and a monologue says its name out loud.
+ *
+ * Wider than the concrete patches on purpose. Those are targets and are meant
+ * to be difficult; a square is a place you land *in*, and one nine metres
+ * across would be a slab with a Hungarian name on it.
+ */
+export const MATYAS_SQUARE: LandmarkSpec = {
+  name: 'Mátyás tér',
+  at: [47.491961, 19.079619],
+  width: 30,
+  depth: 20,
+  height: 0,
+  margin: 8,
+};
+
+/**
+ * The second one, four hundred and fifty metres north-west of the first.
+ *
+ * Further out than the search wanted it and that is the point of taking the
+ * position from the map rather than from the story: it is three hundred short
+ * of the loft, so going round the squares walks the hero towards the thing he
+ * has not thought of yet without anybody having arranged it.
+ */
+export const JANI_SQUARE: LandmarkSpec = {
+  name: 'Jani Pali tér',
+  at: [47.495871, 19.077971],
+  width: 26,
+  depth: 18,
+  height: 0,
+  // Fourteen metres of clear ground round it, which is a good deal more than
+  // the other landmarks ask for and is what makes it a square: nothing is
+  // built within fourteen metres of the paving. It also has to be at least
+  // this much, because the crowd stands out to twenty and reserved ground is
+  // the only ground a person is certain not to be standing inside a wall on.
+  margin: 14,
+  // A square with people in it, which is what makes it a square rather than a
+  // rectangle of paving with a name. Twenty of them, scattered.
+  people: crowdAround(20, 1867, 8, 20),
 };
 
 /**
@@ -193,4 +290,6 @@ export const LANDMARKS: readonly LandmarkSpec[] = [
   PARK_PATCH,
   WEST_PATCH,
   PETROL_STATION,
+  MATYAS_SQUARE,
+  JANI_SQUARE,
 ];

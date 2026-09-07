@@ -19,7 +19,14 @@
  */
 
 import type { Collider, SweepHit } from './collision';
-import { heading, isPerched, type BirdState, type FlightParams } from './flight';
+import {
+  heading,
+  isPerched,
+  neutralControls,
+  type BirdState,
+  type Controls,
+  type FlightParams,
+} from './flight';
 import {
   add,
   quatFromAxisAngle,
@@ -41,10 +48,14 @@ import {
  * shuffle a foot sideways and end the conversation by accident is not the
  * behaviour of somebody having one.
  *
- * A bird whose flight ended badly is in none of these. It is not doing
- * anything.
+ * The fourth is the one that does nothing, and it is a stance rather than the
+ * absence of one. A dead bird is not a bird between states: it has a pose of
+ * its own, it takes no input, and things happening elsewhere in the game --
+ * the flock letting out another bird -- are supposed to stop while it lasts.
+ * All of that has to be asked about somewhere, and `null` is not a thing you
+ * can ask questions of.
  */
-export type Stance = 'flying' | 'walking' | 'talking';
+export type Stance = 'flying' | 'walking' | 'talking' | 'dead';
 
 /**
  * Which of the three a bird is in.
@@ -52,9 +63,9 @@ export type Stance = 'flying' | 'walking' | 'talking';
  * `met` rather than a search for who: whether there is anybody to talk to is
  * a question about the world, and this only needs the answer.
  */
-export function stanceOf(state: BirdState, met: boolean): Stance | null {
+export function stanceOf(state: BirdState, met: boolean): Stance {
   if (state.ending === null) return 'flying';
-  if (state.ending.kind !== 'landed') return null;
+  if (state.ending.kind !== 'landed') return 'dead';
   return met ? 'talking' : 'walking';
 }
 
@@ -73,11 +84,27 @@ export const neutralWalk = (): WalkControls => ({ forward: 0, turn: 0, launch: f
  * The controls as the bird's stance lets them through.
  *
  * Talking takes the movement away and leaves the wing: a conversation you
- * cannot walk out of but can fly out of is one you leave on purpose.
+ * cannot walk out of but can fly out of is one you leave on purpose. Being
+ * dead takes everything.
  */
-export function asStance(controls: WalkControls, stance: Stance | null): WalkControls {
+export function asStance(controls: WalkControls, stance: Stance): WalkControls {
   if (stance === 'walking') return controls;
   return { forward: 0, turn: 0, launch: stance === 'talking' && controls.launch };
+}
+
+/**
+ * The flight controls, likewise.
+ *
+ * Only the dead take anything away here, and what makes it worth writing down
+ * is that it is not about *movement*. The flight model already ignores a bird
+ * whose flight has ended, so a dead bird was never going anywhere -- but the
+ * wings are drawn from these controls, so holding the brake over a corpse
+ * spread its wings to brake, and holding tuck folded them. It is the same
+ * rule as the walking one: a stance the player is not flying is a stance that
+ * does not read the keys.
+ */
+export function asFlight(controls: Controls, stance: Stance): Controls {
+  return stance === 'dead' ? neutralControls() : controls;
 }
 
 export interface WalkTelemetry {

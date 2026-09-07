@@ -8,7 +8,7 @@
  * nothing else for the eye to work through first.
  */
 
-import type { Ending } from '../sim/flight';
+import type { CrashCause, Ending } from '../sim/flight';
 import { speedText } from './units';
 
 export interface OutcomePanel {
@@ -17,8 +17,15 @@ export interface OutcomePanel {
   dispose(): void;
 }
 
-/** Headline and explanation for every way a flight can end. */
-const OUTCOMES: Record<string, { title: string; detail: (e: Ending) => string }> = {
+/**
+ * Headline and explanation for every way a flight can end.
+ *
+ * Keyed by the causes themselves rather than by `string`, so a new way to die
+ * that nobody wrote a line for is a compile error rather than a blank panel
+ * at the worst possible moment. It was `Record<string, ...>` with a `!` on
+ * the lookup, which is the same thing as no check at all.
+ */
+const OUTCOMES: Record<CrashCause | 'landed', { title: string; detail: (e: Ending) => string }> = {
   landed: {
     title: 'Landed',
     detail: (e) => `Touched down at ${speedText(e.speed)} km/h`,
@@ -40,6 +47,13 @@ const OUTCOMES: Record<string, { title: string; detail: (e: Ending) => string }>
   struck: {
     title: 'Game over',
     detail: () => 'Something ran into you — mind the trains',
+  },
+  caught: {
+    title: 'Game over',
+    // The rule, not the reproach. A player who has just been caught by a crow
+    // knows they were caught by a crow; what they do not know is that under
+    // twenty metres nothing can reach them.
+    detail: () => 'A crow caught you — stay under twenty metres',
   },
   'not-level': {
     title: 'Game over',
@@ -63,7 +77,7 @@ export function createOutcomePanel(container: HTMLElement): OutcomePanel {
   const field = (name: string) => root.querySelector<HTMLElement>(`[data-field="${name}"]`)!;
 
   function show(ending: Ending) {
-    const copy = OUTCOMES[ending.cause ?? 'landed']!;
+    const copy = OUTCOMES[ending.cause ?? 'landed'];
     field('title').textContent = copy.title;
     field('detail').textContent = copy.detail(ending);
 

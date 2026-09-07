@@ -94,6 +94,45 @@ describe('a bird resting on the ground', () => {
   });
 });
 
+describe('a dead bird', () => {
+  /** The drawn model's own up axis, in the world. */
+  function upOf(pose: WingPose, bank: number) {
+    const rig = createBirdRig();
+    const bird = createBird(vec(0, 10, 0), 0, 0);
+    bird.velocity = vec(0, 0, 0);
+    // Killed doing something: rolled right over onto its side, which is a
+    // perfectly ordinary way to hit a building.
+    const half = bank / 2;
+    bird.orientation = { x: 0, y: 0, z: Math.sin(half), w: Math.cos(half) };
+    for (let i = 0; i < 400; i += 1) rig.update(bird, pose, 1 / 120);
+    rig.object.updateMatrixWorld(true);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(rig.object.quaternion);
+    rig.dispose();
+    return up;
+  }
+
+  it('lies on its back whatever it was doing when it stopped', () => {
+    // The simulation still holds the attitude it died in, and that is the
+    // truth about the last instant of the flight. It is not what a dead bird
+    // looks like. Feet up is the picture everybody already knows the meaning
+    // of, and it has to be the same picture however the bird got there --
+    // otherwise a crash on one wing reads as a bird lying awkwardly rather
+    // than as a bird that has died.
+    for (const bank of [0, 0.6, -1.2, Math.PI / 2]) {
+      expect(upOf('dead', bank).y, `banked ${bank}`).toBeCloseTo(-1, 6);
+    }
+  });
+
+  it('leaves every other pose the attitude the simulation gave it', () => {
+    // The inversion belongs to the one pose. A gliding bird banked over is
+    // banked over, and if this ever stopped being true the whole flight model
+    // would be drawn wrong.
+    expect(upOf('gliding', 0).y).toBeCloseTo(1, 6);
+    expect(upOf('gliding', Math.PI / 2).y).toBeCloseTo(0, 6);
+    expect(upOf('perched', 0).y).toBeCloseTo(1, 6);
+  });
+});
+
 describe('the walk cycle', () => {
   it('swings the two legs in opposite directions', () => {
     // A quarter of the way through a stride, one leg is forward and the other

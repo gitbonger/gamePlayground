@@ -7,10 +7,12 @@ import * as THREE from 'three';
 import {
   createBird,
   defaultParams,
+  caught,
   hasCrashed,
   heading,
   landingReadiness,
   isPerched,
+  neutralControls,
   step,
   type BirdState,
   type FlightTelemetry,
@@ -28,30 +30,41 @@ import { createScene } from './render/scene';
 import {
   CHARACTER_MORPHS,
   createBirdRig,
+  CROW_MORPH,
+  CROW_SCALE,
   HERO_MORPH,
   PIGEON_MORPHS,
   type WingPose,
 } from './render/bird';
-import { createFlock } from './flock';
+import { createFlock, defaultFlockOptions, type Anchor } from './flock';
 import { createAmbient } from './ambient';
+import { createDog } from './dog';
+import { createWaymarks, type Waymarks } from './waypoints';
+import { createWaymark } from './render/waymark';
+import { createDogRig } from './render/dog';
 import { createFlyover, type Flyover, type Framing } from './cutscene';
 import {
   bellyOnEntry,
+  CHARACTERS,
   crossed,
-  crossingLine,
+  lineThrough,
   dialogueOf,
-  HOMECOMING,
   LEVELS,
-  personOf,
+  metBy,
   sceneNamed,
+  standingOf,
   targetName,
+  waitingIn,
+  type Character,
   type Level,
   type LevelTarget,
+  type Line,
   type Opens,
   type Scene,
+  type Standing,
 } from './levels';
-import { HOME_TREE, LANDMARKS, PARK_PATCH } from './landmarks';
-import { begin, isOver, reply, type Exchange } from './dialogue';
+import { HOME_TREE, JANI_SQUARE, LANDMARKS, PARK_PATCH } from './landmarks';
+import { alone, begin, isOver, reply, type Exchange } from './dialogue';
 import { createDialoguePanel, speechColour } from './render/dialogue';
 import { browserSpeaker, createVoice } from './render/voice';
 import { createVitals, type Vital } from './render/vitals';
@@ -100,6 +113,7 @@ import {
 } from './world/train';
 import { createSmoke, defaultSmokeOptions, type Puff, type Smoke } from './world/smoke';
 import {
+  asFlight,
   asStance,
   meeting,
   standStill,
@@ -318,24 +332,25 @@ const allPuffs: Puff[] = smokes.flatMap((each) => each.puffs.puffs);
 const GATE_SPAN = map.radius * 2;
 
 /**
- * The finishing lines to paint, one for every level that ends at one.
+ * The line a level ends at, worked out from the level alone.
  *
- * Worked out from the same two points the crossing itself is: the level's
- * release point and the thing it is aimed at. Two calculations of one line
- * would be one calculation too many -- the paint and the rule have to be in
- * the same place or the paint is a lie.
+ * One calculation, used by the rule and by the paint. Two would be one too
+ * many: the stripe on the ground and the thing that notices you crossing it
+ * have to be the same line, or the paint is a lie.
  */
-const gates = LEVELS.flatMap((spec) => {
-  const finish = spec.finish;
-  if (finish.kind !== 'crossing' || spec.target.kind !== 'landmark') return [];
-  const described = LANDMARKS.find((landmark) => landmark.name === spec.target.name);
-  if (!described) return [];
-
-  const line = crossingLine(
+function finishingLine(spec: Level): Line | null {
+  if (spec.finish.kind !== 'crossing') return null;
+  const through = spec.finish.through;
+  return lineThrough(
     project(spec.start[0], spec.start[1], map.centre),
-    project(described.at[0], described.at[1], map.centre),
-    finish.at,
+    project(through[0], through[1], map.centre),
   );
+}
+
+/** The finishing lines to paint, one for every level that ends at one. */
+const gates = LEVELS.flatMap((spec) => {
+  const line = finishingLine(spec);
+  if (!line) return [];
   // The band is modelled along its own x, so it is turned to lie along the
   // route: the same convention everything else on this map is turned in.
   return [
@@ -470,9 +485,18 @@ let talkingTo: Resident | null = null;
 // declaration throws. This file has now made that mistake twice.
 const objective = (name: string) => world.markers.find((marker) => marker.name === name) ?? null;
 /** The marker for whatever the level being played is about. */
+/**
+ * The thing being pointed at, or null when nothing is.
+ *
+ * Null on a level that ends at a line: nothing is being pointed at, so the
+ * arrow is down, the target does not flash, and the approach instructions --
+ * which count down the distance to what you are landing on -- stay quiet.
+ * There is nothing to land on; there is a stripe to cross.
+ */
 const activeMarker = () => {
   const here = LEVELS[level];
-  return here ? objective(targetName(here)) : null;
+  if (!here || here.finish.kind === 'crossing') return null;
+  return objective(targetName(here));
 };
 scene.add(world.group);
 
@@ -555,7 +579,17 @@ function releaseFor(spec: Level): { at: Vec3; heading: number; perched: boolean 
   const point = project(spec.start[0], spec.start[1], map.centre);
   const floor = world.collider.heightAt(point.x, point.z);
   const marker = objective(targetName(spec));
-  const aim = marker ? { x: marker.position.x, z: marker.position.z } : home;
+  // Pointed at the first mark if the level has any, and at what it is aimed
+  // at otherwise. The marks are the route: a level that lays one out and then
+  // faces the bird somewhere else is a level arguing with its own directions
+  // on the first frame -- and on a level that ends at a line there is nothing
+  // else to face, since nothing is being pointed at.
+  const first = spec.waypoints?.[0];
+  const aim = first
+    ? project(first[0], first[1], map.centre)
+    : marker
+      ? { x: marker.position.x, z: marker.position.z }
+      : home;
 
   // A perched level does not release the bird at all: it stands him on the
   // thing the level is about, opposite whoever is waiting there -- her offset
@@ -563,9 +597,9 @@ function releaseFor(spec: Level): { at: Vec3; heading: number; perched: boolean 
   // platform not much wider than the two of them it puts him on top of her.
   // Mirrored, they face each other across it, and the level is complete
   // before the player has touched anything, which is the whole idea of it.
-  const stood = spec.begins === 'perched' ? standingSpot(spec) : null;
+  const waiting = spec.begins === 'perched' ? waitingIn(spec) : undefined;
+  const stood = waiting ? standingSpot(waiting) : null;
   const described = LANDMARKS.find((l) => l.name === spec.target.name);
-  const waiting = personOf(spec);
   if (marker && stood && waiting) {
     const across = pointOn(
       { x: marker.position.x, z: marker.position.z, yaw: described?.yaw ?? 0 },
@@ -619,14 +653,17 @@ let launchPending = false;
  * first pigeon is released the moment the flock exists, and it is released
  * behind whoever it is escorting: reading `bird` in its dead zone throws.
  */
-const flock = createFlock(PIGEON_MORPHS.length, () => ({
-  x: bird.position.x,
-  y: bird.position.y,
-  z: bird.position.z,
-  heading: heading(bird),
-  speed: Math.hypot(bird.velocity.x, bird.velocity.y, bird.velocity.z),
-  climb: bird.velocity.y,
-}));
+/** The bird as anything flying around it needs to see it. */
+const leaderOf = (of: BirdState): Anchor => ({
+  x: of.position.x,
+  y: of.position.y,
+  z: of.position.z,
+  heading: heading(of),
+  speed: Math.hypot(of.velocity.x, of.velocity.y, of.velocity.z),
+  climb: of.velocity.y,
+});
+
+const flock = createFlock(PIGEON_MORPHS.length, () => leaderOf(bird));
 const flockRigs = flock.members.map((member) => {
   const rig = createBirdRig(PIGEON_MORPHS[member.morph]);
   scene.add(rig.object);
@@ -634,42 +671,198 @@ const flockRigs = flock.members.map((member) => {
 });
 
 /**
- * The other pigeons on the concrete: four of them, ambient.
+ * A crowd of ambient pigeons standing about on one of the described things.
  *
- * They are here because of the person throwing grain. Somebody feeding
- * pigeons with no pigeons in front of them is somebody throwing food on the
- * ground, and the level asks the player to walk into that scene and eat --
- * which reads as joining a crowd rather than as scavenging alone only if
- * there is a crowd.
- *
- * Ambient, in the sense the module sets out: nothing they do changes the
- * game. They are not the birds a level is finished by walking up to, they do
- * not eat the grain, and the level's condition is the player's belly and
- * nothing else.
+ * Ambient in the sense the module sets out: nothing they do changes the game.
+ * They are not the birds a level is finished by walking up to, they do not
+ * eat the grain, and no level's condition mentions them. They are there
+ * because a place with nothing standing about in it is a diagram of a place.
  */
-const AMBIENT_PIGEONS = 4;
-const ambient = feeder
-  ? createAmbient({
-      count: AMBIENT_PIGEONS,
-      ground: {
-        x: feeder.x,
-        z: feeder.z,
-        yaw: feeder.yaw ?? 0,
-        width: feeder.width,
-        depth: feeder.depth,
-        // A flat thing has no top of its own, so it is the ground's.
-        top: feeder.height > 0 ? feeder.height : defaultParams.groundHeight,
+function crowdOn(landmark: string, count: number) {
+  const on = layout.landmarks.find((l) => l.name === landmark);
+  if (!on) return null;
+  return createAmbient({
+    count,
+    ground: {
+      x: on.x,
+      z: on.z,
+      yaw: on.yaw ?? 0,
+      width: on.width,
+      depth: on.depth,
+      // A flat thing has no top of its own, so it is the ground's.
+      top: on.height > 0 ? on.height : defaultParams.groundHeight,
+    },
+    morphs: PIGEON_MORPHS.length,
+    flight: flightParams,
+  });
+}
+
+/**
+ * Every crowd of ambient pigeons in the world, and where.
+ *
+ * Four on the concrete at Teleki tér, because of the person throwing grain:
+ * somebody feeding pigeons with no pigeons in front of them is somebody
+ * throwing food on the ground. Six on Jani Pali tér, because that is a square
+ * with twenty people standing about on it and a dog trotting through, and a
+ * city square with no pigeons on it is the one thing that would give it away.
+ */
+const crowds = [crowdOn(PARK_PATCH.name, 4), crowdOn(JANI_SQUARE.name, 6)].filter(
+  (crowd): crowd is NonNullable<typeof crowd> => crowd !== null,
+);
+
+/**
+ * The crows over Népszínház utca.
+ *
+ * Four of them, wheeling around a point in the air rather than around the
+ * player -- which is the whole reason the flock's anchor stopped being "the
+ * leader" and became a thing that may or may not move. They keep to a ball
+ * sixty metres across over the route the level flies, so a bird coming
+ * through at sixty metres goes through them and one that took the warning and
+ * dropped does not.
+ *
+ * They do not attack yet. What they are is a reason to fly low.
+ *
+ * Where "here" is, is an assumption: the coordinate did not come with the
+ * instruction, so they are put over the line the level ends at, which is the
+ * middle of the stretch the warning is about.
+ */
+const CROWS = 8;
+/**
+ * How high they hang, in metres.
+ *
+ * Below the level's own release of sixty rather than above it, which is the
+ * other way round from where this started. At seventy-five they were over the
+ * top of everything and a pigeon flying the level never came within reach --
+ * the sphere is round the crow, so a crow that keeps out of the way is a crow
+ * that never engages. Forty-five puts them in the corridor the bird is
+ * actually in on its way down, and "fly low" then means going *under* them:
+ * below twenty metres nothing looks at you at all.
+ */
+const CROW_HEIGHT = 45;
+/**
+ * How near a crow has to get to have caught him, in metres.
+ *
+ * Bigger than the two birds are: a pigeon's body is a fifth of a metre across
+ * and a crow's twice that, so touching in the strict sense is about two
+ * thirds of a metre -- and at a closing speed of thirty metres a second the
+ * gap between one tick and the next is a quarter of that. A metre and a
+ * quarter is a wingspan of feathers rather than a hairline, which is what a
+ * collision between two birds actually is, and it cannot be flown through in
+ * the time between two looks.
+ */
+const CROW_TOUCH = 1.25;
+const crowsAt = (() => {
+  const spec = LEVELS.find((level) => level.name === 'Népszínház');
+  const line = spec ? finishingLine(spec) : null;
+  if (!spec || !line) return null;
+  // Halfway along the route rather than on the line at the end of it. Sitting
+  // over the finish they guarded the last hundred metres of a three hundred
+  // metre flight and nothing else -- which is a danger you meet once, at the
+  // moment the level is ending. Over the middle, with a wider ball, they are
+  // between the player and the line for most of the way.
+  const from = project(spec.start[0], spec.start[1], map.centre);
+  return { x: (from.x + line.x) / 2, z: (from.z + line.z) / 2 };
+})();
+
+const crows = crowsAt
+  ? createFlock(
+      1,
+      // Stationary: a place in the sky, not a bird to follow. Speed nought,
+      // so the flock's lead-the-target arithmetic contributes nothing and
+      // they simply mill about over it.
+      () => ({ x: crowsAt.x, y: CROW_HEIGHT, z: crowsAt.z, heading: 0, speed: 0, climb: 0 }),
+      {
+        ...defaultFlockOptions,
+        count: CROWS,
+        // The range, which is now the caller's to say: sixty metres, which
+        // over a three hundred metre route is most of it. Four birds in a
+        // ball that size are a stretch of sky to get through rather than a
+        // knot to fly round.
+        radius: 60,
+        // Not so low that they end up in the rooftops, which come to
+        // twenty-four: they wheel between here and the top of their ball.
+        minAltitude: 28,
+        emitInterval: 0.4,
+        // Somewhere else fifty metres off, which for a crow is being
+        // somewhere else rather than coming back from anywhere.
+        spawn: { kind: 'nearby', away: 50 },
+        // And the reason they are here. Each of them watches a hundred metres
+        // of sky for a pigeon flying higher than twenty, and once it has seen
+        // one it goes for the bird itself and keeps going -- re-aimed every
+        // tick, so it follows rather than arriving where you were.
+        //
+        // The twenty is the trigger and the twenty is the safety, and they
+        // are two different rules that happen to share a number: above it a
+        // chase starts, below it a crow will not follow. So going low does
+        // not shake one off -- it keeps station over you and waits -- and
+        // that is the shape of the level: fly under them, and stay there.
+        hunt: {
+          quarry: () => (hasCrashed(bird) ? null : leaderOf(bird)),
+          // A hundred rather than fifty. Fifty is a sphere you can cross the
+          // level without ever entering, which was the whole trouble: the
+          // warning went off, nothing came, and the danger was a rumour.
+          within: 100,
+          above: 20,
+          floor: 20,
+          // Faster than the bird it is after -- a pigeon cruises at about
+          // nineteen -- so climbing away from one is not a plan. And a turn
+          // it can actually make: two and a half radians a second bends its
+          // course round in its own length rather than in a street, which is
+          // what a bird twisting after another bird looks like and what the
+          // aerodynamics flatly refuse to do.
+          speed: 23,
+          turn: 2.5,
+          // And a distance at which it has lost you. Without one, a bird that
+          // saw you once follows for the rest of the game.
+          loses: 250,
+        },
       },
-      morphs: PIGEON_MORPHS.length,
-      flight: flightParams,
-    })
+      flightParams,
+    )
   : null;
 
-const ambientRigs = (ambient?.birds ?? []).map((pigeon) => {
-  const rig = createBirdRig(PIGEON_MORPHS[pigeon.morph]);
+const crowRigs = (crows?.members ?? []).map(() => {
+  const rig = createBirdRig(CROW_MORPH);
+  rig.object.scale.setScalar(CROW_SCALE);
   scene.add(rig.object);
   return rig;
 });
+
+/**
+ * The dog on Jani Pali tér.
+ *
+ * One, walking about among the people. It is scenery for now -- it collides
+ * with nothing and nothing collides with it -- and it is here because a
+ * square with twenty people standing about on it is a square, and a square
+ * with a dog trotting through it is a place.
+ */
+const square = layout.landmarks.find((landmark) => landmark.name === JANI_SQUARE.name);
+const dog = square
+  ? createDog({
+      home: { x: square.x, z: square.z },
+      ground: defaultParams.groundHeight,
+    })
+  : null;
+const dogRig = dog ? createDogRig() : null;
+if (dogRig) scene.add(dogRig.object);
+
+/**
+ * The waypoint that is showing, and the marks it is showing from.
+ *
+ * One column, moved. There is only ever one on screen, so building and
+ * throwing away a mesh at each of them would be work for nothing.
+ */
+const waymark = createWaymark();
+scene.add(waymark.object);
+let waymarks: Waymarks = createWaymarks([]);
+
+const crowdRigs = crowds.map((crowd) =>
+  crowd.birds.map((pigeon) => {
+    const rig = createBirdRig(PIGEON_MORPHS[pigeon.morph]);
+    scene.add(rig.object);
+    return rig;
+  }),
+);
 
 /**
  * Pigeons that stay where they are, and finishing a level means walking up to
@@ -682,14 +875,22 @@ const ambientRigs = (ambient?.birds ?? []).map((pigeon) => {
  * on it without knowing it is not a player.
  */
 interface Resident {
+  who: Character;
   state: BirdState;
   rig: ReturnType<typeof createBirdRig>;
-  /** The level walking up to it completes. */
-  completes: string;
   /** The colour its words are printed in: its own, made readable. */
   voice: string;
   /** How red it is being washed this frame, 0 to 1. */
   glowing: number;
+  /**
+   * Whether the level being flown has them in it.
+   *
+   * Somebody not in the cast is not anywhere: not drawn, not met, and not
+   * given a health bar. It is the same bird either way -- the rig is built
+   * once and kept -- so this is a character being off stage rather than a
+   * character being destroyed and made again.
+   */
+  here: boolean;
 }
 
 /** Where an arrow hangs over a resident: its own head, near enough. */
@@ -726,28 +927,49 @@ function carrierOf(train: number, vehicle: number): number {
  * a level nobody is playing having somebody standing on it costs a draw call
  * and reads, correctly, as a city with pigeons in it.
  */
-const residents: Resident[] = [];
-for (const spec of LEVELS) {
-  const stood = standingSpot(spec);
-  if (!stood) continue;
-
-  const state = createBird(stood.at, 0, stood.facing);
-  // Whoever waits on a level the hero starts *on* is in the same story and
-  // the same morning as he is, and is as hungry. The rest are standing about
-  // in somebody else's afternoon.
-  if (spec.begins === 'perched') state.health = spec.health;
-  standStill(state);
-  state.restingOn = stood.on;
-  const morph = CHARACTER_MORPHS[(personOf(spec)?.morph ?? 0) % CHARACTER_MORPHS.length]!;
+const residents: Resident[] = CHARACTERS.map((who) => {
+  const morph = CHARACTER_MORPHS[who.morph % CHARACTER_MORPHS.length]!;
   const rig = createBirdRig(morph);
   scene.add(rig.object);
-  residents.push({
-    state,
+  return {
+    who,
+    state: createBird(vec(0, 0, 0), 0, 0),
     rig,
-    completes: spec.name,
     voice: speechColour(morph.body),
     glowing: 0,
-  });
+    here: false,
+  };
+});
+
+/**
+ * Put the cast where this level has them, and take everyone else off stage.
+ *
+ * Called every time a level begins, by whatever route -- chosen from the
+ * menu, restarted after a death, or walked into out of the level before -- so
+ * where somebody is standing is a fact about the level being flown and not a
+ * history of what has happened. That is the whole point of it: Pink is on the
+ * home tree in the first two levels and on the loft for the rest, and neither
+ * of those is remembered anywhere. Restart the third level after flying into
+ * a chimney and the branch is still empty, because that level says so.
+ */
+function stageCast(spec: Level): void {
+  for (const member of residents) {
+    const spot = standingOf(spec, member.who.name);
+    const stood = spot ? standingSpot(spot) : null;
+    member.here = stood !== null;
+    member.glowing = 0;
+    if (!stood) {
+      member.rig.object.visible = false;
+      continue;
+    }
+    member.state = createBird(stood.at, 0, stood.facing);
+    standStill(member.state);
+    member.state.restingOn = stood.on;
+    // Whoever is standing in a level the hero starts *on* is in the same
+    // story and the same morning as he is, and is as hungry. The rest are
+    // standing about in somebody else's afternoon.
+    member.state.health = spec.begins === 'perched' ? spec.health : 1;
+  }
 }
 
 /**
@@ -758,24 +980,21 @@ for (const spec of LEVELS) {
  * a slab of concrete are part of the world and belong to nobody, so a bird on
  * one is standing on nothing in particular, exactly as it is on the grass.
  */
-function standingSpot(spec: Level): { at: Vec3; facing: number; on: number | null } | null {
-  const person = personOf(spec);
-  // Nobody waits at a line. A level that ends by being crossed has no arrival
-  // to stand at, and a resident for it would be a second pigeon on the same
-  // slab as the next level's.
-  if (!person) return null;
+function standingSpot(spot: Standing): { at: Vec3; facing: number; on: number | null } | null {
+  const person = spot;
+  const place = spot.on;
 
-  if (spec.target.kind === 'wagon') {
-    const car = carOf(spec.target);
-    const wagon = layout.trains[spec.target.train]?.vehicles[car];
+  if (place.kind === 'wagon') {
+    const car = carOf(place);
+    const wagon = layout.trains[place.train]?.vehicles[car];
     if (!wagon) return null;
-    const spot = onVehicle(wagon, person.along, person.across);
+    const at = onVehicle(wagon, person.along, person.across);
     return {
-      at: vec(spot.x, stockTop(wagon.kind) + defaultParams.bodyRadius, spot.z),
+      at: vec(at.x, stockTop(wagon.kind) + defaultParams.bodyRadius, at.z),
       // Facing across the wagon, so it reads as standing about rather than
       // waiting to leave. It turns to look at you when you walk up to it.
       facing: wagon.yaw + Math.PI / 2,
-      on: carrierOf(spec.target.train, car),
+      on: carrierOf(place.train, car),
     };
   }
 
@@ -784,8 +1003,8 @@ function standingSpot(spec: Level): { at: Vec3; facing: number; on: number | nul
   // a block of flats, over the middle of a patch of concrete -- and the
   // description gives the height, because a flat one's marker sits a hair
   // above the marking while what stands there stands on the ground.
-  const described = LANDMARKS.find((landmark) => landmark.name === spec.target.name);
-  const marker = objective(spec.target.name);
+  const described = LANDMARKS.find((landmark) => landmark.name === place.name);
+  const marker = objective(place.name);
   if (!described || !marker) return null;
   const top = described.height > 0 ? described.height : defaultParams.groundHeight;
   // Placed along and across the thing rather than along and across the world,
@@ -801,6 +1020,47 @@ function standingSpot(spec: Level): { at: Vec3; facing: number; on: number | nul
     facing: yaw + Math.PI / 2,
     on: null,
   };
+}
+
+/**
+ * Whether the flock is flying with him on the level being flown.
+ *
+ * A property of the level, applied where every other property of a level is.
+ * With it off the flock is neither updated nor drawn: it stays frozen
+ * wherever it was, which costs nothing and is invisible, and it is let out
+ * afresh the next time a level asks for one.
+ */
+let escorted = false;
+
+/**
+ * The things on screen that say where to go, on or off.
+ *
+ * Three of them, and they are derived rather than declared: a level aims at
+ * one thing, and every hint is about that thing -- the arrow over it, the
+ * flash it gives when the camera finds it, and the painted line for a level
+ * that ends at one. Written down separately they would be a second statement
+ * of the target, free to disagree with the first.
+ *
+ * Turned off when the level is finished as well as when the next one starts,
+ * which is the half that was missing. They are directions, and directions to
+ * somewhere you have already arrived are clutter: an arrow still hanging over
+ * the pigeon you are standing and talking to is the game telling you to go
+ * where you are.
+ */
+function hint(spec: Level, on: boolean): void {
+  // A level that ends at a line is aimed at the line, and the line is the
+  // thing that shows. No arrow: it would be hanging over a building beyond
+  // the stripe, which is somewhere this level does not go -- and an arrow
+  // pointing past the finish at a place from another level is the single most
+  // confusing thing the screen could say.
+  const pointing = spec.finish.kind !== 'crossing';
+  for (const marker of world.markers) {
+    marker.setActive(on && pointing && marker.name === targetName(spec));
+  }
+  // Only this level's line is painted. Every other one belongs to a flight
+  // that is not being flown, and a stripe across the ground that means
+  // nothing is worse than no stripe at all.
+  for (const gate of world.gates) gate.object.visible = on && gate.name === spec.name;
 }
 
 const run = createRunTracker(bird);
@@ -869,11 +1129,22 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   level = at;
   saveProgress(storage(), at);
 
-  for (const marker of world.markers) marker.setActive(marker.name === targetName(spec));
-  // Only this level's line is painted. Every other one belongs to a flight
-  // that is not being flown, and a stripe across the ground that means
-  // nothing is worse than no stripe at all.
-  for (const gate of world.gates) gate.object.visible = gate.name === spec.name;
+  // Everything this level puts into the world: who is standing where, what is
+  // pointed at, and whether anybody is flying with him.
+  stageCast(spec);
+  hint(spec, true);
+  // Let out only when the escort is starting rather than continuing: two
+  // escorted levels in a row are one flight in two pieces, and a flock that
+  // vanished and came back at the line would say otherwise.
+  if (spec.escort && !escorted) flock.recall();
+  escorted = spec.escort;
+  // The marks, from the first one: they are help with *this* level, so they
+  // start again with it -- including after a death, when the player is most
+  // likely to want them.
+  waymarks = createWaymarks(
+    (spec.waypoints ?? []).map((at) => project(at[0], at[1], map.centre)),
+  );
+  waymark.show(waymarks.at, waymarks.next);
 
   finished = false;
   talk = null;
@@ -885,9 +1156,6 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // only the *going* there that a level taken up in place skips, and with it
   // the level's own hour, which `respawn` is the only thing that applies.
   start = releaseFor(spec);
-  // Put down on purpose -- picked out of the menu, or dead and starting again
-  // -- is re-entering the story before she left it, and she was there then.
-  if (where === 'released') sheHasGone = false;
   // What this level teaches, from where it starts teaching it. A level taken
   // up in mid-air inherits the distance the last one ran up, so the course
   // counts from here rather than from the take-off two levels ago.
@@ -917,6 +1185,15 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
  */
 let handover: { done: () => boolean; opens: Opens } | null = null;
 
+/**
+ * How near a level's target counts as having arrived at it, in metres.
+ *
+ * Half again the widest square, so landing anywhere on one of them -- or
+ * beside it, on the pavement -- finishes the level. The alternative is a
+ * player who has plainly got there being told they have not.
+ */
+const ARRIVED_WITHIN = 22;
+
 function handoverFor(spec: Level, marker: TargetMarker | null) {
   const ends = spec.finish;
   if (ends.kind === 'meeting') return null;
@@ -924,15 +1201,27 @@ function handoverFor(spec: Level, marker: TargetMarker | null) {
   // which it can reach standing still in one spot, and usually does.
   if (ends.kind === 'fed') return { done: () => bird.health >= 1, opens: ends.opens };
   if (!marker) return null;
-  // Crossed. Square across the way to the target, so far along it. Worked out
-  // from the release point this level was given rather than from wherever the
-  // bird happens to be, so that arriving in mid-air puts the line in the same
-  // place as taking off into it does.
-  const line = crossingLine(
-    project(spec.start[0], spec.start[1], map.centre),
-    { x: marker.position.x, z: marker.position.z },
-    ends.at,
-  );
+
+  // Arrived. On its feet, on the thing the level named -- which is the whole
+  // of what searching a square is. The reach is generous because a square is
+  // a place rather than a mark: coming down anywhere on Mátyás tér is coming
+  // down on Mátyás tér, and a rule that wanted the middle of it would be a
+  // spot landing wearing a story's clothes.
+  if (ends.kind === 'arrival') {
+    return {
+      done: () =>
+        isPerched(bird) &&
+        Math.hypot(bird.position.x - marker.position.x, bird.position.z - marker.position.z) <=
+          ARRIVED_WITHIN,
+      opens: ends.opens,
+    };
+  }
+
+  // Crossed. Square across the way in from the release point this level was
+  // given, rather than from wherever the bird happens to be, so that arriving
+  // in mid-air puts the line in the same place as taking off into it does.
+  const line = finishingLine(spec);
+  if (!line) return null;
   return { done: () => crossed(line, bird.position.x, bird.position.z), opens: ends.opens };
 }
 
@@ -948,9 +1237,18 @@ function handOver(): void {
   if (!handover?.done()) return;
   const opens = handover.opens;
 
+  // Finished, whatever comes next -- and if what comes next is a scene, this
+  // is the only thing that takes the arrow down before the camera leaves.
+  const here = LEVELS[level];
+  if (here) hint(here, false);
+  handover = null;
+
+  // A level opening another level takes it up where the bird is, in the air,
+  // at the speed it was already going. A level opening a scene hands over to
+  // the camera. Both are `follow`'s business, except for that one difference,
+  // which is why the level case is written out here.
   if ('scene' in opens) {
-    const scene = sceneNamed(opens.scene);
-    if (scene) beginScene(scene);
+    follow(opens);
     return;
   }
   const next = LEVELS.findIndex((spec) => spec.name === opens.level);
@@ -968,22 +1266,6 @@ function handOver(): void {
  * place in the world and it does not depend on how the flying went.
  */
 let cutscene: { play: Flyover; scene: Scene; ends: ReturnType<typeof releaseFor> } | null = null;
-
-/**
- * Whether the bird that stood in the closing shot has gone.
- *
- * She is the resident of the level the scene closes on, which is how the
- * story says it without a second list to keep in step: the pigeon standing in
- * the shot the game is about to play back, empty. Cleared by anything that
- * puts the player down somewhere on purpose -- picking a level, or dying --
- * because that is re-entering the story before she left, and she was there
- * then.
- */
-let sheHasGone = false;
-
-/** Whether a resident is still in the story, and so still on its branch. */
-const stillThere = (resident: Resident): boolean =>
-  !sheHasGone || resident.completes !== HOMECOMING.endsOn;
 
 /**
  * The shot a bird on its feet is filmed in: close, low, and level.
@@ -1011,6 +1293,14 @@ function perchedCamera(walking: boolean) {
 
 /** Take the camera off the bird and fly it home. */
 function beginScene(scene: Scene): void {
+  // A beat where the bird already is: no move, nothing placed, the world
+  // stopped and somebody saying something. He is standing on the square he
+  // has just landed on, and that is the shot.
+  if (scene.endsOn === undefined) {
+    holdOn(scene);
+    return;
+  }
+
   const closing = LEVELS.find((spec) => spec.name === scene.endsOn);
   if (!closing) return;
 
@@ -1029,9 +1319,13 @@ function beginScene(scene: Scene): void {
   // chase camera is snapped onto it, and where it lands is the answer. Two
   // calculations of one shot would be one too many, and the arithmetic of a
   // boom is exactly the sort that goes quietly out of step.
-  const stand = createBird(ends.at, 0, ends.heading);
-  standStill(stand);
-  chase.snap(stand, { ...cameraParams, ...perchedCamera(false) });
+  const stand = createBird(ends.at, ends.perched ? 0 : SPAWN_SPEED, ends.heading);
+  if (ends.perched) standStill(stand);
+  // Filmed the way that level would be filmed: the close, low shot for a bird
+  // put down on a branch, the ordinary chase for one released into the air.
+  // A scene that ends over a street is handing the controls back in flight,
+  // and framing that like a perch would be a cut on the first frame.
+  chase.snap(stand, ends.perched ? { ...cameraParams, ...perchedCamera(false) } : cameraParams);
   const to: Framing = {
     eye: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
     look: { ...ends.at },
@@ -1043,9 +1337,6 @@ function beginScene(scene: Scene): void {
     play: createFlyover(from, to, { seconds: scene.seconds, arc: scene.cruise }),
   };
 
-  // The level that opened it is over, and must not open it again: the belly
-  // is still full, so the condition that started this is still true.
-  handover = null;
   talk = null;
   talkingTo = null;
 }
@@ -1056,31 +1347,78 @@ function endScene(): void {
   const { ends, scene } = cutscene;
   cutscene = null;
 
-  // He is simply there. Nothing flew him: the camera went, and the point of
-  // the shot is where the player now is -- the same spot, the same heading,
-  // the same camera as the morning he left, and nobody opposite him.
-  const home = createBird(ends.at, 0, ends.heading);
+  // Nothing to say: the beat is the movement itself, so it runs straight on
+  // into whatever it opens and the player never stops flying. What follows
+  // places the bird -- a level released into the air puts him at its own
+  // start -- so there is nothing to put down here.
+  if (scene.says === undefined) {
+    follow(scene.opens);
+    return;
+  }
+
+  // Otherwise it holds. He is simply there: nothing flew him, the camera
+  // went, and the point of the shot is where the player now is -- the same
+  // spot, the same heading, the same camera as the morning he left, and
+  // nobody opposite him.
+  const home = createBird(ends.at, ends.perched ? 0 : SPAWN_SPEED, ends.heading);
   home.health = bird.health;
   home.stamina = bird.stamina;
   bird = home;
-  standStill(bird);
+  if (ends.perched) standStill(bird);
   previousPosition = { ...bird.position };
   previousOrientation = { ...bird.orientation };
 
-  sheHasGone = true;
-  storyNote = { text: scene.says, at: clock };
-  outcome.hide();
-  // Nothing left to teach. The level the scene came out of still has a course
-  // -- its last lesson is the one about eating, and it waits for the feet to
-  // come down, which they have just done nine hundred metres from the grain.
-  // The act is over; the panel should be empty for the last shot of it.
-  tutor.teach([], run.stats.distance);
+  holdOn(scene);
   // Cut rather than swung: the camera is sixty metres up and the closing shot
   // is a metre and a half behind a standing bird, and easing between those
   // two is a long fairground ride. Taken at the end of the frame, once the
   // perched shot has actually been worked out -- snapping here would snap to
   // whatever the camera wanted while it was still flying.
   cutTo = true;
+}
+
+/** Stop the world on a line, and wait for it to be read. */
+function holdOn(scene: Scene): void {
+  waiting = scene;
+  talk = alone(...(scene.says ?? []));
+  // The readouts, told about the bird that is actually standing there. No
+  // ticks run while a beat is held, so the panel would otherwise be showing
+  // the airspeed and climb of the last frame flown -- fifty-seven km/h on a
+  // pigeon sitting on a branch. Stepping a landed bird touches nothing and
+  // reads back zeroes, which is the truth about it.
+  telemetry = step(bird, neutralControls(), flightParams, 0);
+  outcome.hide();
+  // Nothing left to teach. Whatever course the level had, the level is over.
+  tutor.teach([], run.stats.distance);
+}
+
+/**
+ * A beat the player is being held on, with a line and nothing to do but read.
+ *
+ * The one moment in the game where the bird is standing somewhere, the world
+ * has stopped, and the take-off key means "go on" rather than "fly". Null the
+ * rest of the time.
+ */
+let waiting: Scene | null = null;
+
+/** Take up whatever a finished scene hands over to. */
+function follow(opens: Opens): void {
+  if ('scene' in opens) {
+    const next = sceneNamed(opens.scene);
+    if (next) beginScene(next);
+    return;
+  }
+  const at = LEVELS.findIndex((spec) => spec.name === opens.level);
+  if (at >= 0) playLevel(at);
+}
+
+/** The player has read it: on with the story. */
+function goOn(): void {
+  if (!waiting) return;
+  const scene = waiting;
+  waiting = null;
+  talk = null;
+  follow(scene.opens);
 }
 
 /** Whether the camera should jump to the shot rather than ease into it. */
@@ -1332,15 +1670,18 @@ function reachLevel(): void {
   // Anyone at all, not just the one this level is about: standing with a
   // pigeon is standing with a pigeon, and the camera should say so.
   talkingTo =
-    residents.find((resident) => stillThere(resident) && meeting(bird, resident.state)) ?? null;
+    residents.find((resident) => resident.here && meeting(bird, resident.state)) ?? null;
 
   const here = LEVELS[level];
   // Meeting them finishes the level and nothing else. What happens next is
   // the player's move, not the game's: they are standing with somebody, and
   // the somebody says hello.
   const said = here ? dialogueOf(here) : undefined;
-  if (said && talkingTo?.completes === here!.name && !finished) {
+  if (said && here && talkingTo?.who.name === metBy(here) && !finished) {
     finished = true;
+    // Arrived: the directions come down. What is left on screen is the two of
+    // them standing on a roof, which is the shot.
+    hint(here, false);
     talk = begin(said);
   }
 }
@@ -1378,19 +1719,12 @@ function banner(): string | null {
   // Nothing at all while the game is flying: an audience is not being told
   // which key to press.
   if (cutscene) return null;
-  if (storyNote && clock - storyNote.at <= NOTE_SECONDS) return storyNote.text;
+  // Held on a beat: the words are the conversation panel's, and the key is
+  // the instruction panel's. The banner has nothing to add.
+  if (waiting) return null;
   if (started && clock - startedAt <= NOTE_SECONDS) return `now flying — ${started}`;
   return null;
 }
-
-/**
- * A line the story wants on screen, and when it was put there.
- *
- * Not an instruction and not a level's name: the one place the game says
- * something that is only the story. It sits where "now flying -- X" sits,
- * because that is the line above the bird and this is the same sort of thing.
- */
-let storyNote: { text: string; at: number } | null = null;
 
 /** Whether the conversation still wants something said before you go. */
 const midSentence = (): boolean => talkingTo !== null && talk !== null && !isOver(talk);
@@ -1446,6 +1780,11 @@ function command(): Tip | null {
     // Said aloud: without it the flight does not continue at all.
     return { keys: ['SPACE'], text: 'Take off!', spoken: true };
 
+  // Standing on a branch or a square having just said something to nobody.
+  // The same key and the same words as leaving a conversation, because it is
+  // the same act -- he has finished talking and he is going.
+  if (waiting) return { keys: ['SPACE'], text: 'Take off!', spoken: true };
+
   // On foot, where the controls are a different set entirely and the player
   // has just arrived in them. These used to be the line above the bird, which
   // is the story's line.
@@ -1467,8 +1806,9 @@ function command(): Tip | null {
 /** The resident this level is about, if it has one. */
 function levelPerson(): Resident | null {
   const here = LEVELS[level];
-  const found = here ? residents.find((r) => r.completes === here.name) : undefined;
-  return found && stillThere(found) ? found : null;
+  const wanted = here ? metBy(here) : undefined;
+  const found = wanted ? residents.find((r) => r.who.name === wanted) : undefined;
+  return found?.here ? found : null;
 }
 
 
@@ -1490,7 +1830,12 @@ function frame(nowMs: number) {
     if (picked !== null) playLevel(picked);
     else if (talk && !isOver(talk)) talk = reply(talk, digit);
   }
-  if (input.consumeReset()) respawn();
+  // The whole level again, rather than only the bird. Restarting has to put
+  // the cast back where this level has them and light the arrow again --
+  // otherwise a level restarted after it was finished is a level with no
+  // directions in it, and one restarted after somebody moved has them
+  // standing wherever the last chapter left them.
+  if (input.consumeReset()) playLevel(level);
   // V for the voice. An undiscoverable key for now, which is the right amount
   // of discoverable for a thing whose whole purpose is to be turned off by
   // whoever is tired of it.
@@ -1509,6 +1854,10 @@ function frame(nowMs: number) {
     // as an edge rather than a held key, so cutting the scene short does not
     // also launch the bird off the branch it has just been placed on.
     if (input.consumeLaunch()) cutscene.play.cut();
+  } else if (waiting) {
+    // The same key, meaning the same thing it always means: he is leaving.
+    // What follows happens to be a camera rather than a wingbeat.
+    if (input.consumeLaunch()) goOn();
   } else if (input.consumeLaunch() && !midSentence()) launchPending = !flyOn();
 
   // Alive rather than flying: a walking bird is not flying, and being run
@@ -1522,7 +1871,7 @@ function frame(nowMs: number) {
   // believe than a pigeon flying itself across one.
   if (cutscene) {
     if (!cutscene.play.update(frameTime)) endScene();
-  } else accumulator += frameTime;
+  } else if (!waiting) accumulator += frameTime;
 
   let ticked = false;
   while (accumulator >= TICK) {
@@ -1537,9 +1886,10 @@ function frame(nowMs: number) {
     // Filtered by what the bird is doing. Talking takes the movement away and
     // leaves the wing, so the only way out of a conversation is to fly out of
     // it -- which is a thing you do on purpose.
+    const doing = stanceOf(bird, talkingTo !== null);
     const allowed = asStance(
       { forward: input.walk.forward, turn: input.walk.turn, launch: launchPending },
-      stanceOf(bird, talkingTo !== null),
+      doing,
     );
     walkControls.forward = allowed.forward;
     walkControls.turn = allowed.turn;
@@ -1551,8 +1901,8 @@ function frame(nowMs: number) {
     // the crowd scatters the crowd. By the wing rather than by walking off an
     // edge: stepping off a kerb is not an alarm, and the birds on the
     // concrete would not have noticed it.
-    if (ambient && wasDown && walkControls.launch && !isPerched(bird)) {
-      ambient.startle(bird.position.x, bird.position.z);
+    if (wasDown && walkControls.launch && !isPerched(bird)) {
+      for (const crowd of crowds) crowd.startle(bird.position.x, bird.position.z);
     }
     if (scatter) {
       scatter.update(TICK, clock);
@@ -1567,9 +1917,24 @@ function frame(nowMs: number) {
         }
       }
     }
-    telemetry = step(bird, input.controls, flightParams, TICK, solid, wind);
-    flock.update(TICK, solid, wind);
-    ambient?.update(TICK, solid, wind);
+    telemetry = step(bird, asFlight(input.controls, doing), flightParams, TICK, solid, wind);
+    // The loft shuts while the player is dead. A fresh pigeon appearing over
+    // the wreck is the game carrying on cheerfully around a corpse, which is
+    // the one thing that moment should not do.
+    flock.update(TICK, solid, wind, doing !== 'dead');
+    crows?.update(TICK, solid, wind, doing !== 'dead');
+    // And if one of them gets to him, that is the flight. It is checked after
+    // they have moved rather than before, so the tick a crow arrives is the
+    // tick it counts -- and only against a bird that is still flying, since
+    // catching a corpse is not an event.
+    if (crows && bird.ending === null && crows.touching(bird.position, CROW_TOUCH)) {
+      caught(bird);
+    }
+    dog?.update(TICK);
+    for (const crowd of crowds) crowd.update(TICK, solid, wind);
+    if (waymarks.update(bird.position.x, bird.position.z)) {
+      waymark.show(waymarks.at, waymarks.next);
+    }
     if (bird.ending === null) run.update(bird, TICK);
     // Alive rather than airborne. A crossing is flown over and a belly is
     // filled standing on the concrete, so testing for flight here would have
@@ -1605,13 +1970,21 @@ function frame(nowMs: number) {
   interpolatedState.restingOn = bird.restingOn;
   interpolatedState.stridePhase = bird.stridePhase;
 
-  const wings: WingPose = isPerched(bird)
-    ? 'perched'
-    : input.controls.brake
-      ? 'braking'
-      : input.controls.tuck
-        ? 'tucked'
-        : 'gliding';
+  const stance = stanceOf(bird, talkingTo !== null);
+  // Read off the same controls the flight model was given, so the wings show
+  // what the bird was actually told rather than what the keyboard says: a
+  // dead bird takes no input, and its wings are not held in any shape.
+  const holding = asFlight(input.controls, stance);
+  const wings: WingPose =
+    stance === 'dead'
+      ? 'dead'
+      : isPerched(bird)
+        ? 'perched'
+        : holding.brake
+          ? 'braking'
+          : holding.tuck
+            ? 'tucked'
+            : 'gliding';
   // Drawn between the last two ticks, exactly as the bird is. A train covers
   // five centimetres a tick, which is small enough to be invisible and big
   // enough to shimmer if you take it in steps.
@@ -1635,9 +2008,12 @@ function frame(nowMs: number) {
       near[index] ? { ...train, vehicles: drawnVehicles[index]! } : train,
     ),
   );
+  // Somebody talking, or somebody talking to himself. The second is the same
+  // panel in the same place: a monologue is a conversation with one speaker,
+  // so it is shown as one, in his own colour, with nothing to say back.
   talkPanel.show(
-    talkingTo ? talk : null,
-    talkingTo ? { them: talkingTo.voice, you: hero } : undefined,
+    talkingTo || waiting ? talk : null,
+    { them: talkingTo?.voice ?? hero, you: hero },
   );
   // The tutor is asked every frame whether or not anything is showing, so its
   // own clock runs; a state tip takes the corner while it has something to
@@ -1686,13 +2062,19 @@ function frame(nowMs: number) {
   // Some lessons count from the take-off and some from the arrival, and the
   // arrival is the harder half.
   const saying = cutscene
-    ? null
-    : (urgent ??
-      tutor.update(
-        { flown: run.stats.distance, toGo, landed: isPerched(bird) },
-        frameTime,
-        input.anyDown,
-      ));
+    ? // An audience is not told which key to press.
+      null
+    : waiting
+      ? // Held on a beat: the one key that does anything, and nothing else.
+        // No cautions -- the bird is standing still -- and no lessons, which
+        // would be the game teaching over the top of the story.
+        command()
+      : (urgent ??
+        tutor.update(
+          { flown: run.stats.distance, toGo, landed: isPerched(bird) },
+          frameTime,
+          input.anyDown,
+        ));
   tipPanel.show(saying);
   // Only the critical ones are said aloud. A voice that reads every
   // instruction is a voice that gets turned off, and then it is not there for
@@ -1734,7 +2116,6 @@ function frame(nowMs: number) {
   // nothing left to look for.
   const person = levelPerson();
   const pulse = targetFlash(now, false);
-  const stance = stanceOf(bird, talkingTo !== null);
 
   const showing: 'object' | 'person' | 'nobody' =
     stance === 'flying' ? 'object' : stance === 'walking' && person ? 'person' : 'nobody';
@@ -1766,8 +2147,9 @@ function frame(nowMs: number) {
   // The flock is far enough away that the raw tick pose is smooth enough.
   flock.members.forEach((member, i) => {
     // A bird waiting its turn to be let out is not in the air, and should not
-    // be standing on the wagon either.
-    const shown = member.down <= 0 && sighted(member.state.position, sight);
+    // be standing on the wagon either -- and a level that has not asked for
+    // an escort has none, whatever the flock is frozen in the middle of.
+    const shown = escorted && member.down <= 0 && sighted(member.state.position, sight);
     flockRigs[i]!.object.visible = shown;
     if (!shown) return;
     flockRigs[i]!.update(
@@ -1777,17 +2159,35 @@ function frame(nowMs: number) {
     );
   });
 
-  (ambient?.birds ?? []).forEach((pigeon, i) => {
-    const rig = ambientRigs[i];
+  (crows?.members ?? []).forEach((crow, i) => {
+    const rig = crowRigs[i];
     if (!rig) return;
-    const shown = sighted(pigeon.state.position, sight);
+    const shown = crow.down <= 0 && sighted(crow.state.position, sight);
     rig.object.visible = shown;
-    if (!shown) return;
-    rig.update(pigeon.state, isPerched(pigeon.state) ? 'perched' : 'gliding', frameTime);
+    if (shown) rig.update(crow.state, isPerched(crow.state) ? 'perched' : 'gliding', frameTime);
+  });
+
+  waymark.update(now);
+
+  if (dog && dogRig) {
+    const shown = sighted(dog.pose, sight);
+    dogRig.object.visible = shown;
+    if (shown) dogRig.update(dog.pose);
+  }
+
+  crowds.forEach((crowd, group) => {
+    crowd.birds.forEach((pigeon, i) => {
+      const rig = crowdRigs[group]?.[i];
+      if (!rig) return;
+      const shown = sighted(pigeon.state.position, sight);
+      rig.object.visible = shown;
+      if (!shown) return;
+      rig.update(pigeon.state, isPerched(pigeon.state) ? 'perched' : 'gliding', frameTime);
+    });
   });
 
   for (const resident of residents) {
-    const shown = stillThere(resident) && sighted(resident.state.position, sight);
+    const shown = resident.here && sighted(resident.state.position, sight);
     resident.rig.object.visible = shown;
     if (!shown) continue;
     resident.rig.update(resident.state, 'perched', frameTime);
