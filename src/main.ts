@@ -199,26 +199,6 @@ const home = project(HOME_POINT[0], HOME_POINT[1], map.centre);
 const TRAIN_POINT: [number, number] = [47.500052, 19.088174];
 const train = project(TRAIN_POINT[0], TRAIN_POINT[1], map.centre);
 
-/**
- * The tramway west of the city, beside the fourth level's patch of concrete.
- *
- * On the line rather than near it: a tram is put on the tramway nearest the
- * point it is asked for, and this one has a railway within reach as well.
- */
-const TRAM_POINT: [number, number] = [47.496648, 19.070644];
-const tram = project(TRAM_POINT[0], TRAM_POINT[1], map.centre);
-
-/**
- * Further down the same tramway, where it is double track.
- *
- * One point for the pair of them: a tram takes the tramway nearest it that
- * nothing else has taken, so the second ends up on the other road. Measured,
- * the two come out 3 to 6 m apart, which is a pair of tracks and not two
- * lines that happen to run near each other.
- */
-const TRAM_PAIR: [number, number] = [47.495932, 19.072042];
-const trams = project(TRAM_PAIR[0], TRAM_PAIR[1], map.centre);
-
 const layout = buildLayoutFromMap(map, {
   ...defaultMapWorldOptions,
   // Described first, and everything generated afterwards gives way to them.
@@ -251,24 +231,16 @@ const layout = buildLayoutFromMap(map, {
     { near: train, cars: 6, stock: 'carriage', speed: 16, runsOut: true },
     { near: train, cars: 4, stock: 'carriage', speed: 13, runsOut: true },
     { near: train, cars: 8, stock: 'carriage', speed: 11, runsOut: true },
-    // And a tram, on the tramway rather than the railway: four articulated
-    // cars, no locomotive, and 3.2 km of route once the switches are
-    // followed. Set off south, which the line does not know how to be -- a
-    // polyline is drawn in whatever order somebody traced it -- so it is
-    // asked for as a bearing and worked out from the tangent.
-    { near: tram, cars: 4, stock: 'tram', speed: 10, runsOut: true },
-    // Two more where the line is double track, one on each road, set off
-    // against each other the way a pair of tracks is worked. They would come
-    // out opposed anyway, the two roads having been traced in opposite
-    // orders -- which is exactly the thing not to rely on, since it is a fact
-    // about the map's editing history rather than about the tramway.
-    // No bearings on these any more. They were here to make the pair at the
-    // double-track spot pass each other rather than run abreast, and the side
-    // of the road does that on its own now -- correctly, which the bearings
-    // did not: the first of these three ran three kilometres alongside
-    // another tram going the same way.
-    { near: trams, cars: 4, stock: 'tram', speed: 10, runsOut: true },
-    { near: trams, cars: 4, stock: 'tram', speed: 10, runsOut: true },
+    // No trams here. There were three, placed by hand at two coordinates on
+    // the tramway west of the city -- one beside the fourth level's patch of
+    // concrete, two where the line is double track -- back when a tram only
+    // existed if it was asked for by name. The network fills itself now, and
+    // it puts a tram on that stretch along with every other stretch, running
+    // the correct way and at a headway, which is all those three were for.
+    //
+    // Nothing names them. `train: 0` in a level is the rake of stake wagons
+    // at the top of this list, and that is the only place in the game where
+    // a train is picked out by its position here.
   ],
   // And then the rest of the network, which nothing in the game names or
   // cares about. A city with a hundred and thirty kilometres of tramway and
