@@ -652,6 +652,51 @@ describe('a tram, which is one shape made of many boxes', () => {
     expect(Math.abs(concertina - body)).toBeGreaterThan(0.01);
     geometry.dispose();
   });
+
+  it('stands the stake wagon on wheels rather than on a box', () => {
+    // It had none. The engine and the carriage each got bogies with four
+    // wheels apiece; the wagon got one plain box under each end, from just
+    // above the rail to just under the solebar -- which in the shade of the
+    // deck reads as a black cube where the running gear should be. And the
+    // wagon is the one vehicle the player lands on and walks about, so it is
+    // the one seen from a metre away.
+    const { geometry } = buildVehicle({
+      kind: 'wagon',
+      x: 0,
+      z: 0,
+      yaw: 0,
+      length: WAGON.length,
+      width: WAGON.width,
+    });
+    const points = geometry.getAttribute('position');
+
+    // Asked of what touches the rail, and asked as a *shape* rather than as a
+    // count of vertices. The first version of this looked for geometry in the
+    // middle of the bogie and found none -- because a box has its vertices at
+    // its corners and none in the middle, so the box it was meant to catch
+    // sailed through. It passed with the bug restored.
+    //
+    // What a box cannot fake is where it meets the rail. The old one hung from
+    // 0.15 m up and never touched it at all; a wheel stands on it, and touches
+    // it in four small patches under the axles rather than along a
+    // three-metre face.
+    const onTheRail: { x: number; z: number }[] = [];
+    for (let i = 0; i < points.count; i += 1) {
+      if (points.getY(i) < 0.06) onTheRail.push({ x: points.getX(i), z: points.getZ(i) });
+    }
+    expect(onTheRail.length, 'something reaches the rail').toBeGreaterThan(0);
+
+    // Four axles: two under each bogie, at a third of the length either side.
+    const bogie = WAGON.length * 0.33;
+    const axles = [bogie - 0.85, bogie + 0.85, -bogie - 0.85, -bogie + 0.85];
+    for (const point of onTheRail) {
+      const nearest = Math.min(...axles.map((axle) => Math.abs(point.x - axle)));
+      expect(nearest, `something at x=${point.x.toFixed(2)} is not a wheel`).toBeLessThan(0.5);
+      // And out at the sides where a wheel runs, not in under the middle.
+      expect(Math.abs(point.z), 'out on the rail').toBeGreaterThan(WAGON.width * 0.25);
+    }
+    geometry.dispose();
+  });
 });
 
 describe('the trees', () => {

@@ -1994,8 +1994,24 @@ export function buildVehicle(vehicle: Vehicle): {
     part(0x6a6e73, 0, 0, TRAM.roof + 0.08 + TRAM.pantographHeight, 1.6, vehicle.width * 0.42, 0.07);
   } else {
     // Running gear, solebar, and the deck laid on top of it.
+    //
+    // It had no wheels. Where the engine and the carriage each got bogies with
+    // four wheels apiece, the wagon got one plain box under each end -- 2.6 m
+    // long, 2.3 m wide and 0.6 m deep, sitting from just above the rail to
+    // just under the solebar. In the shade of the deck that reads as exactly
+    // what it is: a black cube where the running gear should be. And it is the
+    // one vehicle the player lands on and walks about, so it is the one seen
+    // from a metre away.
+    //
+    // Same arrangement as the carriage: a slim bogie frame carried above two
+    // axles, and the wheels standing on the rail where they belong.
     for (const end of [bogie, -bogie]) {
-      part(IRON, end, 0, 0.15, 2.6, vehicle.width * 0.78, 0.6);
+      part(IRON, end, 0, 0.5, 2.9, vehicle.width * 0.7, 0.24);
+      for (const axle of [-0.85, 0.85]) {
+        for (const at of [vehicle.width * 0.36, -vehicle.width * 0.36]) {
+          wheel(0x1a1a1c, end + axle, at, 0.0, 0.46, 0.2);
+        }
+      }
     }
     part(RUST, 0, 0, WAGON.deck - 0.5, vehicle.length, vehicle.width * 0.9, 0.32);
     part(0x6f5c45, 0, 0, WAGON.deck - 0.18, vehicle.length, vehicle.width, 0.18);
