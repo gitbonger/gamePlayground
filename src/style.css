@@ -447,20 +447,21 @@ body {
 
 /* The picture that goes with the instruction, on the left.
 
-   Stroked rather than filled, in the panel's own colour, so a warning that
-   goes amber takes its picture with it. Sized off the text: a line drawing
-   smaller than the words beside it reads as a bullet point rather than as a
-   picture. */
+   Sixty across: twice what it was, which is what it took for the detail to
+   survive -- a beak, an eye, a far wing behind a near one. At thirty they
+   were symbols with extra lines in them.
+
+   `fill: none` and the panel's colour are the defaults, not the rule: a mark
+   says its own colour when it has one, and most of them do. */
 .tip-icon {
   flex: none;
-  width: 30px;
-  height: 30px;
+  width: 60px;
+  height: 60px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: 0.92;
 }
 
 /* A picture of the key, so the text never has to say "press". */
