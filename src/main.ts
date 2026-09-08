@@ -45,6 +45,7 @@ import { createDog } from './dog';
 import { createWaymarks, type Waymarks } from './waypoints';
 import { createWaymark } from './render/waymark';
 import { createDogRig } from './render/dog';
+import { escortDrawn } from './render/escort';
 import { cageSolid, createCage } from './render/cage';
 import { beginRescue } from './rescue';
 import { createFlyover, type Flyover, type Framing } from './cutscene';
@@ -2839,17 +2840,27 @@ function frame(nowMs: number) {
   sight.forward = sightForward;
 
   // The flock is far enough away that the raw tick pose is smooth enough.
+  //
+  // A bird waiting its turn to be let out is not in the air, and should not be
+  // standing on the wagon either -- and a level that has not asked for an
+  // escort has none, whatever the flock is frozen in the middle of.
+  const seen = flock.members.map(
+    (member) => escorted && member.down <= 0 && sighted(member.state.position, sight),
+  );
+  // Her, on the level where the flock is one bird and the bird is her. Always
+  // the first of them, because only a flock of one can be somebody.
+  const hersAt = LEVELS[level]?.flockIs === PINK.name ? 0 : null;
+  // Answered for every rig at once rather than a bird at a time: written
+  // inside the loop, the twenty-nine birds that are not her set her rig back
+  // to invisible after the one that is had turned it on, and she was never
+  // drawn at all. See `escortDrawn`.
+  const drawn = escortDrawn(seen, hersAt);
+  herRig.object.visible = drawn.her;
+
   flock.members.forEach((member, i) => {
-    // A bird waiting its turn to be let out is not in the air, and should not
-    // be standing on the wagon either -- and a level that has not asked for
-    // an escort has none, whatever the flock is frozen in the middle of.
-    const shown = escorted && member.down <= 0 && sighted(member.state.position, sight);
-    // Her, on the level where the flock is one bird and the bird is her.
-    // Only ever the first of them, because only a flock of one can be
-    // somebody.
-    const hers = i === 0 && LEVELS[level]?.flockIs === PINK.name;
-    herRig.object.visible = hers && shown;
-    flockRigs[i]!.object.visible = shown && !hers;
+    const shown = seen[i]!;
+    const hers = i === hersAt;
+    flockRigs[i]!.object.visible = drawn.flock[i]!;
     if (!shown) return;
     (hers ? herRig : flockRigs[i]!).update(
       member.state,
