@@ -1891,3 +1891,73 @@ describe('steeples', () => {
     expect(past).toBeNull();
   });
 });
+
+describe('buildings and the carriageway', () => {
+  /**
+   * A building sitting half in the road.
+   *
+   * BLOCK's north side runs along z = 0 and is 16 m wide, so its kerb is at
+   * z = 8. A building centred at z = 12 with a depth of 20 reaches to z = 2,
+   * which is six metres inside the carriageway.
+   */
+  const inTheRoad = [100, 12, 20, 20, 0, 15];
+  const laid = (buildings: number[][]) => ({ ...mapOf(BLOCK), buildings }) as MapData;
+  const near = (world: ReturnType<typeof buildLayoutFromMap>, x: number) =>
+    world.buildings.find((b) => Math.abs(b.x - x) < 12);
+
+  it('pulls a building back to the kerb', () => {
+    // A building on this map is not its outline, it is the turned box that
+    // covers the outline -- and a box is bigger than an L-plan corner house
+    // or a block with a courtyard notch. Where that inflation shows is a
+    // building standing in the road: 1,605 of them on the real map, 564 by
+    // more than two metres.
+    const before = 12 - 20 / 2;
+    expect(before, 'the fixture really is in the road').toBeLessThan(8);
+
+    const b = near(buildLayoutFromMap(laid([inTheRoad])), 100)!;
+    expect(b.z - b.depth / 2).toBeGreaterThanOrEqual(8 - 0.001);
+  });
+
+  it('gives ground to the road rather than sliding across the plot', () => {
+    // The far wall is where the building actually is. Moving the whole box
+    // back would put it through whatever stands behind it.
+    const b = near(buildLayoutFromMap(laid([inTheRoad])), 100)!;
+    expect(b.z + b.depth / 2).toBeCloseTo(12 + 20 / 2, 3);
+  });
+
+  it('leaves a building that is nowhere near a road alone', () => {
+    // Most of the district. A rule that shaved every building would be a rule
+    // that shrank the city.
+    const clear = [100, 100, 20, 20, 0, 15];
+    const b = near(buildLayoutFromMap(laid([clear])), 100)!;
+    expect(b.width).toBe(20);
+    expect(b.depth).toBe(20);
+    expect(b.z).toBe(100);
+  });
+
+  it('leaves one alone rather than trimming it to a sliver', () => {
+    // Some of the overlap is the road's fault: the carriageway widths are a
+    // table by highway class rather than a measurement, so a street that is
+    // really nine metres wide is drawn at eleven and swallows a frontage.
+    // Better a corner of masonry over the kerb than a wall a metre thick
+    // where a house was.
+    // Eight metres deep, centred four metres inside the kerb: trimming it
+    // clear would leave two, which is not a house.
+    const shallow = [100, 6, 10, 8, 0, 15];
+    const b = near(buildLayoutFromMap(laid([shallow])), 100)!;
+    expect(b.depth).toBe(8);
+    expect(b.z).toBe(6);
+  });
+
+  it('clears a corner house of both the streets it stands on', () => {
+    // One pass trims one axis, and a corner house overruns two streets at
+    // once. On the real map a single pass got 1,605 down to 798 and stopped.
+    const corner = [10, 10, 24, 24, 0, 15];
+    const world = buildLayoutFromMap(laid([corner]));
+    const b = world.buildings.find((x) => Math.abs(x.x - 10) < 14)!;
+    // North side of the block is 16 m wide about z = 0; the west side is 8 m
+    // wide about x = 0. Clear of both.
+    expect(b.z - b.depth / 2).toBeGreaterThanOrEqual(8 - 0.001);
+    expect(b.x - b.width / 2).toBeGreaterThanOrEqual(4 - 0.001);
+  });
+});

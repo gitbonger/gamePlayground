@@ -277,6 +277,15 @@ export interface MapWorld extends CityLayout {
 }
 
 /**
+ * The narrowest a building may be trimmed to, in metres.
+ *
+ * Three. Trimming a box back off the road is right up to the point where
+ * there is no house left; past it, a corner of masonry over the kerb is the
+ * smaller wrong.
+ */
+const BUILDING_SLIVER = 3;
+
+/**
  * How far a shop may be from a building and still be put on it, in metres.
  *
  * Twenty-five. Measured on this map, 85 of the 88 branded groceries and
@@ -370,7 +379,22 @@ export function buildLayoutFromMap(
   // A railway is a line with a width and a corridor to keep clear, which is
   // exactly what the street index already answers questions about. Same index,
   // different question.
-  const tracks = indexStreets(map.rails ?? []);
+  //
+  // Two of them, because a building and a tree are not asking the same
+  // question. A tram is laid in the carriageway and owns no ground of its
+  // own: the street it runs down is already clear of buildings, so a tram has
+  // nothing left to keep clear -- and counting one as a railway deleted every
+  // real building whose outline a tram alignment happened to clip. Measured:
+  // 48 buildings, fifteen hectares of floor plate, among them one 150 x 146 m
+  // and one 224 x 78. The Lidl on Nagyvárad tér was one of them, which is how
+  // it was found -- a shop that had lost its shop.
+  //
+  // A tree is the other way round. It is planted in a block or a park rather
+  // than on a street, so nothing else keeps it out of a tramway, and dropping
+  // trams from the question put 155 of them in the four-foot. What keeps a
+  // building off is the road; what keeps a tree off is this.
+  const tracks = indexStreets((map.rails ?? []).filter((rail) => rail.kind !== 'tram'));
+  const anyTrack = indexStreets(map.rails ?? []);
   const green = indexAreas(map.areas ?? []);
   /** How many of a cemetery's plantings are a stone rather than a tree. */
   const GRAVE_SHARE = 1 / 3;
@@ -388,16 +412,30 @@ export function buildLayoutFromMap(
    * the centre of it. The step is finer than the corridor is wide, so a track
    * cannot thread between two samples.
    */
-  const onTrack = (x: number, z: number, width: number, depth: number, yaw: number) => {
+  const laidOn = (
+    index: StreetIndex,
+    x: number,
+    z: number,
+    width: number,
+    depth: number,
+    yaw: number,
+  ) => {
     // Almost nothing on the map is anywhere near a railway, so ask the cheap
     // question first: is there track within reach of this footprint at all?
     const span = Math.hypot(width, depth) / 2;
-    if (!tracks.nearest(x, z, span + 8)) return false;
+    if (!index.nearest(x, z, span + 8)) return false;
     return footprintSamples(x, z, width, depth, yaw, 3).some(([sx, sz]) => {
-      const rail = tracks.nearest(sx, sz, 40);
+      const rail = index.nearest(sx, sz, 40);
       return rail !== null && rail.distance < rail.width / 2;
     });
   };
+
+  /** Is this building standing on a running line? Heavy rail only. */
+  const onTrack = (x: number, z: number, width: number, depth: number, yaw: number) =>
+    laidOn(tracks, x, z, width, depth, yaw);
+
+  /** Is this tree standing in the four-foot? Any rails, a tramway included. */
+  const inTheFourFoot = (x: number, z: number) => laidOn(anyTrack, x, z, 3, 3, 0);
 
   const rand = mulberry32(options.seed);
 
@@ -564,6 +602,96 @@ export function buildLayoutFromMap(
    * `{x, z, width, depth, yaw}` -- so nothing downstream knows the difference:
    * the same collision boxes, the same instanced mesh, the same roofs.
    */
+
+  /**
+   * Pull a building's box back out of the carriageway, where it overruns one.
+   *
+   * A building on this map is not its outline: it is the turned box that
+   * covers the outline, and a box is bigger than the shape it covers -- an
+   * L-plan corner house, a block with a courtyard notch, anything that is not
+   * a rectangle. What that inflation mostly shows up as is a building
+   * standing in the road, which is the one place a box has no business being:
+   * 1,605 of them reached into a carriageway, 564 by more than two metres,
+   * and the deepest by eight.
+   *
+   * Some of that is the road rather than the building. The carriageway widths
+   * are a table by highway class, not a measurement, so a street that is
+   * really nine metres wide is drawn at eleven and swallows the frontage. The
+   * fix is the same either way: the box stops at the kerb, and if the number
+   * that had to come off it was the road's fault then a real building has
+   * lost a metre nobody can see.
+   *
+   * A box that would be left a sliver is left alone instead. Better a corner
+   * of masonry over the kerb than a wall a metre thick where a house was.
+   */
+  const offTheCarriageway = (start: {
+    x: number;
+    z: number;
+    width: number;
+    depth: number;
+    yaw: number;
+  }) => {
+    // Three passes, because one is not enough: a corner house overruns two
+    // streets at once and a pass trims one axis. A single pass took the 1,605
+    // buildings standing in a road down to 798 and no further.
+    let each = start;
+    for (let pass = 0; pass < 3; pass += 1) {
+      const pulled = pullBack(each);
+      if (pulled === each) break;
+      each = pulled;
+    }
+    return each;
+  };
+
+  const pullBack = (each: {
+    x: number;
+    z: number;
+    width: number;
+    depth: number;
+    yaw: number;
+  }) => {
+    // Corners rather than a middle: a box overruns a street with its corner,
+    // and its middle is a frontage away from the kerb.
+    let worst = 0;
+    let atX = 0;
+    let atZ = 0;
+    for (const [sx, sz] of footprintSamples(each.x, each.z, each.width, each.depth, each.yaw, 4)) {
+      const road = streets.nearest(sx, sz, widestRoad / 2 + 2);
+      if (!road) continue;
+      const over = road.width / 2 - road.distance;
+      if (over > worst) {
+        worst = over;
+        atX = road.nearX;
+        atZ = road.nearZ;
+      }
+    }
+    if (worst <= 0) return each;
+
+    // Which of the building's own two axes the street is across. Local +X is
+    // its `width`, and this map turns a local direction by (cos, -sin).
+    const turn = -each.yaw;
+    const dx = atX - each.x;
+    const dz = atZ - each.z;
+    const along = dx * Math.cos(turn) + dz * Math.sin(turn);
+    const across = -dx * Math.sin(turn) + dz * Math.cos(turn);
+    const sideways = Math.abs(along) >= Math.abs(across);
+
+    const had = sideways ? each.width : each.depth;
+    const left = had - worst;
+    if (left < BUILDING_SLIVER) return each;
+
+    // Shrunk on the street side only: the far wall stays where it was, so the
+    // building gives ground to the road rather than sliding across its plot.
+    const step = (worst / 2) * (sideways ? Math.sign(along) || 1 : Math.sign(across) || 1);
+    return {
+      ...each,
+      width: sideways ? left : each.width,
+      depth: sideways ? each.depth : left,
+      x: each.x - (sideways ? Math.cos(each.yaw) : Math.sin(each.yaw)) * step,
+      z: each.z - (sideways ? -Math.sin(each.yaw) : Math.cos(each.yaw)) * step,
+    };
+  };
+
   const fromMap = bakedBuildings(map);
   // Worked out over the whole set before any of it is filtered, because a
   // building the story or a railway takes out is still evidence about the
@@ -575,7 +703,8 @@ export function buildLayoutFromMap(
   // car in the district moved the next time a mapper recorded a storey count
   // somewhere in Jozsefvaros.
   const heights = fillHeights(fromMap, mulberry32(options.seed + 1));
-  for (const [index, each] of fromMap.entries()) {
+  for (const [index, raw] of fromMap.entries()) {
+    const each = offTheCarriageway(raw);
     const footprint = footprintSamples(each.x, each.z, each.width, each.depth, each.yaw, 4);
 
     // The story wins. A described thing -- the loft, the home tree, a square
@@ -998,7 +1127,7 @@ export function buildLayoutFromMap(
         if (reserved(px, pz)) continue;
         // And not in the four-foot. A yard planted as woodland is worse than
         // a yard left as track, which is what it looks like from the air.
-        if (onTrack(px, pz, 3, 3, 0)) continue;
+        if (inTheFourFoot(px, pz)) continue;
         // Not on the water, and not in the middle of a five-a-side pitch.
         const ground = green.at(px, pz);
         if (ground && ground.kind !== 'park' && ground.kind !== 'wood') continue;
