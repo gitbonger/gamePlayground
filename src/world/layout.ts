@@ -712,6 +712,34 @@ export interface Waiting {
 }
 
 /**
+ * The part of a stop's name worth showing.
+ *
+ * Three words, and nothing in brackets. Hungarian stop names qualify
+ * themselves at length -- which arm of the junction, which street, whether
+ * there is a metro under it -- and every one of those qualifications is
+ * something the map is already saying by where the dot is. `Blaha Lujza tér M
+ * (Népszínház utca)` is Blaha.
+ *
+ * The trailing punctuation goes with it, which is what makes three words the
+ * right number rather than an arbitrary one: a crossroads is named by both
+ * its streets with a slash between them, and three words is the first street
+ * and the slash. `Wesselényi utca / Erzsébet körút` comes out `Wesselényi
+ * utca`, with no special case for crossroads at all.
+ *
+ * Shared by the panel and by the boards on the shelters, so what the map
+ * calls a stop and what the stop calls itself cannot drift apart.
+ */
+export function shortStop(name: string): string {
+  return name
+    .replace(/\s*\(.*$/, '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 3)
+    .join(' ')
+    .replace(/[\s,;/–-]+$/, '');
+}
+
+/**
  * Where a tram calls: a point on the track, and what it is called.
  *
  * Distinct from `Platform`, and the difference matters. A platform is a thing
@@ -762,8 +790,6 @@ export interface CityLayout {
   platforms?: Platform[];
   /** Where the trams call, named. Two to a stop, one per direction. */
   stops?: TramStop[];
-  /** Posts holding up the stop signs, so the boards are not floating. */
-  signPosts?: { x: number; z: number; top: number }[];
   /** Solid volumes for every object above, in simulation coordinates. */
   boxes: Box[];
   /** Streets to draw, when the world was built from a real map. */

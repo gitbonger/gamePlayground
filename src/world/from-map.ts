@@ -50,6 +50,7 @@ import {
   type Sign,
   type Platform,
   SHELTER,
+  shortStop,
   type TramStop,
   type Steeple,
   type Building,
@@ -403,18 +404,27 @@ const STEEPLE_TALLEST = 55;
  * else.
  */
 /**
- * The stop sign: a blue board on a post, the way every stop in the city has.
+ * The stop sign: a blue board, standing on the roof of the shelter.
  *
  * Reuses the shop hoardings -- same geometry, same atlas, same lettering --
  * with its own colours, because a tram stop has no chain to be recognised by
- * and the name is the whole of what it says. `up` is head height plus a bit,
- * measured from the island rather than from the road, and `wide` is about as
- * narrow as a name can be and still be read from the air.
+ * and the name is the whole of what it says.
+ *
+ * On the shelter rather than on a post of its own. A post is what a real one
+ * stands on and it was the wrong answer here: from the air it is a stick, and
+ * a stick holding a board over a two-and-a-half metre island reads as a
+ * billboard in the road. On the roof it is part of the one thing on the
+ * island that is already a shape, and it is three metres higher up.
+ *
+ * A platform with no shelter gets no board. There are three of those, all of
+ * them under twenty-five metres long, and a stop that short has a flag on a
+ * pole in real life -- which is not something to see from the air either.
+ *
+ * `wide` is a little under the shelter's own length, so the board sits on it
+ * rather than overhanging.
  */
 const STOP_SIGN = {
-  up: 2.4,
-  wide: 3.4,
-  post: 0.11,
+  wide: 4.2,
   paint: { ground: '#0b4ea2', ink: '#ffffff' },
 };
 
@@ -1068,18 +1078,25 @@ export function buildLayoutFromMap(
       : [{ x, z, name: map.stopNames?.[index] ?? '' }],
   );
 
-  /** The stop nearest a point, within `PLATFORM_SERVED`, or null. */
-  const stopNear = (x: number, z: number): TramStop | null => {
+  /**
+   * The stop an island belongs to, or null.
+   *
+   * `reach` is allowed the island's own half-length, which is the whole of
+   * why this is a function and not a constant: a stop is a point on the track
+   * and an island is up to a hundred and twenty metres of kerb beside it, so
+   * the node can be sixty metres from the island's middle and still be the
+   * stop that island is for. Measured from the middle against a flat twelve
+   * metres, ten islands in twelve went unnamed.
+   */
+  const stopNear = (x: number, z: number, reach: number): TramStop | null => {
     let best: { stop: TramStop; away: number } | null = null;
     for (const stop of stops) {
       const away = Math.hypot(stop.x - x, stop.z - z);
-      if (away <= PLATFORM_SERVED && (!best || away < best.away)) best = { stop, away };
+      if (away <= reach && (!best || away < best.away)) best = { stop, away };
     }
     return best?.stop ?? null;
   };
 
-  /** The post each stop sign stands on, so the board is not floating. */
-  const posts: { x: number; z: number; top: number }[] = [];
   const platforms: Platform[] = [];
   (map.islands ?? []).forEach((row) => {
     const ring: [number, number][] = [];
@@ -1166,7 +1183,7 @@ export function buildLayoutFromMap(
       );
     }
 
-    const named = stopNear(x, z)?.name ?? '';
+    const named = stopNear(x, z, PLATFORM_SERVED + along / 2)?.name ?? '';
     const island = {
       // Whatever stop it stands at. An island is a kerb; the name is on the
       // track beside it.
@@ -1185,15 +1202,17 @@ export function buildLayoutFromMap(
     // Filled by the same rule that refills it after every tram: see `crowdOn`.
     platforms.push({ ...island, waiting: crowdOn(island, rand) });
 
-    // And the sign, at one end of the island rather than the middle, where a
-    // real one stands and where it is not in the way of the shelter.
-    if (named) {
-      const back = Math.max(2, along / 2 - 3);
+    // And the board, on the first shelter. Named stops only, and only where
+    // there is a shelter to stand it on -- see `STOP_SIGN`.
+    const roof = shelteredAt(along)[0];
+    if (named && roof !== undefined) {
       signs.push({
-        brand: named,
-        x: x + back * cos,
-        z: z - back * sin,
-        base: PLATFORM.rise + STOP_SIGN.up,
+        // Three words and nothing in brackets. The board and the map say the
+        // same thing because they trim it the same way.
+        brand: shortStop(named),
+        x: x + roof * cos,
+        z: z - roof * sin,
+        base: PLATFORM.rise + SHELTER.tall + SHELTER.roof,
         width: STOP_SIGN.wide,
         // Square across the island, so it faces the traffic rather than
         // edge-on to it -- which is how it is read from a tram and from the
@@ -1201,7 +1220,6 @@ export function buildLayoutFromMap(
         yaw: yaw + Math.PI / 2,
         paint: STOP_SIGN.paint,
       });
-      posts.push({ x: x + back * cos, z: z - back * sin, top: PLATFORM.rise + STOP_SIGN.up });
     }
   });
 
@@ -1794,7 +1812,6 @@ export function buildLayoutFromMap(
     boxes,
     crossings,
     platforms,
-    signPosts: posts,
     stops,
     plans,
     signs,

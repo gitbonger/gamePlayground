@@ -18,7 +18,7 @@
  * between them are the shape you actually recognise.
  */
 
-import type { TramStop } from '../world/layout';
+import { shortStop, type TramStop } from '../world/layout';
 import type { Road } from '../world/streets';
 
 /**
@@ -83,36 +83,17 @@ const STOP_TEXT = 9;
 const STOP_INK = '#d8d2b4';
 
 /**
- * The longest a name is printed at, in characters.
+ * How much of a name will ever be measured when it has to be cut to fit.
  *
- * A backstop rather than the rule -- what actually decides is how much room
- * there is beside the dot, which depends on where in the round panel it
- * falls. This only stops a hypothetical hundred-character name being measured
- * a character at a time.
+ * A backstop rather than the rule -- what decides is how much room there is
+ * beside the dot, which depends on where in the round panel it falls. This
+ * only stops a hypothetical hundred-character name being measured a character
+ * at a time.
  */
 const STOP_CHARS = 32;
 
 /** The fewest characters worth printing: below this it is not a name. */
 const STOP_LEAST = 7;
-
-/**
- * The part of a stop's name worth printing.
- *
- * The head of it, twice over. A Hungarian stop name qualifies itself in
- * brackets -- which arm of the junction, which street -- and names a
- * crossroads by both its streets, and both of those are the part a player
- * already knows from the dot being where it is: `Blaha Lujza tér M
- * (Népszínház utca)` is Blaha, and `Wesselényi utca / Erzsébet körút` is
- * Wesselényi, and the map is already saying which corner.
- *
- * Trimming this way brings thirty-eight names down to thirty-six, which is
- * two pairs that now read alike -- and those two pairs are two ends of one
- * junction, so reading alike is right.
- */
-export function shortStop(name: string): string {
-  const head = (name.replace(/\s*\(.*$/, '').split(' / ')[0] ?? '').trim();
-  return head.length > STOP_CHARS ? `${head.slice(0, STOP_CHARS - 1)}…` : head;
-}
 
 /**
  * The flock, and her.
@@ -229,8 +210,14 @@ export function namedStops(
   const merged: { x: number; z: number; name: string; count: number }[] = [];
   for (const stop of calling) {
     if (!stop.name) continue;
+    // Merged on the name as *shown*, not as recorded. Two points a hundred
+    // metres apart called `Blaha Lujza tér M` and `Blaha Lujza tér M
+    // (Népszínház utca)` are one label twice over once the bracket is gone,
+    // and printing the same words at two dots is the duplication this is here
+    // to stop.
+    const name = shortStop(stop.name);
     const near = merged.find(
-      (had) => had.name === stop.name && Math.hypot(had.x - stop.x, had.z - stop.z) <= STOP_TOGETHER,
+      (had) => had.name === name && Math.hypot(had.x - stop.x, had.z - stop.z) <= STOP_TOGETHER,
     );
     if (near) {
       // The middle of however many islands carry the name, which for a pair
@@ -239,7 +226,7 @@ export function namedStops(
       near.x += (stop.x - near.x) / (near.count + 1);
       near.z += (stop.z - near.z) / (near.count + 1);
       near.count += 1;
-    } else merged.push({ x: stop.x, z: stop.z, name: stop.name, count: 1 });
+    } else merged.push({ x: stop.x, z: stop.z, name, count: 1 });
   }
   return merged.map(({ x, z, name }) => ({ x, z, name }));
 }
@@ -393,7 +380,7 @@ export function createMinimap(
         const roomRight = middle + rim - (spot.x + 5);
         const roomLeft = spot.x - 5 - (middle - rim);
         const right = roomRight >= roomLeft;
-        const label = fitted(shortStop(stop.name), Math.max(roomRight, roomLeft));
+        const label = fitted(stop.name, Math.max(roomRight, roomLeft));
         if (!label) continue;
         const width = ctx.measureText(label).width;
         ctx.textAlign = right ? 'left' : 'right';

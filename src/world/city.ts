@@ -826,27 +826,6 @@ export function buildWorld(
     };
     setWaiting(layout.platforms);
 
-    // The posts the stop signs stand on. Instanced with everything else here:
-    // they are one box repeated forty-odd times.
-    const posts = layout.signPosts ?? [];
-    if (posts.length) {
-      const pole = new THREE.MeshLambertMaterial({ color: 0x4a4f55 });
-      disposables.push(pole);
-      const poles = new THREE.InstancedMesh(boxGeometry, pole, posts.length);
-      poles.name = 'sign-posts';
-      poles.castShadow = true;
-      poles.frustumCulled = false;
-      posts.forEach((post, i) => {
-        rotation.setFromAxisAngle(up, 0);
-        position.set(post.x, post.top / 2, post.z);
-        scale.set(0.11, post.top, 0.11);
-        matrix.compose(position, rotation, scale);
-        poles.setMatrixAt(i, matrix);
-      });
-      poles.instanceMatrix.needsUpdate = true;
-      group.add(poles);
-    }
-
     let hut = 0;
     layout.platforms.forEach((stop, i) => {
       rotation.setFromAxisAngle(up, stop.yaw);
