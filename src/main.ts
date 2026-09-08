@@ -2349,36 +2349,37 @@ function command(): Tip | null {
     // Said aloud: without it the flight does not continue at all.
     return { keys: ['SPACE'], text: 'Take off!', spoken: true };
 
+  // Somebody is waiting for an answer. The replies are on the screen with
+  // numbers beside them and nothing else says the numbers are keys -- and a
+  // conversation nobody knows how to answer is a game that has stopped.
+  //
+  // Above the stance rather than inside it: a conversation happens on foot
+  // today and the rule is about the conversation, not about the feet.
+  if (midSentence()) return { keys: [], text: 'Press a number key to respond!' };
+
   // Standing on a branch or a square having just said something to nobody.
   // The same key and the same words as leaving a conversation, because it is
   // the same act -- he has finished talking and he is going.
   if (waiting) return { keys: ['SPACE'], text: 'Take off!', spoken: true };
 
-  // On foot, where the controls are a different set entirely and the player
-  // has just arrived in them. These used to be the line above the bird, which
-  // is the story's line.
+  // On foot, where the corner is quiet.
+  //
+  // A bird that has put its feet down is not being taught anything: the level
+  // has been flown, the controls it is now using are two arrows and a
+  // spacebar, and the panel telling it so is a line that never goes away --
+  // `command` outranks the tutor, and the corner holds one thing, so a
+  // standing prompt is a lesson the level never gets to give. On Teleki tér
+  // it flickered against the level's own instruction for as long as the bird
+  // was down.
+  //
+  // Two exceptions, and both are answers to something the player is in the
+  // middle of rather than a description of the controls.
   if (isPerched(bird)) {
     if (talkingTo) return null;
+    // Walked into something. Transient, and about the thing in the way rather
+    // than about walking.
     if (onFoot.blocked) return { keys: ['←', '→'], text: 'Turn and walk round it' };
-    // Nothing for a bird that has walked a step. There used to be "Mind the
-    // edge", which was true of a gutter and of nothing else: on a square, a
-    // slab or a station platform there is no edge to mind, and it said so for
-    // as long as the player stayed on their feet.
-    //
-    // Worse than useless, because `command` outranks the tutor and the corner
-    // holds one thing: a permanent standing prompt is a lesson the level
-    // never gets to give. On Teleki tér it flickered against "Approaching
-    // Teleki tér" for the whole time the bird was down.
-    //
-    // And an edge is the one thing about walking that needs no telling. You
-    // can see it.
-    // On a level that is won by eating, walking about *is* the level, and the
-    // thing to do on foot is not "walk, or take off" -- it is the lesson the
-    // level has waiting for the moment the feet are down. A command outranks
-    // a lesson and the corner holds one thing, so a standing prompt here
-    // would be the game talking over its own instructions.
-    if (LEVELS[level]?.finish.kind === 'fed') return null;
-    return { keys: ['↑', 'SPACE'], text: 'Walk, or take off' };
+    return null;
   }
   return null;
 }
