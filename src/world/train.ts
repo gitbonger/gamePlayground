@@ -243,6 +243,13 @@ export interface Train {
   calls: readonly number[];
   /** Seconds left standing at one. Zero for a train that is running. */
   held: number;
+  /**
+   * Seconds it has been held up by something in its way.
+   *
+   * Counted rather than flagged so that a wait can be given up on: see
+   * `WAIT_LIMIT`. Nought whenever the road ahead is clear.
+   */
+  waited: number;
   vehicles: Vehicle[];
 }
 
@@ -258,6 +265,63 @@ export interface Train {
  * on one as reaching it would find the same platform again on the tick it
  * left, and again, and never move.
  */
+/**
+ * The point a train is looking at, `ahead` metres in front of its nose.
+ *
+ * In front along the *track*, not in world space, which is the whole of why
+ * this works round a curve: a straight box thrown out ahead of a tram on a
+ * bend points at the buildings on the outside of it and misses the tram it is
+ * following.
+ *
+ * The nose is not always at `along`. A rake occupies `[along - consist,
+ * along]` whichever way it is going, so the leading end of one running
+ * backwards down the line is the far end of it.
+ */
+export function noseAhead(
+  train: Pick<Train, 'line' | 'along' | 'direction'>,
+  consist: number,
+  ahead: number,
+): { x: number; z: number } | null {
+  const nose = train.direction > 0 ? train.along : train.along - consist;
+  return pointAlong(train.line.points, nose + train.direction * ahead);
+}
+
+/**
+ * Whether something is standing in the way.
+ *
+ * `others` is every vehicle in the world that is not this train's own. A
+ * vehicle counts as in the way when it is within `room` of the look-ahead
+ * point *and going roughly the same way* -- and that second half is not a
+ * refinement, it is what stops two trams meeting head-on and both waiting for
+ * ever.
+ *
+ * Two trams passing in opposite directions are on the two tracks of a pair,
+ * which is what a pair of tracks is for. They are metres apart in the world
+ * and they should pass. It is only the one in front, going where you are
+ * going, that you have to wait behind -- and "in front of me" and "in front
+ * of you" cannot both be true of two trams facing the same way, so the queue
+ * always has an end.
+ */
+export function blockedBy(
+  at: { x: number; z: number },
+  facing: number,
+  others: readonly Placed[],
+  room: number,
+): boolean {
+  const ax = -Math.sin(facing);
+  const az = -Math.cos(facing);
+  return others.some((other) => {
+    if (Math.hypot(other.x - at.x, other.z - at.z) > room) return false;
+    // Which way it is pointing, against which way I am. A tram has no front
+    // and back to speak of, so this is the axis rather than the arrow -- but
+    // the axis is enough: what it separates is "the one ahead of me" from
+    // "the one coming the other way on the other track".
+    const bx = -Math.sin(other.yaw);
+    const bz = -Math.cos(other.yaw);
+    return ax * bx + az * bz > 0;
+  });
+}
+
 /**
  * Where a train has got to after a tick, stops and all.
  *

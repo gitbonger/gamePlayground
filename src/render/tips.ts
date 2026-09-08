@@ -198,11 +198,11 @@ export const COURSES: Record<string, readonly Lesson[]> = {
   // player could not have worked out by looking, which is exactly what a
   // one-off is for. Said aloud, because it is about staying alive.
   'Népszínház': [{ at: 50, keys: [], text: { en: 'Crows! Fly low!', hu: 'Varjak! Repülj alacsonyan!' }, icon: 'crow', spoken: true }],
-  // Four of them, all spoken, which is more than any other level has and more
+  // Three of them, all spoken, which is more than any other level has and more
   // than the rule here usually allows -- see `spoken`. They are asked for as
   // life-saving, and on this level that is arguable: it is the one flown out
   // of the crows, a crow that touches the bird ends the run, and none of the
-  // four is a thing the player could work out by looking.
+  // three is a thing the player could work out by looking.
   //
   // Thirty metres in and then every fifty: that is two or three seconds
   // apart at the speed this level is flown at, which is faster than a lesson
@@ -211,8 +211,18 @@ export const COURSES: Record<string, readonly Lesson[]> = {
   'Blaha': [
     { at: 30, keys: [], text: { en: 'Keep high!', hu: 'Maradj magasan!' }, icon: 'high', spoken: true },
     { at: 100, keys: [], text: { en: 'Mind the crows!', hu: 'Vigyázz a varjakkal!' }, icon: 'crow', spoken: true },
+    { at: 150, keys: [], text: { en: 'Keep fast!', hu: 'Tartsd a tempót!' }, icon: 'speed', spoken: true },
+  ],
+  // The long one, and the only level where a number is the instruction.
+  //
+  // A thousand and fifty-seven metres from a hundred and fifty up is seven to
+  // one against a pigeon's measured best of about five and a half, so this
+  // one cannot be glided -- it has to be flown, and flown fast. Everywhere
+  // else "keep fast" is a feeling; here it is a figure, and the figure is
+  // what makes the difference between arriving and coming down in Kerepesi
+  // út. It belongs on this level and nowhere else.
+  'The Loft': [
     { at: 150, keys: [], text: { en: 'Speed above 100', hu: 'Száz felett tartsd' }, icon: 'speed', spoken: true },
-    { at: 200, keys: [], text: { en: 'Keep fast!', hu: 'Tartsd a tempót!' }, icon: 'speed', spoken: true },
   ],
   // The other side of the same coin, and the reason it is worth saying: the
   // two levels before this one were flown with crows in the sky, and a player

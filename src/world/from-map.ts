@@ -1653,6 +1653,7 @@ export function buildLayoutFromMap(
       turnaround: stockTurnaround(stock),
       calls: stock === 'tram' ? callsAlong(line, consistLength(spec.cars, stock)) : [],
       held: 0,
+      waited: 0,
       vehicles,
     });
   }
@@ -1739,6 +1740,7 @@ export function buildLayoutFromMap(
           // this loop, so this is where it can be asked.
           calls: want.stock === 'tram' ? callsAlong(route.line, length) : [],
           held: 0,
+          waited: 0,
           vehicles,
         });
       }

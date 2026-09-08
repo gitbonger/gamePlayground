@@ -130,6 +130,8 @@ import {
   onVehicle,
   rakeNear,
   advance,
+  blockedBy,
+  noseAhead,
   vehicleCount,
   stackTop,
   stockIsHauled,
@@ -2097,6 +2099,79 @@ function rememberWhereTrainsWere() {
 const PLATFORM_AT = 25;
 
 /**
+ * How far in front of its nose a train looks, in metres.
+ *
+ * Twenty-five: about a tram's own length, so it starts slowing for the one in
+ * front while there is still a tram-length of daylight, and it is short
+ * enough that a stop two hundred metres up the line is not something to wait
+ * behind.
+ */
+const LOOK_AHEAD = 25;
+
+/**
+ * How near the look-ahead point counts as being in the way, in metres.
+ *
+ * Twelve, which is half a long car plus a little: vehicles are tested by
+ * their middles, and a twenty-four metre carriage whose middle is eleven
+ * metres away has its end in your face.
+ */
+const BLOCKING = 12;
+
+/**
+ * How long a train will wait before going anyway, in seconds.
+ *
+ * A backstop, not a rule. Same-direction waiting cannot deadlock -- see
+ * `blockedBy` -- but it is a claim about geometry made in a game with a
+ * hundred and twenty-five trains in it, and a tram stopped for ever in the
+ * middle of Rákóczi út is worse than two trams overlapping for a second.
+ */
+const WAIT_LIMIT = 20;
+
+/**
+ * How often the look-ahead is worked out, in seconds.
+ *
+ * A twentieth. A tram does half a metre in that, and it is the difference
+ * between six hundred vehicles being bucketed a hundred and twenty times a
+ * second and twenty.
+ */
+const LOOK_EVERY = 1 / 20;
+
+/** Every vehicle in the world, bucketed by where it is. Rebuilt on the beat. */
+const trafficGrid = new Map<string, { train: number; at: Vehicle }[]>();
+let trafficAt = -1;
+const TRAFFIC_CELL = 40;
+const trafficKey = (x: number, z: number) =>
+  `${Math.floor(x / TRAFFIC_CELL)},${Math.floor(z / TRAFFIC_CELL)}`;
+
+/** Fill the grid from wherever the rakes have got to. */
+function seeTraffic(): void {
+  trafficGrid.clear();
+  layout.trains.forEach((train, index) => {
+    for (const at of train.vehicles) {
+      const key = trafficKey(at.x, at.z);
+      const bucket = trafficGrid.get(key);
+      if (bucket) bucket.push({ train: index, at });
+      else trafficGrid.set(key, [{ train: index, at }]);
+    }
+  });
+}
+
+/** Whatever is near a point, excluding one train's own vehicles. */
+function trafficNear(at: { x: number; z: number }, mine: number): Vehicle[] {
+  const found: Vehicle[] = [];
+  const gx = Math.floor(at.x / TRAFFIC_CELL);
+  const gz = Math.floor(at.z / TRAFFIC_CELL);
+  for (let ox = -1; ox <= 1; ox += 1) {
+    for (let oz = -1; oz <= 1; oz += 1) {
+      for (const each of trafficGrid.get(`${gx + ox},${gz + oz}`) ?? []) {
+        if (each.train !== mine) found.push(each.at);
+      }
+    }
+  }
+  return found;
+}
+
+/**
  * A tram has pulled in, or pulled out.
  *
  * In: everybody on the platform gets on, and the platform is empty. Out: a
@@ -2128,6 +2203,13 @@ function moveTrains(dt: number) {
   // with the level.
   if (cageBox) fields.push(createColliderField([cageBox]));
   rememberWhereTrainsWere();
+  // Where everything is, once, before anything moves -- so that every train
+  // this tick is looking at the same world rather than at one that has been
+  // half updated by the trains before it in the list.
+  if (clock - trafficAt >= LOOK_EVERY) {
+    seeTraffic();
+    trafficAt = clock;
+  }
   let tagged = 0;
   near.fill(false);
   wrapped.fill(false);
@@ -2144,6 +2226,33 @@ function moveTrains(dt: number) {
     // Where it gets to, stops and all -- see `advance`. A tram calls at its
     // platforms and waits there, which is the difference between a tram and a
     // thing on rails: the whole street stops with it.
+    // Anything in the way? Along the track rather than in a straight line
+    // out of the nose, which is what makes it work round a curve -- a box
+    // thrown straight ahead of a tram on a bend points at the buildings on
+    // the outside of it and misses the tram it is following.
+    //
+    // Only while it is running: a tram standing in a platform has already
+    // stopped, and one held at a red light it is itself causing is a knot.
+    if (train.held <= 0) {
+      const look = noseAhead(train, consist, LOOK_AHEAD);
+      const nose = train.vehicles[train.direction > 0 ? 0 : train.vehicles.length - 1];
+      const stuck =
+        look !== undefined &&
+        look !== null &&
+        nose !== undefined &&
+        blockedBy(look, nose.yaw, trafficNear(look, index), BLOCKING);
+      // Given up on, after a while. See `WAIT_LIMIT`.
+      if (stuck && train.waited < WAIT_LIMIT) {
+        train.waited += dt;
+        previousAlong[index] = train.along;
+        moveTrainBoxes(trainBoxSets[index]!, train.vehicles, tagged, 0);
+        tagged += vehicleCount(train.cars, train.stock);
+        if (near[index]) fields.push(createColliderField(trainBoxSets[index]!));
+        return;
+      }
+      if (!stuck) train.waited = 0;
+    }
+
     const went = advance(train, consist, line, dt, DWELL);
     // Pulling in, or pulling out. Both are single ticks, so the work of
     // emptying and refilling a platform happens twice a call rather than
