@@ -129,6 +129,20 @@ export interface MapWorldOptions {
   parkTrees: number;
   /** The same, for courtyards. Thicker: these are gardens, and small. */
   gardenTrees: number;
+  /**
+   * Whether to plant any of them.
+   *
+   * Off, for now, so that what is on the map can be looked at on its own: the
+   * eight hundred street trees somebody actually recorded standing in a
+   * street, and nothing invented around them. Everything above still says how
+   * thickly to plant, and turning this back on is the whole of putting the
+   * wood back.
+   *
+   * It does not stop the walk over the ground, only the tree at the end of
+   * it. The same walk lays the gravestones in the cemetery, and a district
+   * with no burial ground in it is a district missing a level.
+   */
+  inventsTrees: boolean;
   seed: number;
   /**
    * Described things to place before anything is generated around them.
@@ -179,6 +193,7 @@ export const defaultMapWorldOptions: MapWorldOptions = {
   spacing: 9,
   parkTrees: 19,
   gardenTrees: 60,
+  inventsTrees: false,
   trainReach: 40,
   seed: 11,
 };
@@ -1097,6 +1112,9 @@ export function buildLayoutFromMap(
           });
           continue;
         }
+        // The stones are laid whatever happens; the trees are the part that
+        // is switched off -- see `inventsTrees`.
+        if (!options.inventsTrees) continue;
         trees.push({
           x: px,
           z: pz,

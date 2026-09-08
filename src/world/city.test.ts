@@ -745,6 +745,15 @@ describe('a tram, which is one shape made of many boxes', () => {
   });
 });
 
+/**
+ * The generator's own planting, switched on.
+ *
+ * It is off by default now, so that the eight hundred trees the map records
+ * can be looked at on their own -- but the feature is still here and these
+ * are the tests of it, so they ask for it by name.
+ */
+const PLANTED = { ...defaultMapWorldOptions, inventsTrees: true };
+
 describe('the trees', () => {
   /**
    * A grid of blocks rather than the single one at the top of this file.
@@ -771,7 +780,7 @@ describe('the trees', () => {
 
   let world: ReturnType<typeof buildWorld>;
   beforeAll(() => {
-    world = buildWorld(buildLayoutFromMap(gridded, defaultMapWorldOptions), {});
+    world = buildWorld(buildLayoutFromMap(gridded, PLANTED), {});
   });
 
   /** Every instanced stand of trees in the world. */
@@ -787,7 +796,7 @@ describe('the trees', () => {
     // One stand per sort means one chance per sort to lose the count. An
     // InstancedMesh is told its size when it is made, so a wrong guess is
     // either wasted memory or missing trees, silently.
-    const layout = buildLayoutFromMap(gridded, defaultMapWorldOptions);
+    const layout = buildLayoutFromMap(gridded, PLANTED);
     const planted = stands(world.group);
     const drawn = planted.reduce((total, mesh) => total + mesh.count, 0);
 
@@ -810,7 +819,7 @@ describe('the trees', () => {
     //
     // Stated as: a tree's nearest neighbour is almost always its own sort.
     // Picked per tree instead, it would be about one time in four.
-    const trees = buildLayoutFromMap(gridded, defaultMapWorldOptions).trees;
+    const trees = buildLayoutFromMap(gridded, PLANTED).trees;
     expect(trees.length).toBeGreaterThan(10);
 
     let same = 0;
@@ -833,7 +842,7 @@ describe('the trees', () => {
   it('still uses more than one sort across a map with more than one block', () => {
     // One per place, but not one everywhere: a city of nothing but spruce is
     // the uniform trees this replaced.
-    const trees = buildLayoutFromMap(gridded, defaultMapWorldOptions).trees;
+    const trees = buildLayoutFromMap(gridded, PLANTED).trees;
     expect(trees.length).toBeGreaterThan(20);
     expect(new Set(trees.map((tree) => tree.species)).size).toBeGreaterThan(1);
   });
@@ -841,8 +850,8 @@ describe('the trees', () => {
   it('plants the same wood every run', () => {
     // The seed covers the sort as well as the size and the place, so a tree
     // does not change species between visits.
-    const once = buildLayoutFromMap(gridded, defaultMapWorldOptions);
-    const again = buildLayoutFromMap(gridded, defaultMapWorldOptions);
+    const once = buildLayoutFromMap(gridded, PLANTED);
+    const again = buildLayoutFromMap(gridded, PLANTED);
     expect(once.trees.map((t) => t.species)).toEqual(again.trees.map((t) => t.species));
   });
 

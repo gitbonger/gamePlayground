@@ -150,8 +150,17 @@ describe('street index', () => {
   });
 });
 
+/**
+ * The generator's own planting, switched on.
+ *
+ * It is off by default now, so that the eight hundred trees the map records
+ * can be looked at on their own -- but the feature is still here and these
+ * are the tests of it, so they ask for it by name.
+ */
+const PLANTED = { ...defaultMapWorldOptions, inventsTrees: true };
+
 describe('what fills a block once the buildings are placed', () => {
-  const layout = buildLayoutFromMap(builtOn(BLOCK));
+  const layout = buildLayoutFromMap(builtOn(BLOCK), PLANTED);
   const collider = createColliderField(layout.boxes);
 
   it('puts the gardens inside the block, clear of the houses', () => {
@@ -195,7 +204,7 @@ describe('what fills a block once the buildings are placed', () => {
       { kind: 'residential', width: 8, points: [[0, -20], [0, 0], [0, 26], [0, 46]] },
       { kind: 'residential', width: 8, points: [[26, -20], [26, 0], [26, 26], [26, 46]] },
     ];
-    const square = buildLayoutFromMap(mapOf(pocket));
+    const square = buildLayoutFromMap(mapOf(pocket), PLANTED);
     expect(square.blocks).toHaveLength(1);
     expect(square.buildings).toHaveLength(0);
     expect(square.bare).toHaveLength(1);
@@ -247,8 +256,8 @@ describe('what fills a block once the buildings are placed', () => {
     // Still worth asking with the buildings coming off the map: the heights of
     // the ones that do not state theirs are drawn from a seeded stream, and so
     // is everything planted round them.
-    expect(buildLayoutFromMap(builtOn(BLOCK)).buildings).toEqual(layout.buildings);
-    expect(buildLayoutFromMap(builtOn(BLOCK)).trees).toEqual(layout.trees);
+    expect(buildLayoutFromMap(builtOn(BLOCK), PLANTED).buildings).toEqual(layout.buildings);
+    expect(buildLayoutFromMap(builtOn(BLOCK), PLANTED).trees).toEqual(layout.trees);
   });
 
   it('carries the streets through for the renderer to draw', () => {
@@ -355,7 +364,7 @@ describe('a park that is a cemetery', () => {
   const inside = { x: 100, z: 100 };
   const withGraves = (cemetery?: { x: number; z: number }) =>
     buildLayoutFromMap(mapOf(BLOCK, [GRAVEYARD]), {
-      ...defaultMapWorldOptions,
+      ...PLANTED,
       ...(cemetery ? { cemetery } : {}),
     });
 
@@ -506,7 +515,7 @@ describe('describing a thing into the world', () => {
   };
 
   const withLandmark = (landmark: Landmark) =>
-    buildLayoutFromMap(mapOf(BLOCK), { ...defaultMapWorldOptions, landmarks: [landmark] });
+    buildLayoutFromMap(mapOf(BLOCK), { ...PLANTED, landmarks: [landmark] });
 
   /**
    * Whether a point falls on the ground a landmark has taken.
@@ -627,13 +636,13 @@ describe('describing a thing into the world', () => {
   });
 
   it('has no tree planted on it, nor inside its margin', () => {
-    const plain = buildLayoutFromMap(mapOf(BLOCK, [PARK]), defaultMapWorldOptions);
+    const plain = buildLayoutFromMap(mapOf(BLOCK, [PARK]), PLANTED);
     const onIt = (trees: readonly { x: number; z: number }[]) =>
       trees.filter((t) => taken(SLAB, t.x, t.z));
 
     expect(onIt(plain.trees).length).toBeGreaterThan(0);
     expect(onIt(buildLayoutFromMap(mapOf(BLOCK, [PARK]), {
-      ...defaultMapWorldOptions,
+      ...PLANTED,
       landmarks: [SLAB],
     }).trees)).toEqual([]);
   });
@@ -800,12 +809,12 @@ describe('describing a thing into the world', () => {
     expect(field.sweep(vec(from.x, 1.2, from.z), vec(to.x, 1.2, to.z), 0.22)).toBeNull();
 
     // Reserved all the same: the generator builds here without it.
-    const bare = buildLayoutFromMap(mapOf(BLOCK, [PARK]), defaultMapWorldOptions);
+    const bare = buildLayoutFromMap(mapOf(BLOCK, [PARK]), PLANTED);
     const inside = (things: readonly { x: number; z: number }[]) =>
       things.filter((thing) => taken(STATION, thing.x, thing.z));
     expect(inside([...bare.buildings, ...bare.trees]).length).toBeGreaterThan(0);
     const kept = buildLayoutFromMap(mapOf(BLOCK, [PARK]), {
-      ...defaultMapWorldOptions,
+      ...PLANTED,
       landmarks: [STATION],
     });
     expect(inside([...kept.buildings, ...kept.trees])).toEqual([]);
@@ -2060,5 +2069,48 @@ describe('what a building is solid as', () => {
     const front = bitten.sweep(vec(30, 8, -20), vec(30, 8, 6), 0.25);
     expect(front, 'the front wall is there').not.toBeNull();
     expect(front!.point.z, 'and it is at the front').toBeLessThan(1);
+  });
+});
+
+describe('inventing trees, or not', () => {
+  const wooded = mapOf(BLOCK, [PARK]);
+
+  it('plants none of its own while the switch is off', () => {
+    // Off for now, so that what the map records can be looked at on its own:
+    // the eight hundred street trees somebody actually walked past and wrote
+    // down, and nothing invented around them.
+    expect(buildLayoutFromMap(wooded, defaultMapWorldOptions).trees).toEqual([]);
+  });
+
+  it('still plants them when it is on, so the feature is only asleep', () => {
+    // Not deleted. Every number that says how thickly to plant is still
+    // there, and this is the whole of putting the wood back.
+    expect(buildLayoutFromMap(wooded, PLANTED).trees.length).toBeGreaterThan(10);
+  });
+
+  it('keeps the street trees either way', () => {
+    // Those are not invented: somebody recorded each of them standing in a
+    // street, and they are the reason the switch exists.
+    const streeted = { ...wooded, trees: [[30, 30], [45, 30], [60, 30]] };
+    const off = buildLayoutFromMap(streeted as MapData, defaultMapWorldOptions).trees;
+    expect(off.length).toBe(3);
+    expect(off.every((tree) => tree.species === STREET_TREE)).toBe(true);
+  });
+
+  it('still lays the gravestones with the planting switched off', () => {
+    // The stones are laid by the same walk over the ground that plants the
+    // trees, and turning the trees off must not empty the cemetery -- a
+    // district with no burial ground in it is a district missing a level.
+    const burial: Area = {
+      kind: 'park',
+      points: [[10, 10], [190, 10], [190, 190], [10, 190]],
+    };
+    const yard = buildLayoutFromMap(mapOf(BLOCK, [burial]), {
+      ...defaultMapWorldOptions,
+      // The middle of it, which is what names it as a burial ground.
+      cemetery: { x: 100, z: 100 },
+    });
+    expect(yard.graves.length).toBeGreaterThan(10);
+    expect(yard.trees).toEqual([]);
   });
 });
