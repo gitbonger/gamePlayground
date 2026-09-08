@@ -1436,18 +1436,17 @@ describe('buildings the map already knows about', () => {
     expect(world.boxes.length).toBeGreaterThanOrEqual(OUTLINES.length);
   });
 
-  it('takes the height the building states, and invents only the rest', () => {
-    // About half of them say how tall they are, and a district where only the
-    // ones that say are tall would read as half-finished.
+  it('takes the height the building states, and its neighbour’s where it does not', () => {
+    // A third of them say. The other two thirds used to get a made-up 16 to
+    // 24 metres, which stood them about forty per cent taller than the ones
+    // that do say; they take the nearest known height now. `heights.ts` has
+    // the measurements; this is only that the world is wired to it.
     const world = withBuildings();
     const stated = world.buildings.find((b) => Math.abs(b.x - 60) < 0.001)!;
     expect(stated.height, 'as the map says').toBeCloseTo(18.6, 6);
 
     const silent = world.buildings.find((b) => Math.abs(b.x - 140) < 0.001)!;
-    expect(silent.height, 'invented, but in the range').toBeGreaterThanOrEqual(
-      defaultMapWorldOptions.minHeight,
-    );
-    expect(silent.height).toBeLessThanOrEqual(defaultMapWorldOptions.maxHeight);
+    expect(silent.height, 'from the one eighty metres away').toBeCloseTo(18.6, 6);
   });
 
   it('lets a described thing keep its ground against a real one', () => {

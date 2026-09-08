@@ -25,6 +25,7 @@ import {
 } from './streets';
 import { footprintSamples, indexAreas, type AreaIndex } from './areas';
 import { DECK, deckOf } from './bridges';
+import { fillHeights } from './heights';
 import { extractBlocks, type Block } from './blocks';
 import {
   distanceToEdges,
@@ -111,13 +112,6 @@ export interface MapWorldOptions {
    */
   minBlockArea: number;
   maxBlockArea: number;
-  /**
-   * Building heights, in metres. A flat band rather than something derived
-   * from road importance: this neighbourhood is uniformly about seven floors,
-   * and that evenness is what its skyline looks like.
-   */
-  minHeight: number;
-  maxHeight: number;
   /** Grid the trees are scattered on, in metres. */
   spacing: number;
   /**
@@ -178,8 +172,6 @@ export const defaultMapWorldOptions: MapWorldOptions = {
   minCourtyard: 14,
   minBlockArea: 500,
   maxBlockArea: 2000000,
-  minHeight: 16,
-  maxHeight: 24,
   spacing: 9,
   parkTrees: 19,
   gardenTrees: 60,
@@ -485,7 +477,17 @@ export function buildLayoutFromMap(
    * the same collision boxes, the same instanced mesh, the same roofs.
    */
   const fromMap = bakedBuildings(map);
-  for (const each of fromMap) {
+  // Worked out over the whole set before any of it is filtered, because a
+  // building the story or a railway takes out is still evidence about the
+  // height of the ones left standing.
+  //
+  // On a stream of its own rather than on `rand`. Filling the heights asks
+  // for a number once per building that has to be guessed at, and taking
+  // those off the world's own stream would mean every tree, bush and parked
+  // car in the district moved the next time a mapper recorded a storey count
+  // somewhere in Jozsefvaros.
+  const heights = fillHeights(fromMap, mulberry32(options.seed + 1));
+  for (const [index, each] of fromMap.entries()) {
     const footprint = footprintSamples(each.x, each.z, each.width, each.depth, each.yaw, 4);
 
     // The story wins. A described thing -- the loft, the home tree, a square
@@ -499,11 +501,11 @@ export function buildLayoutFromMap(
     // has to stay a goods yard.
     if (onTrack(each.x, each.z, each.width, each.depth, each.yaw)) continue;
 
-    // A height where the building gives one, and otherwise the range the
-    // generator used: about half of them say, and a district where only the
-    // ones that say are tall would read as half-finished.
-    const height =
-      each.height ?? options.minHeight + rand() * (options.maxHeight - options.minHeight);
+    // Its own height where the map gave one, and its nearest neighbour's
+    // where it did not -- see `heights.ts` for why that is better than the
+    // 16-to-24 the generator used to invent, which stood two thirds of the
+    // district about forty per cent too tall.
+    const height = heights[index]!;
 
     buildings.push({ x: each.x, z: each.z, width: each.width, depth: each.depth, height, yaw: each.yaw });
     boxes.push(turnedBox(each.x, each.z, each.width, height, each.depth, each.yaw));

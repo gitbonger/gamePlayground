@@ -30,6 +30,7 @@ import HOME_MAP from './world/data/home.json';
 import { indexStreets, type Road } from './world/streets';
 import { footprintSamples } from './world/areas';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
+import { ROOFLINE } from './world/heights';
 import type { MapData } from './world/streets';
 import { COURSES, courseFor } from './render/tips';
 
@@ -63,7 +64,7 @@ describe('what the levels aim at', () => {
     // between 16 and 24 metres, so the loft has to beat the tallest of them by
     // enough to read as different rather than as merely on the end of the
     // distribution.
-    expect(LOFT.height).toBeGreaterThan(defaultMapWorldOptions.maxHeight + 5);
+    expect(LOFT.height).toBeGreaterThan(ROOFLINE + 5);
   });
 
   it('stands the loft\'s pigeon on the terrace, clear of the planting', () => {
@@ -410,14 +411,14 @@ describe('what the levels aim at', () => {
     // Blaha, which is the same idea applied to a street. It comes straight
     // out of the crows, and the answer to a crow is to be low, so it is
     // released where the level wants the player to stay.
-    const under = flown.filter((level) => level.release < defaultMapWorldOptions.maxHeight * 2);
+    const under = flown.filter((level) => level.release < ROOFLINE * 2);
     expect(under.map((level) => level.name)).toEqual(['Temető', 'Teleki tér', 'Blaha']);
 
     // Over the roofs but well short of a sky drop: the search, which is a run
     // of short hops round a district. High enough to see the next square,
     // low enough that it is a street rather than a map.
     const district = flown.filter(
-      (level) => level.release >= defaultMapWorldOptions.maxHeight * 2 && level.release < 100,
+      (level) => level.release >= ROOFLINE * 2 && level.release < 100,
     );
     expect(district.map((level) => level.name)).toEqual([
       'Mátyás tér',
@@ -473,7 +474,7 @@ describe('what the levels aim at', () => {
 
     for (const level of LEVELS) {
       if (level.begins === 'perched') continue;
-      if (level.release > defaultMapWorldOptions.maxHeight) continue;
+      if (level.release > ROOFLINE) continue;
 
       const at = project(level.start[0], level.start[1], centre);
       const inside = city.buildings.find((building) => {
@@ -609,10 +610,10 @@ describe('what the levels aim at', () => {
       if (scene.climbs) {
         // Then it had better be going somewhere worth climbing to.
         const to = LEVELS.find((level) => level.name === scene.endsOn)!;
-        expect(to.release, scene.name).toBeGreaterThan(defaultMapWorldOptions.maxHeight);
+        expect(to.release, scene.name).toBeGreaterThan(ROOFLINE);
         expect(scene.cruise, scene.name).toBe(0);
       } else {
-        expect(scene.cruise, scene.name).toBeGreaterThan(defaultMapWorldOptions.maxHeight);
+        expect(scene.cruise, scene.name).toBeGreaterThan(ROOFLINE);
       }
     }
   });

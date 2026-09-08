@@ -113,7 +113,10 @@ describe('roofs', () => {
     for (const building of layout.buildings) {
       const rise = roofRise(building);
       expect(rise, `${building.width} x ${building.depth}`).toBeGreaterThan(0);
-      expect(building.height).toBeLessThanOrEqual(defaultMapWorldOptions.maxHeight);
+      // Still exactly the height the map stated, roof and all. That is the
+      // claim: the ridge is the height, so a collision box that stops there
+      // still means what it did before there were roofs.
+      expect(building.height).toBe(15);
       // And the walls that carry it are still the bulk of the building.
       expect(building.height - rise).toBeGreaterThan(building.height * 0.6);
     }
