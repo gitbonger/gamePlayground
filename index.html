@@ -1,6 +1,20 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Pigeon Sim</title>
+<!--
+  The bird's own head, rendered from the game's own rig rather than drawn: see
+  `dev/face.html`, which is where these come from and how to make them again.
+
+  Relative hrefs, like everything else here. GitHub Pages serves the site from
+  a subdirectory named after the repository, so an absolute `/favicon.png` is a
+  404 there -- the same reason Vite is configured with `base: './'`.
+
+  Two sizes because a tab is 16 or 32 pixels and a low-poly head shrinks
+  badly: left to downscale one image, the beak and the eye turn to porridge.
+-->
+<link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png" />
+<link rel="icon" type="image/png" sizes="180x180" href="./favicon.png" />
+<link rel="apple-touch-icon" href="./favicon.png" />
 <link rel="stylesheet" href="/src/style.css" />
 
 <canvas id="viewport"></canvas>
