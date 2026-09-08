@@ -24,19 +24,17 @@ import type { Road } from '../world/streets';
  * How far the map reaches from the bird, in metres, and how big the panel is
  * in pixels.
  *
- * The two together are the zoom -- a pixel is worth `REACH / (SIZE / 2)` of
- * ground, which is about four and a third metres. They were half of each,
- * and doubling both keeps the zoom exactly where it was while showing four
- * times the ground: the streets stay the same size on the screen and there is
- * simply more of them.
+ * The two together are the zoom: a pixel is worth `REACH / (SIZE / 2)` of
+ * ground, which is a little over two metres.
  *
- * Six hundred and forty metres also puts most of `Coming on strong` on the
- * panel. Its finishing line is nine hundred out, so the last third is still
- * an arrow at the rim -- but the line comes into view well before the bird
- * reaches it, which is the point at which knowing where it is starts to
- * matter.
+ * The panel went from 148 to 296 with the reach doubled alongside it, which
+ * showed four times the ground at the same zoom. This is the panel kept and
+ * the reach halved back: the same window, twice as close in. What that buys
+ * is the street you are actually over rather than the district you are
+ * somewhere in -- and nothing is lost at the far end, because anything past
+ * the rim is already an arrow pointing at it.
  */
-const REACH = 640;
+const REACH = 320;
 const SIZE = 296;
 
 /**
@@ -47,6 +45,9 @@ const SIZE = 296;
  * thousand on the map. This runs every frame.
  */
 const CELL = 100;
+
+/** How many times a second a crow blinks on the panel. */
+const CROW_BLINK = 3;
 
 export interface MinimapView {
   /** Where the bird is, in local metres. */
@@ -65,6 +66,22 @@ export interface MinimapView {
   target: { x: number; z: number } | null;
   /** The waymark showing now, or null. */
   mark: { x: number; z: number } | null;
+  /**
+   * Whatever is hunting, in local metres.
+   *
+   * Drawn only where they are: a crow is not a destination and an arrow held
+   * at the rim would read as somewhere to go. What the map is for here is
+   * "are they between me and where I am going", which is a question about a
+   * place rather than a direction.
+   */
+  crows: readonly { x: number; z: number }[];
+  /**
+   * The world's own clock, in seconds, for anything that has to blink.
+   *
+   * Passed in rather than read off the wall here, so what the panel shows is
+   * a function of the game rather than of how long the tab has been open.
+   */
+  now: number;
   /**
    * The line that finishes the level, or null.
    *
@@ -207,6 +224,20 @@ export function createMinimap(container: HTMLElement, roads: readonly Road[]): M
       ctx.beginPath();
       ctx.arc(middle, middle, middle - 1, 0, Math.PI * 2);
       ctx.stroke();
+
+      // The crows, flashing, because a steady dot is scenery and these are
+      // the one thing on the map that can kill you. Yellow like the line, and
+      // told apart from it by blinking and by being a dot rather than a
+      // stripe -- amber is what the rest of this game warns in.
+      if (Math.floor(view.now * CROW_BLINK) % 2 === 0) {
+        for (const crow of view.crows) {
+          const spot = to(crow.x, crow.z);
+          // Only where they are. Off the panel they are not drawn at all: see
+          // `MinimapView.crows`.
+          if (Math.hypot(spot.x - middle, spot.y - middle) > middle - 4) continue;
+          pip(ctx, spot, middle, '#ffe14a', 3.4);
+        }
+      }
 
       // The waymark showing now, if there is one: help, in the colour the
       // column on the ground is.

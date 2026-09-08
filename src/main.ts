@@ -3043,6 +3043,18 @@ function frame(nowMs: number) {
         ? { x: ending.x, z: ending.z }
         : null,
     mark: waymarks.at,
+    // Only the ones actually in the air on a level that has them. The flock
+    // of crows exists all game and is held down on the twelve levels that are
+    // not about it, so drawing the members without asking would put eight
+    // dots over Népszínház utca on every level in the game.
+    crows: hunted
+      ? (crows?.members ?? []).flatMap((crow) =>
+          crow.down > 0 || crow.state.ending !== null
+            ? []
+            : [{ x: crow.state.position.x, z: crow.state.position.z }],
+        )
+      : [],
+    now: clock,
     line: ending,
   });
   renderer.render(scene, camera);

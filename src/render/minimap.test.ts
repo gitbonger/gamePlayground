@@ -41,3 +41,108 @@ describe('turning the ground onto the panel', () => {
     expect(right.x - MIDDLE).toBeCloseTo(100 * SCALE, 6);
   });
 });
+
+/**
+ * Enough of a canvas to see what was drawn.
+ *
+ * Every dot on this panel is an `arc` filled in a colour, so recording the
+ * arcs with the colour that was standing at the time is the whole of what a
+ * test here needs. The rest is stubs that do nothing on purpose.
+ */
+function fakeCanvas(): { dots: { x: number; y: number; r: number; colour: string }[] } {
+  const dots: { x: number; y: number; r: number; colour: string }[] = [];
+  let pending: { x: number; y: number; r: number } | null = null;
+  const ctx = {
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 0,
+    lineCap: '',
+    setTransform() {},
+    clearRect() {},
+    save() {},
+    restore() {},
+    clip() {},
+    beginPath() {
+      pending = null;
+    },
+    arc(x: number, y: number, r: number) {
+      pending = { x, y, r };
+    },
+    fill() {
+      if (pending) dots.push({ ...pending, colour: String(ctx.fillStyle) });
+    },
+    stroke() {},
+    moveTo() {},
+    lineTo() {},
+    closePath() {},
+    translate() {},
+    rotate() {},
+  };
+  const canvas = {
+    className: '',
+    width: 0,
+    height: 0,
+    getContext: () => ctx,
+    remove() {},
+  };
+  const globals = globalThis as unknown as Record<string, unknown>;
+  globals['document'] = { createElement: () => canvas };
+  globals['window'] = { devicePixelRatio: 1 };
+  return { dots };
+}
+
+const CROW_YELLOW = '#ffe14a';
+
+/** A view with nothing in it, for a test to put one thing back. */
+const nothing = {
+  at: { x: 0, z: 0 },
+  heading: 0,
+  target: null,
+  mark: null,
+  crows: [],
+  now: 0,
+  line: null,
+};
+
+describe('the crows on the panel', () => {
+  it('draws one where it is', async () => {
+    const { dots } = fakeCanvas();
+    const { createMinimap } = await import('./minimap');
+    const map = createMinimap({ appendChild() {} } as unknown as HTMLElement, []);
+    // `now` on a lit phase: the blink is 3 a second, so the first sixth of a
+    // second is on.
+    map.update({ ...nothing, crows: [{ x: 0, z: -100 }], now: 0.05 });
+    const crows = dots.filter((dot) => dot.colour === CROW_YELLOW);
+    expect(crows).toHaveLength(1);
+    // A hundred metres ahead is straight up the panel from the middle, and
+    // the middle of a 296-pixel panel is 148.
+    expect(crows[0]!.x).toBeCloseTo(148, 6);
+    expect(crows[0]!.y).toBeLessThan(148);
+  });
+
+  it('goes dark for half of every blink', async () => {
+    // Which is the point of them: a steady dot is scenery, and the map is
+    // full of steady dots already.
+    const { dots } = fakeCanvas();
+    const { createMinimap } = await import('./minimap');
+    const map = createMinimap({ appendChild() {} } as unknown as HTMLElement, []);
+    const lit = [];
+    for (let i = 0; i < 12; i += 1) {
+      dots.length = 0;
+      map.update({ ...nothing, crows: [{ x: 0, z: -100 }], now: i / 6 });
+      lit.push(dots.some((dot) => dot.colour === CROW_YELLOW));
+    }
+    expect(lit.filter(Boolean)).toHaveLength(6);
+    expect(lit.filter((on) => !on)).toHaveLength(6);
+  });
+
+  it('leaves off a crow that is not on the panel', async () => {
+    // Held at the rim it would read as somewhere to go, which is what the
+    // target arrow means and the opposite of what a crow means.
+    const { dots } = fakeCanvas();
+    const { createMinimap } = await import('./minimap');
+    const map = createMinimap({ appendChild() {} } as unknown as HTMLElement, []);
+    map.update({ ...nothing, crows: [{ x: 0, z: -5000 }], now: 0.05 });
+    expect(dots.filter((dot) => dot.colour === CROW_YELLOW)).toHaveLength(0);
+  });
+});
