@@ -21,6 +21,7 @@ import {
   penthouseOf,
   PERSON_HEIGHT,
   SHELTER,
+  type Platform,
   terraceOf,
   type Building,
   type CityLayout,
@@ -31,6 +32,8 @@ import {
 } from './layout';
 import type { Rail, Road } from './streets';
 import { DECK, deckOf, type Bridge } from './bridges';
+import { standingDogGeometry } from '../render/dog';
+import { WAITING } from './waiting';
 import { insetRing, orientedBox, shoelace } from './plans';
 import { CARRIAGE, ENGINE, TRAM, WAGON, type Train, type Vehicle } from './train';
 import { defaultSmokeOptions, puffOpacity, puffRadius, type Puff } from './smoke';
@@ -126,6 +129,16 @@ export interface World {
    * twice: `hidePersonNear(null)` puts everybody back.
    */
   hidePersonNear(at: { x: number; z: number; within: number } | null): void;
+  /**
+   * Redraw who is standing on the tram platforms.
+   *
+   * Its own pair of instanced meshes rather than part of the crowd, because
+   * this is the one set of figures in the world that changes: a tram calls
+   * and they get on, and a different few are there when the next one comes.
+   * Sized once for the most there could ever be and written over -- the extra
+   * instances are scaled to nothing, the same way the trapper is hidden.
+   */
+  setWaiting(platforms: readonly Platform[]): void;
   /** Move the rolling stock to where the layout says the trains have got to. */
   updateTrains(trains: readonly Train[]): void;
   /**
@@ -477,6 +490,8 @@ export function buildWorld(
   const disposables: { dispose(): void }[] = [];
   const markers: TargetMarker[] = [];
   const smokeCapacity = options.smoke ?? 0;
+  /** Filled in with the platforms, if there are any. See `World.setWaiting`. */
+  let setWaiting: (platforms: readonly Platform[]) => void = () => {};
 
   // --- Ground -------------------------------------------------------------
   const groundTexture = makeGridTexture();
@@ -755,6 +770,81 @@ export function buildWorld(
       // Spread over four kilometres, like everything else instanced here.
       mesh.frustumCulled = false;
       group.add(mesh);
+    }
+
+    // And whoever is on them. Sized for the most there could ever be, since
+    // an instanced mesh is allocated once and cannot grow -- and the most is
+    // a fact about the rule that fills them: see `WAITING`.
+    const roomFor = layout.platforms.length * WAITING.most;
+    const figure = personShape();
+    const hound = standingDogGeometry();
+    const skin = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    disposables.push(figure, hound, skin);
+    const standing = new THREE.InstancedMesh(figure, skin, roomFor);
+    const hounds = new THREE.InstancedMesh(hound, skin, roomFor);
+    standing.name = 'waiting';
+    hounds.name = 'platform-dogs';
+    for (const mesh of [standing, hounds]) {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.frustumCulled = false;
+      group.add(mesh);
+    }
+    setWaiting = (stops) => {
+      let person = 0;
+      let dog = 0;
+      for (const stop of stops) {
+        for (const each of stop.waiting) {
+          if (person < roomFor) {
+            rotation.setFromAxisAngle(up, each.person.facing);
+            position.set(each.person.x, each.person.base, each.person.z);
+            scale.setScalar(PERSON_HEIGHT);
+            matrix.compose(position, rotation, scale);
+            standing.setMatrixAt(person, matrix);
+            person += 1;
+          }
+          if (each.dog && dog < roomFor) {
+            rotation.setFromAxisAngle(up, each.dog.facing);
+            position.set(each.dog.x, stop.height, each.dog.z);
+            scale.setScalar(1);
+            matrix.compose(position, rotation, scale);
+            hounds.setMatrixAt(dog, matrix);
+            dog += 1;
+          }
+        }
+      }
+      // Whatever is left over is scaled to nothing, which is how a fixed list
+      // of instances says "not this one".
+      scale.setScalar(0);
+      rotation.setFromAxisAngle(up, 0);
+      position.set(0, -50, 0);
+      matrix.compose(position, rotation, scale);
+      for (let i = person; i < roomFor; i += 1) standing.setMatrixAt(i, matrix);
+      for (let i = dog; i < roomFor; i += 1) hounds.setMatrixAt(i, matrix);
+      standing.instanceMatrix.needsUpdate = true;
+      hounds.instanceMatrix.needsUpdate = true;
+    };
+    setWaiting(layout.platforms);
+
+    // The posts the stop signs stand on. Instanced with everything else here:
+    // they are one box repeated forty-odd times.
+    const posts = layout.signPosts ?? [];
+    if (posts.length) {
+      const pole = new THREE.MeshLambertMaterial({ color: 0x4a4f55 });
+      disposables.push(pole);
+      const poles = new THREE.InstancedMesh(boxGeometry, pole, posts.length);
+      poles.name = 'sign-posts';
+      poles.castShadow = true;
+      poles.frustumCulled = false;
+      posts.forEach((post, i) => {
+        rotation.setFromAxisAngle(up, 0);
+        position.set(post.x, post.top / 2, post.z);
+        scale.set(0.11, post.top, 0.11);
+        matrix.compose(position, rotation, scale);
+        poles.setMatrixAt(i, matrix);
+      });
+      poles.instanceMatrix.needsUpdate = true;
+      group.add(poles);
     }
 
     let hut = 0;
@@ -1236,6 +1326,7 @@ export function buildWorld(
       scattered.instanceMatrix.needsUpdate = true;
     },
     overlay,
+    setWaiting: (platforms) => setWaiting(platforms),
     updateTrains,
     updateSmoke,
     dispose() {
@@ -1392,6 +1483,10 @@ function personShape(): THREE.BufferGeometry {
   const TROUSERS = 0x2e3138;
   const SKIN = 0xd8a882;
   const HAIR = 0x3a2e26;
+  // Dark and slightly shiny-pale on the face, which is what a phone is from
+  // any distance at which you can see it at all.
+  const PHONE = 0x14161a;
+  const SCREEN = 0x8fb6d8;
 
   // Proportioned off two metres: a 46 cm shoulder, an 85 cm leg, a 22 cm
   // head. It reads as a person at fifty metres, which is the whole job.
@@ -1413,7 +1508,17 @@ function personShape(): THREE.BufferGeometry {
     // anywhere and look identical -- and a person throwing grain who might as
     // well have their back to the birds is a person the scene cannot explain.
     box(COAT, 0.05, 0.33, 0.09, -0.135, 0.45, -0.05),
-    box(COAT, 0.05, 0.33, 0.09, 0.135, 0.45, -0.05),
+    // The right arm bent up, with a phone in the hand.
+    //
+    // It is why this figure is standing still, and it says so from the air:
+    // a person facing a tram stop and not moving is scenery, and a person
+    // looking at a phone is a person. The forearm comes up in front of the
+    // chest rather than out to the side -- held out it read as a salute.
+    box(COAT, 0.05, 0.2, 0.09, 0.135, 0.58, -0.05),
+    box(COAT, 0.05, 0.055, 0.16, 0.135, 0.55, -0.13),
+    box(SKIN, 0.05, 0.05, 0.05, 0.135, 0.6, -0.175),
+    box(PHONE, 0.05, 0.09, 0.016, 0.135, 0.63, -0.2),
+    box(SCREEN, 0.038, 0.075, 0.004, 0.135, 0.638, -0.209),
     box(SKIN, 0.05, 0.06, 0.05, 0, 0.79),
     { geometry: head, color: SKIN },
     { geometry: cap, color: HAIR },
@@ -2310,14 +2415,17 @@ const SIGN_TILE = { width: 256, height: 64 };
  * pixels across on a 1080p screen, so the atlas is beyond the screen's
  * ability to show it long before it runs out.
  */
-function makeSignAtlas(brands: readonly string[]): THREE.Texture {
+function makeSignAtlas(
+  brands: readonly string[],
+  painted: ReadonlyMap<string, { ground: string; ink: string }> = new Map(),
+): THREE.Texture {
   const canvas = document.createElement('canvas');
   canvas.width = SIGN_TILE.width;
   canvas.height = SIGN_TILE.height * Math.max(1, brands.length);
 
   const ctx = canvas.getContext('2d')!;
   brands.forEach((brand, row) => {
-    const paint = SIGN_COLOURS[brand] ?? SIGN_PLAIN;
+    const paint = painted.get(brand) ?? SIGN_COLOURS[brand] ?? SIGN_PLAIN;
     const top = row * SIGN_TILE.height;
     ctx.fillStyle = paint.ground;
     ctx.fillRect(0, top, SIGN_TILE.width, SIGN_TILE.height);
@@ -2362,6 +2470,11 @@ function buildSigns(
   signs: readonly Sign[],
   brands: readonly string[],
 ): { geometry: THREE.BufferGeometry; material: THREE.Material } {
+  // Whichever of them said what colour to paint them. Collected from the
+  // signs rather than passed in, so a sign carries its own answer and there
+  // is no second list to keep in step.
+  const paints = new Map<string, { ground: string; ink: string }>();
+  for (const sign of signs) if (sign.paint) paints.set(sign.brand, sign.paint);
   const positions: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
@@ -2440,7 +2553,7 @@ function buildSigns(
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
 
   const material = new THREE.MeshLambertMaterial({
-    map: makeSignAtlas(brands),
+    map: makeSignAtlas(brands, paints),
     transparent: true,
     // One side each, because there are two of them: see `quad` above. Drawn
     // double-sided instead, the back of every board in the district showed

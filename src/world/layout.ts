@@ -594,6 +594,15 @@ export interface Sign {
   width: number;
   /** Which way it faces: the yaw whose forward is out towards the street. */
   yaw: number;
+  /**
+   * What colour it is painted, where the name is not a brand anybody knows.
+   *
+   * A shop sign takes its colours from the chain -- that is what makes it
+   * recognisable at three hundred metres without reading it. A tram stop has
+   * no chain: every one in the city is the same blue board, and what tells
+   * them apart is the name on it.
+   */
+  paint?: { ground: string; ink: string };
 }
 
 
@@ -683,6 +692,23 @@ export interface Platform {
    * district is a pole and a flag and nothing to stand under.
    */
   shelters: readonly number[];
+  /**
+   * Who is standing on it, and any dogs with them.
+   *
+   * Not folded into `CityLayout.people` with everybody else, because these
+   * come and go: a tram calls, they get on, and a different few are there
+   * when the next one comes. See `crowdOn`.
+   *
+   * Not readonly: this one is written over while the game runs, which is the
+   * whole point of it being here rather than in the crowd.
+   */
+  waiting: Waiting[];
+}
+
+/** One person waiting on a platform, and the dog with them. See `crowdOn`. */
+export interface Waiting {
+  person: Person;
+  dog: { x: number; z: number; facing: number } | null;
 }
 
 /**
@@ -736,6 +762,8 @@ export interface CityLayout {
   platforms?: Platform[];
   /** Where the trams call, named. Two to a stop, one per direction. */
   stops?: TramStop[];
+  /** Posts holding up the stop signs, so the boards are not floating. */
+  signPosts?: { x: number; z: number; top: number }[];
   /** Solid volumes for every object above, in simulation coordinates. */
   boxes: Box[];
   /** Streets to draw, when the world was built from a real map. */

@@ -1,3 +1,5 @@
+// Named apart from this file's own `crowdOn`, which is about pigeons.
+import { crowdOn as fillPlatform } from './world/waiting';
 import type { IconName } from './render/icons';
 import {
   otherLanguage,
@@ -132,6 +134,7 @@ import {
   stackTop,
   stockIsHauled,
   stockTop,
+  pointAlong,
   tweenAlong,
   type Vehicle,
 } from './world/train';
@@ -980,9 +983,12 @@ const crows = crowsAt
         // ball that size are a stretch of sky to get through rather than a
         // knot to fly round.
         radius: 60,
-        // Not so low that they end up in the rooftops, which come to
-        // twenty-four: they wheel between here and the top of their ball.
-        minAltitude: 28,
+        // See below: this is about how they look, not about what they hit.
+        // Above the ordinary rooflines, which come to twenty-four, so that
+        // the ones milling look like birds over a city rather than birds in
+        // it. They do not collide -- see the update -- but a crow drawn at
+        // chimney height still reads wrong.
+        minAltitude: 34,
         emitInterval: 0.4,
         // Somewhere else fifty metres off, which for a crow is being
         // somewhere else rather than coming back from anywhere.
@@ -2080,6 +2086,39 @@ function rememberWhereTrainsWere() {
   }
 }
 
+/**
+ * How near a stopped tram a platform has to be to be its platform, in metres.
+ *
+ * Twenty-five. A tram pulls up with its middle on the stop, an island stands
+ * a couple of metres to the side and runs up to sixty long, and the next stop
+ * along is two hundred metres away -- so this is wide enough to catch both
+ * islands of the stop it is at and nothing else.
+ */
+const PLATFORM_AT = 25;
+
+/**
+ * A tram has pulled in, or pulled out.
+ *
+ * In: everybody on the platform gets on, and the platform is empty. Out: a
+ * different few are waiting, because the tram was gone a while and people
+ * arrive while it is away. Nothing here models boarding -- nobody walks and
+ * nothing opens -- but a platform that empties when a tram calls and fills
+ * again when it leaves reads as all of it.
+ *
+ * The same rule fills it as filled it when the world was built, so the second
+ * lot look like the first lot: see `crowdOn`.
+ */
+function boarding(at: { x: number; z: number }, arriving: boolean): void {
+  const platforms = layout.platforms ?? [];
+  let changed = false;
+  for (const stop of platforms) {
+    if (Math.hypot(stop.x - at.x, stop.z - at.z) > PLATFORM_AT) continue;
+    stop.waiting = arriving ? [] : fillPlatform(stop, Math.random);
+    changed = true;
+  }
+  if (changed) world.setWaiting(platforms);
+}
+
 function moveTrains(dt: number) {
   clock += dt;
   const fields: Collider[] = [world.collider];
@@ -2106,6 +2145,13 @@ function moveTrains(dt: number) {
     // platforms and waits there, which is the difference between a tram and a
     // thing on rails: the whole street stops with it.
     const went = advance(train, consist, line, dt, DWELL);
+    // Pulling in, or pulling out. Both are single ticks, so the work of
+    // emptying and refilling a platform happens twice a call rather than
+    // every frame -- and between them the platform simply has nobody on it.
+    if (went.held > 0 !== train.held > 0) {
+      const middle = pointAlong(train.line.points, went.along - consist / 2);
+      if (middle) boarding(middle, went.held > 0);
+    }
     train.along = went.along;
     train.direction = went.direction;
     train.held = went.held;
@@ -2705,7 +2751,24 @@ function frame(nowMs: number) {
     // is not arriving anywhere, and the level that is *about* the crows ends
     // at a line with nothing to land on at all.
     if (hunted && arrived()) hunted = false;
-    if (hunted) crows?.update(TICK, solid, wind, doing !== 'dead');
+    // No collider, on purpose, and it is the fix for a visible bug: the
+    // crows were flying into buildings and being respawned fifty metres
+    // away, which on the minimap is a dot that jumps every few seconds.
+    //
+    // They mill at forty-five metres over Népszínház utca and a tenth of the
+    // buildings under them are fifty -- so they were not clipping the odd
+    // roof, they were ploughing into a wall every few seconds. Raising them
+    // out of it is not available: forty-five is the corridor the player is
+    // released into at sixty and glides down through, and the whole level is
+    // "get underneath them".
+    //
+    // So a crow is a threat rather than a body. It already stops being a
+    // flown bird the moment it has seen you -- a hunting one is moved
+    // straight at its quarry rather than flown, see `hunt` -- and this is the
+    // same admission about the rest of the time. What it costs is a crow
+    // passing through a tower now and then; what it buys is eight crows that
+    // stay where they are.
+    if (hunted) crows?.update(TICK, undefined, wind, doing !== 'dead');
     // And if one of them gets to him, that is the flight. It is checked after
     // they have moved rather than before, so the tick a crow arrives is the
     // tick it counts -- and only against a bird that is still flying, since

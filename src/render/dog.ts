@@ -58,6 +58,68 @@ const SWING = 0.62;
 /** How far the paw comes up on the forward half of its swing, in metres. */
 const LIFT = 0.055;
 
+/**
+ * One dog, standing still, as a single geometry.
+ *
+ * The rig above is four hinged legs and a body, which is what a dog that
+ * walks needs and is far too much for the ones on the tram platforms: there
+ * are eighty of those, they never move, and eighty rigs is five hundred draw
+ * calls for scenery. Merged flat, they are one instanced mesh.
+ *
+ * Built out of the same boxes in the same places, with the legs standing
+ * where the rig rests them, so the two are the same animal.
+ */
+export function standingDogGeometry(): THREE.BufferGeometry {
+  const box = (
+    color: number,
+    width: number,
+    height: number,
+    depth: number,
+    x: number,
+    y: number,
+    z: number,
+  ): Piece => {
+    const part = new THREE.BoxGeometry(width, height, depth);
+    part.translate(x, y, z);
+    return { geometry: part, color };
+  };
+
+  const BACK = DOG_HEIGHT - 0.11;
+  const drop = DOG_HEIGHT - 0.09 - 0.11;
+  const pieces: Piece[] = [
+    box(COAT, 0.2, 0.23, 0.34, 0, BACK, 0.08),
+    box(COAT, 0.22, 0.26, 0.2, 0, BACK - 0.01, -0.14),
+    box(WHITE, 0.17, 0.1, 0.22, 0, BACK - 0.14, -0.13),
+    box(COAT, 0.15, 0.17, 0.16, 0, BACK + 0.11, -0.26),
+    box(WHITE, 0.1, 0.09, 0.14, 0, BACK + 0.04, -0.28),
+    box(COAT, 0.13, 0.13, 0.16, 0, BACK + 0.2, -0.37),
+    box(WHITE, 0.045, 0.13, 0.15, 0, BACK + 0.21, -0.38),
+    box(WHITE, 0.075, 0.075, 0.13, 0, BACK + 0.16, -0.49),
+    box(NOSE, 0.05, 0.045, 0.03, 0, BACK + 0.175, -0.56),
+    box(TONGUE, 0.035, 0.02, 0.06, 0, BACK + 0.132, -0.51),
+    box(COAT, 0.045, 0.075, 0.035, -0.055, BACK + 0.29, -0.33),
+    box(COAT, 0.045, 0.075, 0.035, 0.055, BACK + 0.29, -0.33),
+    box(COAT, 0.045, 0.03, 0.05, -0.055, BACK + 0.33, -0.35),
+    box(COAT, 0.045, 0.03, 0.05, 0.055, BACK + 0.33, -0.35),
+    box(COAT, 0.06, 0.07, 0.2, 0, BACK - 0.06, 0.31),
+    box(WHITE, 0.05, 0.055, 0.09, 0, BACK - 0.12, 0.43),
+  ];
+  for (const [side, along] of [
+    [-0.085, -0.16],
+    [0.085, 0.2],
+    [0.085, -0.16],
+    [-0.085, 0.2],
+  ] as [number, number][]) {
+    const hip = BACK - 0.09;
+    pieces.push(
+      box(COAT, 0.062, drop * 0.55, 0.075, side, hip - drop * 0.28, along),
+      box(WHITE, 0.05, drop * 0.5, 0.055, side, hip - drop * 0.75, along),
+      box(WHITE, 0.06, 0.045, 0.095, side, hip - drop - 0.02, along - 0.01),
+    );
+  }
+  return painted(pieces);
+}
+
 export function createDogRig(): DogRig {
   const disposables: { dispose(): void }[] = [];
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });

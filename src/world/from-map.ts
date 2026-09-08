@@ -24,6 +24,7 @@ import {
   type StreetIndex,
 } from './streets';
 import { footprintSamples, indexAreas, type AreaIndex } from './areas';
+import { crowdOn } from './waiting';
 import { DECK, deckOf } from './bridges';
 import { fitBoxes, orientedBox, solidsOf } from './plans';
 import { fillHeights } from './heights';
@@ -401,6 +402,22 @@ const STEEPLE_TALLEST = 55;
  * short ones are single-ended stops in a side street with a pole and nothing
  * else.
  */
+/**
+ * The stop sign: a blue board on a post, the way every stop in the city has.
+ *
+ * Reuses the shop hoardings -- same geometry, same atlas, same lettering --
+ * with its own colours, because a tram stop has no chain to be recognised by
+ * and the name is the whole of what it says. `up` is head height plus a bit,
+ * measured from the island rather than from the road, and `wide` is about as
+ * narrow as a name can be and still be read from the air.
+ */
+const STOP_SIGN = {
+  up: 2.4,
+  wide: 3.4,
+  post: 0.11,
+  paint: { ground: '#0b4ea2', ink: '#ffffff' },
+};
+
 const PLATFORM = {
   wide: 2.5,
   clear: 1.6,
@@ -1061,6 +1078,8 @@ export function buildLayoutFromMap(
     return best?.stop ?? null;
   };
 
+  /** The post each stop sign stands on, so the board is not floating. */
+  const posts: { x: number; z: number; top: number }[] = [];
   const platforms: Platform[] = [];
   (map.islands ?? []).forEach((row) => {
     const ring: [number, number][] = [];
@@ -1147,45 +1166,11 @@ export function buildLayoutFromMap(
       );
     }
 
-    // And somebody waiting. A tram stop with nobody on it is a concrete
-    // sliver in the road; one with three people on it is a tram stop.
-    //
-    // Facing along the line rather than any which way, because that is what
-    // waiting for a tram looks like: everyone turned the way it comes from,
-    // give or take. Which of the two ways is a coin, since a platform serves
-    // one direction and this end has no idea which.
-    const waiting =
-      PLATFORM.waiting.least +
-      Math.floor(rand() * (PLATFORM.waiting.most - PLATFORM.waiting.least + 1));
-    const huts = shelteredAt(along);
-    const clearOfHuts = (run: number) =>
-      !huts.some((at) => Math.abs(run - at) < SHELTER.long / 2 + 0.5);
-    for (let i = 0; i < waiting; i += 1) {
-      // Kept off the ends, and out of the huts -- a figure inside a solid box
-      // is a figure nobody sees, and the one place it would be worth standing.
-      //
-      // Tried a few times rather than skipped, so a short platform with a hut
-      // down the middle of it still has somebody on it. Six goes and then
-      // wherever it landed: a platform that cannot fit a person beside its own
-      // shelter is one the player will never be close enough to count.
-      let run = 0;
-      for (let go = 0; go < 6; go += 1) {
-        run = (rand() - 0.5) * Math.max(0, along - 2);
-        if (clearOfHuts(run)) break;
-      }
-      const across = (rand() - 0.5) * (PLATFORM.wide - 1.2);
-      people.push({
-        x: x + run * cos + across * sin,
-        z: z - run * sin + across * cos,
-        base: PLATFORM.rise,
-        facing: yaw + (rand() < 0.5 ? 0 : Math.PI) + (rand() - 0.5) * 0.6,
-      });
-    }
-
-    platforms.push({
+    const named = stopNear(x, z)?.name ?? '';
+    const island = {
       // Whatever stop it stands at. An island is a kerb; the name is on the
       // track beside it.
-      name: stopNear(x, z)?.name ?? '',
+      name: named,
       x,
       z,
       width: along,
@@ -1196,7 +1181,28 @@ export function buildLayoutFromMap(
       // long one -- a hundred and twenty metres of platform with a single hut
       // at the midpoint is a platform nobody could shelter on.
       shelters: shelteredAt(along),
-    });
+    };
+    // Filled by the same rule that refills it after every tram: see `crowdOn`.
+    platforms.push({ ...island, waiting: crowdOn(island, rand) });
+
+    // And the sign, at one end of the island rather than the middle, where a
+    // real one stands and where it is not in the way of the shelter.
+    if (named) {
+      const back = Math.max(2, along / 2 - 3);
+      signs.push({
+        brand: named,
+        x: x + back * cos,
+        z: z - back * sin,
+        base: PLATFORM.rise + STOP_SIGN.up,
+        width: STOP_SIGN.wide,
+        // Square across the island, so it faces the traffic rather than
+        // edge-on to it -- which is how it is read from a tram and from the
+        // air alike.
+        yaw: yaw + Math.PI / 2,
+        paint: STOP_SIGN.paint,
+      });
+      posts.push({ x: x + back * cos, z: z - back * sin, top: PLATFORM.rise + STOP_SIGN.up });
+    }
   });
 
   const blocks = extractBlocks(map.roads, {
@@ -1786,6 +1792,7 @@ export function buildLayoutFromMap(
     boxes,
     crossings,
     platforms,
+    signPosts: posts,
     stops,
     plans,
     signs,
