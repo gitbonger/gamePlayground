@@ -44,6 +44,7 @@ import {
   PERSON_WIDTH,
   SPECIES,
   STREET_TREE,
+  type Sign,
   type Building,
   type Bush,
   type Grave,
@@ -273,6 +274,36 @@ export interface MapWorld extends CityLayout {
   /** And those with no room to build on at all, which are planted instead. */
   bare: Block[];
 }
+
+/**
+ * How far a shop may be from a building and still be put on it, in metres.
+ *
+ * Twenty-five. Measured on this map, 85 of the 88 branded groceries and
+ * filling stations stand inside a building the world draws; of the other
+ * three, one is beside one and two are forecourt kiosks with nothing to stand
+ * a sign on, which get none.
+ */
+const SIGN_REACH = 25;
+
+/**
+ * How far to look for the street a sign faces, in metres.
+ *
+ * Sixty: further than any frontage, and near enough that the street found is
+ * the one the shop is actually on.
+ */
+const SIGN_STREET = 60;
+
+/**
+ * How wide a hoarding is: a share of the roof it stands on, held between two
+ * ends.
+ *
+ * Not a fixed size, because these roofs run from 10 x 8 m to 167 x 118 -- one
+ * sized for the smallest is a smudge on the largest, and one sized for the
+ * largest overhangs the smallest by fifty metres. Eight metres is about as
+ * narrow as a name can be and still be read at three hundred, and past
+ * twenty-six a bigger one stops helping.
+ */
+const SIGN_WIDTH = { share: 0.6, least: 8, most: 26 };
 
 export function buildLayoutFromMap(
   map: MapData,
@@ -513,6 +544,98 @@ export function buildLayoutFromMap(
 
     buildings.push({ x: each.x, z: each.z, width: each.width, depth: each.depth, height, yaw: each.yaw });
     boxes.push(turnedBox(each.x, each.z, each.width, height, each.depth, each.yaw));
+  }
+
+  // --- Shop signs -----------------------------------------------------------
+  // Stood on the roof of whatever building the shop turns out to be in. The
+  // fetch cannot do this: it has outlines, and what a sign needs is the box
+  // the outline was reduced to and whether that box survived the story and
+  // the railway.
+  const signs: Sign[] = [];
+  {
+    const CELL = 60;
+    const grid = new Map<string, number[]>();
+    const cell = (x: number, z: number) => `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`;
+    buildings.forEach((building, index) => {
+      const key = cell(building.x, building.z);
+      const bucket = grid.get(key);
+      if (bucket) bucket.push(index);
+      else grid.set(key, [index]);
+    });
+
+    /** The building a point stands in, or the nearest one close enough. */
+    const under = (x: number, z: number) => {
+      const gx = Math.floor(x / CELL);
+      const gz = Math.floor(z / CELL);
+      let nearest: number | null = null;
+      let closest = SIGN_REACH * SIGN_REACH;
+      for (let ox = -1; ox <= 1; ox += 1) {
+        for (let oz = -1; oz <= 1; oz += 1) {
+          for (const index of grid.get(`${gx + ox},${gz + oz}`) ?? []) {
+            const each = buildings[index]!;
+            // Turned into the building's own frame, because a building on a
+            // diagonal street is a turned box and a shop is often at one end
+            // of it rather than in the middle.
+            const turn = -(each.yaw ?? 0);
+            const dx = x - each.x;
+            const dz = z - each.z;
+            const along = dx * Math.cos(turn) + dz * Math.sin(turn);
+            const across = -dx * Math.sin(turn) + dz * Math.cos(turn);
+            // Inside its own box wins outright, however far its middle is.
+            if (Math.abs(along) <= each.width / 2 && Math.abs(across) <= each.depth / 2) {
+              return index;
+            }
+            const away = (each.x - x) ** 2 + (each.z - z) ** 2;
+            if (away < closest) {
+              closest = away;
+              nearest = index;
+            }
+          }
+        }
+      }
+      return nearest;
+    };
+
+    // One to a roof. Two shops in the same block of flats is common -- a
+    // grocer and a filling station share a building on this map -- and two
+    // hoardings on one roof reads as a mistake rather than as two shops.
+    const taken = new Set<number>();
+    const named = map.brands ?? [];
+    for (const row of map.signs ?? []) {
+      const [x, z, which] = row;
+      if (x === undefined || z === undefined || which === undefined) continue;
+      const brand = named[which];
+      if (brand === undefined) continue;
+      const index = under(x, z);
+      if (index === null || taken.has(index)) continue;
+      taken.add(index);
+      const host = buildings[index]!;
+
+      // Facing the street, which is what a sign is for. Where there is no
+      // street near enough to face -- a shop deep inside a yard -- it looks
+      // out over the building's own short side, which is the way a frontage
+      // faces when there is nothing to tell it otherwise.
+      const street = streets.nearest(host.x, host.z, SIGN_STREET);
+      const yaw = street
+        ? -Math.atan2(street.nearX - host.x, -(street.nearZ - host.z))
+        : (host.yaw ?? 0) + Math.PI / 2;
+
+      signs.push({
+        brand,
+        x: host.x,
+        z: host.z,
+        base: host.height,
+        // Across the roof it stands on, and never wider than the roof: a
+        // hoarding overhanging the building it is bolted to is a hoarding
+        // hanging in the air.
+        width: Math.min(
+          SIGN_WIDTH.most,
+          Math.max(SIGN_WIDTH.least, Math.max(host.width, host.depth) * SIGN_WIDTH.share),
+          Math.max(host.width, host.depth),
+        ),
+        yaw,
+      });
+    }
   }
 
   /**
@@ -1097,6 +1220,7 @@ export function buildLayoutFromMap(
     people,
     boxes,
     crossings,
+    signs,
     roads: map.roads,
     bridges,
     rails: map.rails ?? [],

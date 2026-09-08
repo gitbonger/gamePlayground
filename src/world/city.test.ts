@@ -3,6 +3,7 @@ import {
   arrowFade,
   buildVehicle,
   buildVehicleGeometry,
+  signFade,
   arrowScale,
   buildRoofs,
   buildWorld,
@@ -10,7 +11,7 @@ import {
   targetFlash,
 } from './city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
-import { penthouseOf, terraceOf, type Landmark } from './layout';
+import { penthouseOf, terraceOf, type Landmark, type Sign } from './layout';
 import { consistLength, layOutTrain, lineLength, shuttle, TRAM, WAGON, type Vehicle } from './train';
 import type { Puff } from './smoke';
 import * as THREE from 'three';
@@ -92,8 +93,15 @@ beforeAll(() => {
         fillStyle: '',
         strokeStyle: '',
         lineWidth: 0,
+        font: '',
+        textAlign: '',
+        textBaseline: '',
         fillRect() {},
         strokeRect() {},
+        fillText() {},
+        // Enough for the sign atlas's shrink-to-fit loop to terminate: it
+        // asks how wide a name is and steps the font down until it fits.
+        measureText: (text: string) => ({ width: text.length * 8 }),
         createRadialGradient: () => ({ addColorStop() {} }),
       }),
     }),
@@ -1012,5 +1020,137 @@ describe('the shapes the vehicles are built from', () => {
     expect(vehicles).toBeGreaterThan(1);
     expect(paints.size).toBe(vehicles);
     world.dispose();
+  });
+});
+
+describe('the shop signs', () => {
+  const withSigns = (signs: Sign[]) =>
+    buildWorld({ ...buildLayoutFromMap(map, defaultMapWorldOptions), signs });
+
+  const board = (over: Partial<Sign> = {}): Sign => ({
+    brand: 'Tesco',
+    x: 0,
+    z: 0,
+    base: 15,
+    width: 20,
+    yaw: 0,
+    ...over,
+  });
+
+  it('draws every sign in the district in one go', () => {
+    // Ninety boards is a hundred and eighty triangles. Deciding about each of
+    // them one at a time costs more than drawing all of them.
+    const world = withSigns([board(), board({ x: 300, brand: 'Spar' }), board({ x: 600 })]);
+    let meshes = 0;
+    world.group.traverse((object) => {
+      if (object.name === 'signs') meshes += 1;
+    });
+    expect(meshes).toBe(1);
+    world.dispose();
+  });
+
+  it('gives each brand its own strip of the one texture', () => {
+    // Which is what makes a single mesh possible: the name is in the texture
+    // and the sign is a quad pointing at a row of it, so two brands are two
+    // sets of texture coordinates rather than two materials.
+    const world = withSigns([board({ brand: 'Spar' }), board({ x: 300, brand: 'Tesco' })]);
+    let uvs: THREE.BufferAttribute | null = null;
+    world.group.traverse((object) => {
+      if (object.name === 'signs') {
+        uvs = (object as THREE.Mesh).geometry.getAttribute('uv') as THREE.BufferAttribute;
+      }
+    });
+    expect(uvs).not.toBeNull();
+    // A quad is six vertices, so the first board is 0..5 and the second 6..11.
+    // Compared as bands rather than as a count of distinct numbers: adjacent
+    // strips share the boundary between them, so two brands make three
+    // values and not four -- a count would have been asserting the wrong
+    // thing and would have passed with both boards on one strip.
+    const band = (from: number) => {
+      let low = Infinity;
+      let high = -Infinity;
+      for (let i = from; i < from + 6; i += 1) {
+        low = Math.min(low, uvs!.getY(i));
+        high = Math.max(high, uvs!.getY(i));
+      }
+      return { low, high };
+    };
+    const first = band(0);
+    const second = band(6);
+    expect(first.high - first.low).toBeCloseTo(0.5, 6);
+    expect(second.high - second.low).toBeCloseTo(0.5, 6);
+    // Different strips: one ends where the other begins, and they do not
+    // overlap.
+    expect(first.low === second.low && first.high === second.high).toBe(false);
+    world.dispose();
+  });
+
+  it('stands the board up on the roof rather than lying it flat', () => {
+    // Flat on the roof it is invisible from the approach, which is the only
+    // angle that matters: at sixty metres up, a sign four hundred metres off
+    // is seven degrees below horizontal.
+    const world = withSigns([board({ base: 15, width: 20 })]);
+    let points: THREE.BufferAttribute | null = null;
+    world.group.traverse((object) => {
+      if (object.name === 'signs') {
+        points = (object as THREE.Mesh).geometry.getAttribute('position') as THREE.BufferAttribute;
+      }
+    });
+    let low = Infinity;
+    let high = -Infinity;
+    for (let i = 0; i < points!.count; i += 1) {
+      low = Math.min(low, points!.getY(i));
+      high = Math.max(high, points!.getY(i));
+    }
+    // Its foot is on the roof and its head is well above it: a board a fifth
+    // as tall as it is wide, standing up.
+    expect(low).toBeCloseTo(15, 3);
+    expect(high - low).toBeGreaterThan(20 * 0.2);
+    world.dispose();
+  });
+
+  it('leans the board back rather than standing it upright', () => {
+    // Upright, it is edge-on from directly above; the sightline runs from
+    // seven degrees below horizontal at four hundred metres to fifty-four at
+    // a hundred, and a raked board faces the middle of that band.
+    const world = withSigns([board({ yaw: 0 })]);
+    let normals: THREE.BufferAttribute | null = null;
+    world.group.traverse((object) => {
+      if (object.name === 'signs') {
+        normals = (object as THREE.Mesh).geometry.getAttribute('normal') as THREE.BufferAttribute;
+      }
+    });
+    // Facing yaw 0 is facing -Z, and the rake tips that up towards the sky.
+    expect(normals!.getZ(0)).toBeLessThan(-0.8);
+    expect(normals!.getY(0)).toBeGreaterThan(0.2);
+    world.dispose();
+  });
+});
+
+describe('how far a sign can be read from', () => {
+  it('is solid where it can be read', () => {
+    expect(signFade(0)).toBe(1);
+    expect(signFade(300)).toBe(1);
+  });
+
+  it('is gone before it becomes a speck', () => {
+    // A sign half a kilometre off is two pixels of colour, and ninety of
+    // those piled on the horizon is worse than none at all.
+    expect(signFade(600)).toBe(0);
+  });
+
+  it('goes out gradually rather than blinking off', () => {
+    // A board that vanished on a frame would draw the eye to exactly the
+    // thing it is meant to stop being: a sign, rather than a shop.
+    const half = signFade(420);
+    expect(half).toBeGreaterThan(0);
+    expect(half).toBeLessThan(1);
+    // And it only ever gets fainter with distance.
+    let last = 1;
+    for (let away = 0; away <= 700; away += 20) {
+      const now = signFade(away);
+      expect(now).toBeLessThanOrEqual(last);
+      last = now;
+    }
   });
 });

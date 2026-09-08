@@ -97,6 +97,41 @@ const RAIL_WIDTHS: Record<string, number> = {
   tram: 6,
 };
 
+/**
+ * The brands a Jozsefvaros local steers by, and nothing else.
+ *
+ * The district has 3,623 named shops in it. Signing them all would be
+ * wallpaper: what makes a sign useful is that you recognise it from three
+ * hundred metres without reading it, which is a property of a chain and not
+ * of a name. Groceries and fuel, because those are the ones on every corner
+ * and in everybody's head -- 88 of them here, against 504 branded things of
+ * every sort and three and a half thousand named ones.
+ */
+const SIGNED_SHOPS = 'supermarket|convenience|department_store|mall|doityourself';
+
+/**
+ * What sort of place of worship a building is, as one number.
+ *
+ * Three shapes rather than one: a parish church gets a tower and a spire, a
+ * chapel a bellcote, a synagogue a dome. They are what a district is
+ * navigated by from the air -- there are 39 of them here and they are the
+ * only tall thing on most of these blocks -- and drawing all three the same
+ * would be putting a spire on a synagogue.
+ */
+const WORSHIP = ['church', 'chapel', 'synagogue'] as const;
+
+function worshipKind(tags: Record<string, string>): number | null {
+  const building = tags['building'];
+  if (tags['religion'] === 'jewish' || building === 'synagogue') return 2;
+  if (building === 'chapel') return 1;
+  if (building === 'church' || building === 'cathedral' || building === 'temple') return 0;
+  // Tagged only as a place of worship, with nothing said about the building.
+  // A church until told otherwise: that is what most of them are.
+  if (tags['amenity'] === 'place_of_worship') return 0;
+  return null;
+}
+
+
 interface Args {
   centre: [number, number];
   radius: number;
@@ -391,6 +426,14 @@ interface OverpassElement {
   type: string;
   lat?: number;
   lon?: number;
+  /**
+   * Where a way or relation sits, from `out center`.
+   *
+   * A shop is often a node and often the outline of the shop unit, and a
+   * church is nearly always an outline. One point either way is all this
+   * needs: a sign is stood on whatever building is under it.
+   */
+  center?: { lat: number; lon: number };
   tags?: Record<string, string>;
   geometry?: OverpassGeometry[];
   members?: { role?: string; geometry?: OverpassGeometry[] }[];
@@ -437,6 +480,21 @@ async function main() {
       `node["natural"="tree"](${bbox});` +
       `);out geom;`,
     'crossings and trees',
+  );
+
+  // The handful of places worth putting a name on, and the churches. Both are
+  // points: a sign is stood on whatever building turns out to be under it and
+  // a spire is put on whatever building turns out to be the church, which is
+  // work for the world builder rather than for a fetch -- it is the end that
+  // knows where the buildings ended up.
+  const marked = await overpass(
+    `[out:json][timeout:180];(` +
+      `nwr["shop"~"^(${SIGNED_SHOPS})$"]["brand"](${bbox});` +
+      `nwr["amenity"="fuel"]["brand"](${bbox});` +
+      `nwr["amenity"="place_of_worship"](${bbox});` +
+      `way["building"~"^(church|chapel|cathedral|synagogue|temple)$"](${bbox});` +
+      `);out center tags;`,
+    'shop signs and churches',
   );
 
   type Geometry = OverpassGeometry;
@@ -605,6 +663,32 @@ async function main() {
     else crossings.push(at);
   }
 
+  // --- Signs and steeples ----------------------------------------------------
+  // Brands rather than names, and each written once: eighty-eight signs
+  // between nineteen brands is nineteen strings and eighty-eight numbers.
+  const brands: string[] = [];
+  const signs: number[][] = [];
+  const worship: number[][] = [];
+  for (const element of marked.elements) {
+    const tags = element.tags ?? {};
+    const at = element.center ?? element;
+    if (at.lat === undefined || at.lon === undefined) continue;
+    const x = Math.round((at.lon - lon) * perDegree.lon * 10) / 10;
+    const z = Math.round(-(at.lat - lat) * perDegree.lat * 10) / 10;
+
+    const sort = worshipKind(tags);
+    if (sort !== null) {
+      worship.push([x, z, sort]);
+      continue;
+    }
+
+    const brand = tags['brand'];
+    if (!brand) continue;
+    let index = brands.indexOf(brand);
+    if (index < 0) index = brands.push(brand) - 1;
+    signs.push([x, z, index]);
+  }
+
   const keptPoints = [...roads, ...bridges, ...rails].reduce((total, way) => total + way.points.length, 0);
   const out = resolve(process.cwd(), 'src/world/data', `${name}.json`);
   mkdirSync(dirname(out), { recursive: true });
@@ -624,6 +708,9 @@ async function main() {
         buildings,
         crossings,
         trees,
+        brands,
+        signs,
+        worship,
       },
       null,
       0,
@@ -631,7 +718,7 @@ async function main() {
   );
 
   const kb = (
-    Buffer.byteLength(JSON.stringify({ roads, bridges, rails, areas, buildings, crossings, trees })) / 1024
+    Buffer.byteLength(JSON.stringify({ roads, bridges, rails, areas, buildings, crossings, trees, brands, signs, worship })) / 1024
   ).toFixed(0);
   process.stderr.write(
     `${roads.length} roads, ${bridges.length} bridges and ${rails.length} railways ` +
@@ -639,6 +726,7 @@ async function main() {
       `${areas.length} green areas, ${buildings.length} buildings ` +
       `(${buildings.filter((b) => b[5] !== null).length} of them saying how tall), ` +
       `${crossings.length} crossings, ${trees.length} trees, ` +
+      `${signs.length} shop signs of ${brands.length} brands, ${worship.length} churches, ` +
       `${rawPoints} points before thinning, ${kb} kB -> ${out}\n`,
   );
 }

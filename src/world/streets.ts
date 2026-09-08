@@ -84,6 +84,32 @@ export interface MapData {
    * the ones the generator plants in parks.
    */
   trees?: readonly (readonly number[])[];
+  /**
+   * The brand names the signs say, each written once.
+   *
+   * Eighty-eight signs between nineteen brands, so the names are a list and a
+   * sign is a number into it.
+   */
+  brands?: readonly string[];
+  /**
+   * Shop signs, as `[x, z, brand]`, `brand` being an index into `brands`.
+   *
+   * Groceries and fuel that carry a chain's name, and nothing else. The
+   * district has three and a half thousand named shops in it; what makes a
+   * sign worth having is that you know it from three hundred metres without
+   * reading it, and that is a property of a chain.
+   */
+  signs?: readonly (readonly number[])[];
+  /**
+   * Places of worship, as `[x, z, kind]`: 0 a church, 1 a chapel, 2 a
+   * synagogue.
+   *
+   * A point rather than an outline, because the outline is already in
+   * `buildings` -- this only says which of those buildings is a church, and
+   * what sort. What it buys is the one thing a district is navigated by from
+   * the air: something tall that is not a block of flats.
+   */
+  worship?: readonly (readonly number[])[];
 }
 
 /** A building outline, as the game wants it. */

@@ -1676,3 +1676,94 @@ describe('the bridges in the baked map', () => {
     }
   });
 });
+
+describe('shop signs', () => {
+  /**
+   * A building on the block's north side, and a shop inside it.
+   *
+   * The street the block is drawn round runs along z = 0, so the sign has a
+   * street to face and a wrong way to face it.
+   */
+  const SHOP_BUILDING = [100, 30, 40, 20, 0, 15];
+  const signed = (
+    signs: number[][],
+    brands: string[] = ['Tesco'],
+    buildings: number[][] = [SHOP_BUILDING],
+  ): MapData => ({ ...mapOf(BLOCK), buildings, brands, signs });
+
+  it('stands the sign on the roof of the shop’s own building', () => {
+    // Not on the ground and not in the air. The levels release the bird
+    // between 18 and 150 m up over roofs whose median is 14, so a sign at
+    // street level is a sign under the player on ten levels of thirteen.
+    const world = buildLayoutFromMap(signed([[105, 32, 0]]));
+    expect(world.signs).toHaveLength(1);
+    const sign = world.signs![0]!;
+    expect(sign.brand).toBe('Tesco');
+    expect(sign.base).toBe(15);
+    expect(sign.x).toBeCloseTo(100, 6);
+    expect(sign.z).toBeCloseTo(30, 6);
+  });
+
+  it('faces the street the shop is on', () => {
+    // A hoarding facing the back of the block says nothing to anybody. The
+    // street here is at z = 0 and the building at z = 30, so it has to look
+    // north -- which on this map is -Z, and the yaw whose forward is -Z is
+    // nought.
+    const sign = buildLayoutFromMap(signed([[105, 32, 0]])).signs![0]!;
+    const forward = { x: -Math.sin(sign.yaw), z: -Math.cos(sign.yaw) };
+    expect(forward.z).toBeLessThan(-0.9);
+    expect(Math.abs(forward.x)).toBeLessThan(0.2);
+  });
+
+  it('puts one on a roof, however many shops are under it', () => {
+    // Two in one block of flats is ordinary -- a grocer and a filling station
+    // share a building on the real map -- and two hoardings on one roof reads
+    // as a mistake rather than as two shops.
+    const world = buildLayoutFromMap(
+      signed([[95, 28, 0], [108, 34, 1]], ['Tesco', 'Spar']),
+    );
+    expect(world.signs).toHaveLength(1);
+  });
+
+  it('gives none to a shop with nothing near enough to stand one on', () => {
+    // A forecourt kiosk in the middle of a filling station has no building.
+    // Two of the eighty-eight on the real map are like this, and a name
+    // hanging over open ground would be worse than no name.
+    //
+    // Forty metres out, which is the distance that tests the rule: the index
+    // is a grid of sixty-metre cells, so a shop half a kilometre from
+    // anything is rejected by the grid whatever the reach is set to, and a
+    // test placed out there passes with the reach removed.
+    expect(buildLayoutFromMap(signed([[100, 70, 0]])).signs).toEqual([]);
+    // And just inside it, the same shop does get one -- or the rule above
+    // would be satisfied by never signing anything.
+    expect(buildLayoutFromMap(signed([[100, 52, 0]])).signs).toHaveLength(1);
+  });
+
+  it('never hangs the board off the end of the roof', () => {
+    // A hoarding wider than the building it is bolted to is a hoarding in
+    // mid-air. These roofs run from 10 x 8 m to 167 x 118 on the real map, so
+    // the width has to come from the roof rather than be a number.
+    // Six metres across, which is narrower than the narrowest board the
+    // width rule would otherwise settle on -- that is the case the clamp is
+    // for, and a wider building does not test it at all.
+    const small = [100, 30, 6, 5, 0, 15];
+    const sign = buildLayoutFromMap(signed([[100, 30, 0]], ['Tesco'], [small])).signs![0]!;
+    expect(sign.width).toBeLessThanOrEqual(6);
+    expect(sign.width).toBeGreaterThan(0);
+  });
+
+  it('does not sign a building the story or a railway took away', () => {
+    // The buildings are filtered after they arrive -- a described landmark
+    // and a goods yard both clear the ground they stand on -- and a sign left
+    // behind would be a name floating over an empty plot.
+    const world = buildLayoutFromMap(signed([[105, 32, 0]]), {
+      ...defaultMapWorldOptions,
+      landmarks: [
+        { name: 'The Loft', x: 100, z: 30, width: 60, depth: 40, height: 20, yaw: 0 },
+      ],
+    });
+    expect(world.buildings.some((b) => Math.abs(b.x - 100) < 1)).toBe(false);
+    expect(world.signs).toEqual([]);
+  });
+});

@@ -24,6 +24,7 @@ import {
   type Building,
   type CityLayout,
   type Landmark,
+  type Sign,
   type Station,
 } from './layout';
 import type { Rail, Road } from './streets';
@@ -1101,6 +1102,19 @@ export function buildWorld(
     group.add(decks);
   }
 
+  // --- Shop signs -----------------------------------------------------------
+  // After the bridges and before the return, because a sign stands on a roof
+  // and the roofs are already up.
+  if (layout.signs?.length) {
+    const { geometry, material } = buildSigns(layout.signs, brandsIn(layout.signs));
+    disposables.push(geometry, material);
+    const boards = new THREE.Mesh(geometry, material);
+    boards.castShadow = true;
+    boards.receiveShadow = true;
+    boards.name = 'signs';
+    group.add(boards);
+  }
+
   return {
     group,
     boxes: layout.boxes,
@@ -2113,6 +2127,238 @@ export function buildVehicle(vehicle: Vehicle): {
   material: THREE.Material;
 } {
   return { geometry: buildVehicleGeometry(vehicle), material: vehicleMaterial() };
+}
+
+
+
+/** The brands actually standing on this map, in a fixed order. */
+function brandsIn(signs: readonly Sign[]): string[] {
+  const seen: string[] = [];
+  for (const sign of signs) if (!seen.includes(sign.brand)) seen.push(sign.brand);
+  return seen.sort();
+}
+
+/**
+ * How far a sign can be read from, in metres, and where it gives up.
+ *
+ * A sign earns its keep at distance: flying at sixty metres, the line to one
+ * four hundred metres off is seven degrees below horizontal, and spotting the
+ * Tesco from there is the whole point. Past that it is a smudge two pixels
+ * wide, and a district with ninety unreadable smudges hanging over it is
+ * worse than one with none -- so they fade out rather than pile up on the
+ * horizon.
+ *
+ * The fog starts at 350 m, so this hands over to it rather than fighting it.
+ */
+const SIGN_FULL = 320;
+const SIGN_GONE = 520;
+
+/** How solid a sign is at a given distance: 1 near, 0 past reading range. */
+export function signFade(distance: number): number {
+  const across = (SIGN_GONE - distance) / (SIGN_GONE - SIGN_FULL);
+  return across < 0 ? 0 : across > 1 ? 1 : across;
+}
+
+/**
+ * How far back a hoarding leans off vertical, in radians.
+ *
+ * Twenty-five degrees. Upright, it is edge-on from directly above; flat, it
+ * is edge-on from the approach. The sightline to a sign runs from about seven
+ * degrees below horizontal at four hundred metres to fifty-four at a hundred
+ * from a hundred and fifty up, and a panel raked back this far faces the
+ * middle of that band and never goes edge-on anywhere in it.
+ */
+const SIGN_RAKE = (25 * Math.PI) / 180;
+
+/** A sign is this much taller than one line of lettering is wide. */
+const SIGN_ASPECT = 0.3;
+
+/**
+ * The colours the chains are known by.
+ *
+ * Which is the whole trick: a sign works when you recognise it before you can
+ * read it, and at three hundred metres what you have is a coloured rectangle.
+ * The ones not named here get a plain dark board, which is what an
+ * independent shop's sign mostly is.
+ */
+const SIGN_COLOURS: Record<string, { ground: string; ink: string }> = {
+  Spar: { ground: '#ffffff', ink: '#00693c' },
+  Tesco: { ground: '#00539f', ink: '#ffffff' },
+  'Tesco Extra': { ground: '#00539f', ink: '#ffffff' },
+  CBA: { ground: '#e2001a', ink: '#ffffff' },
+  Lidl: { ground: '#0050aa', ink: '#fff000' },
+  Aldi: { ground: '#00005f', ink: '#ffffff' },
+  Penny: { ground: '#d51130', ink: '#ffffff' },
+  Coop: { ground: '#e30613', ink: '#ffffff' },
+  'Coop ABC': { ground: '#e30613', ink: '#ffffff' },
+  'Coop mini': { ground: '#e30613', ink: '#ffffff' },
+  'Coop Mini': { ground: '#e30613', ink: '#ffffff' },
+  Reál: { ground: '#00963f', ink: '#ffffff' },
+  Real: { ground: '#00963f', ink: '#ffffff' },
+  MOL: { ground: '#009640', ink: '#ffffff' },
+  OMV: { ground: '#00437b', ink: '#ffffff' },
+  Shell: { ground: '#fbce07', ink: '#dd1d21' },
+  Orlen: { ground: '#e4021b', ink: '#ffffff' },
+  OBI: { ground: '#ff7a00', ink: '#ffffff' },
+};
+const SIGN_PLAIN = { ground: '#2b2b30', ink: '#e8e4d8' };
+
+/** One brand's strip of the atlas, in pixels. */
+const SIGN_TILE = { width: 256, height: 64 };
+
+/**
+ * Every brand name on one canvas, a strip each.
+ *
+ * One texture for the whole district, so ninety signs are one draw call
+ * rather than ninety. Two hundred and fifty-six pixels is generous: a
+ * twenty-six metre hoarding seen from three hundred metres is about eighty
+ * pixels across on a 1080p screen, so the atlas is beyond the screen's
+ * ability to show it long before it runs out.
+ */
+function makeSignAtlas(brands: readonly string[]): THREE.Texture {
+  const canvas = document.createElement('canvas');
+  canvas.width = SIGN_TILE.width;
+  canvas.height = SIGN_TILE.height * Math.max(1, brands.length);
+
+  const ctx = canvas.getContext('2d')!;
+  brands.forEach((brand, row) => {
+    const paint = SIGN_COLOURS[brand] ?? SIGN_PLAIN;
+    const top = row * SIGN_TILE.height;
+    ctx.fillStyle = paint.ground;
+    ctx.fillRect(0, top, SIGN_TILE.width, SIGN_TILE.height);
+    // A border, because a plain coloured rectangle at distance reads as a
+    // hole in the roof rather than as a board standing on it.
+    ctx.strokeStyle = paint.ink;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(2, top + 2, SIGN_TILE.width - 4, SIGN_TILE.height - 4);
+
+    ctx.fillStyle = paint.ink;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Shrunk to fit rather than clipped: `Nemzeti Dohánybolt` and `MOL` are
+    // the same board, and a name that runs off the end of its own sign is
+    // worse than a small one.
+    let size = 40;
+    ctx.font = `bold ${size}px sans-serif`;
+    while (size > 12 && ctx.measureText(brand).width > SIGN_TILE.width - 24) {
+      size -= 2;
+      ctx.font = `bold ${size}px sans-serif`;
+    }
+    ctx.fillText(brand, SIGN_TILE.width / 2, top + SIGN_TILE.height / 2);
+  });
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}
+
+/**
+ * Every shop sign in the district, as one mesh.
+ *
+ * A quad apiece, raked back off vertical and facing whatever street the shop
+ * is on, merged into a single buffer: ninety boards is a hundred and eighty
+ * triangles, which is cheaper to draw all at once than to decide about one at
+ * a time. What decides whether one is *seen* is the shader, which fades it
+ * out past reading range -- so there is nothing to cull and nothing to
+ * update per frame.
+ */
+function buildSigns(
+  signs: readonly Sign[],
+  brands: readonly string[],
+): { geometry: THREE.BufferGeometry; material: THREE.Material } {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+
+  const rows = Math.max(1, brands.length);
+  for (const sign of signs) {
+    const row = brands.indexOf(sign.brand);
+    if (row < 0) continue;
+
+    const height = sign.width * SIGN_ASPECT;
+    // The panel's own axes. Facing nought is -Z, as everything on this map is.
+    const rx = Math.cos(sign.yaw);
+    const rz = -Math.sin(sign.yaw);
+    const fx = -Math.sin(sign.yaw);
+    const fz = -Math.cos(sign.yaw);
+
+    const half = sign.width / 2;
+    const lean = height * Math.sin(SIGN_RAKE);
+    const rise = height * Math.cos(SIGN_RAKE);
+
+    // Bottom edge on the roof, top edge leaning back away from the street.
+    const foot = [sign.x, sign.base, sign.z];
+    const corner = (side: number, up: boolean) => [
+      foot[0]! + rx * half * side - (up ? fx * lean : 0),
+      foot[1]! + (up ? rise : 0),
+      foot[2]! + rz * half * side - (up ? fz * lean : 0),
+    ];
+
+    const bl = corner(-1, false);
+    const br = corner(1, false);
+    const tl = corner(-1, true);
+    const tr = corner(1, true);
+
+    // Facing out and tipped back by the rake, so the sun catches it the way
+    // it catches a board and not the way it catches a wall.
+    const nx = fx * Math.cos(SIGN_RAKE);
+    const ny = Math.sin(SIGN_RAKE);
+    const nz = fz * Math.cos(SIGN_RAKE);
+
+    const top = row / rows;
+    const bottom = (row + 1) / rows;
+    // Wound so the face looks out along the normal.
+    const face: [number[], number, number][] = [
+      [bl, 0, bottom],
+      [br, 1, bottom],
+      [tr, 1, top],
+      [bl, 0, bottom],
+      [tr, 1, top],
+      [tl, 0, top],
+    ];
+    for (const [point, u, v] of face) {
+      positions.push(point[0]!, point[1]!, point[2]!);
+      normals.push(nx, ny, nz);
+      uvs.push(u, 1 - v);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+
+  const material = new THREE.MeshLambertMaterial({
+    map: makeSignAtlas(brands),
+    transparent: true,
+    // Both sides: a board read from behind is a board, and it costs nothing.
+    side: THREE.DoubleSide,
+    fog: true,
+  });
+
+  // Faded out past reading range, in the shader, so that "is this one worth
+  // drawing" is answered per fragment and costs no draw call and no frame
+  // time. A sign four hundred metres off is two pixels of colour, and ninety
+  // of those on the horizon is worse than none.
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = `varying vec3 vSignPos;\n${shader.vertexShader}`.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+        vSignPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
+    );
+    shader.fragmentShader = `varying vec3 vSignPos;\n${shader.fragmentShader}`.replace(
+      '#include <dithering_fragment>',
+      `#include <dithering_fragment>
+      {
+        float away = distance(cameraPosition, vSignPos);
+        gl_FragColor.a *= 1.0 - smoothstep(${SIGN_FULL.toFixed(1)}, ${SIGN_GONE.toFixed(1)}, away);
+      }`,
+    );
+  };
+  material.customProgramCacheKey = () => 'shop-sign';
+
+  return { geometry, material };
 }
 
 /** Standard gauge, in metres: the distance between the inside faces of a pair. */

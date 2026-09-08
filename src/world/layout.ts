@@ -563,6 +563,39 @@ export interface Grave {
   height: number;
 }
 
+
+/**
+ * A shop's name, on the roof of the building it is in.
+ *
+ * On the roof rather than on the wall, and that is measured rather than
+ * chosen. The levels release the bird between eighteen and a hundred and
+ * fifty metres up, median sixty, over roofs whose median is fourteen -- so on
+ * ten of the thirteen you are above the roofline, and a sign flat on a wall
+ * is edge-on and only on the one wall facing you.
+ *
+ * Nor is it painted flat on the roof, which fails the other way. Flying at
+ * sixty metres, the line to a sign four hundred metres off is seven degrees
+ * below horizontal, and thirteen at two hundred; flat lettering is invisible
+ * at those angles and legible only from directly overhead, by which point you
+ * have arrived and no longer need it. Navigation happens at distance.
+ *
+ * So: a hoarding standing on the roof, raked back off vertical, facing the
+ * street. Which is what Budapest actually puts on its roofs.
+ */
+export interface Sign {
+  /** What it says. */
+  brand: string;
+  /** Where it stands, in local metres. */
+  x: number;
+  z: number;
+  /** The height of the roof it stands on, in metres. */
+  base: number;
+  /** How wide the panel is. Its height follows from the lettering. */
+  width: number;
+  /** Which way it faces: the yaw whose forward is out towards the street. */
+  yaw: number;
+}
+
 export interface CityLayout {
   buildings: Building[];
   trees: Tree[];
@@ -576,6 +609,8 @@ export interface CityLayout {
   people: Person[];
   /** Painted pedestrian crossings, where the map recorded any. */
   crossings?: Crossing[];
+  /** Shop signs standing on the roofs they belong to. */
+  signs?: Sign[];
   /** Solid volumes for every object above, in simulation coordinates. */
   boxes: Box[];
   /** Streets to draw, when the world was built from a real map. */
