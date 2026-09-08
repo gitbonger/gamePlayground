@@ -4,8 +4,20 @@
     {
       "name": "pigeon-sim",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 5183
+    },
+    {
+      "name": "pigeon-sim-play",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "play"
+      ],
+      "port": 5199
     }
   ]
 }

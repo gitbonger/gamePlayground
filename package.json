@@ -6,6 +6,7 @@
   "scripts": {
     "test": "vitest run",
     "dev": "vite",
+    "play": "vite --config vite.play.config.ts",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
