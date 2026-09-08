@@ -389,7 +389,13 @@ const APPROACH = 150;
  * last
  * because it is the only one of them that is a moment rather than a state.
  */
-export const approachFor = (flight: Approaching): Tip | null => {
+export const approachFor = (teaching: boolean, flight: Approaching): Tip | null => {
+  // Nothing where the game has stopped explaining itself. This is the tutor
+  // by another name -- four instructions about which key to press and when --
+  // so a level that says it teaches nothing should not be handing them out at
+  // the one moment the player is busiest. `teaches` used to mean two
+  // different things depending on which panel was asking.
+  if (!teaching) return null;
   if (flight.toGo > APPROACH) return null;
 
   // Too high to get down in the room that is left. A pigeon glides about six

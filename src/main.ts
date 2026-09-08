@@ -2819,7 +2819,7 @@ function frame(nowMs: number) {
   const urgent =
     command() ??
     (settling
-      ? approachFor({
+      ? approachFor(tutorial, {
           toGo,
           altitude: telemetry.altitude,
           fast: !settling.speedOk,

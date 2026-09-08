@@ -348,8 +348,8 @@ describe('talking an approach down', () => {
 
   it('says nothing until the target is close', () => {
     // Out here it is a flight, not an approach, and the arrow is enough.
-    expect(approachFor({ ...near, toGo: 151 })).toBeNull();
-    expect(approachFor({ ...near, toGo: 150 })).not.toBeNull();
+    expect(approachFor(true, { ...near, toGo: 151 })).toBeNull();
+    expect(approachFor(true, { ...near, toGo: 150 })).not.toBeNull();
   });
 
   it('deals with height first, because height is the one that runs out', () => {
@@ -357,17 +357,17 @@ describe('talking an approach down', () => {
     // cannot be fixed at twenty, whereas too fast can -- so height is said
     // first even when both are wrong.
     const high = { ...near, altitude: 60, fast: true };
-    expect(approachFor(high)?.text.en).toBe('Lose some height');
-    expect(approachFor({ ...high, altitude: 20 })?.text.en).toBe('Brake to slow down');
+    expect(approachFor(true, high)?.text.en).toBe('Lose some height');
+    expect(approachFor(true, { ...high, altitude: 20 })?.text.en).toBe('Brake to slow down');
   });
 
   it('answers a hard sink with the wings, not the nose', () => {
     // At roof height, beating arrests a sink; pulling the nose up trades the
     // speed there is no longer any of.
-    expect(approachFor({ ...near, altitude: 10, sinking: true })?.text.en).toBe('Beat to soften it');
+    expect(approachFor(true, { ...near, altitude: 10, sinking: true })?.text.en).toBe('Beat to soften it');
     // Higher up there is room to fly out of it, and the general instruction
     // stands.
-    expect(approachFor({ ...near, altitude: 30, toGo: 120, sinking: true })?.text.en).toBe(
+    expect(approachFor(true, { ...near, altitude: 30, toGo: 120, sinking: true })?.text.en).toBe(
       'Brake, then pull up',
     );
   });
@@ -378,7 +378,7 @@ describe('talking an approach down', () => {
     // calls this and is no use to somebody who has never landed anything --
     // asked what it meant, the first player to read it guessed it was the
     // part of a wing that opens to brake.
-    expect(approachFor({ ...near, toGo: 20, altitude: 5 })?.text.en).toBe('Pull up!');
+    expect(approachFor(true, { ...near, toGo: 20, altitude: 5 })?.text.en).toBe('Pull up!');
     expect(
       cautionFor(true, {
         altitude: 8,
@@ -393,11 +393,11 @@ describe('talking an approach down', () => {
 
   it('draws every one of them with a key that does something', () => {
     const shown = [
-      approachFor({ ...near, altitude: 60 }),
-      approachFor({ ...near, fast: true }),
-      approachFor({ ...near, altitude: 10, sinking: true }),
-      approachFor({ ...near, toGo: 20, altitude: 5 }),
-      approachFor(near),
+      approachFor(true, { ...near, altitude: 60 }),
+      approachFor(true, { ...near, fast: true }),
+      approachFor(true, { ...near, altitude: 10, sinking: true }),
+      approachFor(true, { ...near, toGo: 20, altitude: 5 }),
+      approachFor(true, near),
     ];
     for (const tip of shown) {
       expect(tip).not.toBeNull();
@@ -406,5 +406,22 @@ describe('talking an approach down', () => {
         expect(words.length, words).toBeLessThan(30);
       }
     }
+  });
+});
+
+describe('talking a landing down', () => {
+  const near = { toGo: 60, altitude: 10, fast: false, sinking: false };
+
+  it('says nothing at all on a level that teaches nothing', () => {
+    // The approach coaching is the tutor by another name: four instructions
+    // about which key to press and when. A level past the point the game
+    // explains itself should not hand them out at the moment the player is
+    // busiest -- which is what `The rescue` was doing, on the roof, at the
+    // end of the story.
+    expect(approachFor(false, near)).toBeNull();
+    expect(approachFor(false, { ...near, altitude: 60, fast: true })).toBeNull();
+    expect(approachFor(false, { ...near, toGo: 20, altitude: 5 })).toBeNull();
+    // And it is the same flight that would have been talked down otherwise.
+    expect(approachFor(true, near)).not.toBeNull();
   });
 });
