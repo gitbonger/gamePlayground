@@ -2340,20 +2340,35 @@ function buildSigns(
 
     const top = row / rows;
     const bottom = (row + 1) / rows;
-    // Wound so the face looks out along the normal.
-    const face: [number[], number, number][] = [
-      [bl, 0, bottom],
-      [br, 1, bottom],
-      [tr, 1, top],
-      [bl, 0, bottom],
-      [tr, 1, top],
-      [tl, 0, top],
-    ];
-    for (const [point, u, v] of face) {
-      positions.push(point[0]!, point[1]!, point[2]!);
-      normals.push(nx, ny, nz);
-      uvs.push(u, 1 - v);
-    }
+
+    // Two faces, not one double-sided one. A single quad drawn from both
+    // sides shows the same texture coordinates whichever way it is looked at,
+    // so the back of the Lidl on Nagyvárad tér read `lbiJ` -- which no test
+    // would ever have caught and one look did.
+    //
+    // A real hoarding is painted on both sides, so this is what it should
+    // have been anyway: a back face wound the other way, with its own
+    // lettering the right way round on it.
+    const quad = (a: number[], b: number[], c: number[], d: number[], out: number) => {
+      const corners: [number[], number, number][] = [
+        [a, 0, bottom],
+        [b, 1, bottom],
+        [c, 1, top],
+        [a, 0, bottom],
+        [c, 1, top],
+        [d, 0, top],
+      ];
+      for (const [point, u, v] of corners) {
+        positions.push(point[0]!, point[1]!, point[2]!);
+        normals.push(nx * out, ny * out, nz * out);
+        uvs.push(u, 1 - v);
+      }
+    };
+
+    // Wound so each face looks out along its own normal, and lettered so each
+    // reads left to right from in front of it.
+    quad(bl, br, tr, tl, 1);
+    quad(br, bl, tl, tr, -1);
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -2364,8 +2379,10 @@ function buildSigns(
   const material = new THREE.MeshLambertMaterial({
     map: makeSignAtlas(brands),
     transparent: true,
-    // Both sides: a board read from behind is a board, and it costs nothing.
-    side: THREE.DoubleSide,
+    // One side each, because there are two of them: see `quad` above. Drawn
+    // double-sided instead, the back of every board in the district showed
+    // its name in mirror writing.
+    side: THREE.FrontSide,
     fog: true,
   });
 

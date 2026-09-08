@@ -1062,7 +1062,8 @@ describe('the shop signs', () => {
       }
     });
     expect(uvs).not.toBeNull();
-    // A quad is six vertices, so the first board is 0..5 and the second 6..11.
+    // A board is two quads -- front and back -- so twelve vertices each: the
+    // first board is 0..11 and the second 12..23.
     // Compared as bands rather than as a count of distinct numbers: adjacent
     // strips share the boundary between them, so two brands make three
     // values and not four -- a count would have been asserting the wrong
@@ -1070,19 +1071,63 @@ describe('the shop signs', () => {
     const band = (from: number) => {
       let low = Infinity;
       let high = -Infinity;
-      for (let i = from; i < from + 6; i += 1) {
+      for (let i = from; i < from + 12; i += 1) {
         low = Math.min(low, uvs!.getY(i));
         high = Math.max(high, uvs!.getY(i));
       }
       return { low, high };
     };
     const first = band(0);
-    const second = band(6);
+    const second = band(12);
     expect(first.high - first.low).toBeCloseTo(0.5, 6);
     expect(second.high - second.low).toBeCloseTo(0.5, 6);
     // Different strips: one ends where the other begins, and they do not
     // overlap.
     expect(first.low === second.low && first.high === second.high).toBe(false);
+    world.dispose();
+  });
+
+
+  it('letters both sides of the board, each the right way round', () => {
+    // A single quad drawn from both sides shows one set of texture
+    // coordinates whichever way it is looked at, so the back of the Lidl on
+    // Nagyvárad tér read `lbiJ`. A real hoarding is painted on both faces.
+    const world = withSigns([board({ yaw: 0 })]);
+    let geometry: THREE.BufferGeometry | null = null;
+    world.group.traverse((object) => {
+      if (object.name === 'signs') geometry = (object as THREE.Mesh).geometry;
+    });
+    const points = geometry!.getAttribute('position') as THREE.BufferAttribute;
+    const uv = geometry!.getAttribute('uv') as THREE.BufferAttribute;
+    const normals = geometry!.getAttribute('normal') as THREE.BufferAttribute;
+
+    // Two faces, back to back.
+    expect(points.count).toBe(12);
+    expect(normals.getZ(0)).toBeLessThan(0);
+    expect(normals.getZ(6)).toBeGreaterThan(0);
+
+    /**
+     * Which way the lettering runs as seen from in front of a face: the
+     * cross product of "along the writing" and the face's own normal.
+     *
+     * The claim is that this comes out the same for both faces -- that is
+     * what "reads the right way round from either side" means, and it is
+     * false for one quad drawn twice however the material is set.
+     */
+    const handedness = (from: number) => {
+      // Two corners at the same height with different U.
+      let low = from;
+      let high = from;
+      for (let i = from; i < from + 6; i += 1) {
+        if (uv.getX(i) < uv.getX(low)) low = i;
+        if (uv.getX(i) > uv.getX(high)) high = i;
+      }
+      const runX = points.getX(high) - points.getX(low);
+      const runZ = points.getZ(high) - points.getZ(low);
+      // Cross of (run) with the face normal, taken about Y.
+      return runX * normals.getZ(from) - runZ * normals.getX(from);
+    };
+    expect(Math.sign(handedness(0))).toBe(Math.sign(handedness(6)));
     world.dispose();
   });
 
