@@ -24,6 +24,7 @@ import {
   type StreetIndex,
 } from './streets';
 import { footprintSamples, indexAreas, type AreaIndex } from './areas';
+import { DECK, deckOf } from './bridges';
 import { extractBlocks, type Block } from './blocks';
 import {
   distanceToEdges,
@@ -1029,6 +1030,43 @@ export function buildLayoutFromMap(
     });
   }
 
+  // --- Bridges --------------------------------------------------------------
+  // A deck piece at a time, boxed exactly where it is drawn. Solid so the
+  // bird cannot go through it and can stand on it, and raised so it can go
+  // under it -- which is the only reason any of this is here.
+  //
+  // The slab and nothing above it. A parapet is drawn along each edge, and
+  // boxing those too would put a wall down both sides of the carriageway: a
+  // bird coming in to land would settle on top of the parapet, a metre above
+  // the road, or be stopped short of the deck altogether. Flying through a
+  // handrail is the smaller lie.
+  const bridges = map.bridges ?? [];
+  for (const bridge of bridges) {
+    const deck = deckOf(bridge);
+    if (!deck) continue;
+    for (let i = 1; i < deck.spine.length; i += 1) {
+      const [ax, az, ay] = deck.spine[i - 1]!;
+      const [bx, bz, by] = deck.spine[i]!;
+      const length = Math.hypot(bx - ax, bz - az);
+      if (length < 1e-3) continue;
+      const top = Math.max(ay, by);
+      boxes.push({
+        minX: (ax + bx) / 2 - length / 2,
+        maxX: (ax + bx) / 2 + length / 2,
+        minZ: (az + bz) / 2 - deck.width / 2,
+        maxZ: (az + bz) / 2 + deck.width / 2,
+        // The piece is boxed to its higher end, so a run of them is a
+        // staircase rather than a set of steps with gaps between the treads.
+        minY: Math.min(ay, by) - DECK,
+        maxY: top,
+        // Local X along the deck, which is the convention the rest of the map
+        // is turned in: facing nought is -Z, so a way running along +X is a
+        // quarter turn from it.
+        yaw: -Math.atan2(bz - az, bx - ax),
+      });
+    }
+  }
+
   return {
     buildings,
     trees,
@@ -1039,6 +1077,7 @@ export function buildLayoutFromMap(
     boxes,
     crossings,
     roads: map.roads,
+    bridges,
     rails: map.rails ?? [],
     trains,
     areas: map.areas ?? [],

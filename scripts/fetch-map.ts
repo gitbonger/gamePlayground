@@ -462,6 +462,7 @@ async function main() {
   }
 
   const roads = [];
+  const bridges = [];
   const rails = [];
   const areas = [];
   let rawPoints = 0;
@@ -495,15 +496,27 @@ async function main() {
       // being there -- a kerb nothing may be built on, and crossings laid
       // across a carriageway that is ten metres down.
       //
-      // A bridge is the opposite case and is kept: it is a road, it is there,
-      // and it is visible from the air. What is wrong with a bridge here is
-      // only its height, and the ground in this game is flat.
       if (tags['tunnel'] || tags['covered'] === 'yes' || tags['location'] === 'underground') {
         continue;
       }
       rawPoints += element.geometry.length;
       const points = toLocal(element.geometry, 1.5);
-      if (points.length >= 2) roads.push({ kind: highway, width, points });
+      if (points.length < 2) continue;
+
+      // A bridge is the opposite case, and it is the one place where flat
+      // ground is plainly a lie: Kerepesi ut crosses the throat of Keleti
+      // station on a flyover, and painted flat it is a road drawn across four
+      // running lines with trains sliding through it. Filed separately, with
+      // the storey the map puts it on, so the world can lift it.
+      //
+      // `area=yes` is not a bridge for this purpose. It is how the map files
+      // the raised deck outside Keleti -- a floor, a closed way, a thing with
+      // no two ends to ramp between -- and it is better left painted flat.
+      if (tags['bridge'] && tags['bridge'] !== 'no' && tags['area'] !== 'yes') {
+        bridges.push({ kind: highway, width, points, layer: Number(tags['layer'] ?? 1) || 1 });
+        continue;
+      }
+      roads.push({ kind: highway, width, points });
       continue;
     }
 
@@ -592,7 +605,7 @@ async function main() {
     else crossings.push(at);
   }
 
-  const keptPoints = [...roads, ...rails].reduce((total, way) => total + way.points.length, 0);
+  const keptPoints = [...roads, ...bridges, ...rails].reduce((total, way) => total + way.points.length, 0);
   const out = resolve(process.cwd(), 'src/world/data', `${name}.json`);
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(
@@ -605,6 +618,7 @@ async function main() {
         generated: new Date().toISOString(),
         attribution: ATTRIBUTION,
         roads,
+        bridges,
         rails,
         areas,
         buildings,
@@ -617,10 +631,11 @@ async function main() {
   );
 
   const kb = (
-    Buffer.byteLength(JSON.stringify({ roads, rails, areas, buildings, crossings, trees })) / 1024
+    Buffer.byteLength(JSON.stringify({ roads, bridges, rails, areas, buildings, crossings, trees })) / 1024
   ).toFixed(0);
   process.stderr.write(
-    `${roads.length} roads and ${rails.length} railways (${keptPoints} points), ` +
+    `${roads.length} roads, ${bridges.length} bridges and ${rails.length} railways ` +
+      `(${keptPoints} points), ` +
       `${areas.length} green areas, ${buildings.length} buildings ` +
       `(${buildings.filter((b) => b[5] !== null).length} of them saying how tall), ` +
       `${crossings.length} crossings, ${trees.length} trees, ` +

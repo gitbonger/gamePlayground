@@ -7,6 +7,7 @@
 
 import { aabb, type Box } from '../sim/collision';
 import type { Rail, Road } from './streets';
+import type { Bridge } from './bridges';
 import type { Train } from './train';
 import type { Area } from './areas';
 
@@ -579,6 +580,8 @@ export interface CityLayout {
   boxes: Box[];
   /** Streets to draw, when the world was built from a real map. */
   roads?: Road[];
+  /** Roads carried over something, drawn raised rather than painted flat. */
+  bridges?: Bridge[];
   /** Surface railway to draw: heavy rail and tram. */
   rails?: Rail[];
   /** Trains standing on it. */

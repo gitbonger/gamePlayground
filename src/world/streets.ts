@@ -8,6 +8,7 @@
  */
 
 import { aabb, type Aabb } from '../sim/collision';
+import type { Bridge } from './bridges';
 import type { Area } from './areas';
 
 export interface Road {
@@ -41,6 +42,11 @@ export interface MapData {
   radius: number;
   attribution: string;
   roads: Road[];
+  /**
+   * Roads carried over something, kept out of `roads` so they are not painted
+   * flat across whatever they cross. Absent on older baked maps.
+   */
+  bridges?: Bridge[];
   /** Surface railway: heavy rail and tram. Absent on older baked maps. */
   rails?: Rail[];
   /** Parks, woods, playing fields and water. Absent on older baked maps. */

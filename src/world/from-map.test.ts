@@ -12,6 +12,7 @@ import {
   type Landmark,
 } from './layout';
 import { indexStreets, type MapData, type Rail, type Road } from './streets';
+import { CLEARANCE, type Bridge } from './bridges';
 import { footprintSamples, type Area } from './areas';
 import { pointInPolygon } from './polygon';
 import {
@@ -1574,5 +1575,69 @@ describe('trees that came off the map', () => {
   it('plants none where the map recorded none', () => {
     const world = buildLayoutFromMap(mapOf(EAST), defaultMapWorldOptions);
     expect(world.trees.some((tree) => tree.species === STREET_TREE)).toBe(false);
+  });
+});
+
+/**
+ * A flyover clear of everything else in this file, so a sweep under it can
+ * only ever have met the bridge.
+ *
+ * Eighty-five metres of three-lane primary road, which is Kerepesi ut over
+ * the throat of Keleti station to within a metre or two -- the case the whole
+ * feature exists for.
+ */
+const FLYOVER: Bridge = { kind: 'primary', width: 16, points: [[-42, 500], [43, 500]], layer: 1 };
+
+const carrying = (bridge: Bridge): MapData => ({ ...mapOf(BLOCK), bridges: [bridge] });
+
+describe('a road carried over something', () => {
+  it('leaves a gap along the ground to fly through', () => {
+    // The point of the whole thing. A bridge drawn flat is a road painted
+    // across four running lines, and a bridge that is solid all the way down
+    // is a wall across them instead -- neither is a thing you can go under.
+    const world = buildLayoutFromMap(carrying(FLYOVER));
+    const under = createColliderField(world.boxes);
+    expect(under.sweep(vec(-30, 2, 500), vec(30, 2, 500), 0.25)).toBeNull();
+  });
+
+  it('stops a bird that flies up into the underside of it', () => {
+    // The other half of the same claim: the gap is a gap because there is
+    // something over it.
+    const world = buildLayoutFromMap(carrying(FLYOVER));
+    const hit = createColliderField(world.boxes).sweep(vec(0.5, 2, 500), vec(0.5, 14, 500), 0.25);
+    expect(hit).not.toBeNull();
+    expect(hit!.point.y).toBeGreaterThan(CLEARANCE * 0.8);
+  });
+
+  it('can be landed on, at the height the road surface is drawn at', () => {
+    // A deck is a roof as far as a pigeon is concerned, and one it cannot
+    // settle on is a bridge you fall through.
+    const world = buildLayoutFromMap(carrying(FLYOVER));
+    const down = createColliderField(world.boxes).sweep(vec(0.5, 20, 500), vec(0.5, 3, 500), 0.25);
+    expect(down).not.toBeNull();
+    expect(down!.point.y).toBeGreaterThan(CLEARANCE);
+    expect(down!.normal.y).toBeGreaterThan(0.9);
+  });
+
+  it('hands the deck on to be drawn, rather than only boxing it', () => {
+    // Boxed and not drawn is an invisible wall in the sky; the two come from
+    // one place so that they cannot part company.
+    expect(buildLayoutFromMap(carrying(FLYOVER)).bridges).toEqual([FLYOVER]);
+    expect(buildLayoutFromMap(mapOf(BLOCK)).bridges).toEqual([]);
+  });
+
+  it('leaves the ground under it clear for whatever it crosses', () => {
+    // Nothing of the bridge reaches the floor between its ends: a solid
+    // standing on the ground under a flyover is a pier, and a pier across a
+    // railway is worse than no bridge at all.
+    const world = buildLayoutFromMap(carrying(FLYOVER));
+    const along = createColliderField(world.boxes);
+    // Started well outside the deck's own width, on purpose: a sweep that
+    // begins inside a box has no face to enter by and comes back with
+    // nothing, so a test run from under the bridge would pass however solid
+    // the bridge was.
+    for (let x = -25; x <= 25; x += 5) {
+      expect(along.sweep(vec(x, 0.4, 484), vec(x, 0.4, 516), 0.25)).toBeNull();
+    }
   });
 });

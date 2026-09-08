@@ -27,6 +27,7 @@ import {
   type Station,
 } from './layout';
 import type { Rail, Road } from './streets';
+import { DECK, deckOf, type Bridge } from './bridges';
 import { CARRIAGE, ENGINE, TRAM, WAGON, type Train, type Vehicle } from './train';
 import { defaultSmokeOptions, puffOpacity, puffRadius, type Puff } from './smoke';
 import { SEED_SIZE } from './seeds';
@@ -1053,6 +1054,19 @@ export function buildWorld(
     surface.receiveShadow = true;
     surface.renderOrder = ROAD_ORDER;
     group.add(surface);
+  }
+
+  // --- Bridges --------------------------------------------------------------
+  // Not a decal. Everything else on the ground is painted flat and settled by
+  // the order it is drawn in; a bridge is the one road with a soffit, and the
+  // whole point of it is that there is somewhere to be underneath.
+  if (layout.bridges?.length) {
+    const { geometry, material } = buildBridges(layout.bridges);
+    disposables.push(geometry, material);
+    const decks = new THREE.Mesh(geometry, material);
+    decks.castShadow = true;
+    decks.receiveShadow = true;
+    group.add(decks);
   }
 
   return {
@@ -2218,6 +2232,125 @@ function buildRoads(roads: readonly Road[]): {
   });
 
   return { geometry, material };
+}
+
+/**
+ * The parapet along each edge of a deck: how high it stands and how thick.
+ *
+ * Not a real barrier -- nothing is boxed for it, so a bird goes through one --
+ * but it is what makes a bridge look like a bridge from above. A raised strip
+ * of road with nothing along its edges reads as a road that has come loose.
+ */
+const PARAPET = { height: 1.0, width: 0.4 };
+
+/** The concrete of a deck: its soffit, its sides and its parapets. */
+const BRIDGE_CONCRETE = 0x8b8a85;
+/** And the carriageway on top of it, which is a road like any other. */
+const BRIDGE_SURFACE = 0x53534f;
+
+function buildBridges(bridges: readonly Bridge[]): {
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material;
+} {
+  const positions: number[] = [];
+  const colours: number[] = [];
+
+  for (const bridge of bridges) {
+    const deck = deckOf(bridge);
+    if (!deck) continue;
+
+    const half = deck.width / 2;
+    // The slab: carriageway on top, concrete everywhere else.
+    beam(deck.spine, 0, half, -DECK, 0, BRIDGE_CONCRETE, BRIDGE_SURFACE, positions, colours);
+    // And a parapet down each edge, standing on it.
+    for (const side of [1, -1]) {
+      const at = side * (half - PARAPET.width / 2);
+      const edge = PARAPET.width / 2;
+      beam(
+        deck.spine,
+        at,
+        edge,
+        0,
+        PARAPET.height,
+        BRIDGE_CONCRETE,
+        BRIDGE_CONCRETE,
+        positions,
+        colours,
+      );
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
+  geometry.computeVertexNormals();
+
+  return {
+    geometry,
+    material: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
+  };
+}
+
+/**
+ * A rectangular beam run along a spine, as top, soffit and two sides.
+ *
+ * `offset` slides it sideways off the middle line and `half` is its
+ * half-width, so the same call makes a deck and makes the parapet standing on
+ * the edge of one. `base` and `top` are measured from the spine's own height,
+ * which is the road surface.
+ *
+ * No end caps. Both ends of a deck are buried in the road it joins, and the
+ * ends of a parapet are hidden by the deck rolling away underneath them.
+ */
+function beam(
+  spine: readonly [number, number, number][],
+  offset: number,
+  half: number,
+  base: number,
+  top: number,
+  side: number,
+  crown: number,
+  positions: number[],
+  colours: number[],
+): void {
+  const shade = new THREE.Color(side);
+  const above = new THREE.Color(crown);
+
+  const quad = (
+    a: readonly number[],
+    b: readonly number[],
+    c: readonly number[],
+    d: readonly number[],
+    colour: THREE.Color,
+  ) => {
+    for (const corner of [a, b, c, a, c, d]) {
+      positions.push(corner[0]!, corner[1]!, corner[2]!);
+      colours.push(colour.r, colour.g, colour.b);
+    }
+  };
+
+  for (let i = 1; i < spine.length; i += 1) {
+    const [ax, az, ay] = spine[i - 1]!;
+    const [bx, bz, by] = spine[i]!;
+    const run = Math.hypot(bx - ax, bz - az);
+    if (run < 1e-3) continue;
+    // Square to the way, which is the direction the width is measured in.
+    const nx = -(bz - az) / run;
+    const nz = (bx - ax) / run;
+
+    // Four corners in plan: left and right at each end of the piece.
+    const al = [ax + nx * (offset + half), az + nz * (offset + half)];
+    const ar = [ax + nx * (offset - half), az + nz * (offset - half)];
+    const bl = [bx + nx * (offset + half), bz + nz * (offset + half)];
+    const br = [bx + nx * (offset - half), bz + nz * (offset - half)];
+
+    const at = (p: number[], y: number) => [p[0]!, y, p[1]!];
+
+    quad(at(al, ay + top), at(bl, by + top), at(br, by + top), at(ar, ay + top), above);
+    quad(at(ar, ay + base), at(br, by + base), at(bl, by + base), at(al, ay + base), shade);
+    quad(at(al, ay + base), at(bl, by + base), at(bl, by + top), at(al, ay + top), shade);
+    quad(at(ar, ay + top), at(br, by + top), at(br, by + base), at(ar, ay + base), shade);
+  }
 }
 
 /**
