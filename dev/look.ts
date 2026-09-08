@@ -46,3 +46,8 @@ const n = (k: string, d: number) => Number(params.get(k) ?? d);
 camera.position.set(n('x', 300), n('y', 40), n('z', 60));
 camera.lookAt(n('tx', 298), n('ty', 6), n('tz', -72));
 renderer.render(scene, camera);
+
+// Left where a console can reach it, so the page is also somewhere to ask
+// what the world costs to draw: `__look.renderer.info` after a frame is the
+// draw calls and triangles, and re-rendering in a loop times it.
+(window as unknown as { __look: unknown }).__look = { renderer, scene, camera, world };

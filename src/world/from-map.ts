@@ -279,6 +279,10 @@ export function buildLayoutFromMap(
   options: MapWorldOptions = defaultMapWorldOptions,
 ): MapWorld {
   const streets = indexStreets(map.roads);
+  // The widest carriageway on the map, which is how far a street query has to
+  // reach before the answer stops being able to change. Taken from the data
+  // rather than written down, so a map with a motorway on it still works.
+  const widestRoad = map.roads.reduce((widest, road) => Math.max(widest, road.width), 0);
   // A railway is a line with a width and a corridor to keep clear, which is
   // exactly what the street index already answers questions about. Same index,
   // different question.
@@ -783,8 +787,20 @@ export function buildLayoutFromMap(
   // second time: a courtyard is exactly the ground that no wing of building
   // reaches, and asking how far the nearest carriageway is answers that
   // directly, for any shape of block, without a polygon to go wrong.
+  //
+  // Asked no further than the answer can depend on, which used to be four
+  // hundred metres and is the whole of the world build's cost: this runs for
+  // every candidate tree position on every block, a street query walks a grid
+  // cell at a time, and four hundred metres is four hundred and forty-one
+  // cells to look in against nine. Both answers are the same. The test is
+  // whether the nearest street is further off than a frontage, so a street
+  // beyond that distance and no street at all mean the same thing, and
+  // finding *which* far-off street it was is work whose result is thrown
+  // away. Measured, `nearest` was two thirds of the time it took to build the
+  // world.
+  const frontage = (widestRoad / 2 + options.setback) * options.streetRoom + options.wingDepth;
   const indoors = (x: number, z: number) => {
-    const street = streets.nearest(x, z, 400);
+    const street = streets.nearest(x, z, frontage + 1);
     if (!street) return true;
     const kerb = (street.width / 2 + options.setback) * options.streetRoom;
     return street.distance > kerb + options.wingDepth;
@@ -800,8 +816,11 @@ export function buildLayoutFromMap(
 
   // And the ones nothing would fit on, planted right up to the kerb, since
   // there is no frontage here for them to stand behind.
+  // Same again, and a shorter reach still: this one only cares whether the
+  // point is on the carriageway, so nothing beyond half the widest road on
+  // the map can change the answer.
   const offTheRoad = (x: number, z: number) => {
-    const street = streets.nearest(x, z, 400);
+    const street = streets.nearest(x, z, widestRoad / 2 + 1);
     return !street || street.distance > street.width / 2;
   };
   for (const block of bare) {
