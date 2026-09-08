@@ -1550,3 +1550,44 @@ describe('where the flock wheels, and where it comes from', () => {
     expect(Math.abs(middle), 'centred on him').toBeLessThan(defaultFlockOptions.radius);
   });
 });
+
+describe('a flock called back after it has landed', () => {
+  const anchor = () => ({ x: 0, y: 40, z: 0, heading: 0, speed: 16, climb: 0 });
+  const wind = { at: () => vec(0, 0, 0), meanAt: () => 0 };
+  const flying = (birds: number) => {
+    const flock = createFlock(1, anchor, { ...defaultFlockOptions, count: birds });
+    flock.only(birds);
+    for (let t = 0; t < 8 * 120; t += 1) flock.update(1 / 120, undefined, wind, true);
+    return flock;
+  };
+
+  it('sends them back up rather than leaving them on the roof', () => {
+    // `land` is a one-way door on purpose: a bird that has put down must not
+    // be sent back up by the player taking off again. A recall is the other
+    // kind of moment entirely -- the flock is being started over -- and left
+    // set, the landing outlived the level that asked for it. The one bird let
+    // out on the level after spent the ever after trying to touch down on a
+    // roof a kilometre behind her.
+    const flock = flying(4);
+    flock.land({ x: 0, z: 0, on: 0 });
+    for (let t = 0; t < 20 * 120; t += 1) flock.update(1 / 120, undefined, wind, true);
+    expect(flock.members.some((m) => m.state.ending !== null), 'they came down').toBe(true);
+
+    flock.recall();
+    for (let t = 0; t < 25 * 120; t += 1) flock.update(1 / 120, undefined, wind, true);
+    const up = flock.members.filter((m) => m.down <= 0 && m.state.ending === null);
+    expect(up.length, 'and went back up').toBeGreaterThan(0);
+    // Well clear of the ground they were standing on, rather than hopping.
+    expect(Math.max(...up.map((m) => m.state.position.y))).toBeGreaterThan(15);
+  });
+
+  it('still lets a landed flock stay landed while the level is running', () => {
+    // The other half, and the reason `land(null)` is not simply called on
+    // every level change: thirty birds who came to help have arrived, and one
+    // of them blinking back into the air would say they were interchangeable.
+    const flock = flying(4);
+    flock.land({ x: 0, z: 0, on: 0 });
+    for (let t = 0; t < 30 * 120; t += 1) flock.update(1 / 120, undefined, wind, true);
+    expect(flock.members.every((m) => m.state.ending !== null || m.down > 0)).toBe(true);
+  });
+});

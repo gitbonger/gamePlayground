@@ -986,6 +986,14 @@ export function createFlock(
   }
 
   function recall() {
+    // Back in the air, if they were ever asked down. `land` is a one-way door
+    // on purpose -- a bird that has put down must not be sent back up by the
+    // player taking off again -- but a recall is the other kind of moment
+    // entirely: the flock is being started over. Left set, the landing
+    // outlived the level that asked for it, and the one bird let out on the
+    // level after spent the ever after trying to touch down on a roof a
+    // kilometre behind her.
+    land(null);
     pilots.forEach((pilot, i) => {
       // Anything above nought reads as "not in the air" to everything else,
       // which is what puts them away; the timer is what spaces them out.

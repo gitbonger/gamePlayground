@@ -518,9 +518,15 @@ const world = buildWorld(layout, {
   // named, having been put there on purpose. Only the wagons do, because
   // which wagon is a level is a decision about the game rather than a fact
   // about the train.
-  objectives: LEVELS.filter((spec) => spec.target.kind === 'wagon').map((spec) => {
-    const on = spec.target as Extract<LevelTarget, { kind: 'wagon' }>;
-    return { name: on.name, train: on.train, vehicle: carOf(on) };
+  //
+  // Picked out and narrowed in one pass rather than filtered and then cast: a
+  // cast over a field that may not be there is a promise the compiler cannot
+  // check, and `target` may not be there since the ever after is aimed at
+  // nothing.
+  objectives: LEVELS.flatMap((spec) => {
+    const on = spec.target;
+    if (on?.kind !== 'wagon') return [];
+    return [{ name: on.name, train: on.train, vehicle: carOf(on) }];
   }),
   smoke: allPuffs.length,
 });
@@ -588,7 +594,8 @@ let talkingTo: Resident | null = null;
 // All of the above is declared here rather than beside the code that uses it
 // because `playLevel` runs at module scope, and a `let` read before its own
 // declaration throws. This file has now made that mistake twice.
-const objective = (name: string) => world.markers.find((marker) => marker.name === name) ?? null;
+const objective = (name: string | null) =>
+  name === null ? null : (world.markers.find((marker) => marker.name === name) ?? null);
 /** The marker for whatever the level being played is about. */
 /**
  * The thing being pointed at, or null when nothing is.
@@ -726,7 +733,7 @@ function releaseFor(spec: Level): { at: Vec3; heading: number; perched: boolean 
   // before the player has touched anything, which is the whole idea of it.
   const waiting = spec.begins === 'perched' ? waitingIn(spec) : undefined;
   const stood = waiting ? standingSpot(waiting) : null;
-  const described = LANDMARKS.find((l) => l.name === spec.target.name);
+  const described = LANDMARKS.find((l) => l.name === spec.target?.name);
   if (marker && stood && waiting) {
     const across = pointOn(
       { x: marker.position.x, z: marker.position.z, yaw: described?.yaw ?? 0 },

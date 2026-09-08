@@ -47,7 +47,7 @@ export type LevelTarget =
   | { kind: 'landmark'; name: string };
 
 /** What the marker over a level's target is called. */
-export const targetName = (level: Level): string => level.target.name;
+export const targetName = (level: Level): string | null => level.target?.name ?? null;
 
 /** Who is waiting there. */
 export interface LevelPerson {
@@ -489,7 +489,16 @@ export interface Level {
    * on, at the hour you were standing there.
    */
   when: string;
-  target: LevelTarget;
+  /**
+   * What the level is aimed at, where it is aimed at anything.
+   *
+   * Optional for one level: the ever after has nothing to reach and nothing
+   * to point at. It used to name the loft anyway, purely so the arrow had
+   * somewhere to send you -- which is a level answering a question nobody
+   * asked, on the one flight whose whole point is that there is nowhere it
+   * has to go.
+   */
+  target?: LevelTarget;
   /**
    * Marks along the way, shown one at a time, as help and nothing else.
    *
@@ -1180,9 +1189,6 @@ export const LEVELS: readonly Level[] = [
     flockIs: PINK.name,
     // Nothing is being taught any more, and nothing is hunting.
     teaches: false,
-    // The loft, for the arrow -- somewhere to go for a player who wants
-    // somewhere to go, and nothing at all happens on arriving.
-    target: { kind: 'landmark', name: LOFT.name },
     // Nobody standing anywhere: she is flying, and everyone else has been
     // met.
     cast: [],

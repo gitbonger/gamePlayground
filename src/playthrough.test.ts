@@ -66,8 +66,25 @@ function destination(level: Level): { x: number; z: number } | null {
   // A wagon, which is somewhere else every tick. Where it is standing when the
   // world is built is close enough: this asks whether the yard is reachable,
   // not whether a particular coupling is.
-  if (level.target.kind === 'wagon') {
-    const rake = world.trains[level.target.train];
+  const aim = level.target;
+  // Nothing to reach. The ever after is the map with the story finished on
+  // it, so it is aimed at nothing at all -- but it still has a release point
+  // and a bird let go at it, and those are the things this file is for. It is
+  // flown the way it faces instead, which is where its player will go.
+  if (!aim) {
+    if (!level.facing) return null;
+    const from = at(level.start);
+    const look = at(level.facing);
+    const away = Math.hypot(look.x - from.x, look.z - from.z) || 1;
+    // Far enough out to be a flight rather than an arrival: this asks whether
+    // the way ahead is clear, and there is nothing there to land on.
+    return {
+      x: from.x + ((look.x - from.x) / away) * 600,
+      z: from.z + ((look.z - from.z) / away) * 600,
+    };
+  }
+  if (aim.kind === 'wagon') {
+    const rake = world.trains[aim.train];
     const car = rake?.vehicles[Math.floor(rake.vehicles.length / 2)];
     return car ? { x: car.x, z: car.z } : null;
   }

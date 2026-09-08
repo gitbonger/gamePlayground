@@ -41,7 +41,7 @@ describe('what the levels aim at', () => {
     // that the name is checkable. Here is the check.
     const described = new Set(LANDMARKS.map((landmark) => landmark.name));
     for (const level of LEVELS) {
-      if (level.target.kind !== 'landmark') continue;
+      if (level.target?.kind !== 'landmark') continue;
       expect(described, level.name).toContain(level.target.name);
     }
   });
@@ -51,7 +51,7 @@ describe('what the levels aim at', () => {
     // up by the target's name, and two levels on one building would collide
     // if it went by the level's.
     for (const level of LEVELS) {
-      expect(targetName(level), level.name).toBe(level.target.name);
+      expect(targetName(level), level.name).toBe(level.target?.name ?? null);
     }
   });
 
@@ -107,7 +107,7 @@ describe('what the levels aim at', () => {
   it('turns the loft to face the way the pigeon comes in', () => {
     // The terrace is the target. Behind the penthouse it would be hidden on
     // every approach until the last second.
-    const level = LEVELS.find((l) => l.target.name === LOFT.name)!;
+    const level = LEVELS.find((l) => l.target?.name === LOFT.name)!;
     const centre = HOME_MAP.centre as [number, number];
     const loft = project(LOFT.at[0], LOFT.at[1], centre);
     const start = project(level.start[0], level.start[1], centre);
@@ -798,7 +798,7 @@ describe('what the levels aim at', () => {
     expect(eating).toHaveLength(1);
     const level = eating[0]!;
     expect(level.name).toBe('Teleki tér');
-    expect(level.target.kind).toBe('landmark');
+    expect(level.target?.kind).toBe('landmark');
     // Arrived at hungry: a level won by filling the belly has to begin with
     // it unfilled, or it is won on the tick it opens.
     expect(level.health).toBeLessThan(1);
@@ -827,9 +827,9 @@ describe('what the levels aim at', () => {
       // aiming for. Only askable of a target that stands still: a wagon is
       // somewhere else every tick and has no position until the trains have
       // been laid out, so there is nothing here to measure against.
-      const described = LANDMARKS.find((l) => l.name === level.target.name);
+      const described = LANDMARKS.find((l) => l.name === level.target?.name);
       if (!described) {
-        expect(level.target.kind, `${level.name} aims at nothing described`).not.toBe('landmark');
+        expect(level.target?.kind, `${level.name} aims at nothing described`).not.toBe('landmark');
         continue;
       }
       const to = project(described.at[0], described.at[1], centre);
@@ -1004,6 +1004,40 @@ describe('what the levels aim at', () => {
     const last = LEVELS[LEVELS.length - 1]!;
     expect(last.name).toBe('Everafter');
     expect(last.start).toEqual([47.505284, 19.087829]);
+  });
+
+  it('aims the last level at nothing', () => {
+    // The ever after is the map with the story finished on it: no target, no
+    // line, nobody to find, nothing to open onto and no way to finish it. It
+    // used to name the loft anyway, purely so the arrow had somewhere to send
+    // you -- a level answering a question nobody asked, on the one flight
+    // whose point is that there is nowhere it has to go.
+    const last = LEVELS[LEVELS.length - 1]!;
+    expect(last.name).toBe('Everafter');
+    expect(last.target).toBeUndefined();
+    expect(targetName(last)).toBeNull();
+    expect(last.finish.kind).toBe('free');
+
+    // And it is the only one. Every other level is aimed at something,
+    // because a level that is not is a level with nothing to do.
+    expect(LEVELS.filter((level) => !level.target).map((level) => level.name)).toEqual([
+      'Everafter',
+    ]);
+  });
+
+  it('flies the last level with her, and nobody else', () => {
+    // She comes. Everything before this was him alone or him with strangers,
+    // and she flies it as an ordinary escort -- let out behind him and
+    // wheeling with him -- rather than standing on a roof waiting.
+    const last = LEVELS[LEVELS.length - 1]!;
+    expect(last.escort).toBe(true);
+    expect(last.flock).toBe(1);
+    expect(last.flockIs).toBe(PINK.name);
+    // Nobody standing anywhere: she is flying, and everyone else has been met.
+    expect(last.cast).toEqual([]);
+    // And she is not asked to come down: the flock lands on the level before
+    // this one, which is a different thing entirely.
+    expect(last.settles).toBeFalsy();
   });
 
   it('points the last level away rather than back at the loft', () => {
@@ -1221,7 +1255,7 @@ describe('what the levels aim at', () => {
     const centre = HOME_MAP.centre as [number, number];
     for (const level of LEVELS) {
       if (level.begins === 'perched') continue;
-      const described = LANDMARKS.find((l) => l.name === level.target.name);
+      const described = LANDMARKS.find((l) => l.name === level.target?.name);
       if (!described) continue;
       const from = project(level.start[0], level.start[1], centre);
       const to = project(described.at[0], described.at[1], centre);
@@ -1365,8 +1399,9 @@ describe('what the levels aim at', () => {
     // lying flat it is not: a person on the slab is an obstacle on the target
     // itself, and the pigeon you have to walk up to is on there too.
     for (const level of LEVELS) {
-      if (level.target.kind !== 'landmark') continue;
-      const described = LANDMARKS.find((l) => l.name === level.target.name);
+      const aim = level.target;
+      if (aim?.kind !== 'landmark') continue;
+      const described = LANDMARKS.find((l) => l.name === aim.name);
       if (!described?.people) continue;
 
       const here = { ...described, x: 0, z: 0 };
