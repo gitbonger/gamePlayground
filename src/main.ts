@@ -2359,7 +2359,18 @@ function command(): Tip | null {
   if (isPerched(bird)) {
     if (talkingTo) return null;
     if (onFoot.blocked) return { keys: ['←', '→'], text: 'Turn and walk round it' };
-    if (onFoot.travelled > 0) return { keys: [], text: 'Mind the edge' };
+    // Nothing for a bird that has walked a step. There used to be "Mind the
+    // edge", which was true of a gutter and of nothing else: on a square, a
+    // slab or a station platform there is no edge to mind, and it said so for
+    // as long as the player stayed on their feet.
+    //
+    // Worse than useless, because `command` outranks the tutor and the corner
+    // holds one thing: a permanent standing prompt is a lesson the level
+    // never gets to give. On Teleki tér it flickered against "Approaching
+    // Teleki tér" for the whole time the bird was down.
+    //
+    // And an edge is the one thing about walking that needs no telling. You
+    // can see it.
     // On a level that is won by eating, walking about *is* the level, and the
     // thing to do on foot is not "walk, or take off" -- it is the lesson the
     // level has waiting for the moment the feet are down. A command outranks
