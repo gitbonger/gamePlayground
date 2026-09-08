@@ -91,6 +91,7 @@ import { alone, begin, isOver, reply, type Exchange } from './dialogue';
 import { createDialoguePanel, speechColour } from './render/dialogue';
 import { browserSpeaker, createVoice } from './render/voice';
 import { browserTone, createAlarm } from './render/alarm';
+import { browserKit, createAmbience, type Source } from './render/ambience';
 import { createVitals, type Vital } from './render/vitals';
 import {
   approachFor,
@@ -1956,6 +1957,88 @@ const vitals = createVitals(overlay);
  */
 const voice = createVoice(browserSpeaker(window.speechSynthesis));
 const alarm = createAlarm(browserTone());
+const ambience = createAmbience(browserKit());
+
+/**
+ * How often the list of things that could make a noise is gathered, in
+ * seconds.
+ *
+ * A fifth. Nothing here moves far in that, and the alternative is walking a
+ * hundred and twenty-five trains and sixty-four platforms a hundred and
+ * twenty times a second for a sound that happens once every few seconds.
+ */
+const LISTEN_EVERY = 1 / 5;
+/** How far out anything is worth gathering at all, in metres. */
+const EARSHOT = 150;
+let heardAt = -1;
+let audible: Source[] = [];
+
+/**
+ * Everything near the bird that could make a noise, and where it is.
+ *
+ * Only real things. A bark comes from a dog that is standing there and a bell
+ * from a tram that is actually on that street, so the sound is information as
+ * well as atmosphere -- see `createAmbience`.
+ */
+function listen(): Source[] {
+  const near_: Source[] = [];
+  const from = bird.position;
+  const within = (x: number, z: number) =>
+    Math.abs(x - from.x) < EARSHOT && Math.abs(z - from.z) < EARSHOT;
+
+  // Dogs: the ones walking about on Jani Pali tér, and the ones on a lead at
+  // a tram stop.
+  for (const hound of dogs) {
+    if (within(hound.pose.x, hound.pose.z)) near_.push({ noise: 'bark', x: hound.pose.x, z: hound.pose.z });
+  }
+  for (const stop of layout.platforms ?? []) {
+    if (!within(stop.x, stop.z)) continue;
+    for (const each of stop.waiting) {
+      if (each.dog) near_.push({ noise: 'bark', x: each.dog.x, z: each.dog.z });
+    }
+  }
+
+  // Pigeons: the crowds on the squares, and the flock when it is out. Not the
+  // hero -- a bird does not startle itself.
+  for (const crowd of crowds) {
+    for (const each of crowd.birds) {
+      const at = each.state.position;
+      if (within(at.x, at.z)) near_.push({ noise: 'coo', x: at.x, z: at.z });
+    }
+  }
+  if (escorted) {
+    for (const member of flock.members) {
+      if (member.down > 0) continue;
+      const at = member.state.position;
+      if (within(at.x, at.z)) near_.push({ noise: 'coo', x: at.x, z: at.z });
+    }
+  }
+
+  // Crows, on the levels that have them.
+  if (hunted) {
+    for (const crow of crows?.members ?? []) {
+      if (crow.down > 0) continue;
+      const at = crow.state.position;
+      if (within(at.x, at.z)) near_.push({ noise: 'caw', x: at.x, z: at.z });
+    }
+  }
+
+  // And the railway. A tram rings its bell and a heavy rake squeals round a
+  // curve, so they are two different noises off the same list -- and only
+  // from a rake that is near enough to have been laid out this tick, which is
+  // the same three hundred metres the collider uses.
+  layout.trains.forEach((train, index) => {
+    if (!near[index]) return;
+    // Standing still makes neither noise: a bell is rung on pulling away and
+    // a wheel squeals under load.
+    if (train.held > 0 || train.waited > 0) return;
+    const head = train.vehicles[0];
+    if (!head || !within(head.x, head.z)) return;
+    near_.push({ noise: train.stock === 'tram' ? 'bell' : 'screech', x: head.x, z: head.z });
+  });
+
+  return near_;
+}
 /** Hands out the flying lessons, by how far this flight has gone. */
 const tutor = createTutor();
 /**
@@ -3131,6 +3214,14 @@ function frame(nowMs: number) {
   // exactly the part that must not wait its turn. It is a warning about
   // something happening now, not a reading of what is on screen.
   if (hunter) alarm.sound(clock);
+  // And the city, which is mostly quiet. Gathered on its own slow beat and
+  // offered every frame: what to play and how rarely is the ambience's own
+  // business -- see `createAmbience`.
+  if (clock - heardAt >= LISTEN_EVERY) {
+    audible = listen();
+    heardAt = clock;
+  }
+  ambience.hear(clock, interpolatedState.position, heading(interpolatedState), audible);
   world.updateSmoke(allPuffs, camera.quaternion);
   // The thrown grain, and the grain riding on the freight train. One list,
   // one instanced mesh: the seeds on the wagons are worked out from where the
