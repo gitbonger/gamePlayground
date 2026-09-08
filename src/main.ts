@@ -52,6 +52,7 @@ import {
   bellyOnEntry,
   CHARACTERS,
   crossed,
+  crowsOn,
   lineThrough,
   dialogueOf,
   cagedIn,
@@ -1456,7 +1457,7 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   }
   // What the level does and does not have in it.
   tutorial = spec.teaches ?? true;
-  hunted = spec.crows ?? true;
+  hunted = crowsOn(spec);
 
   // Everything this level puts into the world: who is standing where, what is
   // pointed at, and whether anybody is flying with him.
@@ -1903,12 +1904,12 @@ let tutorial = true;
  * Whether there are crows in the sky on this level.
  *
  * They live at one place on the map rather than in a level, so any level
- * whose route passes them has them -- which is right for the two the warning
- * is written for and wrong for a level that starts anywhere, since being
- * killed by a crow on the level that exists because the story is over would
- * be the game not having noticed it ended.
+ * whose route passes that place used to have them: the flag defaulted to on,
+ * and only the epilogue turned it off, which put crows over twelve of the
+ * thirteen levels and let one kill the player on a level that has nothing to
+ * do with crows. Three levels ask for them now -- see `Level.crows`.
  */
-let hunted = true;
+let hunted = false;
 
 /** The hero's own colour, which is what his half of a conversation is set in. */
 const hero = speechColour(HERO_MORPH.body);

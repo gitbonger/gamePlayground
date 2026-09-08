@@ -4,6 +4,7 @@ import {
   CHARACTERS,
   crossed,
   crossingLine,
+  crowsOn,
   lineThrough,
   dialogueOf,
   HOMECOMING,
@@ -1033,12 +1034,55 @@ describe('what the levels aim at', () => {
     }
   });
 
-  it('calls off the crows exactly once', () => {
-    // Being killed by a crow on the level that exists because the story is
-    // over would be the game not having noticed it ended.
-    expect(LEVELS.filter((level) => level.crows === false).map((l) => l.name)).toEqual([
-      'Everafter',
+  it('puts the crows on three levels and nowhere else', () => {
+    // They live at one place on the map rather than in a level -- a ball of
+    // them over Népszínház utca -- so the flag decides whether that place is
+    // dangerous today. It used to default to on, which put crows in the sky
+    // on twelve of the thirteen levels: not visible on most of them, since
+    // they are a mile away, and quite capable of killing anybody whose route
+    // went under them on a level that is not about crows.
+    //
+    // Three ask for them: the level that exists because of them, the one
+    // flown low to get out from underneath, and the arrival those two are the
+    // approach to.
+    const named = LEVELS.filter((level) => level.crows).map((level) => level.name);
+    expect(named).toEqual(['Népszínház', 'Blaha', 'The Loft']);
+  });
+
+  it('leaves them off by default rather than on', () => {
+    // Which is the half that bit, and it is asked of the rule rather than of
+    // the data: the default lived in the middle of a three-hundred-line
+    // level-change function in `main.ts`, where nothing could see it and no
+    // test could import it. A level that says nothing about crows has none.
+    const { crows: _said, ...silent } = LEVELS[0]!;
+    expect(crowsOn(silent)).toBe(false);
+    expect(crowsOn({ ...silent, crows: true })).toBe(true);
+
+    // And nothing turns them off explicitly any more: with the default the
+    // right way round there is nothing to turn off.
+    expect(LEVELS.filter((level) => level.crows === false)).toEqual([]);
+  });
+
+  it('agrees with itself about which three', () => {
+    // The rule and the flags are read by different things -- the game asks
+    // the rule, this file mostly reads the flags -- so they have to give the
+    // same answer or the levels are not what they say they are.
+    expect(LEVELS.filter(crowsOn).map((level) => level.name)).toEqual([
+      'Népszínház',
+      'Blaha',
+      'The Loft',
     ]);
+  });
+
+  it('keeps them in one run, so they arrive and leave once', () => {
+    // Three levels in a row, not three scattered through the game. Crows that
+    // came, went and came back would read as weather rather than as the thing
+    // standing between him and the loft.
+    const on = LEVELS.map((level) => Boolean(level.crows));
+    const first = on.indexOf(true);
+    const last = on.lastIndexOf(true);
+    expect(first).toBeGreaterThan(0);
+    for (let i = first; i <= last; i += 1) expect(on[i], LEVELS[i]!.name).toBe(true);
   });
 
   it('marks the two long flights that have nothing to steer by', () => {

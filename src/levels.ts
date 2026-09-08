@@ -589,10 +589,17 @@ export interface Level {
   /**
    * Whether there are crows in the sky.
    *
-   * They live at one place on the map rather than in a level, so a level that
-   * starts anywhere can start next to them -- and being killed by a crow on
-   * the level that exists because the story is over would be the game not
-   * having noticed it ended.
+   * Off unless a level asks for them, which is the other way round from how
+   * it started. They live at one place on the map rather than in a level --
+   * a ball of them over Nepszinhaz utca -- so left on by default they were in
+   * the sky on twelve of the thirteen levels, killing anybody whose route
+   * happened to pass under them on a level that is not about crows at all.
+   *
+   * Three levels ask. `Nepszinhaz` is the one that exists because of them,
+   * `Blaha` is the one flown low to get out from under them, and `The Loft`
+   * is the arrival that the two of those are the approach to. Everything
+   * before is a district with no crows in it yet, and everything after has
+   * the flock instead.
    */
   crows?: boolean;
   /**
@@ -706,6 +713,19 @@ export function crossingLine(
 /** Whether a point is on the far side of the line. */
 export const crossed = (line: Line, x: number, z: number): boolean =>
   (x - line.x) * line.ux + (z - line.z) * line.uz >= 0;
+
+/**
+ * Whether a level has crows in the sky.
+ *
+ * Here rather than at the one place that reads it, because the default is the
+ * dangerous half of this flag and a default written down away from the field
+ * it belongs to is a default nothing can test. It was `?? true` for most of
+ * the game's life, in the middle of a level-change function three hundred
+ * lines long, and the effect -- crows over twelve of thirteen levels, able to
+ * kill on levels that have nothing to do with them -- was invisible from
+ * anywhere the levels themselves are described.
+ */
+export const crowsOn = (level: Level): boolean => level.crows ?? false;
 
 export const LEVELS: readonly Level[] = [
   {
@@ -893,6 +913,9 @@ export const LEVELS: readonly Level[] = [
     // ground to arrive at. He leaves the square he has just searched, and the
     // crows are between him and the line.
     name: 'Népszínház',
+    // The level the crows exist for: they are a ball in the sky over this
+    // route, and the answer to one is to be lower than it is.
+    crows: true,
     // Past the point the game explains itself -- see `teaches`.
     teaches: false,
     // Straight up off Jani Pali tér: the square the last level ended on.
@@ -933,6 +956,10 @@ export const LEVELS: readonly Level[] = [
     // before this one ends by flying through a line, and this one picks the
     // bird up on it.
     name: 'Blaha',
+    // Still under them. This is the one flown low and straight to get out
+    // from underneath, so a level with the sky empty would be a level with
+    // nothing to fly low for.
+    crows: true,
     // Past the point the game explains itself -- see `teaches`.
     teaches: false,
     // On that line, which is the whole point of a checkpoint -- dying just
@@ -964,6 +991,8 @@ export const LEVELS: readonly Level[] = [
     // Twenty-four metres up, on a roof among other roofs. Still nothing
     // moving, but now you have to pick the right one and stop on it.
     name: 'The Loft',
+    // The last of the three. He comes out of the crows, and arrives.
+    crows: true,
     // Past the point the game explains itself -- see `teaches`.
     teaches: false,
     // Out past the slab the level before finishes on: a hundred metres further
@@ -1148,7 +1177,6 @@ export const LEVELS: readonly Level[] = [
     flockIs: PINK.name,
     // Nothing is being taught any more, and nothing is hunting.
     teaches: false,
-    crows: false,
     // The loft, for the arrow -- somewhere to go for a player who wants
     // somewhere to go, and nothing at all happens on arriving.
     target: { kind: 'landmark', name: LOFT.name },
