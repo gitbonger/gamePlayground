@@ -9,6 +9,8 @@
  * It is written as data so that replacing it is writing different data.
  */
 
+import type { Words } from './i18n';
+
 /**
  * The level an ending hands over, by name.
  *
@@ -31,7 +33,7 @@ export type Opens = string;
 
 /** Something the player can say, and what it leads to. */
 export interface Reply {
-  text: string;
+  text: Words;
   /** What they say to that. Absent ends the exchange on your word. */
   then?: Turn;
   /** The level this hands over, if it is an ending that does. */
@@ -40,7 +42,7 @@ export interface Reply {
 
 /** Something the other pigeon says, and what you can say back. */
 export interface Turn {
-  them: string;
+  them: Words;
   /** Absent or empty ends the exchange on theirs. */
   you?: readonly Reply[];
   /** The level this hands over, if it is an ending that does. */
@@ -50,7 +52,14 @@ export interface Turn {
 /** A line already said, for the panel to show. */
 export interface Said {
   who: 'them' | 'you';
-  text: string;
+  /**
+   * Both languages, rather than the one that was current when it was said.
+   *
+   * So that swapping the language mid-conversation swaps what is already on
+   * the card as well as what comes next -- a panel half in each would be a
+   * worse answer than not being able to swap at all.
+   */
+  text: Words;
 }
 
 /**
@@ -98,7 +107,7 @@ const ending = (ends: boolean, opens: Opens | undefined) =>
  * kind of thing in a different place, and that is how a game ends up with two
  * ways of putting words on the screen.
  */
-export const alone = (...lines: readonly string[]): Exchange => ({
+export const alone = (...lines: readonly Words[]): Exchange => ({
   said: lines.map((text) => ({ who: 'you', text })),
   replies: [],
 });
@@ -151,14 +160,20 @@ export function reply(exchange: Exchange, choice: number): Exchange {
  * game that shows a reply can go somewhere rather than merely be chosen.
  */
 export const HEADING_OUT: Turn = {
-  them: 'Could you get some food from Teleki tér?',
+  them: { en: 'Could you get some food from Teleki tér?', hu: 'Hoznál kaját a Teleki térről?' },
   you: [
-    { text: 'Yes, sure!', then: { them: 'See you!', opens: 'Temető' } },
     {
-      text: 'I would watch the egg, while you go!',
+      text: { en: 'Yes, sure!', hu: 'Persze, megyek!' },
+      then: { them: { en: 'See you!', hu: 'Szia!' }, opens: 'Temető' },
+    },
+    {
+      text: {
+        en: 'I would watch the egg, while you go!',
+        hu: 'Inkább én ülök a tojáson, menj te!',
+      },
       then: {
-        them: "I'd rather stay",
-        you: [{ text: 'Okay.', opens: 'Temető' }],
+        them: { en: "I'd rather stay", hu: 'Inkább maradok' },
+        you: [{ text: { en: 'Okay.', hu: 'Jól van.' }, opens: 'Temető' }],
       },
     },
   ],
@@ -177,8 +192,13 @@ export const HEADING_OUT: Turn = {
  * of the level.
  */
 export const CAUGHT: Turn = {
-  them: 'The trapper got me!',
-  you: [{ text: 'Wait, I will bring some help!', opens: 'Fiumei út' }],
+  them: { en: 'The trapper got me!', hu: 'Elkapott a madarász!' },
+  you: [
+    {
+      text: { en: 'Wait, I will bring some help!', hu: 'Várj, hozok segítséget!' },
+      opens: 'Fiumei út',
+    },
+  ],
 };
 
 /**
@@ -194,20 +214,30 @@ export const CAUGHT: Turn = {
  * say and saying it is what moves on.
  */
 export const THE_TRAPPER: Turn = {
-  them: 'Hey mate!',
+  them: { en: 'Hey mate!', hu: 'Szia, haver!' },
   you: [
     {
-      text: 'I am looking for my girl',
+      text: { en: 'I am looking for my girl', hu: 'A páromat keresem' },
       then: {
-        them: 'Good luck with that!',
+        them: { en: 'Good luck with that!', hu: 'Sok szerencsét hozzá!' },
         you: [
           {
-            text: 'She has gone missing while I was away!',
+            text: {
+              en: 'She has gone missing while I was away!',
+              hu: 'Eltűnt, amíg oda voltam!',
+            },
             then: {
-              them:
-                'There is a crazy person, a trapper, captures birds! ' +
-                'On the top of a big house! Go look there!',
-              you: [{ text: 'I go quick!', opens: 'up to the roofs' }],
+              them: {
+                en:
+                  'There is a crazy person, a trapper, captures birds! ' +
+                  'On the top of a big house! Go look there!',
+                hu:
+                  'Van itt egy őrült, egy madarász, madarakat fogdos! ' +
+                  'Egy nagy ház tetején! Nézz körül ott!',
+              },
+              you: [
+                { text: { en: 'I go quick!', hu: 'Rohanok!' }, opens: 'up to the roofs' },
+              ],
             },
           },
         ],
@@ -225,11 +255,14 @@ export const THE_TRAPPER: Turn = {
  * out loud for the first time.
  */
 export const THE_ASK: Turn = {
-  them: 'Eh?',
+  them: { en: 'Eh?', hu: 'Na?' },
   you: [
     {
-      text: 'You need to help me, a crazy person kidnapped my girl!',
-      then: { them: "Let's go!", opens: 'Coming on strong' },
+      text: {
+        en: 'You need to help me, a crazy person kidnapped my girl!',
+        hu: 'Segítsetek, egy őrült elrabolta a páromat!',
+      },
+      then: { them: { en: "Let's go!", hu: 'Gyerünk!' }, opens: 'Coming on strong' },
     },
   ],
 };
@@ -246,7 +279,12 @@ export const THE_ASK: Turn = {
  * up to it and take it apart.
  */
 export const SAVED: Turn = {
-  them: 'You saved me!',
-  you: [{ text: 'I am so happy you are alive!', opens: 'Everafter' }],
+  them: { en: 'You saved me!', hu: 'Megmentettél!' },
+  you: [
+    {
+      text: { en: 'I am so happy you are alive!', hu: 'Úgy örülök, hogy élsz!' },
+      opens: 'Everafter',
+    },
+  ],
 };
 

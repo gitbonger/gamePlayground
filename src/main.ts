@@ -1,3 +1,13 @@
+import {
+  otherLanguage,
+  PHRASES,
+  read,
+  rememberLanguage,
+  say,
+  setLanguage,
+  startLanguage,
+  type Words,
+} from './i18n';
 import * as THREE from 'three';
 /**
  * Entry point: fixed-timestep simulation, interpolated rendering, live tuning.
@@ -546,6 +556,16 @@ function storage(): Storage | undefined {
     return undefined;
   }
 }
+
+/**
+ * Which language the game is in, before anything is built.
+ *
+ * First, because the HUD writes its labels the moment it is made and the menu
+ * builds its list from whatever is current: starting in English and swapping
+ * a frame later would be a visible flicker on every load for half the people
+ * this game is about.
+ */
+startLanguage(storage() ?? null);
 
 /** The one being flown, remembered between visits. */
 let level = loadProgress(storage(), LEVELS.length);
@@ -2302,9 +2322,20 @@ function banner(): string | null {
     // you stand, the key is a take-off and the flying is yours to do; handed
     // one the ordinary way, the key is the journey.
     const handed = openedName();
-    if (handed) return `${here} complete — SPACE to take off for ${handed}`;
+    const done = read({ en: 'complete', hu: 'megvan' });
+    if (handed) {
+      return read({
+        en: `${here} ${done} — SPACE to take off for ${handed}`,
+        hu: `${here} ${done} — SPACE, és irány ${handed}`,
+      });
+    }
     const next = LEVELS[level + 1]?.name;
-    return next ? `${here} complete — SPACE to fly on to ${next}` : `${here} complete`;
+    return next
+      ? read({
+          en: `${here} ${done} — SPACE to fly on to ${next}`,
+          hu: `${here} ${done} — SPACE, és tovább ${next} felé`,
+        })
+      : `${here} ${done}`;
   }
   // Nothing at all while the game is flying: an audience is not being told
   // which key to press.
@@ -2312,7 +2343,7 @@ function banner(): string | null {
   // Held on a beat: the words are the conversation panel's, and the key is
   // the instruction panel's. The banner has nothing to add.
   if (waiting) return null;
-  if (started && clock - startedAt <= NOTE_SECONDS) return `now flying — ${started}`;
+  if (started && clock - startedAt <= NOTE_SECONDS) return `${say('nowFlying')} — ${started}`;
   return null;
 }
 
@@ -2383,9 +2414,12 @@ function openedName(): string | null {
  * is that the controls are different now.
  */
 /** The last thing said about the voice itself, and when. */
-let voiceNote: { text: string; at: number } | null = null;
+let voiceNote: { text: Words; at: number } | null = null;
 /** How long that stays up, in seconds. */
 const NOTICE = 2;
+
+/** Said in three places, so written once. */
+const TAKE_OFF: Words = { en: 'Take off!', hu: 'Szállj fel!' };
 
 function command(): Tip | null {
   // A setting confirming itself outranks everything for a moment, because
@@ -2396,7 +2430,7 @@ function command(): Tip | null {
 
   if (finished && talkingTo && !midSentence())
     // Said aloud: without it the flight does not continue at all.
-    return { keys: ['SPACE'], text: 'Take off!', spoken: true };
+    return { keys: ['SPACE'], text: TAKE_OFF, spoken: true };
 
   // Somebody is waiting for an answer. The replies are on the screen with
   // numbers beside them and nothing else says the numbers are keys -- and a
@@ -2404,12 +2438,12 @@ function command(): Tip | null {
   //
   // Above the stance rather than inside it: a conversation happens on foot
   // today and the rule is about the conversation, not about the feet.
-  if (midSentence()) return { keys: [], text: 'Press a number key to respond!' };
+  if (midSentence()) return { keys: [], text: PHRASES.answerPrompt };
 
   // Standing on a branch or a square having just said something to nobody.
   // The same key and the same words as leaving a conversation, because it is
   // the same act -- he has finished talking and he is going.
-  if (waiting) return { keys: ['SPACE'], text: 'Take off!', spoken: true };
+  if (waiting) return { keys: ['SPACE'], text: TAKE_OFF, spoken: true };
 
   // On foot, where the corner is quiet.
   //
@@ -2427,7 +2461,8 @@ function command(): Tip | null {
     if (talkingTo) return null;
     // Walked into something. Transient, and about the thing in the way rather
     // than about walking.
-    if (onFoot.blocked) return { keys: ['←', '→'], text: 'Turn and walk round it' };
+    if (onFoot.blocked)
+      return { keys: ['←', '→'], text: { en: 'Turn and walk round it', hu: 'Fordulj és kerüld ki' } };
     return null;
   }
   return null;
@@ -2484,11 +2519,29 @@ function frame(nowMs: number) {
   // V for the voice. An undiscoverable key for now, which is the right amount
   // of discoverable for a thing whose whole purpose is to be turned off by
   // whoever is tired of it.
+  // Tab for the other language. Discoverable, unlike the voice: it is one of
+  // the four keys standing in the corner, and it is written in the language it
+  // would swap to -- `magyar` while you are reading English -- so it says what
+  // it does without needing a word for "language".
+  if (input.consumeLanguage()) {
+    setLanguage(otherLanguage());
+    rememberLanguage(storage() ?? null);
+    // Everything built once and written over relabels itself: see
+    // `onLanguageChange`. What is left is the two things this file owns --
+    // the line over the bird, which is rebuilt every frame anyway, and the
+    // voice, which should stop saying an English sentence in the middle.
+    voice.hush();
+  }
   if (input.consumeVoice()) {
     // Said through the panel rather than shown here and overwritten a line
     // later by whatever the flight has to say: the panel is told what to show
     // once a frame, so anything written straight to it lasts one frame.
-    voiceNote = { text: voice.toggle() ? 'Voice on' : 'Voice off', at: clock };
+    voiceNote = {
+      text: voice.toggle()
+        ? { en: 'Voice on', hu: 'Hang be' }
+        : { en: 'Voice off', hu: 'Hang ki' },
+      at: clock,
+    };
   }
   // Leaving a finished conversation starts the next level rather than taking
   // off from this one, so the key is taken here before the flight model can

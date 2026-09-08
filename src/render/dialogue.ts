@@ -1,5 +1,6 @@
 /** The conversation panel: what has been said, and what you can say next. */
 
+import { read } from '../i18n';
 import { isOver, type Exchange } from '../dialogue';
 
 /**
@@ -102,7 +103,7 @@ export function createDialoguePanel(container: HTMLElement): DialoguePanel {
     for (const said of exchange.said) {
       const line = document.createElement('p');
       line.className = said.who === 'them' ? 'talk-them' : 'talk-you';
-      line.textContent = said.text;
+      line.textContent = read(said.text);
       if (voices) line.style.color = said.who === 'them' ? voices.them : voices.you;
       card.appendChild(line);
     }
@@ -115,7 +116,7 @@ export function createDialoguePanel(container: HTMLElement): DialoguePanel {
         const number = document.createElement('b');
         number.textContent = String(index + 1);
         const text = document.createElement('span');
-        text.textContent = reply.text;
+        text.textContent = read(reply.text);
         // What you might say is said in your own colour too: these are the
         // hero's words, waiting to be spoken.
         if (voices) row.style.color = voices.you;

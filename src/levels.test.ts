@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Words } from './i18n';
 import {
   bellyOnEntry,
   CHARACTERS,
@@ -48,6 +49,26 @@ import { COURSES, courseFor } from './render/tips';
  * fly was added after it.
  */
 const EVERAFTER = LEVELS.find((level) => level.name === 'Everafter')!;
+
+/** Both languages of a monologue, each as one string. */
+const bothWays = (says: readonly Words[]): string[] => [
+  says.map((line) => line.en).join(' '),
+  says.map((line) => line.hu).join(' '),
+];
+
+/**
+ * Whether a line names a place.
+ *
+ * Accents flattened on both sides, which is not sloppiness -- it is Hungarian
+ * grammar. A place name takes its suffix onto the end and the stem vowel
+ * lengthens with it: `Blaha` said as "there" is `a Blahán`, and a plain
+ * substring test says that line does not mention Blaha. Flattened, `Blahan`
+ * contains `Blaha` and the test asks what it means to ask.
+ */
+const names = (line: string, place: string): boolean =>
+  flatten(line).includes(flatten(place));
+const flatten = (words: string) =>
+  words.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
 describe('what the levels aim at', () => {
   it('names a described thing that exists', () => {
@@ -677,7 +698,12 @@ describe('what the levels aim at', () => {
     // And every line of it is a line: a monologue with an empty one in it is
     // a blank row in the panel.
     for (const scene of holds) {
-      for (const line of scene.says!) expect(line.length, scene.name).toBeGreaterThan(0);
+      // In both languages, so a line nobody translated is caught here rather
+      // than by playing the whole story in Hungarian.
+      for (const line of scene.says!) {
+        expect(line.en.length, scene.name).toBeGreaterThan(0);
+        expect(line.hu.length, scene.name).toBeGreaterThan(0);
+      }
     }
   });
 
@@ -699,8 +725,12 @@ describe('what the levels aim at', () => {
       // Which holds, and says where he is going next.
       expect(beat.says, beat.name).toBeDefined();
       expect(beat.endsOn, `${beat.name} happens where he is standing`).toBeUndefined();
-      const spoken = beat.says!.join(' ');
-      expect(LEVELS.some((each) => spoken.includes(each.name)), spoken).toBe(true);
+      // In both languages. A place name is the same in either -- Mátyás tér
+      // is Mátyás tér -- so a Hungarian line that lost it is a Hungarian
+      // player told to go somewhere without being told where.
+      for (const spoken of bothWays(beat.says!)) {
+        expect(LEVELS.some((each) => names(spoken, each.name)), spoken).toBe(true);
+      }
     }
   });
 
@@ -711,8 +741,9 @@ describe('what the levels aim at', () => {
     // every monologue: the one at the end of an errand is not a search, and
     // has nothing to point at.
     for (const scene of [HOMECOMING, NOT_AT_MATYAS, NOT_AT_JANI]) {
-      const spoken = scene.says!.join(' ');
-      expect(LEVELS.some((level) => spoken.includes(level.name)), spoken).toBe(true);
+      for (const spoken of bothWays(scene.says!)) {
+        expect(LEVELS.some((level) => names(spoken, level.name)), spoken).toBe(true);
+      }
     }
   });
 
@@ -1036,8 +1067,8 @@ describe('what the levels aim at', () => {
     // the seeds to restore your health" -- and the panel is for the first.
     const landed = courseFor('Teleki tér').filter((lesson) => lesson.landed === true);
     expect(landed, 'exactly one, at the moment of landing').toHaveLength(1);
-    expect(landed[0]!.text).toContain('Collect');
-    expect(landed[0]!.text).toContain('seeds');
+    expect(landed[0]!.text.en).toContain('Collect');
+    expect(landed[0]!.text.en).toContain('seeds');
     // And spoken, because the level cannot go on without it.
     expect(landed[0]!.spoken).toBe(true);
   });
@@ -1047,7 +1078,7 @@ describe('what the levels aim at', () => {
     // you: it has to be landed on, it reverses, and only one wagon counts.
     // None of the three is a control and none can be worked out by looking,
     // which is what a one-off is for.
-    const said = courseFor('Keleti').map((lesson) => lesson.text);
+    const said = courseFor('Keleti').map((lesson) => lesson.text.en);
     expect(said).toHaveLength(3);
     expect(said.join(' | ')).toContain('land on the train');
     expect(said.join(' | ')).toContain('changing directions');

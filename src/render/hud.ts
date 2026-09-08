@@ -3,6 +3,7 @@
 /** How little is left in the wings before the bar says so. */
 const TIRED_STAMINA = 0.3;
 
+import { onLanguageChange, say, type Phrase } from '../i18n';
 import type { BirdState, FlightTelemetry } from '../sim/flight';
 import { rateText, speedText } from './units';
 
@@ -38,17 +39,17 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
   root.innerHTML = `
     <div class="hud-column">
       <div class="hud-stamina">
-        <span class="label">health</span>
+        <span class="label" data-says="health"></span>
         <div class="bar"><div class="bar-fill health" data-field="health"></div></div>
-        <span class="label">stamina</span>
+        <span class="label" data-says="stamina"></span>
         <div class="bar"><div class="bar-fill" data-field="stamina"></div></div>
       </div>
       <div class="hud-readouts">
-        <div class="readout"><span class="label">airspeed</span><span data-field="speed">0</span><span class="unit">km/h</span></div>
-        <div class="readout"><span class="label">altitude</span><span data-field="altitude">0</span><span class="unit">m</span></div>
-        <div class="readout"><span class="label">climb</span><span data-field="climb">0</span><span class="unit">km/h</span></div>
-        <div class="readout secondary" title="Local wind, and how much of it is against you"><span class="label">wind</span><span data-field="wind">0</span><span class="unit">km/h</span><span class="aside" data-field="headwind"></span></div>
-        <div class="readout" title="Distance still to fly to the marked target"><span class="label">home</span><span data-field="home">0</span><span class="unit">m</span></div>
+        <div class="readout"><span class="label" data-says="airspeed"></span><span data-field="speed">0</span><span class="unit">km/h</span></div>
+        <div class="readout"><span class="label" data-says="altitude"></span><span data-field="altitude">0</span><span class="unit">m</span></div>
+        <div class="readout"><span class="label" data-says="climb"></span><span data-field="climb">0</span><span class="unit">km/h</span></div>
+        <div class="readout secondary" data-titled="windTitle"><span class="label" data-says="wind"></span><span data-field="wind">0</span><span class="unit">km/h</span><span class="aside" data-field="headwind"></span></div>
+        <div class="readout" data-titled="homeTitle"><span class="label" data-says="home"></span><span data-field="home">0</span><span class="unit">m</span></div>
       </div>
       <!--
         The three keys worth having on screen the whole time.
@@ -60,9 +61,10 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
         looking. Two are the flight, and the third is the way out of it.
       -->
       <div class="hud-keys">
-        <span><b>L</b> levels</span>
-        <span><b>Space</b> speed up</span>
-        <span><b>B</b> brake</span>
+        <span><b>L</b> <i data-says="keyLevels"></i></span>
+        <span><b>Space</b> <i data-says="keySpeedUp"></i></span>
+        <span><b>B</b> <i data-says="keyBrake"></i></span>
+        <span><b>Tab</b> <i data-says="keyLanguage"></i></span>
       </div>
     </div>
     <div class="hud-warning" data-field="warning"></div>
@@ -87,6 +89,25 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
   // Map data licences generally require the credit to stay on screen.
   field('credit').textContent = credit;
 
+  /**
+   * Write every label in the language the game is now in.
+   *
+   * The panel is built once and written over, so the words cannot come from
+   * the markup: they are named there and fetched here. Run at startup and
+   * again on every swap, which is the whole of what the HUD has to do about
+   * languages -- the numbers are numbers in both.
+   */
+  function relabel(): void {
+    for (const el of root.querySelectorAll<HTMLElement>('[data-says]')) {
+      el.textContent = say(el.dataset['says'] as Phrase);
+    }
+    for (const el of root.querySelectorAll<HTMLElement>('[data-titled]')) {
+      el.title = say(el.dataset['titled'] as Phrase);
+    }
+  }
+  relabel();
+  onLanguageChange(relabel);
+
   function update(
     state: BirdState,
     telemetry: FlightTelemetry,
@@ -107,8 +128,15 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     const strength = Math.hypot(telemetry.wind.x, telemetry.wind.y, telemetry.wind.z);
     windEl.textContent = speedText(strength);
     const head = telemetry.headwind;
-    headwindEl.textContent =
-      strength < 0.2 ? 'calm' : head > 0.3 ? 'head' : head < -0.3 ? 'tail' : 'cross';
+    headwindEl.textContent = say(
+      strength < 0.2
+        ? 'calm'
+        : head > 0.3
+          ? 'headwind'
+          : head < -0.3
+            ? 'tailwind'
+            : 'crosswind',
+    );
     headwindEl.classList.toggle('adverse', head > 0.3);
 
     staminaEl.style.width = `${tiring ? state.stamina * 100 : 100}%`;

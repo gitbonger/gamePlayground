@@ -68,6 +68,8 @@ export interface InputSource {
   consumeReset(): boolean;
   /** True on the press that turns the spoken instructions on or off. */
   consumeVoice(): boolean;
+  /** Whether Tab was pressed since last asked: swap the language. */
+  consumeLanguage(): boolean;
   /**
    * True once per press of the take-off key, not once per frame it is held.
    *
@@ -127,6 +129,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
   let launchRequested = false;
   let menuRequested = false;
   let voiceRequested = false;
+  let languageRequested = false;
   let stepped = 0;
   let confirmed = false;
   let dismissed = false;
@@ -154,6 +157,13 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     if (e.code === 'KeyV') voiceRequested = true;
     if (anyHeld(BINDINGS.flap)) launchRequested = true;
     if (e.code === 'KeyL') menuRequested = true;
+    // The language, on the key that means "the other one" everywhere else.
+    // Read on the way down and swallowed, because Tab's own job is to walk
+    // the browser's focus off the canvas and out of the game.
+    if (e.code === 'Tab') {
+      languageRequested = true;
+      e.preventDefault();
+    }
     // Digit1..Digit9 on the top row, and the same on the numeric pad.
     const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
     if (digit) digits.push(Number(digit[1]));
@@ -198,6 +208,12 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
   function consumeVoice() {
     const requested = voiceRequested;
     voiceRequested = false;
+    return requested;
+  }
+
+  function consumeLanguage() {
+    const requested = languageRequested;
+    languageRequested = false;
     return requested;
   }
 
@@ -247,6 +263,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     update,
     consumeReset,
     consumeVoice,
+    consumeLanguage,
     consumeLaunch,
     consumeMenu,
     consumeDigit,

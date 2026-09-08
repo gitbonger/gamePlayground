@@ -1,3 +1,5 @@
+import { read, type Words } from '../i18n';
+
 /**
  * One instruction at a time, under the bird: the keys, and what they do.
  *
@@ -47,7 +49,7 @@ export interface Tip {
   /** The keys to press, in the order they are shown. */
   keys: readonly string[];
   /** What pressing them does, as an instruction rather than a description. */
-  text: string;
+  text: Words;
   /**
    * Whether this one is worth saying out loud.
    *
@@ -149,8 +151,8 @@ export const COURSES: Record<string, readonly Lesson[]> = {
   // what makes it the flight to be asked on. The cost of getting it wrong is
   // a few seconds of going the wrong way over some trees.
   'Temető': [
-    { at: 80, keys: ['→'], text: 'Try right!' },
-    { at: 120, keys: ['←'], text: 'Try left!' },
+    { at: 80, keys: ['→'], text: { en: 'Try right!', hu: 'Próbáld jobbra!' } },
+    { at: 120, keys: ['←'], text: { en: 'Try left!', hu: 'Próbáld balra!' } },
   ],
   // The one thing about this world that cannot be worked out by looking at
   // it: foliage is not solid and everything else is. Said thirty metres in,
@@ -158,15 +160,15 @@ export const COURSES: Record<string, readonly Lesson[]> = {
   // without a key because it is not a control -- it is the rule the next
   // eight hundred metres are flown under.
   'Teleki tér': [
-    { at: 30, keys: [], text: 'Fly through trees. Avoid buildings and vehicles.' },
+    { at: 30, keys: [], text: { en: 'Fly through trees. Avoid buildings and vehicles.', hu: 'Repülj a fák között. Kerüld a házakat és a járműveket.' } },
     // Not an instruction at all: the market he was sent for, named as it
     // comes up. The panel has been telling him how to fly for two levels, so
     // it is worth its saying something that is only the story now and then.
-    { at: 150, keys: [], text: 'Approaching Teleki tér' },
+    { at: 150, keys: [], text: { en: 'Approaching Teleki tér', hu: 'Közeledsz a Teleki térhez' } },
     // And the last of them, counted from the other end of the flight: the
     // hard part of this game is arriving, and this is the sentence that says
     // the arriving has started.
-    { within: 200, keys: [], text: 'Land near the arrow!' },
+    { within: 200, keys: [], text: { en: 'Land near the arrow!', hu: 'Szállj le a nyíl közelében!' } },
     // And the point of the whole errand, said once the feet are down. No key,
     // because there is nothing to press: walking onto grain is what eating
     // grain looks like. Said aloud as well, which most lessons are not --
@@ -176,7 +178,7 @@ export const COURSES: Record<string, readonly Lesson[]> = {
     // health": the second is what it does and the first is what to do, and
     // the panel is for what to do. What it costs is the *why*, which the
     // player gets anyway from the bar in the corner going up as they walk.
-    { landed: true, keys: [], text: 'Collect some seeds!', spoken: true },
+    { landed: true, keys: [], text: { en: 'Collect some seeds!', hu: 'Szedj össze pár magot!' }, spoken: true },
   ],
   // Fifty metres out of the square, which is three or four seconds: long
   // enough to have got the wings working and short enough that the warning
@@ -186,7 +188,7 @@ export const COURSES: Record<string, readonly Lesson[]> = {
   // the bird's own state says so. It is the one thing on this route that the
   // player could not have worked out by looking, which is exactly what a
   // one-off is for. Said aloud, because it is about staying alive.
-  'Népszínház': [{ at: 50, keys: [], text: 'Crows! Fly low!', spoken: true }],
+  'Népszínház': [{ at: 50, keys: [], text: { en: 'Crows! Fly low!', hu: 'Varjak! Repülj alacsonyan!' }, spoken: true }],
   // Four of them, all spoken, which is more than any other level has and more
   // than the rule here usually allows -- see `spoken`. They are asked for as
   // life-saving, and on this level that is arguable: it is the one flown out
@@ -198,10 +200,10 @@ export const COURSES: Record<string, readonly Lesson[]> = {
   // can be read. They queue rather than interrupting each other, so the last
   // of them arrives well after the two hundred metres it is written at.
   'Blaha': [
-    { at: 30, keys: [], text: 'Keep high!', spoken: true },
-    { at: 100, keys: [], text: 'Mind the crows!', spoken: true },
-    { at: 150, keys: [], text: 'Speed above 100', spoken: true },
-    { at: 200, keys: [], text: 'Keep fast!', spoken: true },
+    { at: 30, keys: [], text: { en: 'Keep high!', hu: 'Maradj magasan!' }, spoken: true },
+    { at: 100, keys: [], text: { en: 'Mind the crows!', hu: 'Vigyázz a varjakkal!' }, spoken: true },
+    { at: 150, keys: [], text: { en: 'Speed above 100', hu: 'Száz felett tartsd' }, spoken: true },
+    { at: 200, keys: [], text: { en: 'Keep fast!', hu: 'Tartsd a tempót!' }, spoken: true },
   ],
   // The other side of the same coin, and the reason it is worth saying: the
   // two levels before this one were flown with crows in the sky, and a player
@@ -212,25 +214,25 @@ export const COURSES: Record<string, readonly Lesson[]> = {
   // above. The voice is for what kills you and what the flight cannot go on
   // without; a player who misses this one finds out by not being attacked,
   // which is the same news a moment later.
-  'Fiumei út': [{ at: 50, keys: [], text: 'Chill, no crows here' }],
+  'Fiumei út': [{ at: 50, keys: [], text: { en: 'Chill, no crows here', hu: 'Nyugi, itt nincs varjú' } }],
   // The last level, and the only target in the game that will not wait for
   // you. Three things, and none of them is a control: they are the rules of
   // the one landing that is different from every other landing.
   'Keleti': [
     // Spoken: there is no version of this level that is finished on the
     // ground beside the train.
-    { at: 50, keys: [], text: 'You need to land on the train!', spoken: true },
+    { at: 50, keys: [], text: { en: 'You need to land on the train!', hu: 'A vonatra kell leszállnod!' }, spoken: true },
     // And spoken, because it is the one that can kill. A rake running at
     // eleven metres a second that reaches the end of its line comes back the
     // other way, and being caught by something already moving is fatal --
     // it is its own crash cause.
-    { at: 100, keys: [], text: "Careful, it's changing directions!", spoken: true },
+    { at: 100, keys: [], text: { en: "Careful, it's changing directions!", hu: 'Vigyázz, irányt vált!' }, spoken: true },
     // Not spoken, and the difference is the rule: put down on the wrong
     // wagon and you are standing on a moving train with the right one a few
     // metres away, which costs a walk. Missing this one is not fatal and
     // does not end the level, so it stays on the screen where something can
     // be ignored without the voice being spent on it.
-    { at: 150, keys: [], text: 'Only land at the marked car!' },
+    { at: 150, keys: [], text: { en: 'Only land at the marked car!', hu: 'Csak a megjelölt kocsira szállj!' } },
   ],
 };
 
@@ -309,7 +311,7 @@ export const CAUTIONS: readonly Caution[] = [
   // the sort of thing worth a picture of a key.
   {
     keys: ['↑'],
-    text: 'Nose down!',
+    text: { en: 'Nose down!', hu: 'Orrot le!' },
     always: true,
     spoken: true,
     when: (flight) => flight.stalled,
@@ -326,7 +328,7 @@ export const CAUTIONS: readonly Caution[] = [
   // is pitch to spend, wings once there is not.
   {
     keys: ['SPACE'],
-    text: 'Keep flapping!',
+    text: { en: 'Keep flapping!', hu: 'Csapkodj tovább!' },
     spoken: true,
     when: (flight) =>
       flight.airspeed < SLOW || (flight.noseUp && flight.altitude < LOW && flight.climb < 0),
@@ -337,7 +339,7 @@ export const CAUTIONS: readonly Caution[] = [
   // having taken the rest.
   {
     keys: ['↓'],
-    text: 'Pull up!',
+    text: { en: 'Pull up!', hu: 'Húzd fel!' },
     spoken: true,
     when: (flight) => flight.altitude < LOW && flight.climb < 0,
   },
@@ -347,7 +349,7 @@ export const CAUTIONS: readonly Caution[] = [
   // mark, so the words and the picture say it together.
   {
     keys: ['B'],
-    text: 'Slow down!',
+    text: { en: 'Slow down!', hu: 'Lassíts!' },
     when: (flight) => flight.stamina < TIRED,
   },
 ];
@@ -394,14 +396,14 @@ export const approachFor = (flight: Approaching): Tip | null => {
   // to one, so a third of the distance is a steep but flyable slope, and more
   // than that has to be lost rather than flown off.
   if (flight.altitude > flight.toGo / 3)
-    return { keys: ['↑'], text: 'Lose some height', spoken: true };
+    return { keys: ['↑'], text: { en: 'Lose some height', hu: 'Ereszkedj lejjebb' }, spoken: true };
   // Too fast to put down, which is what the brake is for: wings spread and a
   // backwards beat.
-  if (flight.fast) return { keys: ['B'], text: 'Brake to slow down', spoken: true };
+  if (flight.fast) return { keys: ['B'], text: { en: 'Brake to slow down', hu: 'Fékezz a lassításhoz' }, spoken: true };
   // Down to roof height and still coming down hard. Beating arrests a sink in
   // a way that pulling the nose up at this height does not.
   if (flight.sinking && flight.altitude < 12)
-    return { keys: ['SPACE'], text: 'Beat to soften it', spoken: true };
+    return { keys: ['SPACE'], text: { en: 'Beat to soften it', hu: 'Csapkodj, hogy puhább legyen' }, spoken: true };
   // Low, slow and settling: the last thing, and a moment rather than a state.
   //
   // "Flare" is the word for it and the word is no use here: it is aviation
@@ -411,8 +413,8 @@ export const approachFor = (flight: Approaching): Tip | null => {
   // same thing to the same bird, and one phrase learned once is worth more
   // than two phrases distinguishing an emergency from a landing that the
   // player is equally busy in either way.
-  if (flight.altitude < 6) return { keys: ['↓'], text: 'Pull up!', spoken: true };
-  return { keys: ['B'], text: 'Brake, then pull up', spoken: true };
+  if (flight.altitude < 6) return { keys: ['↓'], text: { en: 'Pull up!', hu: 'Húzd fel!' }, spoken: true };
+  return { keys: ['B'], text: { en: 'Brake, then pull up', hu: 'Fékezz, aztán húzd fel' }, spoken: true };
 };
 
 /**
@@ -566,7 +568,9 @@ export function createTipPanel(container: HTMLElement): TipPanel {
 
   return {
     show(tip) {
-      const wanted = tip ? `${tip.keys.join('+')} ${tip.text}` : null;
+      // The words rather than the tip, so the same instruction in a language
+      // that has just been swapped counts as a different thing to show.
+      const wanted = tip ? `${tip.keys.join('+')} ${read(tip.text)}` : null;
       if (wanted === showing) return;
       showing = wanted;
 
@@ -583,7 +587,7 @@ export function createTipPanel(container: HTMLElement): TipPanel {
 
       const said = document.createElement('span');
       said.className = 'tip-text';
-      said.textContent = tip.text;
+      said.textContent = read(tip.text);
       root.appendChild(said);
     },
     dispose() {

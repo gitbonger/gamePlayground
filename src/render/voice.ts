@@ -12,6 +12,7 @@
  * every change of state aloud is a game nobody can bear for two minutes.
  */
 
+import { languageNow, read } from '../i18n';
 import type { Tip } from './tips';
 
 /** Whatever actually makes the noise. */
@@ -31,6 +32,16 @@ export interface Voice {
   update(tip: Tip | null, now: number): void;
   /** Turn it on or off, and say which it now is. */
   toggle(): boolean;
+  /**
+   * Stop mid-sentence and forget what has been said.
+   *
+   * For the language swapping under it: half an English sentence followed by
+   * nothing is better than half an English sentence followed by the other
+   * half in Hungarian, and forgetting means the next thing on screen is said
+   * again in the language it is now in rather than being suppressed as a
+   * repeat of something nobody heard in this language.
+   */
+  hush(): void;
   readonly speaking: boolean;
 }
 
@@ -53,7 +64,10 @@ export function createVoice(speaker: Speaker, repeatAfter = REPEAT_AFTER): Voice
 
   return {
     update(tip, now) {
-      const words = tip?.text ?? null;
+      // The words as they will be heard, not the pair they came from: the
+      // voice says one language, and the same instruction in the other one
+      // is a different thing to say.
+      const words = tip ? read(tip.text) : null;
       if (words === showing) return;
       showing = words;
       if (!on || words === null) return;
@@ -67,6 +81,11 @@ export function createVoice(speaker: Speaker, repeatAfter = REPEAT_AFTER): Voice
       // a voice describing a flight that has already happened.
       speaker.hush();
       speaker.say(words);
+    },
+    hush() {
+      speaker.hush();
+      said.clear();
+      showing = null;
     },
     toggle() {
       on = !on;
@@ -101,8 +120,14 @@ export function browserSpeaker(synth: SpeechSynthesis): Speaker {
       synth.cancel();
 
       const utterance = new SpeechSynthesisUtterance(words);
-      const english = synth.getVoices().find((voice) => voice.lang.startsWith('en'));
-      if (english) utterance.voice = english;
+      // A voice in the language the words are in, since these are read aloud
+      // and a Hungarian instruction read by an English voice is not an
+      // instruction. Whatever is installed, if anything is: a browser with no
+      // Hungarian voice gets its default, which is better than silence.
+      const tongue = languageNow();
+      const fitting = synth.getVoices().find((voice) => voice.lang.startsWith(tongue));
+      if (fitting) utterance.voice = fitting;
+      utterance.lang = tongue;
       // Slower than reading pace rather than faster. The first version was at
       // 1.15 on the theory that these are called out rather than read; said
       // aloud over a wingbeat, that is a voice you have to concentrate on,

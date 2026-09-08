@@ -1,3 +1,4 @@
+import { sameInBoth } from '../i18n';
 import { describe, expect, it } from 'vitest';
 import { LEVELS } from '../levels';
 import { project } from '../world/geo';
@@ -13,8 +14,8 @@ import {
   type Lesson,
 } from './tips';
 
-const EARLY: Lesson = { at: 20, keys: ['↑'], text: 'up' };
-const LATE: Lesson = { at: 100, keys: ['B'], text: 'brake' };
+const EARLY: Lesson = { at: 20, keys: ['↑'], text: sameInBoth('up') };
+const LATE: Lesson = { at: 100, keys: ['B'], text: sameInBoth('brake') };
 const COURSE = [EARLY, LATE];
 
 describe('handing out the flying lessons', () => {
@@ -25,22 +26,22 @@ describe('handing out the flying lessons', () => {
     const tutor = createTutor(COURSE, 7);
     expect(tutor.update({ flown: 0, toGo: 9999 }, 1 / 60)).toBeNull();
     expect(tutor.update({ flown: 19.9, toGo: 9999 }, 1 / 60)).toBeNull();
-    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.text).toBe('up');
+    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.text.en).toBe('up');
   });
 
   it('gives one at a time, in the order the flight reaches them', () => {
     // Starting a flight already past both thresholds -- which a respawn into
     // the middle of one would -- must not stack two tips into one corner.
     const tutor = createTutor(COURSE, 7, 1.5);
-    expect(tutor.update({ flown: 500, toGo: 9999 }, 1 / 60)?.text).toBe('up');
-    expect(tutor.update({ flown: 500, toGo: 9999 }, 1)?.text).toBe('up');
+    expect(tutor.update({ flown: 500, toGo: 9999 }, 1 / 60)?.text.en).toBe('up');
+    expect(tutor.update({ flown: 500, toGo: 9999 }, 1)?.text.en).toBe('up');
 
     // And the corner empties between them. Two instructions that never share
     // the screen but never leave it either read as one instruction changing
     // its mind.
     expect(tutor.update({ flown: 500, toGo: 9999 }, 7)).toBeNull();
     expect(tutor.update({ flown: 500, toGo: 9999 }, 1)).toBeNull();
-    expect(tutor.update({ flown: 500, toGo: 9999 }, 1)?.text).toBe('brake');
+    expect(tutor.update({ flown: 500, toGo: 9999 }, 1)?.text.en).toBe('brake');
   });
 
   it('takes a lesson away once it has been up long enough', () => {
@@ -73,7 +74,7 @@ describe('handing out the flying lessons', () => {
     tutor.reset();
     // And not straight away: the new flight has to earn it over again.
     expect(tutor.update({ flown: 0, toGo: 9999 }, 1 / 60)).toBeNull();
-    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.text).toBe('up');
+    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.text.en).toBe('up');
   });
 
   it('goes away when the player uses the key it is about', () => {
@@ -82,7 +83,7 @@ describe('handing out the flying lessons', () => {
     // worked.
     const tutor = createTutor([EARLY], 7, 1.5);
     const nothing = () => false;
-    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60, nothing)?.text).toBe('up');
+    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60, nothing)?.text.en).toBe('up');
     expect(tutor.update({ flown: 21, toGo: 9999 }, 1 / 60, (codes) => codes.includes('ArrowUp'))).toBeNull();
     // And stays away: it has been given, key or no key.
     expect(tutor.update({ flown: 22, toGo: 9999 }, 2, nothing)).toBeNull();
@@ -95,13 +96,13 @@ describe('handing out the flying lessons', () => {
     // tip that can never be dismissed by doing what it says.
     for (const lesson of Object.values(COURSES).flat()) {
       const codes = codesFor(lesson);
-      expect(codes.length, lesson.text).toBeGreaterThanOrEqual(lesson.keys.length);
+      expect(codes.length, lesson.text.en).toBeGreaterThanOrEqual(lesson.keys.length);
     }
     // A tip with no keys at all is a thing worth saying that is not a
     // control, and it is dismissed by time rather than by doing it.
-    expect(codesFor({ keys: [], text: 'advice' })).toEqual([]);
-    expect(codesFor({ keys: ['↑', '↓'], text: '' })).toContain('KeyW');
-    expect(codesFor({ keys: ['SPACE'], text: '' })).toEqual(['Space']);
+    expect(codesFor({ keys: [], text: sameInBoth('advice') })).toEqual([]);
+    expect(codesFor({ keys: ['↑', '↓'], text: sameInBoth('') })).toContain('KeyW');
+    expect(codesFor({ keys: ['SPACE'], text: sameInBoth('') })).toEqual(['Space']);
   });
 
   it('asks for one turn at a time, in the order they are written', () => {
@@ -119,16 +120,20 @@ describe('handing out the flying lessons', () => {
         // moment depends on which of them you ask.
         expect(
           [lesson.at, lesson.within, lesson.landed].filter((trigger) => trigger !== undefined),
-          lesson.text,
+          lesson.text.en,
         ).toHaveLength(1);
         // Short enough to take in at a glance, since it is read while flying.
-        expect(lesson.text.length, lesson.text).toBeGreaterThan(0);
-        expect(lesson.text.length, lesson.text).toBeLessThan(60);
+        // Both languages: Hungarian runs longer than English and the panel is
+        // the same width in either.
+        for (const words of [lesson.text.en, lesson.text.hu]) {
+          expect(words.length, words).toBeGreaterThan(0);
+          expect(words.length, words).toBeLessThan(60);
+        }
         // And every key it draws has to do something. Drawing none is
         // allowed -- some things are worth saying that are not a control --
         // but a key on screen that answers to nothing is a lie.
         for (const key of lesson.keys) {
-          expect(codesFor({ keys: [key], text: '' }).length, key).toBeGreaterThan(0);
+          expect(codesFor({ keys: [key], text: sameInBoth('') }).length, key).toBeGreaterThan(0);
         }
       }
     }
@@ -161,7 +166,7 @@ describe('handing out the flying lessons', () => {
       const flown = Math.hypot(line.x - from.x, line.z - from.z);
       for (const lesson of courseFor(level.name)) {
         if (lesson.at === undefined) continue;
-        expect(lesson.at, `${level.name}: ${lesson.text}`).toBeLessThan(flown);
+        expect(lesson.at, `${level.name}: ${lesson.text.en}`).toBeLessThan(flown);
       }
     }
   });
@@ -173,7 +178,7 @@ describe('handing out the flying lessons', () => {
     // Being told to try turning while threading a goods yard would be the
     // game talking over itself.
     const tutor = createTutor(COURSE, 7, 1.5);
-    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.text).toBe('up');
+    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.text.en).toBe('up');
 
     // Handed another level's course, the old one is gone -- however far this
     // flight is taken, and whether or not the new level has anything of its
@@ -188,8 +193,8 @@ describe('handing out the flying lessons', () => {
     tutor.teach(courseFor('Keleti'), 0);
     for (const travelled of [20, 100, 900]) {
       const said = tutor.update({ flown: travelled, toGo: 9999 }, 1 / 60);
-      expect(said?.text, `${travelled} m`).not.toBe('up');
-      expect(said?.text, `${travelled} m`).not.toBe('down');
+      expect(said?.text.en, `${travelled} m`).not.toBe('up');
+      expect(said?.text.en, `${travelled} m`).not.toBe('down');
     }
 
     // And a name with no course at all teaches nothing, which is the other
@@ -208,14 +213,14 @@ describe('handing out the flying lessons', () => {
     // distance: a player who overshot the concrete and came back has flown
     // further than one who got it right, and both have just landed. Neither
     // end of the flight can express that.
-    const eating = [{ landed: true, keys: [], text: 'eat' }];
+    const eating = [{ landed: true, keys: [], text: sameInBoth('eat') }];
     const tutor = createTutor(eating, 7, 1.5);
 
     // Nine hundred metres of flying is not a landing.
     for (const flown of [0, 30, 900]) {
       expect(tutor.update({ flown, toGo: 0.5 }, 1 / 60), `${flown} m`).toBeNull();
     }
-    expect(tutor.update({ flown: 900, toGo: 0.5, landed: true }, 1 / 60)?.text).toBe('eat');
+    expect(tutor.update({ flown: 900, toGo: 0.5, landed: true }, 1 / 60)?.text.en).toBe('eat');
   });
 
   it('counts a level taken up in mid-air from where it was taken up', () => {
@@ -226,7 +231,7 @@ describe('handing out the flying lessons', () => {
     tutor.teach(COURSE, 500);
     expect(tutor.update({ flown: 500, toGo: 9999 }, 1 / 60)).toBeNull();
     expect(tutor.update({ flown: 519, toGo: 9999 }, 1 / 60)).toBeNull();
-    expect(tutor.update({ flown: 520, toGo: 9999 }, 1 / 60)?.text).toBe('up');
+    expect(tutor.update({ flown: 520, toGo: 9999 }, 1 / 60)?.text.en).toBe('up');
   });
 });
 
@@ -246,9 +251,9 @@ describe('the cautions, which watch the flight', () => {
   });
 
   it('calls out slow, low and tired, each on its own', () => {
-    expect(cautionFor(true, { ...fine, airspeed: 5 })?.text).toBe('Keep flapping!');
-    expect(cautionFor(true, { ...fine, altitude: 9, climb: -1 })?.text).toBe('Pull up!');
-    expect(cautionFor(true, { ...fine, stamina: 0.29 })?.text).toBe('Slow down!');
+    expect(cautionFor(true, { ...fine, airspeed: 5 })?.text.en).toBe('Keep flapping!');
+    expect(cautionFor(true, { ...fine, altitude: 9, climb: -1 })?.text.en).toBe('Pull up!');
+    expect(cautionFor(true, { ...fine, stamina: 0.29 })?.text.en).toBe('Slow down!');
   });
 
   it('puts the wings before the nose when the bird is low and slow', () => {
@@ -256,7 +261,7 @@ describe('the cautions, which watch the flight', () => {
     // pulling up, and pulling up with no speed is how a bird stalls into the
     // ground it was trying to clear -- so the answer is the wings, which are
     // the only control that makes more of both.
-    expect(cautionFor(true, { ...fine, altitude: 5, climb: -1, airspeed: 4 })?.text).toBe(
+    expect(cautionFor(true, { ...fine, altitude: 5, climb: -1, airspeed: 4 })?.text.en).toBe(
       'Keep flapping!',
     );
   });
@@ -266,7 +271,7 @@ describe('the cautions, which watch the flight', () => {
     // one that gives way. A bird about to hit the ground has a bigger problem
     // than the one it will have in thirty seconds.
     const spent = { ...fine, altitude: 5, climb: -1, stamina: 0.1 };
-    expect(cautionFor(true, spent)?.text).toBe('Pull up!');
+    expect(cautionFor(true, spent)?.text.en).toBe('Pull up!');
   });
 
   it('leaves height to fly in without being talked to', () => {
@@ -280,7 +285,7 @@ describe('the cautions, which watch the flight', () => {
     expect(cautionFor(true, { ...fine, altitude: 8, climb: 0 })).toBeNull();
     expect(cautionFor(true, { ...fine, altitude: 8, climb: 1 })).toBeNull();
     expect(cautionFor(true, { ...fine, altitude: 15, climb: -2 })).toBeNull();
-    expect(cautionFor(true, { ...fine, altitude: 8, climb: -2 })?.text).toBe('Pull up!');
+    expect(cautionFor(true, { ...fine, altitude: 8, climb: -2 })?.text.en).toBe('Pull up!');
   });
 
   it('answers a sink with the wings once there is no nose left to give', () => {
@@ -290,8 +295,8 @@ describe('the cautions, which watch the flight', () => {
     // working. So the same situation gets a different answer depending on
     // what the wing is already doing.
     const sinking = { ...fine, altitude: 8, climb: -2 };
-    expect(cautionFor(true, sinking)?.text).toBe('Pull up!');
-    expect(cautionFor(true, { ...sinking, noseUp: true })?.text).toBe('Keep flapping!');
+    expect(cautionFor(true, sinking)?.text.en).toBe('Pull up!');
+    expect(cautionFor(true, { ...sinking, noseUp: true })?.text.en).toBe('Keep flapping!');
   });
 
   it('does not nag a bird that is merely gliding nose-high', () => {
@@ -306,7 +311,7 @@ describe('the cautions, which watch the flight', () => {
     // three stop once the game stops teaching. Nobody stalls on purpose.
     const stalled = { ...fine, stalled: true };
     const struggling = { ...fine, altitude: 5, climb: -1, airspeed: 4, stamina: 0.1 };
-    expect(cautionFor(false, stalled)?.text).toBe('Nose down!');
+    expect(cautionFor(false, stalled)?.text.en).toBe('Nose down!');
     expect(cautionFor(false, struggling)).toBeNull();
     expect(cautionFor(true, struggling)).not.toBeNull();
   });
@@ -314,15 +319,17 @@ describe('the cautions, which watch the flight', () => {
   it('puts the stall before everything, because it is already happening', () => {
     // The others are about to be a problem. A stall is one: the wing has
     // stopped working, and nothing else is worth trying until it works again.
-    expect(cautionFor(true, { ...fine, altitude: 5, airspeed: 4, stamina: 0.1, stalled: true })?.text).toBe(
+    expect(cautionFor(true, { ...fine, altitude: 5, airspeed: 4, stamina: 0.1, stalled: true })?.text.en).toBe(
       'Nose down!',
     );
   });
 
   it('draws every one of them with a key that does something', () => {
     for (const warning of CAUTIONS) {
-      expect(warning.text.length, warning.text).toBeLessThan(30);
-      expect(codesFor(warning).length, warning.text).toBeGreaterThan(0);
+      for (const words of [warning.text.en, warning.text.hu]) {
+        expect(words.length, words).toBeLessThan(30);
+      }
+      expect(codesFor(warning).length, warning.text.en).toBeGreaterThan(0);
     }
   });
 
@@ -330,7 +337,7 @@ describe('the cautions, which watch the flight', () => {
     // Twenty km/h is the readout; 5.6 m/s is the air. A threshold written in
     // km/h would be a threshold about the display rather than about flying,
     // and the display is the thing most likely to change.
-    expect(cautionFor(true, { ...fine, airspeed: 20 / 3.6 - 0.01 })?.text).toBe('Keep flapping!');
+    expect(cautionFor(true, { ...fine, airspeed: 20 / 3.6 - 0.01 })?.text.en).toBe('Keep flapping!');
     expect(cautionFor(true, { ...fine, airspeed: 20 / 3.6 + 0.01 })).toBeNull();
   });
 });
@@ -350,17 +357,17 @@ describe('talking an approach down', () => {
     // cannot be fixed at twenty, whereas too fast can -- so height is said
     // first even when both are wrong.
     const high = { ...near, altitude: 60, fast: true };
-    expect(approachFor(high)?.text).toBe('Lose some height');
-    expect(approachFor({ ...high, altitude: 20 })?.text).toBe('Brake to slow down');
+    expect(approachFor(high)?.text.en).toBe('Lose some height');
+    expect(approachFor({ ...high, altitude: 20 })?.text.en).toBe('Brake to slow down');
   });
 
   it('answers a hard sink with the wings, not the nose', () => {
     // At roof height, beating arrests a sink; pulling the nose up trades the
     // speed there is no longer any of.
-    expect(approachFor({ ...near, altitude: 10, sinking: true })?.text).toBe('Beat to soften it');
+    expect(approachFor({ ...near, altitude: 10, sinking: true })?.text.en).toBe('Beat to soften it');
     // Higher up there is room to fly out of it, and the general instruction
     // stands.
-    expect(approachFor({ ...near, altitude: 30, toGo: 120, sinking: true })?.text).toBe(
+    expect(approachFor({ ...near, altitude: 30, toGo: 120, sinking: true })?.text.en).toBe(
       'Brake, then pull up',
     );
   });
@@ -371,7 +378,7 @@ describe('talking an approach down', () => {
     // calls this and is no use to somebody who has never landed anything --
     // asked what it meant, the first player to read it guessed it was the
     // part of a wing that opens to brake.
-    expect(approachFor({ ...near, toGo: 20, altitude: 5 })?.text).toBe('Pull up!');
+    expect(approachFor({ ...near, toGo: 20, altitude: 5 })?.text.en).toBe('Pull up!');
     expect(
       cautionFor(true, {
         altitude: 8,
@@ -380,7 +387,7 @@ describe('talking an approach down', () => {
         stalled: false,
         climb: -2,
         noseUp: false,
-      })?.text,
+      })?.text.en,
     ).toBe('Pull up!');
   });
 
@@ -394,8 +401,10 @@ describe('talking an approach down', () => {
     ];
     for (const tip of shown) {
       expect(tip).not.toBeNull();
-      expect(codesFor(tip!).length, tip!.text).toBeGreaterThan(0);
-      expect(tip!.text.length, tip!.text).toBeLessThan(30);
+      expect(codesFor(tip!).length, tip!.text.en).toBeGreaterThan(0);
+      for (const words of [tip!.text.en, tip!.text.hu]) {
+        expect(words.length, words).toBeLessThan(30);
+      }
     }
   });
 });

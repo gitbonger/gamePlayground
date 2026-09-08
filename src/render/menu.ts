@@ -1,5 +1,7 @@
 /** The level selector: a list you can open, look at, and pick from. */
 
+import { onLanguageChange, say } from '../i18n';
+
 /**
  * Which level a digit picks, or null.
  *
@@ -94,6 +96,12 @@ export function createLevelMenu(
   /** What the last draw was given, so a redraw can repeat it. */
   let drawnAt = 0;
   let drawnMode: MenuMode | null = null;
+  // Redrawn on a swap, since the list is built once when it opens and the
+  // language can change while it is up -- which it very well might, given
+  // both keys are on the same keyboard and one of them is being looked for.
+  onLanguageChange(() => {
+    if (showing && drawnMode) draw(drawnAt, drawnMode);
+  });
 
   /**
    * Built out of nodes rather than out of a string of markup.
@@ -110,7 +118,7 @@ export function createLevelMenu(
     card.className = 'menu-card';
 
     const title = document.createElement('h2');
-    title.textContent = 'Levels';
+    title.textContent = say('menuTitle');
     card.appendChild(title);
 
     levels.forEach((level, index) => {
@@ -136,7 +144,7 @@ export function createLevelMenu(
 
       if (index === at) {
         const flag = document.createElement('em');
-        flag.textContent = 'playing';
+        flag.textContent = say('menuPlaying');
         row.appendChild(flag);
       }
       card.appendChild(row);
@@ -155,14 +163,14 @@ export function createLevelMenu(
     const says = document.createElement('span');
     says.textContent = mode.says;
     const swap = document.createElement('em');
-    swap.textContent = 'switch';
+    swap.textContent = say('menuSwitch');
     flying.append(label, says, swap);
     flying.addEventListener('click', () => onSwitchMode?.());
     card.appendChild(flying);
 
     const hint = document.createElement('p');
     hint.className = 'menu-hint';
-    hint.textContent = 'number or ↑↓ and Enter to fly it, or click. ESC or L to close';
+    hint.textContent = say('menuHow');
     card.appendChild(hint);
 
     root.appendChild(card);

@@ -11,6 +11,7 @@
  * joins them up can be different data in the same shape.
  */
 
+import type { Words } from './i18n';
 import { CAUGHT, HEADING_OUT, SAVED, THE_ASK, THE_TRAPPER, type Turn } from './dialogue';
 import {
   HOME_TREE,
@@ -212,7 +213,7 @@ export interface Scene {
    * work of two, and it is the right one -- there is no such thing as a beat
    * with nothing to say.
    */
-  says?: readonly string[];
+  says?: readonly Words[];
   /**
    * What follows it: the next scene, or the level it hands over to.
    *
@@ -242,7 +243,10 @@ export const HOMECOMING: Scene = {
   // the hero says anything without somebody to say it to, and it is what
   // turns the empty nest into an errand -- he is not going for help, he is
   // going to look, and the looking is what the next few levels are.
-  says: ['OMG! Where did she go?', 'Maybe she is on Mátyás tér.'],
+  says: [
+    { en: 'OMG! Where did she go?', hu: 'Jaj ne! Hová tűnt?' },
+    { en: 'Maybe she is on Mátyás tér.', hu: 'Talán a Mátyás téren van.' },
+  ],
   opens: { scene: 'flying to Mátyás tér' },
 };
 
@@ -266,7 +270,7 @@ export const BELLY_FULL: Scene = {
   // Nowhere to go and no arc to get there by: this happens where he is.
   seconds: 0,
   cruise: 0,
-  says: ['My belly is full, time to fly home!'],
+  says: [{ en: 'My belly is full, time to fly home!', hu: 'Tele a begyem, irány haza!' }],
   opens: { scene: HOMECOMING.name },
 };
 
@@ -298,7 +302,10 @@ export const NOT_AT_MATYAS: Scene = {
   name: 'nobody at Mátyás tér',
   seconds: 0,
   cruise: 0,
-  says: ['She is not here.', 'Maybe on Jani Pali tér.'],
+  says: [
+    { en: 'She is not here.', hu: 'Nincs itt.' },
+    { en: 'Maybe on Jani Pali tér.', hu: 'Talán a Jani Pali téren.' },
+  ],
   // Into the climb rather than into the level. It used to go straight on --
   // "the next one starts over the square he is standing on, so a camera
   // taking him there would be a camera going nowhere" -- which was true about
@@ -328,7 +335,10 @@ export const NOT_AT_JANI: Scene = {
   name: 'nobody at Jani Pali tér',
   seconds: 0,
   cruise: 0,
-  says: ['She is not here!', 'Maybe on Blaha!'],
+  says: [
+    { en: 'She is not here!', hu: 'Itt sincs!' },
+    { en: 'Maybe on Blaha!', hu: 'Talán a Blahán!' },
+  ],
   opens: { scene: 'up off Jani Pali tér' },
 };
 

@@ -1,3 +1,4 @@
+import { sameInBoth } from './i18n';
 import { describe, expect, it } from 'vitest';
 import { alone, begin, isOver, reply, type Turn } from './dialogue';
 
@@ -11,27 +12,27 @@ import { alone, begin, isOver, reply, type Turn } from './dialogue';
  * is a piece of production code that has stopped being any.
  */
 const GREETING: Turn = {
-  them: "It's good to see you!",
+  them: sameInBoth("It's good to see you!"),
   you: [
-    { text: 'You too!', then: { them: 'Good luck on your quest!' } },
-    { text: 'It was not easy!', then: { them: 'Nothing is easy!' } },
+    { text: sameInBoth('You too!'), then: { them: sameInBoth('Good luck on your quest!') } },
+    { text: sameInBoth('It was not easy!'), then: { them: sameInBoth('Nothing is easy!') } },
   ],
 };
 import { dialogueOf, LEVELS } from './levels';
 
 /** What is on screen, as plain strings, for comparing against. */
 const lines = (exchange: ReturnType<typeof begin>) =>
-  exchange.said.map((said) => `${said.who}: ${said.text}`);
+  exchange.said.map((said) => `${said.who}: ${said.text.en}`);
 
 describe('a monologue', () => {
   it('is a conversation with one speaker and nothing to say back', () => {
     // Which is what makes it worth having as a special case rather than as a
     // second kind of thing: the panel that shows conversations shows this,
     // and everything that asks whether the talking is finished gets "yes".
-    const said = alone('Where did she go?', 'Maybe she is on Mátyás tér.');
+    const said = alone(sameInBoth('Where did she go?'), sameInBoth('Maybe she is on Mátyás tér.'));
     expect(said.said).toEqual([
-      { who: 'you', text: 'Where did she go?' },
-      { who: 'you', text: 'Maybe she is on Mátyás tér.' },
+      { who: 'you', text: sameInBoth('Where did she go?') },
+      { who: 'you', text: sameInBoth('Maybe she is on Mátyás tér.') },
     ]);
     expect(said.replies).toEqual([]);
     expect(isOver(said)).toBe(true);
@@ -41,12 +42,12 @@ describe('a monologue', () => {
     // A conversation can open a level, because an answer can lead somewhere.
     // Nobody answers a monologue, so what follows it is the scene's business
     // and not the words'.
-    expect(alone('...').opens).toBeUndefined();
+    expect(alone(sameInBoth('...')).opens).toBeUndefined();
   });
 
   it('is still a monologue when there is only one thing to say', () => {
-    expect(alone('She is not here.').said).toHaveLength(1);
-    expect(isOver(alone('She is not here.'))).toBe(true);
+    expect(alone(sameInBoth('She is not here.')).said).toHaveLength(1);
+    expect(isOver(alone(sameInBoth('She is not here.')))).toBe(true);
   });
 });
 
@@ -54,7 +55,7 @@ describe('holding a conversation', () => {
   it('opens on their line, with yours to choose from', () => {
     const talk = begin(GREETING);
     expect(lines(talk)).toEqual(["them: It's good to see you!"]);
-    expect(talk.replies.map((r) => r.text)).toEqual(['You too!', 'It was not easy!']);
+    expect(talk.replies.map((r) => r.text.en)).toEqual(['You too!', 'It was not easy!']);
     expect(isOver(talk)).toBe(false);
   });
 
@@ -117,8 +118,8 @@ describe('holding a conversation', () => {
     // The placeholder is two lines deep. The shape is a tree, so nothing
     // about the traversal should know that.
     const deep: Turn = {
-      them: 'one',
-      you: [{ text: 'two', then: { them: 'three', you: [{ text: 'four', then: { them: 'five' } }] } }],
+      them: sameInBoth('one'),
+      you: [{ text: sameInBoth('two'), then: { them: sameInBoth('three'), you: [{ text: sameInBoth('four'), then: { them: sameInBoth('five') } }] } }],
     };
     const talk = reply(reply(begin(deep), 1), 1);
     expect(lines(talk)).toEqual([
@@ -132,7 +133,7 @@ describe('holding a conversation', () => {
   });
 
   it('ends on your word when a reply has no answer', () => {
-    const talk = reply(begin({ them: 'well?', you: [{ text: 'nothing' }] }), 1);
+    const talk = reply(begin({ them: sameInBoth('well?'), you: [{ text: sameInBoth('nothing') }] }), 1);
     expect(lines(talk)).toEqual(['them: well?', 'you: nothing']);
     expect(isOver(talk)).toBe(true);
   });
@@ -148,17 +149,17 @@ describe('holding a conversation', () => {
 
 describe('a conversation that hands over a level', () => {
   const ERRAND: Turn = {
-    them: 'Could you go?',
+    them: sameInBoth('Could you go?'),
     you: [
-      { text: 'Yes.', then: { them: 'See you!', opens: 'The Park' } },
-      { text: 'No.', then: { them: 'Then I will.', you: [{ text: 'Fine.', opens: 'The Yard' }] } },
-      { text: 'Maybe.', then: { them: 'Make your mind up.', you: [{ text: 'Yes.' }] } },
+      { text: sameInBoth('Yes.'), then: { them: sameInBoth('See you!'), opens: 'The Park' } },
+      { text: sameInBoth('No.'), then: { them: sameInBoth('Then I will.'), you: [{ text: sameInBoth('Fine.'), opens: 'The Yard' }] } },
+      { text: sameInBoth('Maybe.'), then: { them: sameInBoth('Make your mind up.'), you: [{ text: sameInBoth('Yes.') }] } },
       // A line that names a level and still has something to say after it.
       // Writing one is a mistake, but it is a mistake the types allow, and
       // what it must not do is hand the level over with her mouth still open.
       {
-        text: 'Where again?',
-        then: { them: 'Teleki tér.', opens: 'The Yard', you: [{ text: 'Right.' }] },
+        text: sameInBoth('Where again?'),
+        then: { them: sameInBoth('Teleki tér.'), opens: 'The Yard', you: [{ text: sameInBoth('Right.') }] },
       },
     ],
   };
@@ -211,7 +212,11 @@ describe('every level that has somebody waiting has something to say', () => {
     expect(spoken.length).toBeGreaterThan(0);
     for (const level of spoken) {
       const talk = begin(dialogueOf(level)!);
-      expect(talk.said[0]?.text.length, level.name).toBeGreaterThan(0);
+      // In both languages: a line somebody forgot to translate is a blank
+      // card in the middle of the story, and it would be found by playing the
+      // game in Hungarian rather than by anything here.
+      expect(talk.said[0]?.text.en.length, level.name).toBeGreaterThan(0);
+      expect(talk.said[0]?.text.hu.length, level.name).toBeGreaterThan(0);
       expect(talk.replies.length, level.name).toBeGreaterThan(0);
     }
   });

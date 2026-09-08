@@ -1,3 +1,4 @@
+import { sameInBoth } from '../i18n';
 import { describe, expect, it } from 'vitest';
 import { createVoice, type Speaker } from './voice';
 
@@ -16,7 +17,7 @@ function heard() {
   return { speaker, words, hushed: () => hushes };
 }
 
-const tip = (text: string) => ({ keys: ['SPACE'], text });
+const tip = (text: string) => ({ keys: ['SPACE'], text: sameInBoth(text) });
 
 describe('saying the instructions out loud', () => {
   it('says a thing once when it appears, not once a frame', () => {
