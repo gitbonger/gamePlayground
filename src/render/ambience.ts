@@ -25,6 +25,16 @@ export type Noise = 'bark' | 'coo' | 'caw' | 'bell' | 'screech';
 export interface Source {
   noise: Noise;
   x: number;
+  /**
+   * How high it is, in metres.
+   *
+   * Not decoration. Measured flat, a dog on the pavement is beside you the
+   * whole time you are a hundred metres over its head -- and this game is
+   * flown at between twenty and a hundred and fifty, so nearly every sound
+   * would have come from something that was not close at all. The reaches
+   * below are what they are *because* the height counts.
+   */
+  y: number;
   z: number;
 }
 
@@ -38,11 +48,11 @@ export interface Source {
  * full of dogs from being a kennel.
  */
 const NOISES: Record<Noise, { reach: number; apart: number; chance: number }> = {
-  bark: { reach: 70, apart: 6, chance: 0.5 },
-  coo: { reach: 35, apart: 9, chance: 0.35 },
-  caw: { reach: 90, apart: 5, chance: 0.6 },
-  bell: { reach: 110, apart: 14, chance: 0.5 },
-  screech: { reach: 140, apart: 18, chance: 0.45 },
+  bark: { reach: 110, apart: 6, chance: 0.5 },
+  coo: { reach: 70, apart: 9, chance: 0.35 },
+  caw: { reach: 120, apart: 5, chance: 0.6 },
+  bell: { reach: 150, apart: 14, chance: 0.5 },
+  screech: { reach: 200, apart: 18, chance: 0.45 },
 };
 
 /**
@@ -86,7 +96,7 @@ export interface Ambience {
    */
   hear(
     now: number,
-    at: { x: number; z: number },
+    at: { x: number; y: number; z: number },
     heading: number,
     sources: readonly Source[],
   ): void;
@@ -124,7 +134,7 @@ export function createAmbience(kit: Kit, random: () => number = Math.random): Am
         let nearest: { away: number; source: Source } | null = null;
         for (const source of sources) {
           if (source.noise !== noise) continue;
-          const away = Math.hypot(source.x - at.x, source.z - at.z);
+          const away = Math.hypot(source.x - at.x, source.y - at.y, source.z - at.z);
           if (away <= rule.reach && (!nearest || away < nearest.away)) nearest = { away, source };
         }
         if (!nearest) continue;
@@ -132,18 +142,25 @@ export function createAmbience(kit: Kit, random: () => number = Math.random): Am
         // near it does not spend its chance on nothing and go quiet.
         if (random() >= rule.chance) continue;
 
-        // Falls off with the square of the distance, near enough: what that
-        // gets right is that the far half of the reach is nearly silent,
-        // which is why the reaches can be as generous as they are.
-        const close = 1 - nearest.away / rule.reach;
-        const level = Math.max(0.05, close * close);
-        // Which side it is on. Facing nought is -Z, so the bird's right hand
-        // is +X turned by its heading -- the same convention the minimap
+        // Falls off with the distance, and it is the slant distance -- so the
+        // district gets louder as the bird comes down, which is both true and
+        // the best free bit of feedback in the game: a pigeon a hundred metres
+        // up hears the city faintly and one at ten metres is in it.
+        //
+        // Linear rather than squared. Squared, with the reaches this needs to
+        // be heard at flying height, everything past the near quarter was
+        // inaudible.
+        const level = Math.max(0.06, 1 - nearest.away / rule.reach);
+        // Which side it is on, on the flat: something directly below is in
+        // front of neither ear, and dividing by the slant distance would put
+        // it in the middle anyway. Facing nought is -Z, so the bird's right
+        // hand is +X turned by its heading -- the same convention the minimap
         // turns the world with.
         const dx = nearest.source.x - at.x;
         const dz = nearest.source.z - at.z;
+        const flat = Math.hypot(dx, dz);
         const side = dx * Math.cos(heading) + dz * Math.sin(heading);
-        const pan = nearest.away < 1 ? 0 : Math.max(-1, Math.min(1, side / nearest.away));
+        const pan = flat < 1 ? 0 : Math.max(-1, Math.min(1, side / flat));
 
         kit.play(noise, level, pan);
         last.set(noise, now);

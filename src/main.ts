@@ -1989,12 +1989,15 @@ function listen(): Source[] {
   // Dogs: the ones walking about on Jani Pali tér, and the ones on a lead at
   // a tram stop.
   for (const hound of dogs) {
-    if (within(hound.pose.x, hound.pose.z)) near_.push({ noise: 'bark', x: hound.pose.x, z: hound.pose.z });
+    if (within(hound.pose.x, hound.pose.z)) {
+      near_.push({ noise: 'bark', x: hound.pose.x, y: hound.pose.y, z: hound.pose.z });
+    }
   }
   for (const stop of layout.platforms ?? []) {
     if (!within(stop.x, stop.z)) continue;
     for (const each of stop.waiting) {
-      if (each.dog) near_.push({ noise: 'bark', x: each.dog.x, z: each.dog.z });
+      // On the island, which is a step up from the road it stands in.
+      if (each.dog) near_.push({ noise: 'bark', x: each.dog.x, y: stop.height, z: each.dog.z });
     }
   }
 
@@ -2003,14 +2006,14 @@ function listen(): Source[] {
   for (const crowd of crowds) {
     for (const each of crowd.birds) {
       const at = each.state.position;
-      if (within(at.x, at.z)) near_.push({ noise: 'coo', x: at.x, z: at.z });
+      if (within(at.x, at.z)) near_.push({ noise: 'coo', x: at.x, y: at.y, z: at.z });
     }
   }
   if (escorted) {
     for (const member of flock.members) {
       if (member.down > 0) continue;
       const at = member.state.position;
-      if (within(at.x, at.z)) near_.push({ noise: 'coo', x: at.x, z: at.z });
+      if (within(at.x, at.z)) near_.push({ noise: 'coo', x: at.x, y: at.y, z: at.z });
     }
   }
 
@@ -2019,7 +2022,7 @@ function listen(): Source[] {
     for (const crow of crows?.members ?? []) {
       if (crow.down > 0) continue;
       const at = crow.state.position;
-      if (within(at.x, at.z)) near_.push({ noise: 'caw', x: at.x, z: at.z });
+      if (within(at.x, at.z)) near_.push({ noise: 'caw', x: at.x, y: at.y, z: at.z });
     }
   }
 
@@ -2034,7 +2037,14 @@ function listen(): Source[] {
     if (train.held > 0 || train.waited > 0) return;
     const head = train.vehicles[0];
     if (!head || !within(head.x, head.z)) return;
-    near_.push({ noise: train.stock === 'tram' ? 'bell' : 'screech', x: head.x, z: head.z });
+    near_.push({
+      noise: train.stock === 'tram' ? 'bell' : 'screech',
+      x: head.x,
+      // A vehicle is placed on the ground and has no height of its own here;
+      // roof height is near enough, and it is what the bird flies over.
+      y: stockTop(train.stock),
+      z: head.z,
+    });
   });
 
   return near_;
