@@ -81,15 +81,18 @@ export interface MapWorldOptions {
    * nearly touched it. 2 leaves a street a pigeon can get down.
    */
   streetRoom: number;
-  /** Frontage of one house along the block edge, in metres. */
-  minFrontage: number;
-  maxFrontage: number;
   /**
-   * How deep the wing of building is, from street wall to courtyard.
+   * How deep the wing of a perimeter block is, from street wall to courtyard.
    *
-   * The one number that decides how much of a block is built on. Around 16 m
-   * is a staircase and two rooms either side of it, which is what these blocks
-   * actually are.
+   * It used to be the one number that decided how much of a block was built
+   * on, back when the buildings were invented. They come off the map now and
+   * are whatever depth they are; what this still decides is whether the middle
+   * of a block is a courtyard worth planting or a yard too small to bother
+   * with, and how far from a kerb is far enough to be *behind* the buildings
+   * rather than in the street.
+   *
+   * Around 16 m is a staircase and two rooms either side of it, which is what
+   * these blocks actually are.
    */
   wingDepth: number;
   /**
@@ -170,8 +173,6 @@ export interface MapWorldOptions {
 export const defaultMapWorldOptions: MapWorldOptions = {
   setback: 2,
   streetRoom: 2,
-  minFrontage: 14,
-  maxFrontage: 28,
   wingDepth: 16,
   minCourtyard: 14,
   minBlockArea: 500,
@@ -605,129 +606,20 @@ export function buildLayoutFromMap(
     });
     const widest = Math.max(...kerbs);
 
-    // Where each frontage runs, as a line rather than a ring.
-    //
-    // Insetting the whole ring in one go and building along the result is the
-    // obvious way to do this and it is too brittle: one corner the offset
-    // cannot resolve loses the entire block, and at these kerb distances that
-    // was 42 blocks and 32 hectares of the map left as bare grass. An edge and
-    // its two neighbours are all a frontage needs to know about, and a corner
-    // that will not resolve now costs a corner.
-    const lines = ring.map((point, i) => {
-      const next = ring[(i + 1) % sides]!;
-      const run = Math.hypot(next[0] - point[0], next[1] - point[1]);
-      const ux = run > 1e-9 ? (next[0] - point[0]) / run : 1;
-      const uz = run > 1e-9 ? (next[1] - point[1]) / run : 0;
-      // Into the block, which for a counter-clockwise ring is to the left.
-      return { x: point[0] - uz * kerbs[i]!, z: point[1] + ux * kerbs[i]!, ux, uz, run };
-    });
-
-    /** How far along `b` it meets `a`, or null if they never usefully do. */
-    const meeting = (a: (typeof lines)[number], b: (typeof lines)[number]) => {
-      // b's direction crossed into a's, in that order: the other way round is
-      // the same number negated, which silently mirrors every corner back to
-      // the middle of its own frontage and builds half of each one.
-      const cross = b.ux * a.uz - b.uz * a.ux;
-      if (Math.abs(cross) < 1e-6) return null;
-      const t = ((a.x - b.x) * a.uz - (a.z - b.z) * a.ux) / cross;
-      return Number.isFinite(t) ? t : null;
-    };
-
-    const before = buildings.length;
     const centre = polygonCentroid(ring);
-    // Nothing to invent where the map said what is here. The rest of this
-    // block's work still runs: what is planted in a courtyard and what fills a
-    // plot too small to build on are decisions about the *ground*, and the
-    // ground is the same either way.
-    const inventing = fromMap.length === 0;
     const reach = distanceToEdges(centre[0], centre[1], ring) - widest;
 
-    // Deep enough for a wing and a courtyard, or too small for both, in which
-    // case the wings meet in the middle and the block is built solid.
+    // Room for a courtyard behind the buildings round the edge, or not. It no
+    // longer decides how deep to build -- the buildings are real and are
+    // whatever depth they are -- but it still decides whether the middle of
+    // this block is a courtyard worth planting or a yard too small to bother
+    // with.
     const roomy = reach > options.wingDepth + options.minCourtyard / 2;
-    const depth = roomy ? options.wingDepth : Math.max(Math.min(reach, options.wingDepth), 4);
 
-    for (let i = 0; inventing && i < sides; i += 1) {
-      const line = lines[i]!;
-      if (line.run < 6) continue;
-
-      // Mitred against its neighbours where they will resolve, and left as the
-      // plain offset where they will not. Clamped either way: a corner that
-      // wants to reach half a block along this frontage is not a corner.
-      const back = meeting(lines[(i + sides - 1) % sides]!, line);
-      const on = meeting(lines[(i + 1) % sides]!, line);
-      const limit = widest * 2;
-      const from = Math.min(Math.max(back ?? 0, -limit), line.run / 2);
-      const to = Math.max(Math.min(on ?? line.run, line.run + limit), line.run / 2);
-
-      const frontage = to - from;
-      // Shorter than a single house: a clipped corner, not a frontage.
-      if (frontage < 6) continue;
-
-      const nx = -line.uz;
-      const nz = line.ux;
-      // The building's own X axis runs along the street, so `width` is its
-      // frontage and `depth` is how far back into the block it reaches.
-      const yaw = Math.atan2(-line.uz, line.ux);
-
-      // Rounded up, never down: rounding to the nearest whole number of houses
-      // lets a run a little over the limit become one house wider than any
-      // house is allowed to be.
-      const wanted = options.minFrontage + rand() * (options.maxFrontage - options.minFrontage);
-      const houses = Math.max(1, Math.ceil(frontage / wanted));
-      const width = frontage / houses;
-
-      for (let h = 0; h < houses; h += 1) {
-        const along = from + (h + 0.5) * width;
-        const bx = line.x + line.ux * along + nx * (depth / 2);
-        const bz = line.z + line.uz * along + nz * (depth / 2);
-        const height = options.minHeight + rand() * (options.maxHeight - options.minHeight);
-
-        // Inside the block it belongs to. This is the plain statement of the
-        // thing that actually matters: a building of this block stands on it.
-        if (!pointInPolygon(bx, bz, ring)) continue;
-
-        // And never out in the carriageway -- of its own street or of one
-        // cutting through the block. Measured to the near wall, not the
-        // centre: a deep building set back only by its centre still overhangs.
-        const front = streets.nearest(bx, bz, depth + widest + 40);
-        if (front && front.distance - depth / 2 < front.width / 2) continue;
-
-        // Ground the map already accounts for. Nobody builds a house in a
-        // park, and this is most of what stops a generated city looking
-        // generated: real cities have holes in them, and the holes are not
-        // random.
-        if (green.anyInside(footprintSamples(bx, bz, width, depth, yaw))) continue;
-
-        // Nor on ground a landmark has already taken. Tested over the
-        // house's own footprint rather than its centre, because a wing whose
-        // middle clears the loft can still be built through the side of it.
-        if (footprintSamples(bx, bz, width, depth, yaw).some(([sx, sz]) => reserved(sx, sz))) {
-          continue;
-        }
-
-        // Nor across a railway. A tram shares the carriageway, so its corridor
-        // is already inside a street nothing is built on; heavy rail has its
-        // own ground, and this is what keeps the goods yard a goods yard.
-        if (onTrack(bx, bz, width, depth, yaw)) continue;
-
-        buildings.push({ x: bx, z: bz, width, depth, height, yaw });
-        boxes.push(turnedBox(bx, bz, width, height, depth, yaw));
-      }
-    }
-
-    // A block too small to take a single house once the streets have had
-    // their room is not left as bare grass between four roads. In a real city
-    // that plot is a garden square, a yard or a stand of trees -- something,
-    // rather than nothing.
-    //
-    // "Nothing was built here" is asked two ways for one reason: the generator
-    // knows what it built in this block because it counts what it pushed, and
-    // the map's buildings were all placed before any block was looked at. A
-    // handful of samples rather than the whole ring -- this decides whether to
-    // plant a plot, and a plot with a house in one corner is not a garden
-    // square whichever corner is sampled.
-    const empty = inventing ? buildings.length === before : !blockIsBuilt(ring);
+    // A block with nothing on it is not left as bare grass between four
+    // roads. In a real city that plot is a garden square, a yard or a stand of
+    // trees -- something, rather than nothing.
+    const empty = !blockIsBuilt(ring);
     if (empty) bare.push(block);
     else if (roomy) gardens.push(block);
   }

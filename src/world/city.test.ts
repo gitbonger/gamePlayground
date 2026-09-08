@@ -64,6 +64,16 @@ const map: MapData = {
   rails: SIDING,
   // A park, so the area layer is one of the things drawn on the ground here.
   areas: [{ kind: 'park', points: [[20, 20], [90, 20], [90, 90], [20, 90]] }],
+  // And buildings, because the world no longer invents any: they come off the
+  // map like the roads do. A handful on a grid, all of them stating a height,
+  // which is what a real extract mostly looks like.
+  buildings: (() => {
+    const rows: number[][] = [];
+    for (let x = 110; x <= 185; x += 15) {
+      for (let z = 20; z <= 185; z += 15) rows.push([x, z, 11, 8, 0, 15]);
+    }
+    return rows;
+  })(),
 };
 
 /**

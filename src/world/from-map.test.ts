@@ -13,7 +13,7 @@ import {
 } from './layout';
 import { indexStreets, type MapData, type Rail, type Road } from './streets';
 import { footprintSamples, type Area } from './areas';
-import { distanceToEdges, pointInPolygon } from './polygon';
+import { pointInPolygon } from './polygon';
 import {
   consistLength,
   layOutTrain,
@@ -42,6 +42,26 @@ const BLOCK: Road[] = [
   { kind: 'residential', width: 8, points: [[200, -40], [200, 0], [200, 200], [200, 240]] },
 ];
 
+/**
+ * A blanket of small buildings over the test block.
+ *
+ * Several rules in this file are about ground a building may *not* stand on --
+ * a landmark's, a park's, a railway's -- and the only way to show such a rule
+ * bites is to show that something would otherwise have been there.
+ *
+ * That used to come free: the generator filled every block it was given, so
+ * "build it without the park and count the houses in the park" was a fair
+ * question. There is no generator now, so the buildings come from the map like
+ * everything else, and this is a map's worth of them laid on a grid.
+ */
+const PAVED: number[][] = (() => {
+  const rows: number[][] = [];
+  for (let x = 12; x <= 188; x += 13) {
+    for (let z = 12; z <= 188; z += 13) rows.push([x, z, 9, 7, 0, 14]);
+  }
+  return rows;
+})();
+
 const mapOf = (roads: Road[], areas: Area[] = [], rails: Rail[] = []): MapData => ({
   name: 'test',
   centre: [0, 0],
@@ -50,6 +70,12 @@ const mapOf = (roads: Road[], areas: Area[] = [], rails: Rail[] = []): MapData =
   roads,
   rails,
   areas,
+});
+
+/** The same, with the block built on, for the rules about where one may not be. */
+const builtOn = (roads: Road[], areas: Area[] = [], rails: Rail[] = []): MapData => ({
+  ...mapOf(roads, areas, rails),
+  buildings: PAVED,
 });
 
 /**
@@ -91,38 +117,9 @@ describe('street index', () => {
   });
 });
 
-describe('building a perimeter block', () => {
-  const layout = buildLayoutFromMap(mapOf(BLOCK));
+describe('what fills a block once the buildings are placed', () => {
+  const layout = buildLayoutFromMap(builtOn(BLOCK));
   const collider = createColliderField(layout.boxes);
-  const MIDDLE = vec(100, 6, 100);
-
-  it('builds all the way round the block it found', () => {
-    expect(layout.blocks).toHaveLength(1);
-    expect(layout.buildings.length).toBeGreaterThan(20);
-    expect(layout.boxes).toHaveLength(layout.buildings.length);
-  });
-
-  it('closes the ring, so the courtyard is walled in on every side', () => {
-    // The whole point of a perimeter block, and the thing a row of separate
-    // houses can never do: leave the middle in any direction at all and you
-    // meet building before you reach the street.
-    for (let i = 0; i < 24; i += 1) {
-      const bearing = (i / 24) * Math.PI * 2;
-      const out = vec(100 + Math.sin(bearing) * 200, 6, 100 + Math.cos(bearing) * 200);
-      expect(collider.sweep(MIDDLE, out, 0.22), `bearing ${Math.round((bearing * 180) / Math.PI)}`).not.toBeNull();
-    }
-  });
-
-  it('leaves the courtyard itself open', () => {
-    // Walled in, not filled in. There is somewhere in there to fly.
-    expect(layout.gardens).toHaveLength(1);
-
-    for (let i = 0; i < 24; i += 1) {
-      const bearing = (i / 24) * Math.PI * 2;
-      const out = vec(100 + Math.sin(bearing) * 60, 6, 100 + Math.cos(bearing) * 60);
-      expect(collider.sweep(MIDDLE, out, 0.22), `bearing ${i}`).toBeNull();
-    }
-  });
 
   it('puts the gardens inside the block, clear of the houses', () => {
     expect(layout.trees.length).toBeGreaterThan(10);
@@ -188,44 +185,7 @@ describe('building a perimeter block', () => {
     }
   });
 
-  it('stands every near wall on a kerb, none adrift in the middle', () => {
-    // Stated against the block ring rather than the nearest street, because at
-    // a corner the nearest street is the one the building has its side to. The
-    // ring runs along the centrelines, so the near wall of every building sits
-    // exactly the kerb inset back from it -- at most the widest street on the
-    // block, and no deeper. This is what "adjacent to a road" means once the
-    // buildings are laid round the block rather than scattered along it.
-    const ring = layout.blocks[0]!.ring;
-    const widest =
-      (16 / 2 + defaultMapWorldOptions.setback) * defaultMapWorldOptions.streetRoom;
-    for (const building of layout.buildings) {
-      expect(
-        distanceToEdges(building.x, building.z, ring) - building.depth / 2,
-        `${building.x},${building.z}`,
-      ).toBeLessThanOrEqual(widest + 1e-6);
-    }
-  });
 
-  it('leaves twice the carriageway and its setbacks between facing frontages', () => {
-    // Flying down an 8 m street between two walls 12 m apart is not flying, it
-    // is threading. Doubled, the gap is something a pigeon can use.
-    const facing = layout.buildings.map((building) => {
-      const street = layout.streets.nearest(building.x, building.z, 300)!;
-      return {
-        gap: 2 * (street.distance - building.depth / 2),
-        plain: street.width + 2 * defaultMapWorldOptions.setback,
-      };
-    });
-
-    for (const { gap, plain } of facing) {
-      expect(gap).toBeGreaterThanOrEqual(plain * defaultMapWorldOptions.streetRoom - 1e-6);
-    }
-
-    // And a narrow one gets exactly the doubling, not merely more than it.
-    const side = facing.filter((f) => f.plain === 8 + 2 * defaultMapWorldOptions.setback);
-    expect(side.length).toBeGreaterThan(0);
-    expect(Math.min(...side.map((f) => f.gap))).toBeCloseTo(24, 6);
-  });
 
   it('turns each building to face the street it fronts', () => {
     // Squared up to the block's own edges, which is the same thing as facing
@@ -247,48 +207,15 @@ describe('building a perimeter block', () => {
     }
   });
 
-  it('gives every house a frontage of the size asked for', () => {
-    for (const building of layout.buildings) {
-      expect(building.width).toBeLessThanOrEqual(defaultMapWorldOptions.maxFrontage + 1e-9);
-      expect(building.depth).toBeCloseTo(defaultMapWorldOptions.wingDepth, 9);
-    }
-  });
 
-  it('builds to an even height, with a stepped roofline', () => {
-    // This neighbourhood is uniformly about seven floors, so heights come from
-    // a flat band rather than from how important the road is.
-    for (const building of layout.buildings) {
-      expect(building.height).toBeGreaterThanOrEqual(defaultMapWorldOptions.minHeight);
-      expect(building.height).toBeLessThanOrEqual(defaultMapWorldOptions.maxHeight);
-    }
 
-    // Even is not the same as identical. Neighbours differ by a storey or two,
-    // which is what stops a block reading as one extruded shape.
-    const heights = new Set(layout.buildings.map((b) => Math.round(b.height)));
-    expect(heights.size).toBeGreaterThan(3);
-  });
-
-  it('fills a block with no room for a courtyard solid instead', () => {
-    // Small blocks in this district really are solid, and a 40 m one has no
-    // room for two wings and a garden between them.
-    const small: Road[] = [
-      { kind: 'residential', width: 8, points: [[-20, 0], [0, 0], [40, 0], [60, 0]] },
-      { kind: 'residential', width: 8, points: [[-20, 40], [0, 40], [40, 40], [60, 40]] },
-      { kind: 'residential', width: 8, points: [[0, -20], [0, 0], [0, 40], [0, 60]] },
-      { kind: 'residential', width: 8, points: [[40, -20], [40, 0], [40, 40], [40, 60]] },
-    ];
-    const dense = buildLayoutFromMap(mapOf(small));
-    expect(dense.blocks).toHaveLength(1);
-    expect(dense.gardens).toHaveLength(0);
-    expect(dense.buildings.length).toBeGreaterThan(0);
-
-    // Solid all the way through: no hole to fly into.
-    const wall = createColliderField(dense.boxes);
-    expect(wall.sweep(vec(20, 6, -30), vec(20, 6, 70), 0.22)).not.toBeNull();
-  });
 
   it('is deterministic for a given map and seed', () => {
-    expect(buildLayoutFromMap(mapOf(BLOCK)).buildings).toEqual(layout.buildings);
+    // Still worth asking with the buildings coming off the map: the heights of
+    // the ones that do not state theirs are drawn from a seeded stream, and so
+    // is everything planted round them.
+    expect(buildLayoutFromMap(builtOn(BLOCK)).buildings).toEqual(layout.buildings);
+    expect(buildLayoutFromMap(builtOn(BLOCK)).trees).toEqual(layout.trees);
   });
 
   it('carries the streets through for the renderer to draw', () => {
@@ -434,11 +361,33 @@ describe('a park that is a cemetery', () => {
     // is what taking the tree's place gives for nothing -- and a stone with a
     // trunk growing out of it would be the sort of thing a share alone would
     // never notice.
+    //
+    // Measured against how close two *trees* get rather than against a metre.
+    // A metre was the right number for the planting density this test was
+    // written at, and density is not what the rule is about: a stone that
+    // takes a tree's place is no nearer its neighbours than that tree would
+    // have been. Pinning it to a distance meant the test failed the day the
+    // plantings got closer together, which was a fact about the fixture and
+    // not about the stones.
+    const planted = yard.trees.filter((tree) =>
+      pointInPolygon(tree.x, tree.z, GRAVEYARD.points),
+    );
+    let closestPair = Infinity;
+    for (let i = 0; i < planted.length; i += 1) {
+      for (let j = i + 1; j < planted.length; j += 1) {
+        const gap = Math.hypot(planted[i]!.x - planted[j]!.x, planted[i]!.z - planted[j]!.z);
+        if (gap < closestPair) closestPair = gap;
+      }
+    }
+    expect(closestPair, 'there are trees to compare against').toBeLessThan(Infinity);
+
     for (const grave of yard.graves) {
       const nearest = Math.min(
-        ...yard.trees.map((tree) => Math.hypot(tree.x - grave.x, tree.z - grave.z)),
+        ...planted.map((tree) => Math.hypot(tree.x - grave.x, tree.z - grave.z)),
       );
-      expect(nearest, `${grave.x.toFixed(0)}, ${grave.z.toFixed(0)}`).toBeGreaterThan(1);
+      expect(nearest, `${grave.x.toFixed(0)}, ${grave.z.toFixed(0)}`).toBeGreaterThanOrEqual(
+        closestPair,
+      );
     }
   });
 
@@ -627,7 +576,7 @@ describe('describing a thing into the world', () => {
   });
 
   it('has no house built through it, nor inside its margin', () => {
-    const plain = buildLayoutFromMap(mapOf(BLOCK), defaultMapWorldOptions);
+    const plain = buildLayoutFromMap(builtOn(BLOCK), defaultMapWorldOptions);
     const onIt = (buildings: readonly { x: number; z: number; width: number; depth: number; yaw?: number }[]) =>
       buildings.filter((b) =>
         footprintSamples(b.x, b.z, b.width, b.depth, b.yaw ?? 0).some(([x, z]) =>
@@ -635,8 +584,8 @@ describe('describing a thing into the world', () => {
         ),
       );
 
-    // The ground it takes is ground the generator would otherwise have built
-    // on, or this proves nothing.
+    // The ground it takes is ground a building would otherwise stand on, or
+    // this proves nothing.
     expect(onIt(plain.buildings).length).toBeGreaterThan(0);
 
     const described = withLandmark(TOWER);
@@ -867,8 +816,8 @@ describe('leaving the railway alone', () => {
 
   it('would have built there without it', () => {
     // Otherwise the test above proves nothing: the line has to be lying across
-    // ground the generator actually wanted to build on.
-    const without = buildLayoutFromMap(mapOf(BLOCK));
+    // ground a building actually stands on.
+    const without = buildLayoutFromMap(builtOn(BLOCK));
     expect(without.buildings.filter(onTheTrack).length).toBeGreaterThan(0);
     expect(layout.buildings.length).toBeLessThan(without.buildings.length);
   });
@@ -960,8 +909,8 @@ describe('leaving green space alone', () => {
 
   it('would have built there without the park', () => {
     // Otherwise the test above proves nothing: the ground has to be somewhere
-    // the generator actually wanted to build.
-    const without = buildLayoutFromMap(mapOf(BLOCK));
+    // a building actually stands.
+    const without = buildLayoutFromMap(builtOn(BLOCK));
     const inPark = without.buildings.filter((b) => layout.green.at(b.x, b.z));
     expect(inPark.length).toBeGreaterThan(0);
     expect(layout.buildings.length).toBeLessThan(without.buildings.length);
@@ -972,7 +921,7 @@ describe('leaving green space alone', () => {
   });
 
   it('copes with a map that has no green space at all', () => {
-    const bare = buildLayoutFromMap(mapOf(BLOCK));
+    const bare = buildLayoutFromMap(builtOn(BLOCK));
     expect(bare.green.count).toBe(0);
     expect(bare.buildings.length).toBeGreaterThan(20);
   });
@@ -1521,12 +1470,6 @@ describe('buildings the map already knows about', () => {
     ).toBe(true);
   });
 
-  it('still invents them where the map has none', () => {
-    // Every map baked before this had no buildings in it, and a test suite
-    // full of hand-written road grids still has none.
-    const world = buildLayoutFromMap(mapOf(BLOCK), defaultMapWorldOptions);
-    expect(world.buildings.length).toBeGreaterThan(10);
-  });
 });
 
 describe('painted crossings', () => {
