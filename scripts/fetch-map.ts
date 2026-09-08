@@ -321,16 +321,23 @@ async function main() {
     `[out:json][timeout:180];(` +
       `node["highway"="crossing"]["crossing"~"^(marked|zebra|traffic_signals)$"](${bbox});` +
       `node["natural"="tree"](${bbox});` +
-      // Tram platforms: the islands people stand on, which is the one piece
-      // of a tram stop that is a thing rather than a timetable. Ways rather
-      // than the `railway=tram_stop` nodes, because a node says a service
-      // calls here and a way says where the kerb is -- and the kerb is what
-      // there is to see from the air.
+      // A tram stop is two things and both are wanted.
       //
-      // Rides along with the rest of the street furniture rather than in a
-      // query of its own: it is fifty ways, and a round trip costs more than
-      // they do.
+      // The island is the thing you can see: a way along the kerb, which is
+      // what gets built. But only two thirds of them are named, and a third
+      // of the stops in this district have no island at all -- the tram
+      // pulls up and you step off into the road, which is most of Népszínház
+      // utca.
+      //
+      // The node is the stop itself: on the track, one per direction, and
+      // named every time. Thirty names against the ways' twenty-one, and it
+      // is the node that says a service calls here.
+      //
+      // Both ride along with the rest of the street furniture rather than in
+      // a query of their own: it is a hundred and thirty elements, and a
+      // round trip costs more than they do.
       `way["public_transport"="platform"]["tram"="yes"](${bbox});` +
+      `node["railway"="tram_stop"](${bbox});` +
       `);out geom;`,
     'crossings, trees and tram platforms',
   );
@@ -532,14 +539,28 @@ async function main() {
    * making decisions about. The world builder measures them, and it is the
    * end that knows where the track ended up.
    */
+  /**
+   * The islands, as flat runs of `x, z` the way a building plan is.
+   *
+   * Kept as drawn rather than reduced to a box here. Six of them are closed
+   * rings -- a depot yard, the island under the Erzsébet királyné útja
+   * underpass -- and which ones those are is not a fact this end should be
+   * making decisions about. The world builder measures them, and it is the
+   * end that knows where the track ended up.
+   *
+   * Unnamed on purpose: two thirds of them carry a name and it is the same
+   * name the stop beside them carries. One list of names, on the stops.
+   */
+  const islands: number[][] = [];
+  /** Where a tram calls, as `[x, z]`: on the track, one per direction. */
   const stops: number[][] = [];
   /**
-   * What each of them is called, in step with `stops`.
+   * What each of those is called, in step with `stops`.
    *
-   * A separate list rather than a field, because a stop is a run of numbers
+   * A separate list rather than a field, because a stop is a pair of numbers
    * and one string in the middle of it would cost every reader a special
-   * case. Empty where the map does not say -- a third of them are a kerb
-   * somebody drew without naming.
+   * case. Never empty in practice -- every tram stop on this map is named,
+   * which is the reason these are here and the islands are not.
    */
   const stopNames: string[] = [];
   for (const element of dotted.elements) {
@@ -551,8 +572,7 @@ async function main() {
       // straighten the very corners that say how long it is.
       const points = toLocal(element.geometry, 0.5);
       if (points.length < 2) continue;
-      stops.push(points.flatMap(([x, z]) => [x!, z!]));
-      stopNames.push(element.tags?.['name'] ?? '');
+      islands.push(points.flatMap(([x, z]) => [x!, z!]));
       continue;
     }
     if (element.lat === undefined || element.lon === undefined) continue;
@@ -561,7 +581,10 @@ async function main() {
       Math.round(-(element.lat - lat) * perDegree.lat * 10) / 10,
     ];
     if (element.tags?.['natural'] === 'tree') trees.push(at);
-    else crossings.push(at);
+    else if (element.tags?.['railway'] === 'tram_stop') {
+      stops.push(at);
+      stopNames.push(element.tags['name'] ?? '');
+    } else crossings.push(at);
   }
 
   // --- Signs and steeples ----------------------------------------------------
@@ -609,6 +632,7 @@ async function main() {
         plans,
         crossings,
         trees,
+        islands,
         stops,
         stopNames,
         brands,
@@ -623,7 +647,7 @@ async function main() {
   const kb = (
     Buffer.byteLength(
       JSON.stringify({
-        roads, bridges, rails, areas, plans, crossings, trees, stops, stopNames, brands, signs, worship,
+        roads, bridges, rails, areas, plans, crossings, trees, islands, stops, stopNames, brands, signs, worship,
       }),
     ) / 1024
   ).toFixed(0);
@@ -634,7 +658,8 @@ async function main() {
       `(${plans.filter((b) => b[0] !== null).length} of them saying how tall, ` +
       `${plans.reduce((n, b) => n + (b.length - 1) / 2, 0)} corners between them), ` +
       `${crossings.length} crossings, ${trees.length} trees, ` +
-      `${stops.length} tram platforms (${new Set(stopNames.filter(Boolean)).size} named stops), ` +
+      `${islands.length} tram islands at ` +
+      `${stops.length} stops (${new Set(stopNames.filter(Boolean)).size} named), ` +
       `${signs.length} shop signs of ${brands.length} brands, ${worship.length} churches, ` +
       `${rawPoints} points before thinning, ${kb} kB -> ${out}\n`,
   );

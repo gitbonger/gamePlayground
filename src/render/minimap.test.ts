@@ -239,8 +239,10 @@ describe('naming the tram stops', () => {
     // arm of the junction -- and the map is already saying which arm by
     // where the dot is.
     expect(shortStop('Blaha Lujza tér M (Népszínház utca)')).toBe('Blaha Lujza tér M');
+    // And a crossroads by both its streets, which is the same thing again.
+    expect(shortStop('Wesselényi utca / Erzsébet körút')).toBe('Wesselényi utca');
     expect(shortStop('Teleki László tér')).toBe('Teleki László tér');
     // And nothing longer than the panel can hold.
-    expect(shortStop('Erzsébet királyné útja, aluljáró'.repeat(2)).length).toBeLessThanOrEqual(20);
+    expect(shortStop('Erzsébet királyné útja, aluljáró'.repeat(2)).length).toBeLessThanOrEqual(32);
   });
 });

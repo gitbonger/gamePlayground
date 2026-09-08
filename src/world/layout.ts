@@ -658,7 +658,12 @@ export interface Footprint {
  * is a fact about trams.
  */
 export interface Platform {
-  /** What the stop is called, or '' where the map does not say. */
+  /**
+   * The stop this island belongs to, or '' where none is near enough.
+   *
+   * Taken from the stop on the track rather than from the island's own tag:
+   * only two thirds of the islands are named and all of the stops are.
+   */
   name: string;
   x: number;
   z: number;
@@ -678,6 +683,22 @@ export interface Platform {
    * district is a pole and a flag and nothing to stand under.
    */
   shelters: readonly number[];
+}
+
+/**
+ * Where a tram calls: a point on the track, and what it is called.
+ *
+ * Distinct from `Platform`, and the difference matters. A platform is a thing
+ * in the world that gets built; a stop is a fact about the service. A third
+ * of the stops in this district have no platform -- the tram pulls up in the
+ * street and you step off the kerb -- and those are stops all the same, with
+ * names, and a map that only knew about platforms had nothing to say about
+ * them.
+ */
+export interface TramStop {
+  x: number;
+  z: number;
+  name: string;
 }
 
 /**
@@ -711,8 +732,10 @@ export interface CityLayout {
   signs?: Sign[];
   /** Towers, spires and domes on the buildings the map calls churches. */
   steeples?: Steeple[];
-  /** Tram platforms, where the map recorded any. */
+  /** Tram islands, where the map recorded any. */
   platforms?: Platform[];
+  /** Where the trams call, named. Two to a stop, one per direction. */
+  stops?: TramStop[];
   /** Solid volumes for every object above, in simulation coordinates. */
   boxes: Box[];
   /** Streets to draw, when the world was built from a real map. */

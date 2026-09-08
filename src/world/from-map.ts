@@ -49,6 +49,7 @@ import {
   type Sign,
   type Platform,
   SHELTER,
+  type TramStop,
   type Steeple,
   type Building,
   type Bush,
@@ -1040,8 +1041,28 @@ export function buildLayoutFromMap(
     return Array.from({ length: many }, (_, i) => ((i + 0.5) / many - 0.5) * span);
   };
 
+  /**
+   * Where the trams call. Straight off the map: these are points on the track
+   * and there is nothing to work out about them.
+   */
+  const stops: TramStop[] = (map.stops ?? []).flatMap(([x, z], index) =>
+    x === undefined || z === undefined
+      ? []
+      : [{ x, z, name: map.stopNames?.[index] ?? '' }],
+  );
+
+  /** The stop nearest a point, within `PLATFORM_SERVED`, or null. */
+  const stopNear = (x: number, z: number): TramStop | null => {
+    let best: { stop: TramStop; away: number } | null = null;
+    for (const stop of stops) {
+      const away = Math.hypot(stop.x - x, stop.z - z);
+      if (away <= PLATFORM_SERVED && (!best || away < best.away)) best = { stop, away };
+    }
+    return best?.stop ?? null;
+  };
+
   const platforms: Platform[] = [];
-  (map.stops ?? []).forEach((row, index) => {
+  (map.islands ?? []).forEach((row) => {
     const ring: [number, number][] = [];
     for (let i = 0; i + 1 < row.length; i += 2) ring.push([row[i]!, row[i + 1]!]);
     if (ring.length < 2) return;
@@ -1162,7 +1183,9 @@ export function buildLayoutFromMap(
     }
 
     platforms.push({
-      name: map.stopNames?.[index] ?? '',
+      // Whatever stop it stands at. An island is a kerb; the name is on the
+      // track beside it.
+      name: stopNear(x, z)?.name ?? '',
       x,
       z,
       width: along,
@@ -1459,24 +1482,24 @@ export function buildLayoutFromMap(
   // the lines close enough to be the one meant, the roomiest is the one to
   // stand it on.
   /**
-   * Where along a line its platforms are, for a rake of this length.
+   * Where along a line its stops are, for a rake of this length.
    *
    * The line is walked once and every platform offered each segment, which is
    * a few thousand comparisons at world build and nothing at all after that.
    *
-   * Only those actually beside the line: `PLATFORM_SERVED` is wide enough to
-   * take in the far track of a pair -- an island serves both directions and a
-   * tram on either of them stops at it -- and narrow enough that a platform
-   * on the next street is not a call.
+   * Only those actually beside the line. A stop is a point on *a* track and
+   * a street has two, so `PLATFORM_SERVED` is wide enough to take in the
+   * other one -- and narrow enough that a stop on the next street along is
+   * not something to pull up for.
    *
    * Calls too near an end are dropped rather than clamped. A tram pulling up
    * with half of itself off the line is worse than one running past a stop.
    */
   const callsAlong = (line: Rail, consist: number): number[] => {
-    if (!platforms.length) return [];
+    if (!stops.length) return [];
     const run = lineLength(line.points);
     const found: number[] = [];
-    for (const stop of platforms) {
+    for (const stop of stops) {
       let travelled = 0;
       let best: { away: number; at: number } | null = null;
       for (let i = 1; i < line.points.length; i += 1) {
@@ -1763,6 +1786,7 @@ export function buildLayoutFromMap(
     boxes,
     crossings,
     platforms,
+    stops,
     plans,
     signs,
     steeples,

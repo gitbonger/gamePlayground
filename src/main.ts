@@ -646,7 +646,7 @@ const hud = createHud(overlay, map.attribution);
  * thousand segments every frame would be the whole point of a minimap thrown
  * away on drawing it.
  */
-const minimap = createMinimap(overlay, layout.roads ?? [], layout.platforms ?? []);
+const minimap = createMinimap(overlay, layout.roads ?? [], layout.stops ?? []);
 const outcome = createOutcomePanel(overlay);
 const input = createInput();
 

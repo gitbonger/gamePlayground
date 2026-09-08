@@ -113,22 +113,28 @@ export interface MapData {
    */
   worship?: readonly (readonly number[])[];
   /**
-   * Tram platforms, as flat runs of `x, z`: `[x0, z0, x1, z1, ...]`.
+   * Tram islands, as flat runs of `x, z`: `[x0, z0, x1, z1, ...]`.
    *
    * The way the map drew the kerb, open -- most are two points, and the few
    * closed ones are a depot yard or an underpass rather than an island. What
-   * a platform *is* is worked out at the other end, where the track is known:
+   * an island *is* is worked out at the other end, where the track is known:
    * see `PLATFORM` in `from-map.ts`.
+   *
+   * Unnamed: a third of the stops in this district have no island at all --
+   * the tram pulls up and you step off into the road -- so the islands are
+   * the wrong thing to hang a name on. See `stops`.
+   */
+  islands?: readonly (readonly number[])[];
+  /**
+   * Where a tram calls, as `[x, z]`.
+   *
+   * The stop itself rather than the thing you stand on: a point on the track,
+   * one per direction, and named every time -- which is why the names live
+   * here. Two per stop, so whoever shows them to a player has to say each
+   * name once: see `namedStops` in the minimap.
    */
   stops?: readonly (readonly number[])[];
-  /**
-   * What each of `stops` is called, in step with it, '' where unnamed.
-   *
-   * Sixty-six platforms between twenty-three named stops: a stop is an island
-   * each side of the street, and often two islands to a side, all carrying
-   * the one name. Whoever shows these to a player has to say the name once --
-   * see `namedStops` in the minimap.
-   */
+  /** What each of `stops` is called, in step with it. */
   stopNames?: readonly string[];
 }
 
