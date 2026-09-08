@@ -209,7 +209,12 @@ describe('the flock', () => {
     expect(returns).toBeGreaterThan(flock.members.length);
     // And none of them is left lying there.
     expect(flock.members.every((m) => !m.state.ending)).toBe(true);
-  });
+    // Thirty seconds of flying at 120 Hz for eight birds: the slowest test
+    // here by four times over, and it timed out on a build machine at the
+    // default five seconds. It is worth what it costs -- it is the only test
+    // that kills a bird the way the world kills one -- so it gets longer
+    // rather than less.
+  }, 20_000);
 
   it('lets nobody out while the loft is shut', () => {
     // What the player sees when they have just flown into a building: the sky

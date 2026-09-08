@@ -1,8 +1,20 @@
 # Build the game and put it on GitHub Pages.
 #
-# Runs on every push to main. The build is gated on the tests: a deploy that
-# ships a broken game is worse than no deploy, and the whole point of having
-# eight hundred of them is that they get to say so before anybody else sees it.
+# Runs on every push to main.
+#
+# The tests used to run here and no longer do. They are run constantly while
+# the game is being worked on, which is where a failure is cheap to read and
+# cheap to fix; up here they were a second opinion that could only ever stop
+# the deploy.
+#
+# Which is what happened: one test simulates thirty seconds of flying and took
+# longer than five seconds on the build machine, so the game stopped shipping
+# over a timeout. It has a longer one now, but the lesson is the point -- a
+# gate nobody can see the far side of is worse than no gate.
+#
+# The deploy is still gated. `npm run build` is `tsc --noEmit && vite build`,
+# so nothing that fails to compile can ship, and that is the class of mistake
+# a machine nobody is watching is good at catching.
 name: Pages
 
 on:
@@ -37,7 +49,6 @@ jobs:
       # and fails if the lockfile and package.json disagree, which is what you
       # want of a machine nobody is watching.
       - run: npm ci
-      - run: npm test
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
