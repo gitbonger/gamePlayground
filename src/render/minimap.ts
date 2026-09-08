@@ -49,6 +49,17 @@ const CELL = 100;
 /** How many times a second a crow blinks on the panel. */
 const CROW_BLINK = 3;
 
+/**
+ * The flock, and her.
+ *
+ * Green because it is the one colour left that means nothing else here --
+ * amber warns, red is what you are aimed at, cyan is help -- and green is
+ * what every other map in the world paints a friend. Hers is her own body
+ * colour, so the dot and the bird are recognisably the same creature.
+ */
+const FLOCK_GREEN = '#5cd68a';
+const HER_PINK = '#ef9ab8';
+
 export interface MinimapView {
   /** Where the bird is, in local metres. */
   at: { x: number; z: number };
@@ -75,6 +86,21 @@ export interface MinimapView {
    * place rather than a direction.
    */
   crows: readonly { x: number; z: number }[];
+  /**
+   * The flock in the air, in local metres, her excepted.
+   *
+   * Steady rather than blinking: they are company, not a threat, and a panel
+   * where everything flashes says nothing about which of it matters.
+   */
+  flock: readonly { x: number; z: number }[];
+  /**
+   * Her, when she is out flying, in local metres.
+   *
+   * Her own dot in her own colour, because on the levels she is out on,
+   * finding her is the level. She is one bird among a dozen in the air and
+   * the map is the only place the difference is legible at a glance.
+   */
+  her: { x: number; z: number } | null;
   /**
    * The world's own clock, in seconds, for anything that has to blink.
    *
@@ -224,6 +250,23 @@ export function createMinimap(container: HTMLElement, roads: readonly Road[]): M
       ctx.beginPath();
       ctx.arc(middle, middle, middle - 1, 0, Math.PI * 2);
       ctx.stroke();
+
+      // The flock, and her among them. Under the crows in the drawing order
+      // because a crow overlapping a flockmate is the more urgent of the two
+      // to be able to see.
+      for (const bird of view.flock) {
+        const spot = to(bird.x, bird.z);
+        if (Math.hypot(spot.x - middle, spot.y - middle) > middle - 4) continue;
+        pip(ctx, spot, middle, FLOCK_GREEN, 2.6);
+      }
+      if (view.her) {
+        const spot = to(view.her.x, view.her.z);
+        // Bigger than the rest of them, which is the same trick her morph
+        // plays: she has to be picked out of the flock at a glance.
+        if (Math.hypot(spot.x - middle, spot.y - middle) <= middle - 4) {
+          pip(ctx, spot, middle, HER_PINK, 4);
+        }
+      }
 
       // The crows, flashing, because a steady dot is scenery and these are
       // the one thing on the map that can kill you. Yellow like the line, and

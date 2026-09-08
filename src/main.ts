@@ -3043,6 +3043,24 @@ function frame(nowMs: number) {
         ? { x: ending.x, z: ending.z }
         : null,
     mark: waymarks.at,
+    // The flock as it really is, not as it is drawn: `escortDrawn` asks
+    // whether the camera can see a bird, and a bird the camera cannot see is
+    // exactly the one the map is there for.
+    flock: escorted
+      ? flock.members.flatMap((member, i) =>
+          member.down > 0 || i === hersAt
+            ? []
+            : [{ x: member.state.position.x, z: member.state.position.z }],
+        )
+      : [],
+    // And her, pulled out of them, on the levels where the flock is her.
+    her:
+      escorted && hersAt !== null && (flock.members[hersAt]?.down ?? 1) <= 0
+        ? {
+            x: flock.members[hersAt]!.state.position.x,
+            z: flock.members[hersAt]!.state.position.z,
+          }
+        : null,
     // Only the ones actually in the air on a level that has them. The flock
     // of crows exists all game and is held down on the twelve levels that are
     // not about it, so drawing the members without asking would put eight

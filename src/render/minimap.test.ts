@@ -100,6 +100,8 @@ const nothing = {
   target: null,
   mark: null,
   crows: [],
+  flock: [],
+  her: null,
   now: 0,
   line: null,
 };
@@ -144,5 +146,48 @@ describe('the crows on the panel', () => {
     const map = createMinimap({ appendChild() {} } as unknown as HTMLElement, []);
     map.update({ ...nothing, crows: [{ x: 0, z: -5000 }], now: 0.05 });
     expect(dots.filter((dot) => dot.colour === CROW_YELLOW)).toHaveLength(0);
+  });
+});
+
+describe('the flock on the panel', () => {
+  it('draws the others green and her pink', async () => {
+    // Two colours because the levels she is out on are about finding her,
+    // and a dozen identical dots is the problem rather than the answer.
+    const { dots } = fakeCanvas();
+    const { createMinimap } = await import('./minimap');
+    const map = createMinimap({ appendChild() {} } as unknown as HTMLElement, []);
+    map.update({
+      ...nothing,
+      flock: [{ x: 0, z: -100 }, { x: 40, z: -20 }],
+      her: { x: -30, z: -60 },
+    });
+    expect(dots.filter((dot) => dot.colour === '#5cd68a')).toHaveLength(2);
+    const hers = dots.filter((dot) => dot.colour === '#ef9ab8');
+    expect(hers).toHaveLength(1);
+    // Bigger than the rest of them, so she is the one the eye lands on.
+    const others = dots.filter((dot) => dot.colour === '#5cd68a');
+    expect(hers[0]!.r).toBeGreaterThan(others[0]!.r);
+  });
+
+  it('does not blink them', async () => {
+    // Unlike the crows. Company is not a warning, and a panel where
+    // everything flashes says nothing about which of it matters.
+    const { dots } = fakeCanvas();
+    const { createMinimap } = await import('./minimap');
+    const map = createMinimap({ appendChild() {} } as unknown as HTMLElement, []);
+    for (let i = 0; i < 6; i += 1) {
+      dots.length = 0;
+      map.update({ ...nothing, flock: [{ x: 0, z: -100 }], now: i / 6 });
+      expect(dots.filter((dot) => dot.colour === '#5cd68a')).toHaveLength(1);
+    }
+  });
+
+  it('leaves off whoever is past the rim', async () => {
+    const { dots } = fakeCanvas();
+    const { createMinimap } = await import('./minimap');
+    const map = createMinimap({ appendChild() {} } as unknown as HTMLElement, []);
+    map.update({ ...nothing, flock: [{ x: 0, z: -5000 }], her: { x: 5000, z: 0 } });
+    expect(dots.filter((dot) => dot.colour === '#5cd68a')).toHaveLength(0);
+    expect(dots.filter((dot) => dot.colour === '#ef9ab8')).toHaveLength(0);
   });
 });
