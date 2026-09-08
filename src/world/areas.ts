@@ -17,6 +17,16 @@ export interface Area {
 export interface AreaIndex {
   /** The area covering this point, or null if the ground is free. */
   at(x: number, z: number): Area | null;
+  /**
+   * Whether any area covering this point is of this kind.
+   *
+   * A different question from `at(x, z)?.kind === kind`, and the difference
+   * is the one that matters: areas overlap. A lake drawn inside a park is two
+   * areas over the same point, and `at` answers with whichever of them the
+   * index reaches first -- fine for "what ground is this", wrong for "is this
+   * water", where the answer must not depend on which was listed first.
+   */
+  covers(x: number, z: number, kind: AreaKind): boolean;
   /** True when any of the points falls inside an area. */
   anyInside(points: readonly (readonly [number, number])[]): boolean;
   readonly count: number;
@@ -90,10 +100,22 @@ export function indexAreas(areas: readonly Area[]): AreaIndex {
     return null;
   }
 
+  function covers(x: number, z: number, kind: AreaKind): boolean {
+    const bucket = grid.get(key(cell(x), cell(z)));
+    if (!bucket) return false;
+    for (const index of bucket) {
+      const entry = bounded[index]!;
+      if (entry.area.kind !== kind) continue;
+      if (x < entry.minX || x > entry.maxX || z < entry.minZ || z > entry.maxZ) continue;
+      if (inRing(x, z, entry.area.points)) return true;
+    }
+    return false;
+  }
+
   const anyInside = (points: readonly (readonly [number, number])[]) =>
     points.some(([x, z]) => at(x, z) !== null);
 
-  return { at, anyInside, count: areas.length };
+  return { at, covers, anyInside, count: areas.length };
 }
 
 /**

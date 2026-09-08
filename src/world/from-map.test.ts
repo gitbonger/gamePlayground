@@ -2123,3 +2123,56 @@ describe('inventing trees, or not', () => {
     expect(yard.trees).toEqual([]);
   });
 });
+
+describe('where a tree may not stand', () => {
+  /**
+   * A park with a road straight through the middle of it, which is the shape
+   * that used to go wrong: a park is planted from its own ring and nothing
+   * else was asked, and a park boundary takes in whatever runs across it.
+   */
+  const AVENUE: Road[] = [
+    { kind: 'residential', width: 12, points: [[-150, 0], [0, 0], [150, 0]] },
+  ];
+  const PARK: Area = {
+    kind: 'park',
+    points: [[-120, -80], [120, -80], [120, 80], [-120, 80]],
+  };
+
+  it('does not plant one in the carriageway', () => {
+    const world = buildLayoutFromMap(mapOf(AVENUE, [PARK]), PLANTED);
+    expect(world.trees.length).toBeGreaterThan(50);
+    const streets = indexStreets(AVENUE);
+    for (const tree of world.trees) {
+      const near = streets.nearest(tree.x, tree.z, 20);
+      if (!near) continue;
+      expect(near.distance, `tree at ${tree.x},${tree.z}`).toBeGreaterThan(near.width / 2);
+    }
+  });
+
+  it('does not plant one in the water', () => {
+    // The map's own areas already kept the scatter off the water. What did
+    // not was the trees the map records by hand, which went through none of
+    // the generator's tests: one recorded on a bank the survey later drew as
+    // river is a tree in the river.
+    const LAKE: Area = { kind: 'water', points: [[20, 20], [80, 20], [80, 80], [20, 80]] };
+    const wet = { ...mapOf(AVENUE, [PARK, LAKE]), trees: [[50, 50], [60, 60]] };
+    const world = buildLayoutFromMap(wet, PLANTED);
+    for (const tree of world.trees) {
+      const drowned = tree.x > 20 && tree.x < 80 && tree.z > 20 && tree.z < 80;
+      expect(drowned, `tree at ${tree.x},${tree.z}`).toBe(false);
+    }
+  });
+
+  it('still plants the park either side of the road', () => {
+    // The point of the rule is a road with trees along it, not a park with a
+    // bald stripe: what it takes out is a carriageway's width and no more.
+    const world = buildLayoutFromMap(mapOf(AVENUE, [PARK]), PLANTED);
+    const north = world.trees.filter((tree) => tree.z < -8).length;
+    const south = world.trees.filter((tree) => tree.z > 8).length;
+    expect(north).toBeGreaterThan(20);
+    expect(south).toBeGreaterThan(20);
+    // And the verge is still planted: the rule is the carriageway, not a
+    // setback of its own.
+    expect(world.trees.some((tree) => Math.abs(tree.z) < 10)).toBe(true);
+  });
+});

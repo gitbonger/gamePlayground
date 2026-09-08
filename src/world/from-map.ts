@@ -1043,6 +1043,31 @@ export function buildLayoutFromMap(
   })();
 
   /**
+   * Whether a point is off the carriageway.
+   *
+   * A short reach on purpose: this only asks whether the point is *on* a
+   * road, so nothing further off than half the widest road on the map can
+   * change the answer, and the index walks nine cells rather than four
+   * hundred. See `frontage` for what that distinction cost when it was got
+   * wrong.
+   */
+  const offTheRoad = (x: number, z: number) => {
+    const street = streets.nearest(x, z, widestRoad / 2 + 1);
+    return !street || street.distance > street.width / 2;
+  };
+
+  /**
+   * Whether a tree may stand here at all.
+   *
+   * The two things nothing grows out of: a carriageway, and open water. Both
+   * are asked of every tree in the world rather than of some of them --
+   * a park is mapped to its own boundary and the road through it is inside
+   * that boundary, and the trees somebody recorded standing in a street are
+   * recorded to the nearest few metres of a kerb that was not surveyed.
+   */
+  const plantable = (x: number, z: number) => offTheRoad(x, z) && !green.covers(x, z, 'water');
+
+  /**
    * Scatter trees on a grid, wherever the grid falls inside `ring` and
    * wherever `clear` will have them.
    */
@@ -1093,6 +1118,10 @@ export function buildLayoutFromMap(
         // Not on the water, and not in the middle of a five-a-side pitch.
         const ground = green.at(px, pz);
         if (ground && ground.kind !== 'park' && ground.kind !== 'wood') continue;
+        // And not in the road. Parks and woods are planted from their own
+        // rings with nothing else asked of them, and a park boundary takes in
+        // whatever road runs through the park.
+        if (!plantable(px, pz)) continue;
         // In the cemetery, one planting in three is a headstone instead. Not
         // a stone *and* a tree: a cemetery reads as a cemetery because the
         // stones stand in the gaps between the trees, which is what taking
@@ -1147,6 +1176,11 @@ export function buildLayoutFromMap(
     // And not on ground a described thing has taken, for the same reason a
     // building may not stand there.
     if (reserved(x, z)) continue;
+    // And not in the carriageway or in the water. These come off the map
+    // rather than out of the generator, so they have had none of the tests
+    // the invented ones have had: a tree recorded at the middle of a square
+    // that was later drawn as a road surface stands in the road.
+    if (!plantable(x, z)) continue;
 
     trees.push({
       x,
@@ -1191,20 +1225,14 @@ export function buildLayoutFromMap(
   }
 
   // And the ones nothing would fit on, planted right up to the kerb, since
-  // there is no frontage here for them to stand behind.
-  // Same again, and a shorter reach still: this one only cares whether the
-  // point is on the carriageway, so nothing beyond half the widest road on
-  // the map can change the answer.
-  const offTheRoad = (x: number, z: number) => {
-    const street = streets.nearest(x, z, widestRoad / 2 + 1);
-    return !street || street.distance > street.width / 2;
-  };
+  // there is no frontage here for them to stand behind. Off the carriageway
+  // is all that is asked of them, and `plant` asks that of everything.
   for (const block of bare) {
     // On a grid that fits the plot. These are the blocks that were too small
     // to build on, and a scatter coarser than the block itself simply steps
     // over it: at 9 m, twenty-one of them came out bare a second time.
     const step = Math.max(2, Math.min(options.spacing, Math.sqrt(block.area) / 3));
-    plant(block.ring, options.gardenTrees, offTheRoad, step);
+    plant(block.ring, options.gardenTrees, undefined, step);
   }
 
   // Parks and woods, which are their own rings and owe nothing to the blocks.
