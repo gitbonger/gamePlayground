@@ -425,3 +425,43 @@ describe('talking a landing down', () => {
     expect(approachFor(true, near)).not.toBeNull();
   });
 });
+
+describe('lessons that ask to be said aloud', () => {
+  it('hands the tutor’s lesson back whole', () => {
+    // It used to rebuild it as `{ keys, text }`, which quietly dropped
+    // `spoken` -- and `spoken` is the only thing the voice reads. So every
+    // lesson in the game that asked to be announced was silent, including
+    // `Crows! Fly low!`, which is the one thing on that route a player cannot
+    // work out by looking.
+    const tutor = createTutor();
+    tutor.teach([{ at: 10, keys: [], text: sameInBoth('Crows! Fly low!'), spoken: true }], 0);
+    const given = tutor.update({ flown: 20, toGo: 9999 }, 1 / 60);
+    expect(given?.text.en).toBe('Crows! Fly low!');
+    expect(given?.spoken).toBe(true);
+  });
+
+  it('leaves a quiet lesson quiet', () => {
+    // The other half of it. A voice that reads every instruction is a voice
+    // that gets turned off, and then it is not there for the one that
+    // mattered.
+    const tutor = createTutor();
+    tutor.teach([{ at: 10, keys: [], text: sameInBoth('Approaching Teleki tér') }], 0);
+    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.spoken).toBeUndefined();
+  });
+
+  it('says every life-and-death lesson in the game out loud', () => {
+    // The ones about crows and about the train are the two that kill you.
+    // Asked of the real courses, so a lesson written later without the flag
+    // is caught here rather than by somebody dying quietly.
+    // The ones that warn about something that kills you: the crows, and the
+    // train you have to be on. Not `Chill, no crows here`, which says a level
+    // is safe -- a voice reading that one out is a voice saying something
+    // nobody needed to hear.
+    const warns = /^(Crows!|Mind the crows|You need to land on the train|Careful)/;
+    const deadly = Object.values(COURSES)
+      .flat()
+      .filter((lesson) => warns.test(lesson.text.en));
+    expect(deadly.length).toBeGreaterThan(2);
+    for (const lesson of deadly) expect(lesson.spoken, lesson.text.en).toBe(true);
+  });
+});

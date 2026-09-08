@@ -1,3 +1,4 @@
+import type { IconName } from './render/icons';
 import {
   otherLanguage,
   PHRASES,
@@ -2414,7 +2415,7 @@ function openedName(): string | null {
  * is that the controls are different now.
  */
 /** The last thing said about the voice itself, and when. */
-let voiceNote: { text: Words; at: number } | null = null;
+let voiceNote: { text: Words; icon: IconName; at: number } | null = null;
 /** How long that stays up, in seconds. */
 const NOTICE = 2;
 
@@ -2426,11 +2427,11 @@ function command(): Tip | null {
   // the player has just pressed a key and is owed an answer about it.
   if (voiceNote && clock - voiceNote.at < NOTICE)
     // Spoken, so that turning it on is answered in the voice being turned on.
-    return { keys: ['V'], text: voiceNote.text, spoken: true };
+    return { keys: ['V'], text: voiceNote.text, icon: voiceNote.icon, spoken: true };
 
   if (finished && talkingTo && !midSentence())
     // Said aloud: without it the flight does not continue at all.
-    return { keys: ['SPACE'], text: TAKE_OFF, spoken: true };
+    return { keys: ['SPACE'], text: TAKE_OFF, icon: 'takeOff', spoken: true };
 
   // Somebody is waiting for an answer. The replies are on the screen with
   // numbers beside them and nothing else says the numbers are keys -- and a
@@ -2438,12 +2439,12 @@ function command(): Tip | null {
   //
   // Above the stance rather than inside it: a conversation happens on foot
   // today and the rule is about the conversation, not about the feet.
-  if (midSentence()) return { keys: [], text: PHRASES.answerPrompt };
+  if (midSentence()) return { keys: [], text: PHRASES.answerPrompt, icon: 'talk' };
 
   // Standing on a branch or a square having just said something to nobody.
   // The same key and the same words as leaving a conversation, because it is
   // the same act -- he has finished talking and he is going.
-  if (waiting) return { keys: ['SPACE'], text: TAKE_OFF, spoken: true };
+  if (waiting) return { keys: ['SPACE'], text: TAKE_OFF, icon: 'takeOff', spoken: true };
 
   // On foot, where the corner is quiet.
   //
@@ -2461,8 +2462,13 @@ function command(): Tip | null {
     if (talkingTo) return null;
     // Walked into something. Transient, and about the thing in the way rather
     // than about walking.
-    if (onFoot.blocked)
-      return { keys: ['←', '→'], text: { en: 'Turn and walk round it', hu: 'Fordulj és kerüld ki' } };
+    if (onFoot.blocked) {
+      return {
+        keys: ['←', '→'],
+        text: { en: 'Turn and walk round it', hu: 'Fordulj és kerüld ki' },
+        icon: 'walk',
+      };
+    }
     return null;
   }
   return null;
@@ -2537,9 +2543,9 @@ function frame(nowMs: number) {
     // later by whatever the flight has to say: the panel is told what to show
     // once a frame, so anything written straight to it lasts one frame.
     voiceNote = {
-      text: voice.toggle()
-        ? { en: 'Voice on', hu: 'Hang be' }
-        : { en: 'Voice off', hu: 'Hang ki' },
+      ...(voice.toggle()
+        ? { text: { en: 'Voice on', hu: 'Hang be' }, icon: 'voiceOn' as const }
+        : { text: { en: 'Voice off', hu: 'Hang ki' }, icon: 'voiceOff' as const }),
       at: clock,
     };
   }
