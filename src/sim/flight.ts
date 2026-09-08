@@ -668,6 +668,28 @@ function forcesAt(velocity: Vec3, q: Quat, p: FlightParams, wing: WingSetup): Ai
 const sumForces = (a: Airflow, gravity: Vec3): Vec3 =>
   add(add(gravity, a.lift), add(a.drag, add(a.keel, a.flap)));
 
+/**
+ * Put stamina back into the wings, and take it out of the belly.
+ *
+ * Recovery is paid for out of the belly, and an empty one buys nothing.
+ * Measured from what actually goes back into the wings rather than from what
+ * was offered, so a bird resting at full stamina eats nothing -- sitting on a
+ * branch is free, and only the recovering costs.
+ *
+ * Its own function because rest happens in two places that look nothing
+ * alike: a bird gliding with its wings still, and a bird standing on the
+ * ground. The second used to get none. `step` returns the moment a flight has
+ * an ending, and a perched bird *has* one -- `landed` -- so everything below
+ * that line, this included, never ran while the player was on foot. Walking
+ * about was the one thing in the game that could not get your wind back.
+ */
+function recover(state: BirdState, p: FlightParams, dt: number): void {
+  const wanted = state.health > 0 ? p.staminaRecovery * dt : 0;
+  const gained = clamp(state.stamina + wanted, 0, 1) - state.stamina;
+  state.stamina += gained;
+  state.health = clamp(state.health - gained * p.bellyPerStamina, 0, 1);
+}
+
 export function step(
   state: BirdState,
   controls: Controls,
@@ -676,8 +698,15 @@ export function step(
   collider?: Collider,
   wind: WindField = calm,
 ): FlightTelemetry {
-  // Once the flight is over the bird is inert until the caller replaces it.
+  // Once the flight is over the bird is inert until the caller replaces it --
+  // inert in the air, at least. A bird that has *landed* is not finished with,
+  // it is standing on something, and standing on something is resting: it gets
+  // its wind back like any other bird at rest, and pays the belly for it.
+  //
+  // A crashed one does not. That is the whole difference between the two
+  // endings, and it is the reason this is not simply outside the test.
   if (state.ending) {
+    if (state.ending.kind === 'landed') recover(state, p, dt);
     return telemetryFor(state, p, 0, 0, 0, p.stallAngle, zeroWork(), vec(0, 0, 0));
   }
 
@@ -702,14 +731,7 @@ export function step(
   } else {
     // Settle the wings back to the neutral, mid-glide pose.
     state.flapPhase = damp(state.flapPhase, 0, 0.15, dt);
-    // Recovery is paid for out of the belly, and an empty one buys nothing.
-    // Measured from what actually goes back into the wings rather than from
-    // what was offered, so a bird resting at full stamina eats nothing --
-    // sitting on a branch is free, and only the recovering costs.
-    const wanted = state.health > 0 ? p.staminaRecovery * dt : 0;
-    const gained = clamp(state.stamina + wanted, 0, 1) - state.stamina;
-    state.stamina += gained;
-    state.health = clamp(state.health - gained * p.bellyPerStamina, 0, 1);
+    recover(state, p, dt);
   }
 
   // --- Wing configuration -------------------------------------------------

@@ -12,6 +12,7 @@ import {
   liftCoefficient,
   neutralControls,
   step,
+  type BirdState,
   type Controls,
   type FlightParams,
 } from './flight';
@@ -1377,5 +1378,82 @@ describe('what the flying is paid for with', () => {
     // away. That is the level, and this is the arithmetic under it.
     const { bird } = errand(600, 0.2);
     expect(bird.health).toBeLessThan(0.05);
+  });
+});
+
+describe('getting your wind back on the ground', () => {
+  const standing = (kind: 'landed' | 'crashed', over: Partial<BirdState> = {}) => {
+    const bird = createBird(vec(0, 0, 0), 0, 0);
+    bird.ending = {
+      kind,
+      settled: true,
+      cause: kind === 'crashed' ? 'building' : null,
+      speed: 0,
+      sink: 0,
+      bank: 0,
+      position: bird.position,
+    };
+    Object.assign(bird, over);
+    return bird;
+  };
+
+  const stand = (bird: BirdState, seconds: number) => {
+    for (let t = 0; t < seconds * 120; t += 1) {
+      step(bird, neutralControls(), defaultParams, 1 / 120);
+    }
+    return bird;
+  };
+
+  it('lets a bird on its feet get its stamina back', () => {
+    // `step` returns the moment a flight has an ending, and a perched bird
+    // has one -- `landed`. Everything below that line, recovery included,
+    // never ran while the player was on foot, so walking about was the one
+    // thing in the game that could not get your wind back.
+    const bird = stand(standing('landed', { stamina: 0.2 }), 3);
+    expect(bird.stamina).toBeGreaterThan(0.2);
+  });
+
+  it('gets it back at the same rate as a bird resting in the air', () => {
+    // Standing still and gliding with the wings still are the same rest.
+    const onFoot = stand(standing('landed', { stamina: 0.2 }), 3);
+
+    const gliding = createBird(vec(0, 200, 0), 16, 0);
+    gliding.stamina = 0.2;
+    for (let t = 0; t < 3 * 120; t += 1) {
+      step(gliding, neutralControls(), defaultParams, 1 / 120);
+    }
+    expect(onFoot.stamina).toBeCloseTo(gliding.stamina, 6);
+  });
+
+  it('gives a dead bird nothing', () => {
+    // Which is the whole difference between the two endings, and the reason
+    // the recovery is inside the test for one rather than outside it for
+    // both. A corpse does not get its breath back.
+    const bird = stand(standing('crashed', { stamina: 0.2 }), 3);
+    expect(bird.stamina).toBe(0.2);
+  });
+
+  it('takes it out of the belly, standing as much as flying', () => {
+    // Food is what stamina is made of, and a rule that let a bird refill for
+    // nothing by putting its feet down would be a way round the whole
+    // economy: land, rest for free, take off again.
+    const bird = stand(standing('landed', { stamina: 0.2, health: 1 }), 3);
+    expect(bird.health).toBeLessThan(1);
+    // And what it paid is what it gained, at the going rate.
+    const gained = bird.stamina - 0.2;
+    expect(1 - bird.health).toBeCloseTo(gained * defaultParams.bellyPerStamina, 6);
+  });
+
+  it('buys nothing on an empty belly', () => {
+    const bird = stand(standing('landed', { stamina: 0.2, health: 0 }), 3);
+    expect(bird.stamina).toBe(0.2);
+  });
+
+  it('costs a bird standing about at full stamina nothing', () => {
+    // Perching is free. It is only the recovering that is paid for, which is
+    // why the charge is taken from what actually went into the wings rather
+    // than from what was offered.
+    const bird = stand(standing('landed', { stamina: 1, health: 1 }), 5);
+    expect(bird.health).toBe(1);
   });
 });
