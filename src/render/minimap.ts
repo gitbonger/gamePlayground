@@ -20,11 +20,24 @@
 
 import type { Road } from '../world/streets';
 
-/** How far the map reaches from the bird, in metres. */
-const REACH = 320;
-
-/** How big the panel is, in CSS pixels. */
-const SIZE = 148;
+/**
+ * How far the map reaches from the bird, in metres, and how big the panel is
+ * in pixels.
+ *
+ * The two together are the zoom -- a pixel is worth `REACH / (SIZE / 2)` of
+ * ground, which is about four and a third metres. They were half of each,
+ * and doubling both keeps the zoom exactly where it was while showing four
+ * times the ground: the streets stay the same size on the screen and there is
+ * simply more of them.
+ *
+ * Six hundred and forty metres also puts most of `Coming on strong` on the
+ * panel. Its finishing line is nine hundred out, so the last third is still
+ * an arrow at the rim -- but the line comes into view well before the bird
+ * reaches it, which is the point at which knowing where it is starts to
+ * matter.
+ */
+const REACH = 640;
+const SIZE = 296;
 
 /**
  * The grid the streets are bucketed into, in metres.

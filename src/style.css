@@ -513,8 +513,8 @@ body {
   position: absolute;
   right: 16px;
   bottom: 74px;
-  width: 148px;
-  height: 148px;
+  width: 296px;
+  height: 296px;
   /* Nothing here is clicked. */
   pointer-events: none;
 }
