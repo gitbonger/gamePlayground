@@ -418,9 +418,23 @@ function withTiles(material: THREE.MeshLambertMaterial): THREE.MeshLambertMateri
           float steep = length(fall);
           vec2 along = steep > 1e-3 ? normalize(vec2(-fall.y, fall.x)) : vec2(1.0, 0.0);
           float u = dot(vRoofPos.xz, along) / ${TILE_WIDTH.toFixed(3)};
-          // Divided by the normal's rise, so a course is measured along the
-          // slope rather than vertically: shallow roofs are not stretched.
-          float v = (vRoofPos.y / max(face.y, 0.25)) / ${TILE_COURSE.toFixed(3)};
+          // How far up the roof, which is what separates one course from the
+          // next. On a slope that is the height, divided by the normal's rise
+          // so a course is measured along the pitch rather than vertically --
+          // shallow roofs are not stretched.
+          //
+          // On the flat it is not the height at all. A hipped roof on a broad
+          // building has a flat top -- the rise is capped at five metres, so
+          // anything wide has one -- and up there every point is at the same
+          // height, so the course number came out the same everywhere: no line
+          // anywhere on it, and the whole cap was a single course of tiles
+          // smeared along its length. It read as planking.
+          //
+          // Measured across the top instead, square to the way the courses
+          // run, which is the same spacing seen from directly above.
+          float v = steep > 0.08
+            ? (vRoofPos.y / max(face.y, 0.25)) / ${TILE_COURSE.toFixed(3)}
+            : dot(vRoofPos.xz, vec2(-along.y, along.x)) / ${TILE_COURSE.toFixed(3)};
 
           float course = floor(v);
           // Every other course offset by half a tile, as they are laid.
