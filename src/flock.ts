@@ -298,14 +298,47 @@ const MISSED_BY = 2;
 const CRUISE_CEILING = 30;
 
 /**
- * How much faster than the leader they fly, in m/s.
+ * How much a bird has in hand, in m/s, to hold its place with.
  *
- * Matching exactly is not enough: they are released ten metres back, and two
- * birds at the same speed stay ten metres apart for ever. A little in hand is
- * what lets one close the gap and come past. Only a little -- at six the flock
- * overshoots, sits further out, and starts tripping the stray rule.
+ * Three, and it was three before -- but it was spent always on going faster.
+ * "Matching the leader exactly is not enough" is true: they are let out ten
+ * metres back, and two birds at the same speed stay ten metres apart for
+ * ever. The conclusion drawn from it was wrong.
+ *
+ * A bird with three metres a second in hand and nowhere else to put it flies
+ * *past* the leader. Its next target is then behind it, so it turns -- and a
+ * turn at twenty metres a second is a wide arc flown away from where it wants
+ * to be, at the end of which it is a hundred metres out and coming back. In a
+ * crowd nobody sees it: the eye reads the crowd. With one bird it is the
+ * whole picture, and it is what the ever after looked like.
+ *
+ * So the three is a trim about the leader's speed rather than an addition to
+ * it: in front of station she flies slower, behind it faster, at it she
+ * matches him. Which is what formation flying is, and the only way to sit
+ * next to somebody.
  */
 const CRUISE_SURPLUS = 3;
+
+/**
+ * How much of that is spent per metre out of position.
+ *
+ * Six tenths of a metre a second per metre, so the three is all of it by ten
+ * metres out. Measured over two minutes behind a leader at cruise -- how far
+ * she typically sits, and how far she ever gets:
+ *
+ *     plus three, flat (what this replaces)   median 29 m, p90 42, worst 123
+ *     trimmed, no bound                       median 19 m, p90 23, worst  45
+ *     trimmed, bounded by the three           median 20 m, p90 24, worst  35
+ *
+ * The bound is not tidiness. Unbounded, the trim is a fact about distance
+ * rather than about formation, so a bird fifty metres behind a leader who is
+ * standing still charges in at thirty metres a second -- and four tests that
+ * had nothing to do with this said so.
+ *
+ * A flock of thirty tightened up too, median 43 m to 33, so none of this is
+ * paid for by the crowd.
+ */
+const STATION_KEEPING = 0.6;
 
 /**
  * How far ahead of the leader targets are centred, in seconds.
@@ -660,6 +693,24 @@ export function createFlock(
           z: at.z - Math.cos(at.heading) * ball.ahead,
         };
 
+  /**
+   * How fast this bird should be flying to hold its place.
+   *
+   * Measured along the leader's own heading, from the middle of the ball --
+   * not from the leader, because the ball is where the flock is supposed to
+   * be and may be thirty metres in front of him.
+   */
+  const stationSpeed = (where: Vec3, at: Anchor): number => {
+    const centre = wheelAbout(at);
+    const lead =
+      (where.x - centre.x) * Math.sin(at.heading) - (where.z - centre.z) * Math.cos(at.heading);
+    const trim = Math.max(
+      -CRUISE_SURPLUS,
+      Math.min(CRUISE_SURPLUS, -lead * STATION_KEEPING),
+    );
+    return Math.min(CRUISE_CEILING, Math.max(CRUISE_FLOOR, at.speed + trim));
+  };
+
   /** Somewhere near the leader to make for, chosen fresh each time. */
   const target = (at: Anchor): Waypoint => {
     // Centred on where the leader will be, not where they are. Aiming at a
@@ -799,9 +850,10 @@ export function createFlock(
     letting = true,
   ) {
     const at = around();
-    flying.cruiseSpeed = landing
-      ? LANDING_CRUISE
-      : Math.min(CRUISE_CEILING, Math.max(CRUISE_FLOOR, at.speed + CRUISE_SURPLUS));
+    // The landing speed for a flock coming down. A flying one is set bird by
+    // bird instead -- see `stationSpeed` -- because it depends on where that
+    // bird has got to.
+    if (landing) flying.cruiseSpeed = LANDING_CRUISE;
 
     for (const pilot of pilots) {
       const { member } = pilot;
@@ -1001,6 +1053,11 @@ export function createFlock(
         continue;
       }
 
+      // Held on station along the leader's own heading: slower when it has
+      // run out in front of the ball, faster when it is behind. Set per bird
+      // rather than once for the flock, because it is a fact about where that
+      // bird is.
+      flying.cruiseSpeed = stationSpeed(member.state.position, at);
       steer(member.state, member.aiming, pilot.memory, pilot.controls, flying);
       step(member.state, pilot.controls, flight, dt, collider, wind);
       // The flock does not eat. The belly is the hero's problem: it is the

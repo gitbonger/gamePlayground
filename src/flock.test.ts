@@ -1656,3 +1656,78 @@ describe('the ball a flock wheels in', () => {
     expect(behind.forward).toBeLessThan(centred.forward - 15);
   });
 });
+
+describe('holding station on the leader', () => {
+  const wind = { at: () => vec(0, 0, 0), meanAt: () => 0 };
+
+  /** How far out one bird sits, flying behind a leader that is going somewhere. */
+  const alone = (ball: { radius: number; ahead: number }) => {
+    const at = { x: 0, y: 100, z: 0, heading: 0, speed: 17, climb: 0 };
+    const flock = createFlock(1, () => at, { ...defaultFlockOptions, count: 30 });
+    flock.only(1);
+    flock.wheel(ball);
+    const away: number[] = [];
+    for (let t = 0; t < 120 * 120; t += 1) {
+      at.z -= at.speed / 120;
+      flock.update(1 / 120, undefined, wind, true);
+      // After the first ten seconds, once she has caught up.
+      if (t % 30 !== 0 || t < 10 * 120) continue;
+      const m = flock.members[0]!;
+      if (m.down > 0 || m.state.ending !== null) continue;
+      away.push(
+        Math.hypot(
+          m.state.position.x - at.x,
+          m.state.position.y - at.y,
+          m.state.position.z - at.z,
+        ),
+      );
+    }
+    return away;
+  };
+
+  it('does not let one bird run off and come back', () => {
+    // What the last level looked like: she reached the ball, took a target
+    // inside it, and had flown past him by the time she got there -- so the
+    // next one was behind her, and she turned. A turn at twenty metres a
+    // second is a wide arc flown away from where she wants to be. A hundred
+    // and twenty metres out, then all the way back, over and over.
+    //
+    // Nothing was wrong with the ball. She had three metres a second in hand
+    // and the only thing she could spend it on was going faster.
+    const away = alone({ radius: 7.5, ahead: 15 });
+    expect(away.length).toBeGreaterThan(100);
+    expect(Math.max(...away), 'never far away').toBeLessThan(60);
+  });
+
+  it('keeps her near enough to read as company', () => {
+    // Half the ball and half the distance out is fifteen metres of station.
+    // Sitting at forty would be a pigeon that happens to be going the same
+    // way rather than the one who came with him.
+    const away = [...alone({ radius: 7.5, ahead: 15 })].sort((a, b) => a - b);
+    expect(away[away.length >> 1]!, 'typically').toBeLessThan(28);
+  });
+
+  it('slows a bird that has got in front and hurries one that is behind', () => {
+    // The rule itself, at the two ends of it. Flown from a standing start
+    // well in front of the leader, and well behind him: one has to fall back
+    // to him and the other has to catch up.
+    for (const start of [-60, 60]) {
+      const at = { x: 0, y: 100, z: 0, heading: 0, speed: 17, climb: 0 };
+      const flock = createFlock(1, () => at, {
+        ...defaultFlockOptions,
+        count: 1,
+        // Put where the test wants it rather than behind him.
+        spawn: { kind: 'at', x: 0, y: 100, z: -start },
+      });
+      flock.only(1);
+      flock.wheel({ radius: 7.5, ahead: 15 });
+      for (let t = 0; t < 60 * 120; t += 1) {
+        at.z -= at.speed / 120;
+        flock.update(1 / 120, undefined, wind, true);
+      }
+      const m = flock.members[0]!;
+      const gap = Math.hypot(m.state.position.x - at.x, m.state.position.z - at.z);
+      expect(gap, `started ${start} m ${start > 0 ? 'ahead' : 'behind'}`).toBeLessThan(45);
+    }
+  });
+});
