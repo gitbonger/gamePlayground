@@ -488,6 +488,19 @@ async function main() {
     if (highway) {
       const width = ROAD_WIDTHS[highway];
       if (width === undefined || !element.geometry || element.geometry.length < 2) continue;
+      // Underground, so there is no road here to see. The railway branch has
+      // always dropped these and the road branch never did: eleven stretches
+      // of this district were being painted on the surface where the street is
+      // in fact under it, along with everything that follows from a street
+      // being there -- a kerb nothing may be built on, and crossings laid
+      // across a carriageway that is ten metres down.
+      //
+      // A bridge is the opposite case and is kept: it is a road, it is there,
+      // and it is visible from the air. What is wrong with a bridge here is
+      // only its height, and the ground in this game is flat.
+      if (tags['tunnel'] || tags['covered'] === 'yes' || tags['location'] === 'underground') {
+        continue;
+      }
       rawPoints += element.geometry.length;
       const points = toLocal(element.geometry, 1.5);
       if (points.length >= 2) roads.push({ kind: highway, width, points });
