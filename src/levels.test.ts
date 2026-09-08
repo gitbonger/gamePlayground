@@ -37,6 +37,16 @@ import { defaultFlockOptions, FLOCK_AHEAD } from './flock';
 import type { MapData } from './world/streets';
 import { COURSES, courseFor } from './render/tips';
 
+/**
+ * The level the story ends on.
+ *
+ * Found by name rather than by being last in the list. It was the last one
+ * for a long time and several tests said "the last level" when they meant
+ * this one -- which stopped being the same thing the moment somewhere else to
+ * fly was added after it.
+ */
+const EVERAFTER = LEVELS.find((level) => level.name === 'Everafter')!;
+
 describe('what the levels aim at', () => {
   it('names a described thing that exists', () => {
     // The whole reason a level says "The Loft" rather than a coordinate is
@@ -318,15 +328,19 @@ describe('what the levels aim at', () => {
       const spot = standingOf(level, PINK.name);
       return spot && spot.on.kind === 'landmark' ? spot.on.name : null;
     });
-    const middle = LEVELS.slice(2, -1).map(() => LOFT.name);
-    expect(where).toEqual([HOME_TREE.name, HOME_TREE.name, ...middle, null]);
+    // Up to the level the story ends on, which is where the arc ends: on
+    // that one she is the escort, and on anything added after it she is not
+    // in the level at all.
+    const ends = LEVELS.indexOf(EVERAFTER);
+    const middle = LEVELS.slice(2, ends).map(() => LOFT.name);
+    const nowhere = LEVELS.slice(ends).map(() => null);
+    expect(where).toEqual([HOME_TREE.name, HOME_TREE.name, ...middle, ...nowhere]);
     expect(where.length).toBe(LEVELS.length);
 
-    // She is nowhere on that last level because she is flying it: a bird
-    // cannot be standing on a roof and escorting him at the same time.
-    const after = LEVELS[LEVELS.length - 1]!;
-    expect(after.flockIs).toBe(PINK.name);
-    expect(after.escort).toBe(true);
+    // She is nowhere on the level the story ends on because she is flying
+    // it: a bird cannot be standing on a roof and escorting him at once.
+    expect(EVERAFTER.flockIs).toBe(PINK.name);
+    expect(EVERAFTER.escort).toBe(true);
   });
 
   it('never stands two of the cast on top of each other', () => {
@@ -445,6 +459,7 @@ describe('what the levels aim at', () => {
       'Fiumei út',
       'Coming on strong',
       'Everafter',
+      'Andrássy',
     ]);
     for (const level of dropped) expect(level.release, level.name).toBeGreaterThanOrEqual(100);
 
@@ -1012,15 +1027,20 @@ describe('what the levels aim at', () => {
     // get you somewhere; this one is the only one in the game with no
     // condition on it at all -- nothing to reach, nobody to meet, no line,
     // and nothing after it to open onto.
-    const last = LEVELS[LEVELS.length - 1]!;
-    expect(last.name).toBe('Everafter');
-    expect(last.finish.kind).toBe('free');
-    expect(opensOf(last)).toBeUndefined();
+    expect(EVERAFTER.finish.kind).toBe('free');
+    expect(opensOf(EVERAFTER)).toBeUndefined();
 
-    // And only that one. A level in the middle of the story that could not be
-    // finished would be a story that stops.
-    const endless = LEVELS.filter((level) => level.finish.kind === 'free');
-    expect(endless).toHaveLength(1);
+    // And nothing inside the story. A level in the middle of it that could
+    // not be finished would be a story that stops -- so everything up to the
+    // ending has a condition on it, and everything from the ending on is a
+    // place to fly rather than a level to finish.
+    const ends = LEVELS.indexOf(EVERAFTER);
+    for (const level of LEVELS.slice(0, ends)) {
+      expect(level.finish.kind, level.name).not.toBe('free');
+    }
+    for (const level of LEVELS.slice(ends)) {
+      expect(level.finish.kind, level.name).toBe('free');
+    }
   });
 
   it('starts the last level in one place, like every other level', () => {
@@ -1030,9 +1050,7 @@ describe('what the levels aim at', () => {
     for (const level of LEVELS) {
       expect(level.start, level.name).toHaveLength(2);
     }
-    const last = LEVELS[LEVELS.length - 1]!;
-    expect(last.name).toBe('Everafter');
-    expect(last.start).toEqual([47.505284, 19.087829]);
+    expect(EVERAFTER.start).toEqual([47.505284, 19.087829]);
   });
 
   it('aims the last level at nothing', () => {
@@ -1041,16 +1059,16 @@ describe('what the levels aim at', () => {
     // used to name the loft anyway, purely so the arrow had somewhere to send
     // you -- a level answering a question nobody asked, on the one flight
     // whose point is that there is nowhere it has to go.
-    const last = LEVELS[LEVELS.length - 1]!;
-    expect(last.name).toBe('Everafter');
-    expect(last.target).toBeUndefined();
-    expect(targetName(last)).toBeNull();
-    expect(last.finish.kind).toBe('free');
+    expect(EVERAFTER.target).toBeUndefined();
+    expect(targetName(EVERAFTER)).toBeNull();
+    expect(EVERAFTER.finish.kind).toBe('free');
 
-    // And it is the only one. Every other level is aimed at something,
-    // because a level that is not is a level with nothing to do.
+    // And only the levels that are places to fly rather than levels to
+    // finish: every level inside the story is aimed at something, because one
+    // that is not is a level with nothing to do.
     expect(LEVELS.filter((level) => !level.target).map((level) => level.name)).toEqual([
       'Everafter',
+      'Andrássy',
     ]);
   });
 
@@ -1058,15 +1076,17 @@ describe('what the levels aim at', () => {
     // She comes. Everything before this was him alone or him with strangers,
     // and she flies it as an ordinary escort -- let out behind him and
     // wheeling with him -- rather than standing on a roof waiting.
-    const last = LEVELS[LEVELS.length - 1]!;
-    expect(last.escort).toBe(true);
-    expect(last.flock).toBe(1);
-    expect(last.flockIs).toBe(PINK.name);
+    expect(EVERAFTER.escort).toBe(true);
+    expect(EVERAFTER.flock).toBe(1);
+    expect(EVERAFTER.flockIs).toBe(PINK.name);
     // Nobody standing anywhere: she is flying, and everyone else has been met.
-    expect(last.cast).toEqual([]);
+    expect(EVERAFTER.cast).toEqual([]);
     // And she is not asked to come down: the flock lands on the level before
     // this one, which is a different thing entirely.
-    expect(last.settles).toBeFalsy();
+    expect(EVERAFTER.settles).toBeFalsy();
+    // And it is the only level she flies. A second one with her in it would
+    // spend the ending twice.
+    expect(LEVELS.filter((level) => level.flockIs).map((l) => l.name)).toEqual(['Everafter']);
   });
 
   it('wheels the last level in half the usual ball, half the usual way out', () => {
@@ -1075,11 +1095,10 @@ describe('what the levels aim at', () => {
     // not in the boom. She is one bird, and given the crowd's ball she
     // circles a cricket pitch away -- a pigeon going the same way rather than
     // the one who came with him.
-    const last = LEVELS[LEVELS.length - 1]!;
-    expect(last.flockBall).toBe(defaultFlockOptions.radius / 2);
-    expect(last.flockAhead).toBe(FLOCK_AHEAD / 2);
+    expect(EVERAFTER.flockBall).toBe(defaultFlockOptions.radius / 2);
+    expect(EVERAFTER.flockAhead).toBe(FLOCK_AHEAD / 2);
     // In front of him, not behind: the camera is behind him.
-    expect(last.flockAhead!).toBeGreaterThan(0);
+    expect(EVERAFTER.flockAhead!).toBeGreaterThan(0);
   });
 
   it('leaves every other level on the flock’s own numbers', () => {
@@ -1090,19 +1109,47 @@ describe('what the levels aim at', () => {
     );
   });
 
+  it('adds Andrássy as somewhere to fly rather than something to finish', () => {
+    // The second level with no target and no way to finish, and the first
+    // that is not the end of anything: the story closes on Everafter and this
+    // is somewhere else to go afterwards. Nothing is locked, so it is reached
+    // from the level screen like any other.
+    const andrassy = LEVELS.find((level) => level.name === 'Andrássy')!;
+    expect(andrassy.start).toEqual([47.515828, 19.079152]);
+    expect(andrassy.facing).toEqual([47.514013, 19.076523]);
+    expect(andrassy.release).toBe(100);
+    expect(andrassy.target).toBeUndefined();
+    expect(andrassy.finish.kind).toBe('free');
+
+    // Pointed down the avenue rather than up it: south and west of where it
+    // starts, which is towards the city.
+    expect(andrassy.facing![0]).toBeLessThan(andrassy.start[0]);
+    expect(andrassy.facing![1]).toBeLessThan(andrassy.start[1]);
+
+    // And flown alone. She belongs to the ending, and a second level with her
+    // in it would spend the ending twice.
+    expect(andrassy.escort).toBe(false);
+    expect(andrassy.cast).toEqual([]);
+
+    // After the ending rather than before it, or the story would stop on a
+    // level with nothing to do in it.
+    expect(LEVELS.indexOf(andrassy)).toBeGreaterThan(LEVELS.indexOf(EVERAFTER));
+  });
+
   it('points the last level away rather than back at the loft', () => {
     // Every other level faces its first waymark or the thing it is aimed at,
     // which is right when there is somewhere to go. This one is aimed at the
     // loft only so the arrow has something to point at, and facing it that
     // way would start the ever after looking back the way he came.
-    const last = LEVELS[LEVELS.length - 1]!;
-    expect(last.facing).toEqual([47.513165, 19.086046]);
+    expect(EVERAFTER.facing).toEqual([47.513165, 19.086046]);
     // North of where it starts, which is up the park and away.
-    expect(last.facing![0]).toBeGreaterThan(last.start[0]);
+    expect(EVERAFTER.facing![0]).toBeGreaterThan(EVERAFTER.start[0]);
 
-    // And nothing else uses it: a level with somewhere to go faces it.
+    // Only the levels with nowhere to go use it: everything else faces its
+    // first waymark or the thing it is aimed at.
     expect(LEVELS.filter((level) => level.facing).map((level) => level.name)).toEqual([
       'Everafter',
+      'Andrássy',
     ]);
   });
 

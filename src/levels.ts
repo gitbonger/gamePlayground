@@ -1250,4 +1250,31 @@ export const LEVELS: readonly Level[] = [
     cast: [],
     finish: { kind: 'free' },
   },
+  {
+    // Andrássy út, and nothing to do on it.
+    //
+    // The second level with no target and no way to finish, and the first
+    // that is not the end of anything: the story closes on `Everafter`, and
+    // this is somewhere else to go afterwards. Reached from the level screen,
+    // like any other -- nothing is locked.
+    name: 'Andrássy',
+    // Up by the Kodály körönd end of it, a hundred metres up.
+    start: [47.515828, 19.079152],
+    // Pointed south-west, down the avenue towards the city. Two hundred and
+    // eighty metres is not far to aim at, and it does not need to be: this
+    // only says which way he is facing when he is let go.
+    facing: [47.514013, 19.076523],
+    release: 100,
+    health: 1,
+    when: EVENING,
+    // Alone. She belongs to `Everafter` -- everything before that was him by
+    // himself or with strangers, and her coming is what the ending is -- so a
+    // second level with her in it would spend the ending twice.
+    escort: false,
+    // Nothing is being taught any more, and nothing is hunting.
+    teaches: false,
+    // Nobody standing anywhere, nothing aimed at, and no way to finish it.
+    cast: [],
+    finish: { kind: 'free' },
+  },
 ];
