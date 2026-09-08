@@ -2899,7 +2899,15 @@ function frame(nowMs: number) {
     // shake them off: putting down in a street on the way across the district
     // is not arriving anywhere, and the level that is *about* the crows ends
     // at a line with nothing to land on at all.
-    if (hunted && arrived()) hunted = false;
+    // Put away when the talking starts, not when the feet touch down.
+    //
+    // Arriving used to end it, and it ended it too early: he lands on the
+    // trapper's roof with eight crows still over the street he has just
+    // crossed, and they vanished on the tick his feet touched. What the
+    // arrival is owed is that they stop being a *danger* -- and that is a
+    // separate rule, below, about a bird on foot. They can wheel up there
+    // until she says something.
+    if (hunted && talkingTo) hunted = false;
     // No collider, on purpose, and it is the fix for a visible bug: the
     // crows were flying into buildings and being respawned fifty metres
     // away, which on the minimap is a dot that jumps every few seconds.
@@ -2922,7 +2930,17 @@ function frame(nowMs: number) {
     // they have moved rather than before, so the tick a crow arrives is the
     // tick it counts -- and only against a bird that is still flying, since
     // catching a corpse is not an event.
-    if (hunted && crows && bird.ending === null && crows.touching(bird.position, CROW_TOUCH)) {
+    // And only against a bird in the air. A crow takes a pigeon on the wing;
+    // one standing on a roof three metres from the person who traps them is
+    // in a different kind of trouble, and being carried off by a crow at the
+    // end of the search would be the story losing to the simulation.
+    if (
+      hunted &&
+      crows &&
+      bird.ending === null &&
+      !isPerched(bird) &&
+      crows.touching(bird.position, CROW_TOUCH)
+    ) {
       caught(bird);
     }
     for (const hound of dogs) hound.update(TICK);
@@ -3046,7 +3064,13 @@ function frame(nowMs: number) {
    * simply outranks whatever else was there and comes back if the crow does.
    */
   const hunter =
-    hunted && bird.ending === null && (crows?.members ?? []).some((crow) => crow.hunting && crow.down <= 0)
+    hunted &&
+    bird.ending === null &&
+    // Not on foot. They are still up there and still following him -- see the
+    // catch -- but a warning about a thing that cannot happen is a warning
+    // that teaches the player to ignore warnings.
+    !isPerched(bird) &&
+    (crows?.members ?? []).some((crow) => crow.hunting && crow.down <= 0)
       ? LOCKED_ON
       : null;
 
@@ -3100,10 +3124,13 @@ function frame(nowMs: number) {
   // instruction is a voice that gets turned off, and then it is not there for
   // the one that mattered.
   voice.update(saying?.spoken ? saying : null, clock);
-  // And the two-tone warning, for the one thing that is hunting rather than
-  // merely going wrong. Its own repeat rule, because it is about a thing that
-  // is still happening rather than a thing that has just been said.
-  if (saying?.beep) alarm.sound(clock);
+  // And the two-tone warning, driven by the crow rather than by the panel.
+  //
+  // The panel holds one thing at a time, so a lesson or a landing call can be
+  // standing in front of the words `Crows locked on!` -- and the sound is
+  // exactly the part that must not wait its turn. It is a warning about
+  // something happening now, not a reading of what is on screen.
+  if (hunter) alarm.sound(clock);
   world.updateSmoke(allPuffs, camera.quaternion);
   // The thrown grain, and the grain riding on the freight train. One list,
   // one instanced mesh: the seeds on the wagons are worked out from where the

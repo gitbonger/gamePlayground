@@ -222,16 +222,61 @@ export const COURSES: Record<string, readonly Lesson[]> = {
     { at: 100, keys: [], text: { en: 'Mind the crows!', hu: 'Vigyázz a varjakkal!' }, icon: 'crow', spoken: true },
     { at: 150, keys: [], text: { en: 'Keep fast!', hu: 'Tartsd a tempót!' }, icon: 'speed', spoken: true },
   ],
-  // The long one, and the only level where a number is the instruction.
-  //
-  // A thousand and fifty-seven metres from a hundred and fifty up is seven to
-  // one against a pigeon's measured best of about five and a half, so this
-  // one cannot be glided -- it has to be flown, and flown fast. Everywhere
-  // else "keep fast" is a feeling; here it is a figure, and the figure is
-  // what makes the difference between arriving and coming down in Kerepesi
-  // út. It belongs on this level and nowhere else.
+  /**
+   * The long one, and the only level that is taught as a technique.
+   *
+   * A thousand and fifty-seven metres from a hundred and fifty up is seven to
+   * one against a pigeon's measured best of about five and a half, so it
+   * cannot be glided -- and the crows are five hundred and ninety-eight
+   * metres out, which is most of the way there. What gets a pigeon past them
+   * is not flapping harder: it is height traded for speed, which is the one
+   * thing this game's flight model rewards and the one thing nothing has said
+   * out loud yet.
+   *
+   * So the four of them are a sentence: get up, trade it, use it, keep it.
+   * Spaced to be finished before the crows, which is what the numbers are
+   * doing -- and they queue, so the last of them arrives later than the four
+   * hundred metres it is written at. That is the intended reading: `keep
+   * speed above 100` should land about when the crows do.
+   *
+   * All spoken. This is the level the whole search has been going towards and
+   * the one where a player who misses an instruction flies it again.
+   */
   'The Loft': [
-    { at: 150, keys: [], text: { en: 'Speed above 100', hu: 'Száz felett tartsd' }, icon: 'speed', spoken: true },
+    { at: 10, keys: [], text: { en: 'Fly above 150!', hu: 'Szállj 150 fölé!' }, icon: 'high', spoken: true },
+    {
+      at: 130,
+      keys: [],
+      text: { en: 'Descend to gain speed!', hu: 'Ereszkedj a sebességért!' },
+      icon: 'descend',
+      spoken: true,
+    },
+    {
+      at: 260,
+      keys: [],
+      text: { en: 'Outfly the crows!', hu: 'Hagyd le a varjakat!' },
+      icon: 'crow',
+      spoken: true,
+    },
+    {
+      at: 400,
+      keys: [],
+      text: { en: 'Keep speed above 100!', hu: 'Tartsd 100 felett!' },
+      icon: 'speed',
+      spoken: true,
+    },
+    // And the arrival. Every other level gets this from the approach coaching
+    // -- see `approachFor` -- which this one has switched off along with the
+    // rest of the tutor, so it says it itself. The key does the saying: the
+    // panel draws a cap with `B` on it and the words carry on from there,
+    // which is how the rest of them read too.
+    {
+      within: 220,
+      keys: ['B'],
+      text: { en: 'to brake!', hu: 'a fékezéshez!' },
+      icon: 'brake',
+      spoken: true,
+    },
   ],
   // The other side of the same coin, and the reason it is worth saying: the
   // two levels before this one were flown with crows in the sky, and a player
