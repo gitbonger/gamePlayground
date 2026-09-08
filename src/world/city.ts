@@ -942,10 +942,42 @@ export function buildWorld(
     picked.set(`${objective.train}:${objective.vehicle}`, objective.name);
   }
 
+  /**
+   * One body per shape, rather than one per vehicle.
+   *
+   * Measured on this map: 550 vehicles, 550 geometries, and thirteen distinct
+   * shapes among them -- 468 identical tram sections, 58 identical carriages,
+   * and two dozen of the rest. Thirty-seven megabytes of vertices, of which
+   * about thirty-six were the same numbers written out again and again, held
+   * in memory and uploaded to the card one copy at a time.
+   *
+   * Safe to share because the shape is a pure function of `kind`, `length`
+   * and `width`: where a vehicle stands is on its mesh, since a train that
+   * kept its position in its vertices could not move. The material stays per
+   * vehicle -- see `vehicleMaterial`.
+   *
+   * This is memory rather than frame time. The geometry was built once at
+   * load, not per frame, so nothing here makes a frame cheaper; what it does
+   * is stop the same tram being stored five hundred times.
+   */
+  const bodies = new Map<string, THREE.BufferGeometry>();
+  const bodyOf = (vehicle: Vehicle) => {
+    const key = `${vehicle.kind}:${vehicle.length}:${vehicle.width}`;
+    const known = bodies.get(key);
+    if (known) return known;
+    const built = buildVehicleGeometry(vehicle);
+    bodies.set(key, built);
+    // Pushed once, where it is made. Pushing a shared geometry per vehicle
+    // that uses it would dispose the same thing five hundred times.
+    disposables.push(built);
+    return built;
+  };
+
   layout.trains?.forEach((train, t) => {
     train.vehicles.forEach((vehicle, v) => {
-      const { geometry, material } = buildVehicle(vehicle);
-      disposables.push(geometry, material);
+      const geometry = bodyOf(vehicle);
+      const material = vehicleMaterial();
+      disposables.push(material);
 
       const mesh = new THREE.Mesh(geometry, material);
       mesh.castShadow = true;
@@ -1756,10 +1788,32 @@ function buildAreas(
  * mesh and a transform, which is thirteen draw calls for a rake and the only
  * arrangement where moving one is free.
  */
-export function buildVehicle(vehicle: Vehicle): {
-  geometry: THREE.BufferGeometry;
-  material: THREE.Material;
-} {
+/**
+ * What a vehicle is painted with.
+ *
+ * One per vehicle rather than one shared between them all, unlike the shape:
+ * a wagon that a level is aimed at is recoloured on its own, and a shared
+ * material would recolour every tram in the city with it. A material is a
+ * handful of numbers, so there is nothing to save by sharing one anyway --
+ * what was worth sharing was the vertices.
+ */
+export function vehicleMaterial(): THREE.MeshLambertMaterial {
+  return new THREE.MeshLambertMaterial({ vertexColors: true });
+}
+
+/**
+ * The shape of one vehicle, in its own coordinates.
+ *
+ * A pure function of what sort of vehicle it is and how big -- `kind`,
+ * `length` and `width`, and nothing else. Where it stands and which way it
+ * faces are the mesh's business, not the geometry's, because a train moves.
+ *
+ * That is what makes it shareable, and it is worth sharing: this map runs a
+ * hundred and twenty-nine trams and trains, five hundred and fifty vehicles
+ * between them, and there are thirteen distinct shapes among the lot. Four
+ * hundred and sixty-eight of them are the same tram section.
+ */
+export function buildVehicleGeometry(vehicle: Vehicle): THREE.BufferGeometry {
   const positions: number[] = [];
   const normals: number[] = [];
   const colours: number[] = [];
@@ -2045,7 +2099,20 @@ export function buildVehicle(vehicle: Vehicle): {
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
 
-  return { geometry, material: new THREE.MeshLambertMaterial({ vertexColors: true }) };
+  return geometry;
+}
+
+/**
+ * A vehicle's shape and its paint together.
+ *
+ * Kept because it reads well where only one vehicle is wanted. The world
+ * builds hundreds and shares their shapes, so it asks for the two separately.
+ */
+export function buildVehicle(vehicle: Vehicle): {
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material;
+} {
+  return { geometry: buildVehicleGeometry(vehicle), material: vehicleMaterial() };
 }
 
 /** Standard gauge, in metres: the distance between the inside faces of a pair. */

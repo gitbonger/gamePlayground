@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   arrowFade,
   buildVehicle,
+  buildVehicleGeometry,
   arrowScale,
   buildRoofs,
   buildWorld,
@@ -10,7 +11,7 @@ import {
 } from './city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
 import { penthouseOf, terraceOf, type Landmark } from './layout';
-import { consistLength, layOutTrain, lineLength, shuttle, TRAM, WAGON } from './train';
+import { consistLength, layOutTrain, lineLength, shuttle, TRAM, WAGON, type Vehicle } from './train';
 import type { Puff } from './smoke';
 import * as THREE from 'three';
 import { createColliderField } from '../sim/collision';
@@ -916,3 +917,100 @@ function highestFlatSurface(group: THREE.Object3D): number {
   });
   return top;
 }
+
+describe('the shapes the vehicles are built from', () => {
+  const tram = (over: Partial<Vehicle> = {}): Vehicle => ({
+    kind: 'tram',
+    x: 0,
+    z: 0,
+    yaw: 0,
+    length: TRAM.length,
+    width: TRAM.width,
+    ...over,
+  });
+
+  it('takes no notice of where the vehicle stands', () => {
+    // The claim the sharing rests on. A shape that knew where its vehicle was
+    // could not be handed to a second one, and a train that kept its position
+    // in its vertices could not move at all -- where it is belongs to the
+    // mesh.
+    const here = buildVehicleGeometry(tram());
+    const there = buildVehicleGeometry(tram({ x: 812, z: -409, yaw: 1.1 }));
+    const a = here.getAttribute('position').array;
+    const b = there.getAttribute('position').array;
+    expect(a.length).toBe(b.length);
+    expect(Array.from(a)).toEqual(Array.from(b));
+    here.dispose();
+    there.dispose();
+  });
+
+  it('is a different shape for a different vehicle', () => {
+    // The other half of it: if this were not so, sharing by kind and size
+    // would be sharing by nothing, and every tram in the city would be
+    // whatever shape happened to be built first.
+    const short = buildVehicleGeometry(tram({ length: TRAM.length / 2 }));
+    const long = buildVehicleGeometry(tram());
+    const carriage = buildVehicleGeometry(tram({ kind: 'carriage' }));
+    const reach = (g: THREE.BufferGeometry) => {
+      const p = g.getAttribute('position');
+      let most = 0;
+      for (let i = 0; i < p.count; i += 1) most = Math.max(most, Math.abs(p.getX(i)));
+      return most;
+    };
+    expect(reach(short)).toBeLessThan(reach(long) - 1);
+    expect(Array.from(carriage.getAttribute('position').array)).not.toEqual(
+      Array.from(long.getAttribute('position').array),
+    );
+    short.dispose();
+    long.dispose();
+    carriage.dispose();
+  });
+
+  it('builds one body per shape and not one per vehicle', () => {
+    // Measured on the real map before this: 550 vehicles, 550 geometries,
+    // thirteen shapes among them, and thirty-seven megabytes of vertices of
+    // which about thirty-six were the same tram written out again and again.
+    const world = buildWorld(
+      buildLayoutFromMap(map, {
+        ...defaultMapWorldOptions,
+        trains: [{ near: { x: 0, z: 320 }, cars: 8 }],
+      }),
+    );
+
+    const shapes = new Set<THREE.BufferGeometry>();
+    let vehicles = 0;
+    world.group.traverse((object) => {
+      if (object.name !== 'vehicle') return;
+      vehicles += 1;
+      shapes.add((object as THREE.Mesh).geometry as THREE.BufferGeometry);
+    });
+
+    expect(vehicles, 'the rake arrived').toBeGreaterThan(6);
+    // An engine and its wagons, and that is all: the wagons are identical, so
+    // however many of them there are they share one shape.
+    expect(shapes.size).toBe(2);
+    world.dispose();
+  });
+
+  it('paints each vehicle on its own, so one can be picked out', () => {
+    // The material is deliberately *not* shared. A wagon a level is aimed at
+    // is recoloured to say so, and a shared material would recolour every
+    // tram in the city with it.
+    const world = buildWorld(
+      buildLayoutFromMap(map, {
+        ...defaultMapWorldOptions,
+        trains: [{ near: { x: 0, z: 320 }, cars: 4 }],
+      }),
+    );
+    const paints = new Set<THREE.Material | THREE.Material[]>();
+    let vehicles = 0;
+    world.group.traverse((object) => {
+      if (object.name !== 'vehicle') return;
+      vehicles += 1;
+      paints.add((object as THREE.Mesh).material);
+    });
+    expect(vehicles).toBeGreaterThan(1);
+    expect(paints.size).toBe(vehicles);
+    world.dispose();
+  });
+});
