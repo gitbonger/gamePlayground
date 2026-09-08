@@ -50,6 +50,20 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
         <div class="readout secondary" title="Local wind, and how much of it is against you"><span class="label">wind</span><span data-field="wind">0</span><span class="unit">km/h</span><span class="aside" data-field="headwind"></span></div>
         <div class="readout" title="Distance still to fly to the marked target"><span class="label">home</span><span data-field="home">0</span><span class="unit">m</span></div>
       </div>
+      <!--
+        The three keys worth having on screen the whole time.
+
+        Not the whole binding list: a legend nobody reads is a legend, and
+        eleven keys in the corner is what the tips are for -- they arrive one
+        at a time, when the thing they are about is happening. These three are
+        the ones that are wanted at a moment when there is no time to go
+        looking. Two are the flight, and the third is the way out of it.
+      -->
+      <div class="hud-keys">
+        <span><b>L</b> levels</span>
+        <span><b>Space</b> speed up</span>
+        <span><b>B</b> brake</span>
+      </div>
     </div>
     <div class="hud-warning" data-field="warning"></div>
     <div class="hud-where" data-field="where"></div>

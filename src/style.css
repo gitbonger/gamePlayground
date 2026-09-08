@@ -103,6 +103,36 @@ body {
   color: #e8a24b;
 }
 
+/* The standing key reminder, under the readouts it belongs beside.
+
+   In the column rather than pinned to the corner on its own, so it moves with
+   the rest of the panel and nothing has to be kept in step by hand. Quiet:
+   it is a thing to glance at once and then stop seeing. */
+.hud-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  /* Wide enough that the three of them stay on one line: wrapped, the odd one
+     out reads as a fourth thing rather than as the tail of a list. */
+  max-width: 320px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.hud-keys b {
+  display: inline-block;
+  min-width: 14px;
+  padding: 1px 5px;
+  margin-right: 5px;
+  border-radius: 3px;
+  background: var(--panel);
+  color: inherit;
+  font-weight: 600;
+  text-align: center;
+}
+
 .hud-stamina {
   width: 210px;
 }
