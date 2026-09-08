@@ -994,26 +994,32 @@ describe('what the levels aim at', () => {
     expect(endless).toHaveLength(1);
   });
 
-  it('puts the last level anywhere, and only ever somewhere real', () => {
-    // Drawn from the other levels' own release points rather than from
-    // anywhere on the map, which is what makes it safe: every one of those
-    // has already been checked for being over a roof, clear of the buildings
-    // and within reach of what it aims at. A coordinate rolled at random over
-    // a city is inside a wall about half the time.
-    const wanders = LEVELS.filter((level) => level.startsAnywhere);
-    expect(wanders.map((level) => level.name)).toEqual(['Everafter']);
+  it('starts the last level in one place, like every other level', () => {
+    // It used to start somewhere different every time, drawn from the other
+    // levels' release points so that wherever it landed had already been
+    // checked. A fixed place is the better ending, and this is it.
+    for (const level of LEVELS) {
+      expect(level.start, level.name).toHaveLength(2);
+    }
+    const last = LEVELS[LEVELS.length - 1]!;
+    expect(last.name).toBe('Everafter');
+    expect(last.start).toEqual([47.505284, 19.087829]);
+  });
 
-    // Its own written coordinate is one of the *other* levels' too, since
-    // everything that checks a release point checks that one and a coordinate
-    // invented for this level would have been checked by nobody.
-    //
-    // Taken from the others rather than from all of them, which is the same
-    // trap as always: a set built from every level contains this level's
-    // start whatever it is, and the question answers itself.
-    const others = new Set(
-      LEVELS.filter((level) => !level.startsAnywhere).map((level) => level.start.join(',')),
-    );
-    expect(others.has(wanders[0]!.start.join(','))).toBe(true);
+  it('points the last level away rather than back at the loft', () => {
+    // Every other level faces its first waymark or the thing it is aimed at,
+    // which is right when there is somewhere to go. This one is aimed at the
+    // loft only so the arrow has something to point at, and facing it that
+    // way would start the ever after looking back the way he came.
+    const last = LEVELS[LEVELS.length - 1]!;
+    expect(last.facing).toEqual([47.513165, 19.086046]);
+    // North of where it starts, which is up the park and away.
+    expect(last.facing![0]).toBeGreaterThan(last.start[0]);
+
+    // And nothing else uses it: a level with somewhere to go faces it.
+    expect(LEVELS.filter((level) => level.facing).map((level) => level.name)).toEqual([
+      'Everafter',
+    ]);
   });
 
   it('stops teaching after the fourth level, and never starts again', () => {

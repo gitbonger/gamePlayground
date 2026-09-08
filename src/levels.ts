@@ -553,21 +553,15 @@ export interface Level {
    */
   settles?: boolean;
   /**
-   * Whether the release point is picked at random from the other levels.
+   * Where the bird is pointed when it is let go, as a coordinate.
    *
-   * One level, and it is the one after the story: the map with nothing left
-   * to do on it, so where you start is nowhere in particular. `start` is
-   * still a real coordinate and still has to be a sensible one -- everything
-   * that checks a release point checks this one -- it is simply not the only
-   * one it can be.
-   *
-   * Drawn from the other levels rather than from anywhere on the map, which
-   * is what makes it safe: every one of those has already been checked for
-   * being over a roof, within reach of its target and clear of the buildings.
-   * A coordinate rolled at random over a city is a coordinate inside a wall
-   * about half the time.
+   * For the one level that is not aimed at anything it has to reach. Every
+   * other level faces its first waymark or the thing it is aimed at, which is
+   * the right rule when there is somewhere to go; the level after the story
+   * has nowhere to go, and facing it at the loft out of habit would point it
+   * back the way it came on the one flight that is not about arriving.
    */
-  startsAnywhere?: boolean;
+  facing?: [number, number];
   /**
    * Whether the game is still teaching on this level.
    *
@@ -1166,13 +1160,17 @@ export const LEVELS: readonly Level[] = [
     // level that is the map: no target, no line, nobody to find, nothing to
     // open onto and no way to finish it.
     name: 'Everafter',
-    // Somewhere. The coordinate written here is one of the real ones so that
-    // everything which checks a release point has something to check, and at
-    // play it is swapped for another level's -- see `startsAnywhere`.
-    start: [47.494019, 19.096828],
-    startsAnywhere: true,
+    // Over the Városliget end of things, looking away up the park. It used to
+    // start somewhere different every time, drawn from the other levels'
+    // release points; a fixed place is a better ending, and this is the one
+    // that was asked for.
+    start: [47.505284, 19.087829],
+    // Pointed north, up the length of the park, rather than back at the loft
+    // -- which is what a level aimed at a landmark faces by default and is
+    // the wrong way to look on the one flight that is not about arriving.
+    facing: [47.513165, 19.086046],
     // High enough to see where you have been, and to get anywhere from.
-    release: 120,
+    release: 100,
     health: 1,
     when: EVENING,
     // She comes. One bird, and it is her: everything before this was him

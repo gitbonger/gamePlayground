@@ -710,11 +710,13 @@ function releaseFor(spec: Level): { at: Vec3; heading: number; perched: boolean 
   // on the first frame -- and on a level that ends at a line there is nothing
   // else to face, since nothing is being pointed at.
   const first = spec.waypoints?.[0];
-  const aim = first
-    ? project(first[0], first[1], map.centre)
-    : marker
-      ? { x: marker.position.x, z: marker.position.z }
-      : home;
+  const aim = spec.facing
+    ? project(spec.facing[0], spec.facing[1], map.centre)
+    : first
+      ? project(first[0], first[1], map.centre)
+      : marker
+        ? { x: marker.position.x, z: marker.position.z }
+        : home;
 
   // A perched level does not release the bird at all: it stands him on the
   // thing the level is about, opposite whoever is waiting there -- her offset
@@ -1431,6 +1433,17 @@ function respawn() {
 }
 
 /**
+ * How far a level may move the bird before the flock has to be sent home, in
+ * metres.
+ *
+ * Two hundred. The stray rule brings a bird back from further than that, but
+ * slowly and from wherever it was, and a flock strung out across the district
+ * for the first minute of a level is a flock that was not there when it
+ * started.
+ */
+const FLOCK_FOLLOWS = 200;
+
+/**
  * Switch to a level: its target, its hour, its release point.
  *
  * Everything a level is, applied in one place, so that starting the game and
@@ -1443,18 +1456,10 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
 
   level = at;
   saveProgress(storage(), at);
-  // Where this one starts, which for every level but the last is where it
-  // says. The last is the map with the story finished on it, so it puts you
-  // somewhere in it -- drawn from the other levels' own release points rather
-  // than from anywhere at all, because those have each been checked for being
-  // over a roof and clear of the buildings and a coordinate rolled at random
-  // over a city is inside a wall about half the time.
+  // Where this one starts, which is where it says. The last level used to
+  // start somewhere different every time, drawn from the other levels' own
+  // release points; it has a place of its own now.
   releaseAt = spec.start;
-  if (spec.startsAnywhere) {
-    const elsewhere = LEVELS.filter((other) => other !== spec && other.begins !== 'perched');
-    const picked = elsewhere[Math.floor(Math.random() * elsewhere.length)];
-    if (picked) releaseAt = picked.start;
-  }
   // What the level does and does not have in it.
   tutorial = spec.teaches ?? true;
   hunted = crowsOn(spec);
@@ -1467,13 +1472,20 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // escorted levels in a row are one flight in two pieces, and a flock that
   // vanished and came back at the line would say otherwise.
   //
-  // Except where the level puts the bird somewhere new every time it is
-  // played. She is let out behind him, and "behind him" is a fact about where
-  // he is: left flying, she would be wherever the last attempt ended -- which
-  // on that level is anywhere in the city -- and would spend the first minute
-  // of the ever after crossing the map to catch up, if the stray rule brought
-  // her at all.
-  if (spec.escort && (!escorted || spec.startsAnywhere)) flock.recall();
+  // Except where this level starts a long way from where the bird is standing
+  // now. She is let out behind him, and "behind him" is a fact about where he
+  // is: left flying, she would be wherever the last level ended and would
+  // spend the first minute of this one crossing the map to catch up, if the
+  // stray rule brought her at all.
+  //
+  // Asked as a distance rather than flagged on the level, because it is a
+  // distance: every level but the last begins where the one before it ended,
+  // and the flock is already there.
+  const jumped = (() => {
+    const to = project(releaseAt[0], releaseAt[1], map.centre);
+    return Math.hypot(to.x - bird.position.x, to.z - bird.position.z) > FLOCK_FOLLOWS;
+  })();
+  if (spec.escort && (!escorted || jumped)) flock.recall();
   // How many come. Set before the recall takes effect rather than after, so
   // the first bird let out on this level is already one of this level's.
   flock.only(spec.escort ? (spec.flock ?? 0) : 0);
