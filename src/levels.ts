@@ -614,6 +614,29 @@ export interface Level {
    */
   flockIs?: string;
   /**
+   * How big a ball the flock picks its next target inside, in metres.
+   *
+   * A level's business because it depends on how many of them there are.
+   * Thirty birds want a ball big enough to hold thirty birds; one bird given
+   * the same ball wheels a cricket pitch away from him, which reads as a
+   * pigeon that happens to be going the same way rather than as the one who
+   * came with him.
+   *
+   * Absent means the flock's own, which is what every level with a crowd in
+   * it uses.
+   */
+  flockBall?: number;
+  /**
+   * How far along the hero's own heading that ball sits, in metres.
+   *
+   * Positive is in front of him, which is where it wants to be: centred on
+   * him, half the flock is behind the camera at all times. Negative would put
+   * it behind, and nothing asks for that yet.
+   *
+   * Absent means the flock's own.
+   */
+  flockAhead?: number;
+  /**
    * Whether the flock is all in the air from the first frame.
    *
    * The loft lets one bird out a second, which is right for a flock that
@@ -1187,6 +1210,14 @@ export const LEVELS: readonly Level[] = [
     escort: true,
     flock: 1,
     flockIs: PINK.name,
+    // Half the usual ball, half the usual distance in front. The numbers a
+    // flock wants are numbers about a crowd: thirty birds need room to wheel
+    // and need to be far enough forward that half of them are not in the
+    // boom. She is one bird, and given the crowd's ball she circles a cricket
+    // pitch away -- a pigeon going the same way rather than the one who came
+    // with him.
+    flockBall: 7.5,
+    flockAhead: 15,
     // Nothing is being taught any more, and nothing is hunting.
     teaches: false,
     // Nobody standing anywhere: she is flying, and everyone else has been

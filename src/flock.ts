@@ -320,6 +320,27 @@ const CRUISE_SURPLUS = 3;
  */
 const LOOKAHEAD = 3;
 
+/**
+ * How far ahead of the bird the flock is centred, in metres, by default.
+ *
+ * Thirty. The ball of targets used to be centred on the player, which puts
+ * half the flock behind the camera at all times -- and the camera is behind
+ * the bird, so "behind the bird" is "in the boom, or out of frame". A flock
+ * you cannot see is a flock that costs what it costs and buys nothing.
+ *
+ * Moved forward rather than made bigger: a wider ball would put them further
+ * away in every direction including the two that were already working. Ahead
+ * is also where a bird flying with a flock actually looks.
+ */
+export const FLOCK_AHEAD = 30;
+
+/**
+ * Here rather than in `defaultFlockOptions`, whose `ahead` is nought.
+ *
+ * That default belongs to the flock, which knows nothing about cameras; this
+ * is the game's answer, and a level may have its own -- see `Level.flockAhead`.
+ * It lives in this file so that the levels can be checked against it.
+ */
 export const defaultFlockOptions: FlockOptions = {
   count: 10,
   spawn: { kind: 'behind', away: 10 },
@@ -466,6 +487,20 @@ export interface Flock {
    * is the same staggered start they get when the game begins.
    */
   recall(): void;
+  /**
+   * Resize the ball of targets, and move it along the leader's heading.
+   *
+   * A level's business, not the flock's. Thirty birds want a ball big enough
+   * to hold thirty birds and far enough forward that half of them are not in
+   * the boom; one bird wants neither -- given the flock's own ball she wheels
+   * a whole cricket pitch away from him, which is a bird that happens to be
+   * going the same way rather than the bird who came with him.
+   *
+   * Both in metres: `radius` is the ball the targets are picked inside and
+   * `ahead` is how far along the leader's own heading its middle sits, which
+   * is negative to put it behind him.
+   */
+  wheel(ball: { radius: number; ahead: number }): void;
   /**
    * Whether any bird in the air is this close to a point.
    *
@@ -617,12 +652,12 @@ export function createFlock(
    * flock with it.
    */
   const wheelAbout = (at: Anchor): Anchor =>
-    options.ahead === 0
+    ball.ahead === 0
       ? at
       : {
           ...at,
-          x: at.x + Math.sin(at.heading) * options.ahead,
-          z: at.z - Math.cos(at.heading) * options.ahead,
+          x: at.x + Math.sin(at.heading) * ball.ahead,
+          z: at.z - Math.cos(at.heading) * ball.ahead,
         };
 
   /** Somewhere near the leader to make for, chosen fresh each time. */
@@ -642,7 +677,7 @@ export function createFlock(
     // Cube-rooted so the points fill the ball evenly rather than bunching at
     // the middle of it: taking the radius straight from the random number puts
     // half of them inside half the radius, which is an eighth of the volume.
-    const away = options.radius * Math.cbrt(rand());
+    const away = ball.radius * Math.cbrt(rand());
 
     // And a direction spread evenly over the sphere. Picking a polar angle
     // straight from a random number crowds the poles, because the rings of
@@ -729,6 +764,8 @@ export function createFlock(
   const pilots: Pilot[] = [];
   /** How many are in service. All of them, until a caller says otherwise. */
   let wanted = options.count;
+  // The ball of targets, which a level may resize -- see `wheel`.
+  let ball = { radius: options.radius, ahead: options.ahead };
   for (let i = 0; i < options.count; i += 1) {
     const pilot: Pilot = {
       member: {
@@ -1050,12 +1087,17 @@ export function createFlock(
     wanted = Math.max(0, Math.min(pilots.length, Math.floor(many)));
   };
 
+  const wheel = (to: { radius: number; ahead: number }) => {
+    ball = { radius: Math.max(0, to.radius), ahead: to.ahead };
+  };
+
   return {
     members: pilots.map((pilot) => pilot.member),
     update,
     recall,
     touching,
     only,
+    wheel,
     scramble,
     land,
   };

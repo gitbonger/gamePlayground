@@ -32,6 +32,7 @@ import { indexStreets, type Road } from './world/streets';
 import { footprintSamples } from './world/areas';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
 import { ROOFLINE } from './world/heights';
+import { defaultFlockOptions, FLOCK_AHEAD } from './flock';
 import type { MapData } from './world/streets';
 import { COURSES, courseFor } from './render/tips';
 
@@ -1038,6 +1039,27 @@ describe('what the levels aim at', () => {
     // And she is not asked to come down: the flock lands on the level before
     // this one, which is a different thing entirely.
     expect(last.settles).toBeFalsy();
+  });
+
+  it('wheels the last level in half the usual ball, half the usual way out', () => {
+    // The numbers a flock wants are numbers about a crowd: thirty birds need
+    // room to wheel and need to be far enough forward that half of them are
+    // not in the boom. She is one bird, and given the crowd's ball she
+    // circles a cricket pitch away -- a pigeon going the same way rather than
+    // the one who came with him.
+    const last = LEVELS[LEVELS.length - 1]!;
+    expect(last.flockBall).toBe(defaultFlockOptions.radius / 2);
+    expect(last.flockAhead).toBe(FLOCK_AHEAD / 2);
+    // In front of him, not behind: the camera is behind him.
+    expect(last.flockAhead!).toBeGreaterThan(0);
+  });
+
+  it('leaves every other level on the flock’s own numbers', () => {
+    // A level says one of these when it has a reason to. Saying it everywhere
+    // would make the default a number nobody chose.
+    expect(LEVELS.filter((level) => level.flockBall ?? level.flockAhead).map((l) => l.name)).toEqual(
+      ['Everafter'],
+    );
   });
 
   it('points the last level away rather than back at the loft', () => {

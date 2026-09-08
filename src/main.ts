@@ -39,7 +39,7 @@ import {
   PINK_MORPH,
   type WingPose,
 } from './render/bird';
-import { createFlock, defaultFlockOptions, type Anchor } from './flock';
+import { createFlock, defaultFlockOptions, FLOCK_AHEAD, type Anchor } from './flock';
 import { createAmbient } from './ambient';
 import { createDog } from './dog';
 import { createWaymarks, type Waymarks } from './waypoints';
@@ -798,19 +798,6 @@ const leaderOf = (of: BirdState): Anchor => ({
   climb: of.velocity.y,
 });
 
-/**
- * How far ahead of the bird the flock is centred, in metres.
- *
- * Thirty. The ball of targets used to be centred on the player, which puts
- * half the flock behind the camera at all times -- and the camera is behind
- * the bird, so "behind the bird" is "in the boom, or out of frame". A flock
- * you cannot see is a flock that costs what it costs and buys nothing.
- *
- * Moved forward rather than made bigger: a wider ball would put them further
- * away in every direction including the two that were already working. Ahead
- * is also where a bird flying with a flock actually looks.
- */
-const FLOCK_AHEAD = 30;
 
 /**
  * Built at the largest flock any level asks for.
@@ -1497,6 +1484,12 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // How many come. Set before the recall takes effect rather than after, so
   // the first bird let out on this level is already one of this level's.
   flock.only(spec.escort ? (spec.flock ?? 0) : 0);
+  // And how they wheel, which depends on how many of them there are: see
+  // `Level.flockBall`.
+  flock.wheel({
+    radius: spec.flockBall ?? defaultFlockOptions.radius,
+    ahead: spec.flockAhead ?? FLOCK_AHEAD,
+  });
   // Back into the air. A level that starts is a level whose flock is flying,
   // including a restart of the one they came down on.
   flock.land(null);

@@ -1591,3 +1591,68 @@ describe('a flock called back after it has landed', () => {
     expect(flock.members.every((m) => m.state.ending !== null || m.down > 0)).toBe(true);
   });
 });
+
+describe('the ball a flock wheels in', () => {
+  const wind = { at: () => vec(0, 0, 0), meanAt: () => 0 };
+
+  /**
+   * Flown behind a leader that is actually going somewhere.
+   *
+   * A standing anchor measures the wrong thing: a pigeon cannot hover, so a
+   * flock given a fixed point circles it at whatever radius its turn rate
+   * allows -- eighty-odd metres, whatever the ball is set to. The ball only
+   * shows against a leader in motion, which is the only kind this game has.
+   */
+  const settle = (ball: { radius: number; ahead: number }, birds = 8) => {
+    const at = { x: 0, y: 60, z: 0, heading: 0, speed: 17, climb: 0 };
+    const flock = createFlock(1, () => at, { ...defaultFlockOptions, count: birds });
+    flock.only(birds);
+    flock.wheel(ball);
+    let spread = 0;
+    let forward = 0;
+    let samples = 0;
+    for (let t = 0; t < 90 * 120; t += 1) {
+      // Due north at cruise, which on this map is -Z.
+      at.z -= at.speed / 120;
+      flock.update(1 / 120, undefined, wind, true);
+      // Measured over the second half, once they have caught up and settled.
+      if (t < 45 * 120 || t % 30 !== 0) continue;
+      for (const m of flock.members) {
+        if (m.down > 0 || m.state.ending !== null) continue;
+        samples += 1;
+        spread += Math.hypot(m.state.position.x - at.x, m.state.position.z - at.z);
+        // Along the leader's heading: -Z is forward.
+        forward += -(m.state.position.z - at.z);
+      }
+    }
+    return { spread: spread / Math.max(1, samples), forward: forward / Math.max(1, samples), samples };
+  };
+
+  it('keeps a small flock closer in than a big one', () => {
+    // The ball is a decision about how many birds there are. Thirty need room
+    // to wheel; one given the same room circles a cricket pitch away, which
+    // reads as a pigeon going the same way rather than the one who came with
+    // him.
+    const wide = settle({ radius: 40, ahead: 0 });
+    const tight = settle({ radius: 7.5, ahead: 0 });
+    expect(wide.samples).toBeGreaterThan(0);
+    expect(tight.spread).toBeLessThan(wide.spread);
+  });
+
+  it('puts the ball in front of the leader when asked', () => {
+    // Centred on him, half a flock is behind him at all times -- and the
+    // camera is behind him too, so half of it is in the boom or out of frame.
+    const centred = settle({ radius: 10, ahead: 0 });
+    const ahead = settle({ radius: 10, ahead: 40 });
+    expect(ahead.forward).toBeGreaterThan(centred.forward + 15);
+  });
+
+  it('puts it behind him when asked for that instead', () => {
+    // Which is what makes the number a distance rather than a flag. Nothing
+    // asks for it yet; a rule that only worked one way round would be a rule
+    // that quietly meant something else.
+    const behind = settle({ radius: 10, ahead: -40 });
+    const centred = settle({ radius: 10, ahead: 0 });
+    expect(behind.forward).toBeLessThan(centred.forward - 15);
+  });
+});
