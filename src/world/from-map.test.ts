@@ -1917,72 +1917,148 @@ describe('steeples', () => {
   });
 });
 
-describe('buildings and the carriageway', () => {
+describe('what a building is solid as', () => {
   /**
-   * A building sitting half in the road.
+   * An L, which is the shape a box gets wrong.
    *
-   * BLOCK's north side runs along z = 0 and is 16 m wide, so its kerb is at
-   * z = 8. A building centred at z = 12 with a depth of 20 reaches to z = 2,
-   * which is six metres inside the carriageway.
+   * Sixty by twenty along the bottom and twenty by sixty up the side, so the
+   * far corner at (50, 50) is deep inside the box round it and well outside
+   * the building.
    */
-  const inTheRoad = boxPlan(100, 12, 20, 20, 0, 15);
-  const laid = (plans: (number | null)[][]) => ({ ...mapOf(BLOCK), plans }) as MapData;
-  const near = (world: ReturnType<typeof buildLayoutFromMap>, x: number) =>
-    world.buildings.find((b) => Math.abs(b.x - x) < 12);
+  const ELL: (number | null)[] = [
+    15,
+    ...([[0, 0], [60, 0], [60, 20], [20, 20], [20, 60], [0, 60]] as number[][]).flat(),
+  ];
+  const world = () => buildLayoutFromMap({ ...mapOf(BLOCK), plans: [ELL] } as MapData);
 
-  it('pulls a building back to the kerb', () => {
-    // A building on this map is not its outline, it is the turned box that
-    // covers the outline -- and a box is bigger than an L-plan corner house
-    // or a block with a courtyard notch. Where that inflation shows is a
-    // building standing in the road: 1,605 of them on the real map, 564 by
-    // more than two metres.
-    const before = 12 - 20 / 2;
-    expect(before, 'the fixture really is in the road').toBeLessThan(8);
-
-    const b = near(buildLayoutFromMap(laid([inTheRoad])), 100)!;
-    expect(b.z - b.depth / 2).toBeGreaterThanOrEqual(8 - 0.001);
+  it('is not solid where no building is drawn', () => {
+    // The bug a player found: flying down a street and killed by nothing. A
+    // building was drawn as its outline and flown into as the box round it,
+    // and the difference -- measured over the district -- was seventy-three
+    // hectares of invisible masonry, some of it standing in the road.
+    const solid = createColliderField(world().boxes);
+    // Through the notch -- the ground at x > 20, z > 20, which the box round
+    // this building covers and the building does not -- at the height of the
+    // walls, from clear ground to clear ground.
+    expect(solid.sweep(vec(50, 8, 25), vec(50, 8, 90), 0.25), 'the notch is air').toBeNull();
+    expect(solid.sweep(vec(25, 8, 50), vec(90, 8, 50), 0.25), 'and across it').toBeNull();
+    // And the corner of it that is furthest into the box.
+    expect(solid.sweep(vec(55, 8, 55), vec(25, 8, 25), 0.25), 'and corner to corner').toBeNull();
   });
 
-  it('gives ground to the road rather than sliding across the plot', () => {
-    // The far wall is where the building actually is. Moving the whole box
-    // back would put it through whatever stands behind it.
-    const b = near(buildLayoutFromMap(laid([inTheRoad])), 100)!;
-    expect(b.z + b.depth / 2).toBeCloseTo(12 + 20 / 2, 3);
+  it('is solid where one is', () => {
+    // The other half, and the reason the first is not satisfied by having no
+    // collision at all: the arms of the L still stop a bird.
+    const solid = createColliderField(world().boxes);
+    expect(solid.sweep(vec(30, 8, -30), vec(30, 8, 30), 0.25), 'the long arm').not.toBeNull();
+    expect(solid.sweep(vec(-30, 8, 40), vec(30, 8, 40), 0.25), 'the upright').not.toBeNull();
   });
 
-  it('leaves a building that is nowhere near a road alone', () => {
-    // Most of the district. A rule that shaved every building would be a rule
-    // that shrank the city.
-    const clear = boxPlan(100, 100, 20, 20, 0, 15);
-    const b = near(buildLayoutFromMap(laid([clear])), 100)!;
-    expect(b.width).toBe(20);
-    expect(b.depth).toBe(20);
-    expect(b.z).toBe(100);
+  it('can be landed on, in the middle of its roof', () => {
+    // Walls alone would leave a hole where a roof should be, and a bird
+    // coming down on one would drop through the building and land on the
+    // floor inside it.
+    const solid = createColliderField(world().boxes);
+    for (const [x, z] of [[30, 10], [10, 40], [8, 8]]) {
+      const down = solid.sweep(vec(x!, 40, z!), vec(x!, 1, z!), 0.25);
+      expect(down, `roof at ${x}, ${z}`).not.toBeNull();
+      expect(down!.point.y, `roof at ${x}, ${z}`).toBeGreaterThan(14);
+    }
   });
 
-  it('leaves one alone rather than trimming it to a sliver', () => {
-    // Some of the overlap is the road's fault: the carriageway widths are a
-    // table by highway class rather than a measurement, so a street that is
-    // really nine metres wide is drawn at eleven and swallows a frontage.
-    // Better a corner of masonry over the kerb than a wall a metre thick
-    // where a house was.
-    // Eight metres deep, centred four metres inside the kerb: trimming it
-    // clear would leave two, which is not a house.
-    const shallow = boxPlan(100, 6, 10, 8, 0, 15);
-    const b = near(buildLayoutFromMap(laid([shallow])), 100)!;
-    expect(b.depth).toBe(8);
-    expect(b.z).toBe(6);
+  it('stops a bird at the wall rather than a stride short of it', () => {
+    // A solid pulled well inside its own outline is the opposite mistake and
+    // just as visible: a bird would sink into the wall before it stopped.
+    const solid = createColliderField(world().boxes);
+    const hit = solid.sweep(vec(30, 8, -30), vec(30, 8, 30), 0.25)!;
+    // The wall is at z = 0, and the sphere stops a radius short of it.
+    expect(hit.point.z).toBeGreaterThan(-1.5);
+    expect(hit.point.z).toBeLessThan(0.5);
   });
 
-  it('clears a corner house of both the streets it stands on', () => {
-    // One pass trims one axis, and a corner house overruns two streets at
-    // once. On the real map a single pass got 1,605 down to 798 and stopped.
-    const corner = boxPlan(10, 10, 24, 24, 0, 15);
-    const world = buildLayoutFromMap(laid([corner]));
-    const b = world.buildings.find((x) => Math.abs(x.x - 10) < 14)!;
-    // North side of the block is 16 m wide about z = 0; the west side is 8 m
-    // wide about x = 0. Clear of both.
-    expect(b.z - b.depth / 2).toBeGreaterThanOrEqual(8 - 0.001);
-    expect(b.x - b.width / 2).toBeGreaterThanOrEqual(4 - 0.001);
+  /**
+   * A rectangle with a bite out of one corner.
+   *
+   * Sixty by forty with a fifteen-metre notch bitten out of the middle of one
+   * side: it encloses 2,250 m² inside a 2,400 m² box, well within the slack,
+   * so this building gets *one* box covering it rather than a ring of wings.
+   * That is the case the filling behind the walls has to be held inside for
+   * -- an L gets wings, which are mostly inside anyway.
+   *
+   * And the notch is in the middle of a side rather than at a corner, which
+   * is the other half of it: a bite out of a corner is caught by looking at
+   * the box's four corners, and a bite out of a side is not.
+   */
+  const BITTEN: (number | null)[] = [
+    15,
+    ...([[0, 0], [60, 0], [60, 40], [38, 40], [38, 30], [23, 30], [23, 40], [0, 40]] as number[][]).flat(),
+  ];
+
+  it('leaves the bite out of a building that is drawn with one', () => {
+    const solid = createColliderField(
+      buildLayoutFromMap({ ...mapOf(BLOCK), plans: [BITTEN] } as MapData).boxes,
+    );
+    // The notch: inside the box round the building, outside the building.
+    expect(solid.sweep(vec(30, 8, 55), vec(30, 8, 33), 0.25), 'the bite is air').toBeNull();
+    // And the building is still a building.
+    expect(solid.sweep(vec(20, 8, -20), vec(20, 8, 20), 0.25)).not.toBeNull();
+  });
+
+  it('does it whichever way round the outline was drawn', () => {
+    // Which way is *into* a building is asked rather than taken from the
+    // winding, because the map draws them both ways: taken for granted, every
+    // wall of half the district would be pushed outwards into the street.
+    const ring = [[0, 0], [60, 0], [60, 20], [20, 20], [20, 60], [0, 60]] as number[][];
+    const backwards: (number | null)[] = [15, ...[...ring].reverse().flat()];
+    const solid = createColliderField(
+      buildLayoutFromMap({ ...mapOf(BLOCK), plans: [backwards] } as MapData).boxes,
+    );
+    expect(solid.sweep(vec(50, 8, 25), vec(50, 8, 90), 0.25), 'the notch is air').toBeNull();
+    expect(solid.sweep(vec(30, 8, -30), vec(30, 8, 30), 0.25), 'the arm is solid').not.toBeNull();
+
+    // And asked of every wall, close in, which is where a wall pushed the
+    // wrong way would be: a step outside the outline is air, a step inside is
+    // masonry. A sweep down a street only catches the walls that happen to
+    // face it.
+    for (const [i, a] of ring.entries()) {
+      const b = ring[(i + 1) % ring.length]!;
+      const run = Math.hypot(b[0]! - a[0]!, b[1]! - a[1]!);
+      const midX = (a[0]! + b[0]!) / 2;
+      const midZ = (a[1]! + b[1]!) / 2;
+      // The outward normal, worked out here from a point known to be inside.
+      let nx = -(b[1]! - a[1]!) / run;
+      let nz = (b[0]! - a[0]!) / run;
+      if (Math.hypot(midX + nx - 12, midZ + nz - 12) < Math.hypot(midX - nx - 12, midZ - nz - 12)) {
+        nx = -nx;
+        nz = -nz;
+      }
+      expect(
+        solid.touching(vec(midX + nx * 1.5, 8, midZ + nz * 1.5), 0.2),
+        `outside wall ${i}`,
+      ).toBeNull();
+      expect(
+        solid.touching(vec(midX - nx * 1.0, 8, midZ - nz * 1.0), 0.2),
+        `inside wall ${i}`,
+      ).not.toBeNull();
+    }
+
+    // And on a building whose filling cannot reach its own walls, which is
+    // where the walls are the only thing holding the shape: `BITTEN` shrinks
+    // to half its size to clear its own notch, so without walls its front is
+    // ten metres of air. (The L above does not test this -- it is cut into
+    // wings, and a wing's face is already on the wall.)
+    const pairs: number[][] = [];
+    for (let i = 1; i + 1 < BITTEN.length; i += 2) {
+      pairs.push([BITTEN[i] as number, BITTEN[i + 1] as number]);
+    }
+    const bitten = createColliderField(
+      buildLayoutFromMap({
+        ...mapOf(BLOCK),
+        plans: [[15, ...pairs.reverse().flat()] as (number | null)[]],
+      } as MapData).boxes,
+    );
+    const front = bitten.sweep(vec(30, 8, -20), vec(30, 8, 6), 0.25);
+    expect(front, 'the front wall is there').not.toBeNull();
+    expect(front!.point.z, 'and it is at the front').toBeLessThan(1);
   });
 });

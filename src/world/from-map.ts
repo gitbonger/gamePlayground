@@ -25,7 +25,7 @@ import {
 } from './streets';
 import { footprintSamples, indexAreas, type AreaIndex } from './areas';
 import { DECK, deckOf } from './bridges';
-import { fitBoxes, orientedBox } from './plans';
+import { fitBoxes, orientedBox, solidsOf } from './plans';
 import { fillHeights } from './heights';
 import { extractBlocks, type Block } from './blocks';
 import {
@@ -277,15 +277,6 @@ export interface MapWorld extends CityLayout {
   /** And those with no room to build on at all, which are planted instead. */
   bare: Block[];
 }
-
-/**
- * The narrowest a building may be trimmed to, in metres.
- *
- * Three. Trimming a box back off the road is right up to the point where
- * there is no house left; past it, a corner of masonry over the kerb is the
- * smaller wrong.
- */
-const BUILDING_SLIVER = 3;
 
 /**
  * How far a shop may be from a building and still be put on it, in metres.
@@ -606,109 +597,6 @@ export function buildLayoutFromMap(
    * the same collision boxes, the same instanced mesh, the same roofs.
    */
 
-  /**
-   * Pull a building's box back out of the carriageway, where it overruns one.
-   *
-   * A building on this map is not its outline: it is the turned box that
-   * covers the outline, and a box is bigger than the shape it covers -- an
-   * L-plan corner house, a block with a courtyard notch, anything that is not
-   * a rectangle. What that inflation mostly shows up as is a building
-   * standing in the road, which is the one place a box has no business being:
-   * 1,605 of them reached into a carriageway, 564 by more than two metres,
-   * and the deepest by eight.
-   *
-   * Some of that is the road rather than the building. The carriageway widths
-   * are a table by highway class, not a measurement, so a street that is
-   * really nine metres wide is drawn at eleven and swallows the frontage. The
-   * fix is the same either way: the box stops at the kerb, and if the number
-   * that had to come off it was the road's fault then a real building has
-   * lost a metre nobody can see.
-   *
-   * A box that would be left a sliver is left alone instead. Better a corner
-   * of masonry over the kerb than a wall a metre thick where a house was.
-   */
-  const offTheCarriageway = (start: {
-    x: number;
-    z: number;
-    width: number;
-    depth: number;
-    yaw: number;
-  }) => {
-    // Three passes, because one is not enough: a corner house overruns two
-    // streets at once and a pass trims one axis. A single pass took the 1,605
-    // buildings standing in a road down to 798 and no further.
-    let each = start;
-    for (let pass = 0; pass < 3; pass += 1) {
-      const pulled = pullBack(each);
-      if (pulled === each) break;
-      each = pulled;
-    }
-    return each;
-  };
-
-  const pullBack = (each: {
-    x: number;
-    z: number;
-    width: number;
-    depth: number;
-    yaw: number;
-  }) => {
-    // The four corners and the middle of each wall, and nothing else. A box
-    // overruns a street with its corner or its face -- never with its middle,
-    // which is a frontage away from the kerb -- so the grid of footprint
-    // samples the rest of this file uses is both dearer and no better here:
-    // at a four-metre step a forty-by-twenty building is seventy-seven
-    // points, and this runs three times for each of thirteen thousand wings.
-    // That grid was 60% of the whole world build.
-    let worst = 0;
-    let atX = 0;
-    let atZ = 0;
-    const cos = Math.cos(each.yaw);
-    const sin = Math.sin(each.yaw);
-    const corners: [number, number][] = [];
-    for (const ax of [-each.width / 2, 0, each.width / 2]) {
-      for (const az of [-each.depth / 2, 0, each.depth / 2]) {
-        if (ax === 0 && az === 0) continue;
-        corners.push([each.x + ax * cos + az * sin, each.z - ax * sin + az * cos]);
-      }
-    }
-    for (const [sx, sz] of corners) {
-      const road = streets.nearest(sx, sz, widestRoad / 2 + 2);
-      if (!road) continue;
-      const over = road.width / 2 - road.distance;
-      if (over > worst) {
-        worst = over;
-        atX = road.nearX;
-        atZ = road.nearZ;
-      }
-    }
-    if (worst <= 0) return each;
-
-    // Which of the building's own two axes the street is across. Local +X is
-    // its `width`, and this map turns a local direction by (cos, -sin).
-    const turn = -each.yaw;
-    const dx = atX - each.x;
-    const dz = atZ - each.z;
-    const along = dx * Math.cos(turn) + dz * Math.sin(turn);
-    const across = -dx * Math.sin(turn) + dz * Math.cos(turn);
-    const sideways = Math.abs(along) >= Math.abs(across);
-
-    const had = sideways ? each.width : each.depth;
-    const left = had - worst;
-    if (left < BUILDING_SLIVER) return each;
-
-    // Shrunk on the street side only: the far wall stays where it was, so the
-    // building gives ground to the road rather than sliding across its plot.
-    const step = (worst / 2) * (sideways ? Math.sign(along) || 1 : Math.sign(across) || 1);
-    return {
-      ...each,
-      width: sideways ? left : each.width,
-      depth: sideways ? each.depth : left,
-      x: each.x - (sideways ? Math.cos(each.yaw) : Math.sin(each.yaw)) * step,
-      z: each.z - (sideways ? -Math.sin(each.yaw) : Math.cos(each.yaw)) * step,
-    };
-  };
-
   // The outlines the map drew, which are what gets built and what gets drawn.
   //
   // One outline is one building. The boxes below it are the collider's
@@ -759,21 +647,27 @@ export function buildLayoutFromMap(
     // Drawn as the ring the map drew.
     plans.push({ ring: plan.ring, height });
 
-    // And flown into as boxes, which is what the collider is made of. Pulled
-    // back off the carriageway one at a time: a fitted wing can overrun a
-    // kerb even where the outline does not, and an invisible wall in the
-    // street is worse than a visible one.
+    // Flown into as the shape it is: a slab for every wall of the outline and
+    // enough behind them to stand on. See `solidsOf` -- this is the one thing
+    // that has to agree with what is drawn, because disagreeing with it is
+    // being killed by a building that is not there.
+    for (const solid of solidsOf(plan.ring)) {
+      boxes.push(turnedBox(solid.x, solid.z, solid.width, height, solid.depth, solid.yaw));
+    }
+
+    // And kept as boxes as well, which is a different question: not "what can
+    // I hit" but "where is a building, roughly" -- which is what a shop sign
+    // is stood on and what a steeple is grown from. A rough box is the right
+    // answer to that and quite the wrong one to the other.
     for (const wing of fitBoxes(plan.ring)) {
-      const each = offTheCarriageway(wing);
       buildings.push({
-        x: each.x,
-        z: each.z,
-        width: each.width,
-        depth: each.depth,
+        x: wing.x,
+        z: wing.z,
+        width: wing.width,
+        depth: wing.depth,
         height,
-        yaw: each.yaw,
+        yaw: wing.yaw,
       });
-      boxes.push(turnedBox(each.x, each.z, each.width, height, each.depth, each.yaw));
     }
   }
 

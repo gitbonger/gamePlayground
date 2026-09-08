@@ -126,6 +126,22 @@ export function inside(x: number, z: number, ring: Ring): boolean {
 const WING = 12;
 
 /**
+ * How much bigger than the outline a single box may be and still be used.
+ *
+ * A rectangle scores 1. Anything up to about a half again is a building with
+ * a bay or a chamfered corner, and the box is still the honest answer.
+ *
+ * Left where it was, and that took measuring: now that the outline is what
+ * gets drawn and the box only what gets flown into, the obvious move is to
+ * tighten this so fewer buildings are covered by one fat box. It makes things
+ * worse. A wing is a twelve-metre box offset inward from an edge, and on a
+ * corner or a curve a wing hangs out too -- so cutting more buildings into
+ * wings put *more* solid over the street, not less: 1,515 boxes at 1.55
+ * against 2,525 at 1.01. What fixes it is trimming, not decomposing.
+ */
+const BOX_SLACK = 1.55;
+
+/**
  * A footprint as one box, or as a ring of wings when one box will not do.
  *
  * The box is the right answer for the great majority: a building is a
@@ -147,14 +163,14 @@ const WING = 12;
  */
 export function fitBoxes(
   ring: Ring,
+  slack = BOX_SLACK,
 ): { x: number; z: number; width: number; depth: number; yaw: number }[] {
   const box = orientedBox(ring);
   if (!box) return [];
 
   const enclosed = Math.abs(shoelace(ring)) / 2;
-  // A rectangle scores 1. Anything up to about a half again is a building with
-  // a bay or a chamfered corner, and the box is still the honest answer.
-  if (enclosed > 0 && box.width * box.depth <= enclosed * 1.55) return [box];
+  // A rectangle scores 1.
+  if (enclosed > 0 && box.width * box.depth <= enclosed * slack) return [box];
 
   // Otherwise, wings. Which side of each edge is *into* the shape is asked
   // rather than worked out from the winding: a step inward from the middle of
@@ -335,4 +351,138 @@ export function insetRing(ring: Ring, reach: number): number[][] | null {
     }
   }
   return best;
+}
+
+/**
+ * How thick a wall stands, in metres.
+ *
+ * Two and a half, which is thicker than masonry and is not trying to be
+ * masonry. It is the width of the slab that stands in for a wall in the
+ * collider, and it wants to be thick for two reasons: a thin one is a thing a
+ * fast bird can pass through between two ticks, and the thicker it is the
+ * smaller the gap between it and whatever fills the middle of the building.
+ */
+const WALL = 2.5;
+
+/**
+ * The solid a building actually is: its walls, and enough behind them.
+ *
+ * The collider is boxes, and for a long time a building *was* a box -- so
+ * "what is drawn" and "what is solid" were the same rectangle and could not
+ * disagree. They can now: the outline is drawn, and a box round an outline
+ * covers ground the building does not. Measured, 998 boxes stood solid over a
+ * carriageway with nothing above them, and flying into one at cruise kills
+ * you. A player found one on Vajdahunyad utca.
+ *
+ * So the shape decides. Every wall of the outline gets a slab of its own,
+ * pushed inwards off the line so it can never reach past it -- that is the
+ * part a bird actually hits, and it follows the footprint exactly, notch and
+ * all. Behind them go the fitted boxes, shrunk until they too are inside, to
+ * stop a bird dropping through the middle of a roof into a hollow building.
+ *
+ * Which way is inwards is asked rather than worked out from the winding: a
+ * step off the middle of an edge either lands inside the outline or it does
+ * not, and that is a question with an answer.
+ */
+export function solidsOf(
+  ring: Ring,
+): { x: number; z: number; width: number; depth: number; yaw: number }[] {
+  const solids: { x: number; z: number; width: number; depth: number; yaw: number }[] = [];
+
+  for (let i = 0; i < ring.length; i += 1) {
+    const a = ring[i]!;
+    const b = ring[(i + 1) % ring.length]!;
+    const run = Math.hypot(b[0]! - a[0]!, b[1]! - a[1]!);
+    if (run < 0.5) continue;
+
+    const ux = (b[0]! - a[0]!) / run;
+    const uz = (b[1]! - a[1]!) / run;
+    const midX = (a[0]! + b[0]!) / 2;
+    const midZ = (a[1]! + b[1]!) / 2;
+
+    let nx = -uz;
+    let nz = ux;
+    if (!inside(midX + nx * 0.5, midZ + nz * 0.5, ring)) {
+      nx = -nx;
+      nz = -nz;
+    }
+    // Neither way in: a sliver with no inside, which is nothing to stand on.
+    if (!inside(midX + nx * 0.5, midZ + nz * 0.5, ring)) continue;
+
+    // No thicker than the building is wide, or the far wall of a narrow wing
+    // would push out through the near one.
+    const thick = Math.min(WALL, run);
+
+    solids.push({
+      x: midX + nx * (thick / 2),
+      z: midZ + nz * (thick / 2),
+      width: run,
+      depth: thick,
+      // The turn that puts this wall along its own X axis, in the convention
+      // the collider and `footprintSamples` share.
+      yaw: Math.atan2(-uz, ux),
+    });
+  }
+
+  // And the middle, so a roof is a roof rather than a hole with a rim.
+  for (const box of fitBoxes(ring)) {
+    const held = held_inside(box, ring);
+    if (held) solids.push(held);
+  }
+
+  return solids;
+}
+
+/**
+ * Pull a box in about its middle until all four corners are inside the ring.
+ *
+ * Uniform rather than side by side, which loses more of a bent shape than it
+ * needs to and is the right trade here: this is only the filling behind the
+ * walls, the walls are exact, and a filling that reached past them would put
+ * back the thing all of this is for.
+ */
+function held_inside(
+  box: { x: number; z: number; width: number; depth: number; yaw: number },
+  ring: Ring,
+): { x: number; z: number; width: number; depth: number; yaw: number } | null {
+  const cos = Math.cos(box.yaw);
+  const sin = Math.sin(box.yaw);
+  // The whole rim, not just the corners. A notch in an outline bites into the
+  // side of a box without touching either corner beside it, and checking four
+  // points missed every one of those: the walls of this district spill a
+  // tenth of a hectare between them and the filling behind them spilled
+  // seven and a half.
+  const RIM = 5;
+  const fits = (scale: number) => {
+    for (let i = 0; i <= RIM; i += 1) {
+      for (let j = 0; j <= RIM; j += 1) {
+        if (i > 0 && i < RIM && j > 0 && j < RIM) continue;
+        // A whisker inside the box, never exactly on it. A box that is the
+        // building -- which is most of them -- has its corners on the
+        // outline's own vertices, and asking whether a vertex is inside its
+        // own ring is a coin toss.
+        const lx = (i / RIM - 0.5) * box.width * scale * 0.999;
+        const lz = (j / RIM - 0.5) * box.depth * scale * 0.999;
+        if (!inside(box.x + lx * cos + lz * sin, box.z - lx * sin + lz * cos, ring)) return false;
+      }
+    }
+    return true;
+  };
+
+  if (fits(1)) return box;
+
+  let low = 0;
+  let high = 1;
+  let best: number | null = null;
+  for (let step = 0; step < 8; step += 1) {
+    const middle = (low + high) / 2;
+    if (fits(middle)) {
+      best = middle;
+      low = middle;
+    } else {
+      high = middle;
+    }
+  }
+  if (best === null || best * Math.min(box.width, box.depth) < 1) return null;
+  return { ...box, width: box.width * best, depth: box.depth * best };
 }
