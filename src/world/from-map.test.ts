@@ -1641,3 +1641,39 @@ describe('a road carried over something', () => {
     }
   });
 });
+
+describe('the bridges in the baked map', () => {
+  const map = homeMap as unknown as MapData;
+  const bridges = map.bridges ?? [];
+
+  it('carries the flyover the feature was built for', () => {
+    // Kerepesi ut over the throat of Keleti, as two ways -- one carriageway
+    // each -- with four running lines underneath. If the fetch ever stops
+    // filing bridges, this is the thing that quietly goes back to being a
+    // road painted across a railway.
+    const spanning = bridges.filter((bridge) => {
+      const [x0, z0] = bridge.points[0]!;
+      const [x1, z1] = bridge.points[bridge.points.length - 1]!;
+      const span = Math.hypot(x1 - x0, z1 - z0);
+      const mx = (x0 + x1) / 2;
+      const mz = (z0 + z1) / 2;
+      return (map.rails ?? []).some((rail) =>
+        rail.points.some(([rx, rz]) => Math.hypot(rx - mx, rz - mz) < span / 2),
+      );
+    });
+    expect(spanning.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('does not also paint them flat', () => {
+    // The two lists are cut from the same query, and a bridge left in both
+    // would be drawn twice: once raised, and once as tarmac across whatever
+    // it is supposed to be going over.
+    const ends = new Set(
+      (map.roads ?? []).map((road) => JSON.stringify([road.points[0], road.points[road.points.length - 1]])),
+    );
+    for (const bridge of bridges) {
+      const both = JSON.stringify([bridge.points[0], bridge.points[bridge.points.length - 1]]);
+      expect(ends.has(both)).toBe(false);
+    }
+  });
+});

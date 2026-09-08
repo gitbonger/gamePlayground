@@ -86,11 +86,17 @@ const GRADE = 0.09;
  * How often to put a point along the deck, in metres.
  *
  * The height is a curve and the deck is flat pieces, so this is how many
- * pieces the curve is cut into. Six metres over a hundred-and-thirty-metre
- * bridge is twenty-odd, which is smooth from the air and is twenty-odd boxes
- * for the collider rather than a thousand.
+ * pieces the curve is cut into.
+ *
+ * Three, which is finer than it needs to be to look right and is not about
+ * looks. A piece is boxed to its higher end -- a staircase rather than a set
+ * of treads with gaps between them -- so the solid stands above the drawn
+ * surface by whatever the piece climbs, and at six metres a piece that was
+ * most of a bird. At three it is a few centimetres over most of a deck and
+ * a quarter of a metre on the steepest part of a ramp, and a bridge this
+ * size is still only fifty boxes.
  */
-const STEP = 6;
+const STEP = 3;
 
 /**
  * The least the deck ever stands above the ground, in metres.
@@ -172,7 +178,13 @@ export function deckOf(bridge: Bridge): Deck | null {
   // Cut into even pieces, so the curve is smooth wherever the map happened to
   // put its vertices -- a two-point span is one straight line and would
   // otherwise be one flat slab at whatever height its middle worked out to.
-  const pieces = Math.max(2, Math.round(length / STEP));
+  //
+  // An even number of them, so that one lands exactly on the middle. The
+  // height is symmetric about the midpoint and that is where the top of the
+  // hump is, so an odd cut slices the peak off between two samples -- which
+  // is the difference between a deck that clears what it crosses and a deck
+  // that nearly does.
+  const pieces = 2 * Math.max(1, Math.round(length / STEP / 2));
   const spine: [number, number, number][] = [];
   for (let i = 0; i <= pieces; i += 1) {
     const s = (length * i) / pieces;
