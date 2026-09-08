@@ -309,6 +309,30 @@ export const NOT_AT_MATYAS: Scene = {
 };
 
 /**
+ * The second square, and she is not on that one either.
+ *
+ * The same shape as the beat on Mátyás tér and for the same reason: no
+ * `endsOn`, so the camera stays where it is and he says it standing on the
+ * square he has just come down on. The search is a run of these -- fly there,
+ * land, find nothing, name the next place -- and a search with the naming
+ * left out of the middle of it is a player being moved along without being
+ * told why.
+ *
+ * Blaha rather than Népszínház, which is the level that actually comes next.
+ * Népszínház is not a place he is looking for her on, it is the street he
+ * takes to get to Blaha: the level is finished by crossing a line partway
+ * down it. Naming the street would be naming the route rather than the
+ * errand.
+ */
+export const NOT_AT_JANI: Scene = {
+  name: 'nobody at Jani Pali tér',
+  seconds: 0,
+  cruise: 0,
+  says: ['She is not here!', 'Maybe on Blaha!'],
+  opens: { scene: 'up off Jani Pali tér' },
+};
+
+/**
  * Off the square he has just searched, to the height the next one is flown
  * from.
  *
@@ -325,6 +349,27 @@ export const UP_OFF_MATYAS: Scene = {
   cruise: 0,
   climbs: true,
   opens: { level: 'Jani Pali tér' },
+};
+
+/**
+ * Off the second square, to the height the next leg is flown from.
+ *
+ * The twin of the climb off Mátyás tér, and there for the same reason: the
+ * beat leaves him standing on the paving and Népszínház starts sixty metres
+ * over the same paving, so the difference is all height. Cutting between
+ * those two is a player standing on a square in one frame and hanging above
+ * it in the next.
+ *
+ * `cruise: 0` gives it no arc. An arc on a move that is almost vertical is a
+ * camera wandering off to one side and coming back.
+ */
+export const UP_OFF_JANI: Scene = {
+  name: 'up off Jani Pali tér',
+  endsOn: 'Népszínház',
+  seconds: 2.5,
+  cruise: 0,
+  climbs: true,
+  opens: { level: 'Népszínház' },
 };
 
 /**
@@ -359,7 +404,9 @@ export const SCENES: readonly Scene[] = [
   HOMECOMING,
   TO_MATYAS,
   NOT_AT_MATYAS,
+  NOT_AT_JANI,
   UP_OFF_MATYAS,
+  UP_OFF_JANI,
   UP_TO_THE_ROOFS,
 ];
 
@@ -956,7 +1003,7 @@ export const LEVELS: readonly Level[] = [
     // And this one hands straight over to the flight back east, with nothing
     // said yet. What he works out here -- or who he bumps into -- is the next
     // thing to be written, and it goes in as another beat.
-    finish: { kind: 'arrival', opens: { level: 'Népszínház' } },
+    finish: { kind: 'arrival', opens: { scene: NOT_AT_JANI.name } },
   },
   {
     // West, out over the open ground beyond the district, and the first level

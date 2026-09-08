@@ -697,28 +697,23 @@ function switchMode(to: Mode): void {
  * Pointed at whatever the level is about, which is the direction a homing
  * pigeon leaves in and saves the player a search before they have started.
  */
-/**
- * Where this level releases the bird.
- *
- * The level's own coordinate, except on the one that starts anywhere -- so
- * everything downstream reads this rather than `spec.start` and none of it
- * has to know there is such a thing.
- *
- * Declared here rather than beside the other level state further down,
- * because `releaseFor` reads it and `releaseFor` is called while this module
- * is still being evaluated. A `let` is hoisted but not readable until its
- * declaration runs, so the late version threw on load -- which no test could
- * have caught, since a test imports the pieces rather than running the file.
- */
-let releaseAt: [number, number] = LEVELS[0]!.start;
 
 function releaseFor(spec: Level): { at: Vec3; heading: number; perched: boolean } {
-  // `releaseAt` rather than `spec.start`: the last level picks somewhere from
-  // the others each time it is played, and this is the one place that has to
-  // know. The finishing lines and the crows' anchor still read `spec.start`,
-  // because those are facts about a particular level's route rather than
-  // about where the bird happens to have been put.
-  const point = project(releaseAt[0], releaseAt[1], map.centre);
+  // The level's own coordinate, and it has to be *this* level's rather than
+  // whichever one is being played: a scene asks where the level it closes on
+  // begins, and it asks while the level before it is still the current one.
+  //
+  // This used to read a `releaseAt` that only `playLevel` wrote, which meant
+  // a scene aimed its camera at the start of the level the player was leaving
+  // rather than the one they were arriving at. Off Mátyás tér that is four
+  // hundred and seventy metres: the camera climbed away to a place nothing
+  // was happening and then cut back when the next level put the bird down
+  // where it actually belonged.
+  //
+  // The variable existed for the level that used to start at a random one of
+  // the others. That level has a fixed place now and the variable outlived
+  // its reason by one commit.
+  const point = project(spec.start[0], spec.start[1], map.centre);
   const floor = world.collider.heightAt(point.x, point.z);
   const marker = objective(targetName(spec));
   // Pointed at the first mark if the level has any, and at what it is aimed
@@ -1460,10 +1455,7 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
 
   level = at;
   saveProgress(storage(), at);
-  // Where this one starts, which is where it says. The last level used to
-  // start somewhere different every time, drawn from the other levels' own
-  // release points; it has a place of its own now.
-  releaseAt = spec.start;
+
   // What the level does and does not have in it.
   tutorial = spec.teaches ?? true;
   hunted = crowsOn(spec);
@@ -1486,7 +1478,7 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // distance: every level but the last begins where the one before it ended,
   // and the flock is already there.
   const jumped = (() => {
-    const to = project(releaseAt[0], releaseAt[1], map.centre);
+    const to = project(spec.start[0], spec.start[1], map.centre);
     return Math.hypot(to.x - bird.position.x, to.z - bird.position.z) > FLOCK_FOLLOWS;
   })();
   if (spec.escort && (!escorted || jumped)) flock.recall();

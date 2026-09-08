@@ -9,6 +9,7 @@ import {
   dialogueOf,
   BELLY_FULL,
   HOMECOMING,
+  NOT_AT_JANI,
   NOT_AT_MATYAS,
   LEVELS,
   characterNamed,
@@ -670,11 +671,35 @@ describe('what the levels aim at', () => {
       BELLY_FULL.name,
       HOMECOMING.name,
       NOT_AT_MATYAS.name,
+      NOT_AT_JANI.name,
     ]);
     // And every line of it is a line: a monologue with an empty one in it is
     // a blank row in the panel.
     for (const scene of holds) {
       for (const line of scene.says!) expect(line.length, scene.name).toBeGreaterThan(0);
+    }
+  });
+
+  it('lets him say so on every level that is finished by finding nobody', () => {
+    // `arrival` is the searching kind: he gets there, she is not there, and
+    // that *is* the level. What makes it a search rather than a series of
+    // errands is him naming the next place -- so a searching level that
+    // handed straight on to the next one would move the player along without
+    // telling them why they were going.
+    const searches = LEVELS.filter((level) => level.finish.kind === 'arrival');
+    expect(searches.map((level) => level.name)).toEqual(['Mátyás tér', 'Jani Pali tér']);
+
+    for (const level of searches) {
+      const opens = opensOf(level)!;
+      expect(opens, level.name).toBeDefined();
+      expect('scene' in opens, `${level.name} hands to a beat`).toBe(true);
+      const beat = SCENES.find((scene) => scene.name === (opens as { scene: string }).scene)!;
+      expect(beat, level.name).toBeDefined();
+      // Which holds, and says where he is going next.
+      expect(beat.says, beat.name).toBeDefined();
+      expect(beat.endsOn, `${beat.name} happens where he is standing`).toBeUndefined();
+      const spoken = beat.says!.join(' ');
+      expect(LEVELS.some((each) => spoken.includes(each.name)), spoken).toBe(true);
     }
   });
 
@@ -684,7 +709,7 @@ describe('what the levels aim at', () => {
     // the level after this one exists. Asked of those beats rather than of
     // every monologue: the one at the end of an errand is not a search, and
     // has nothing to point at.
-    for (const scene of [HOMECOMING, NOT_AT_MATYAS]) {
+    for (const scene of [HOMECOMING, NOT_AT_MATYAS, NOT_AT_JANI]) {
       const spoken = scene.says!.join(' ');
       expect(LEVELS.some((level) => spoken.includes(level.name)), spoken).toBe(true);
     }
