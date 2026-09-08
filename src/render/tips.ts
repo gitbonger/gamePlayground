@@ -60,6 +60,15 @@ export interface Tip {
    */
   icon?: IconName;
   /**
+   * Sounded rather than spoken.
+   *
+   * For the one thing that is actively hunting you. Reading `A varjak rád
+   * álltak!` out loud takes most of a second and has to finish before the
+   * next thing can be said; two tones take a fifth of that and say the same
+   * thing, which is *now*. See `createAlarm`.
+   */
+  beep?: boolean;
+  /**
    * Whether this one is worth saying out loud.
    *
    * Most are not. A voice that reads every instruction is a voice you turn

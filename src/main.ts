@@ -90,6 +90,7 @@ import { HOME_TREE, JANI_SQUARE, LANDMARKS, LOFT, PARK_PATCH, WEST_PATCH } from 
 import { alone, begin, isOver, reply, type Exchange } from './dialogue';
 import { createDialoguePanel, speechColour } from './render/dialogue';
 import { browserSpeaker, createVoice } from './render/voice';
+import { browserTone, createAlarm } from './render/alarm';
 import { createVitals, type Vital } from './render/vitals';
 import {
   approachFor,
@@ -1488,6 +1489,31 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // What the level does and does not have in it.
   tutorial = spec.teaches ?? true;
   hunted = crowsOn(spec);
+  // Back over Népszínház utca, wherever the last level left them.
+  //
+  // They are one flock for the whole game and only three levels ask for them,
+  // so between those levels they are frozen exactly where the last one
+  // finished -- which after a level spent chasing the player is anywhere at
+  // all. By the loft they had followed him most of a kilometre and were not
+  // over the street they are supposed to be guarding at all.
+  //
+  // Scattered on a ball rather than recalled: a recall lets them out one a
+  // second from where each of them last came down, and what is wanted is all
+  // eight of them, now, in the place the level was designed around.
+  if (hunted && crows && crowsAt) {
+    crows.scramble(
+      Array.from({ length: CROWS }, () => {
+        const round = Math.random() * Math.PI * 2;
+        const up = Math.acos(2 * Math.random() - 1);
+        const away = 20 + Math.random() * 40;
+        return vec(
+          crowsAt.x + Math.sin(round) * Math.sin(up) * away,
+          Math.max(CROW_HEIGHT - 12, CROW_HEIGHT + Math.cos(up) * 16),
+          crowsAt.z + Math.cos(round) * Math.sin(up) * away,
+        );
+      }),
+    );
+  }
 
   // Everything this level puts into the world: who is standing where, what is
   // pointed at, and whether anybody is flying with him.
@@ -1929,6 +1955,7 @@ const vitals = createVitals(overlay);
  * for the two of us who will get tired of it first.
  */
 const voice = createVoice(browserSpeaker(window.speechSynthesis));
+const alarm = createAlarm(browserTone());
 /** Hands out the flying lessons, by how far this flight has gone. */
 const tutor = createTutor();
 /**
@@ -2577,6 +2604,19 @@ const NOTICE = 2;
 /** Said in three places, so written once. */
 const TAKE_OFF: Words = { en: 'Take off!', hu: 'Szállj fel!' };
 
+/**
+ * The warning, made once rather than every frame.
+ *
+ * Same object every time, which is also what keeps the panel from rebuilding
+ * itself: it compares what it is asked to show against what it is showing.
+ */
+const LOCKED_ON: Tip = {
+  keys: [],
+  text: { en: 'Crows locked on!', hu: 'A varjak rád álltak!' },
+  icon: 'crow',
+  beep: true,
+};
+
 function command(): Tip | null {
   // A setting confirming itself outranks everything for a moment, because
   // the player has just pressed a key and is owed an answer about it.
@@ -2994,8 +3034,25 @@ function frame(nowMs: number) {
   const settling =
     bird.ending === null && toGo <= 150 ? landingReadiness(bird, flightParams) : null;
 
+  /**
+   * A crow has picked him out and is coming.
+   *
+   * Above everything the flight has to say about itself, and below only the
+   * things the player has just pressed a key about: a landing that is going
+   * badly can be talked down on the next flight, and this one cannot.
+   *
+   * It stays up for as long as it is true rather than being given once. The
+   * panel shows one thing at a time and drops it when it changes, so this
+   * simply outranks whatever else was there and comes back if the crow does.
+   */
+  const hunter =
+    hunted && bird.ending === null && (crows?.members ?? []).some((crow) => crow.hunting && crow.down <= 0)
+      ? LOCKED_ON
+      : null;
+
   const urgent =
     command() ??
+    hunter ??
     (settling
       ? approachFor(tutorial, {
           toGo,
@@ -3043,6 +3100,10 @@ function frame(nowMs: number) {
   // instruction is a voice that gets turned off, and then it is not there for
   // the one that mattered.
   voice.update(saying?.spoken ? saying : null, clock);
+  // And the two-tone warning, for the one thing that is hunting rather than
+  // merely going wrong. Its own repeat rule, because it is about a thing that
+  // is still happening rather than a thing that has just been said.
+  if (saying?.beep) alarm.sound(clock);
   world.updateSmoke(allPuffs, camera.quaternion);
   // The thrown grain, and the grain riding on the freight train. One list,
   // one instanced mesh: the seeds on the wagons are worked out from where the
