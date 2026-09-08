@@ -113,7 +113,7 @@ import {
 } from './sim/collision';
 import { createChaseCamera, defaultCameraParams, defaultWatchParams } from './render/camera';
 import { createHud } from './render/hud';
-import { createMinimap } from './render/minimap';
+import { createMinimap, REACH as MINIMAP_REACH } from './render/minimap';
 import { defaultSight, sighted } from './render/sighted';
 import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
@@ -3502,6 +3502,26 @@ function frame(nowMs: number) {
         ? { x: ending.x, z: ending.z }
         : null,
     mark: waymarks.at,
+    // Whatever rolling stock is near enough to be on the panel. Filtered by
+    // the head of each rake rather than by every vehicle: a hundred and
+    // twenty-five trains is a hundred and twenty-five distance checks a
+    // frame, and six hundred and twenty-five is not.
+    stock: layout.trains.flatMap((train) => {
+      const head = train.vehicles[0];
+      if (!head) return [];
+      const away = Math.hypot(head.x - interpolatedState.position.x, head.z - interpolatedState.position.z);
+      // The whole consist behind the head, in a straight line, which errs
+      // towards drawing a rake whose tail is just off the panel.
+      if (away > MINIMAP_REACH + consistLength(train.cars, train.stock)) return [];
+      return train.vehicles.map((car) => ({
+        x: car.x,
+        z: car.z,
+        yaw: car.yaw,
+        length: car.length,
+        width: car.width,
+        kind: car.kind,
+      }));
+    }),
     // The flock as it really is, not as it is drawn: `escortDrawn` asks
     // whether the camera can see a bird, and a bird the camera cannot see is
     // exactly the one the map is there for.

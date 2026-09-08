@@ -35,7 +35,7 @@ import type { Road } from '../world/streets';
  * somewhere in -- and nothing is lost at the far end, because anything past
  * the rim is already an arrow pointing at it.
  */
-const REACH = 320;
+export const REACH = 320;
 const SIZE = 296;
 
 /**
@@ -77,6 +77,22 @@ const STOPS_SHOWN = 4;
 
 /** How many times a second a crow blinks on the panel. */
 const CROW_BLINK = 3;
+
+/**
+ * What each sort of vehicle is drawn in.
+ *
+ * The tram in its own yellow, which is what one looks like from the air here.
+ * A carriage pale, a goods wagon the brown of the rake in the yard, and the
+ * engine a dark red -- kept clear of the target's own orange-red, since the
+ * one thing on this panel that must never be mistaken for anything is the
+ * thing you are flying to.
+ */
+const STOCK: Record<'engine' | 'wagon' | 'carriage' | 'tram', string> = {
+  tram: '#f2c53d',
+  carriage: '#cfd6df',
+  wagon: '#9a7b52',
+  engine: '#a8382c',
+};
 
 /** The stop names: small, and in the pale grey-yellow a tram is. */
 const STOP_TEXT = 9;
@@ -147,6 +163,23 @@ export interface MinimapView {
    * the map is the only place the difference is legible at a glance.
    */
   her: { x: number; z: number } | null;
+  /**
+   * The rolling stock near enough to draw, in local metres.
+   *
+   * Told apart by what they are, because on this map that is the whole of
+   * what a train is worth showing: a tram is a thing you can land on that
+   * stops every two hundred metres, a passenger train is a thing that leaves,
+   * a goods rake is a thing that stands in a yard with grain on it, and the
+   * engine is which end of one is the front.
+   */
+  stock: readonly {
+    x: number;
+    z: number;
+    yaw: number;
+    length: number;
+    width: number;
+    kind: 'engine' | 'wagon' | 'carriage' | 'tram';
+  }[];
   /**
    * The world's own clock, in seconds, for anything that has to blink.
    *
@@ -304,6 +337,35 @@ export function createMinimap(
             ctx.stroke();
           }
         }
+      }
+
+      // The trains, as the boxes they are.
+      //
+      // Drawn over the streets and under everything that matters, which is
+      // where they belong: a tram on the map is context -- something on that
+      // street, going that way -- rather than somewhere to go. Told apart by
+      // colour, and the engine by being drawn a shade wider as well, since a
+      // colour alone is four pixels at this scale.
+      for (const car of view.stock) {
+        const on = to(car.x, car.z);
+        if (Math.hypot(on.x - middle, on.y - middle) > middle + 8) continue;
+        ctx.save();
+        ctx.translate(on.x, on.y);
+        // Turned by the car's own bearing *and* by the panel's.
+        //
+        // A vehicle's `yaw` is the collider's, which takes a box's local +x to
+        // world `(cos yaw, -sin yaw)` -- not the bird's convention, where
+        // facing nought is -Z. Put through `onPanel`, that long axis comes out
+        // at `(cos(yaw + heading), -sin(yaw + heading))`, and the canvas turns
+        // its own +x towards +y, so the angle wanted is the negative of the
+        // sum. Got wrong either way it draws a rake as a scatter of tilted
+        // dashes rather than as a train, which is exactly how it looked.
+        ctx.rotate(-(car.yaw + view.heading));
+        ctx.fillStyle = STOCK[car.kind];
+        const long = Math.max(3, car.length * scale);
+        const across = Math.max(1.6, car.width * scale * (car.kind === 'engine' ? 1.9 : 1.35));
+        ctx.fillRect(-long / 2, -across / 2, long, across);
+        ctx.restore();
       }
 
       // The finishing line, in the yellow it is painted on the ground.

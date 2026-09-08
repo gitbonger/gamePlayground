@@ -101,6 +101,7 @@ const nothing = {
   target: null,
   mark: null,
   crows: [],
+  stock: [],
   flock: [],
   her: null,
   now: 0,
