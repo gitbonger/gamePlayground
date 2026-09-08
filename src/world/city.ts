@@ -2761,8 +2761,16 @@ function buildRails(rails: readonly Rail[]): {
         float soft = fwidth(across) * 1.5 + 0.01;
 
         // Ballast, thinning to bare ground at the edge of the corridor.
+        //
+        // Dark, and darker than it looks written down. These are linear
+        // values on a renderer that writes sRGB, so a third goes out as a bit
+        // over a half before any light touches it -- and the light here is a
+        // sky at 1.5 and a sun at 2.2. The ballast was three tenths and came
+        // out as pale gravel, which made the throat of Keleti read as a car
+        // park. From two hundred feet a running line is the darkest thing in
+        // a district: oiled, and shadowed between the sleepers.
         float roll = fract(sin(dot(floor(vec2(along, vEdge.x) * 3.0), vec2(12.9898, 78.233))) * 43758.5453);
-        vec3 bed = mix(vec3(0.30, 0.27, 0.24), vec3(0.44, 0.40, 0.35), roll);
+        vec3 bed = mix(vec3(0.024, 0.022, 0.019), vec3(0.048, 0.043, 0.036), roll);
         float shoulder = 1.0 - smoothstep(1.9, 2.8 + soft, across);
         vec3 colour = mix(diffuseColor.rgb, bed, shoulder * (1.0 - tram));
 
@@ -2780,11 +2788,11 @@ function buildRails(rails: readonly Rail[]): {
         float stripes = 1.0 - smoothstep(0.34, 0.46, fract(along / ${SLEEPER_PITCH.toFixed(3)}));
         float sleeper = mix(mean, stripes, detail)
                       * (1.0 - smoothstep(1.2, 1.35 + soft, across));
-        colour = mix(colour, vec3(0.24, 0.19, 0.15), sleeper * 0.8 * (1.0 - tram));
+        colour = mix(colour, vec3(0.016, 0.013, 0.010), sleeper * 0.8 * (1.0 - tram));
 
         // And the pair of rails, which a tramway has and the rest of it does not.
         float rail = 1.0 - smoothstep(0.035, 0.055 + soft, abs(across - ${(GAUGE / 2).toFixed(4)}));
-        colour = mix(colour, vec3(0.62, 0.63, 0.66), rail);
+        colour = mix(colour, vec3(0.095, 0.100, 0.110), rail);
 
         diffuseColor.rgb = colour;
         // Beyond the ballast a heavy line is just ground; a tramway is road,

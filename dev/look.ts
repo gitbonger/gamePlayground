@@ -43,11 +43,15 @@ const full = buildLayoutFromMap(map, {
 const world = buildWorld(full);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x8fb6d8);
+scene.background = new THREE.Color(0xbcd3e8);
 scene.add(world.group);
-scene.add(new THREE.HemisphereLight(0xd7ecff, 0x5a5a4a, 1.1));
-const sun = new THREE.DirectionalLight(0xfff2d8, 1.5);
-sun.position.set(-300, 400, 200);
+// The game's own lights, copied from `render/scene.ts` rather than invented
+// here. They were invented here, brighter, and the page spent its life
+// flattering everything shown on it -- the railway ballast was darkened once
+// on the strength of a picture this page had washed out.
+scene.add(new THREE.HemisphereLight(new THREE.Color(0x4a86c8), 0x6b7355, 1.5));
+const sun = new THREE.DirectionalLight(0xfff2dd, 2.2);
+sun.position.set(-0.42, 0.66, 0.62).normalize().multiplyScalar(400);
 scene.add(sun);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
