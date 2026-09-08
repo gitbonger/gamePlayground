@@ -596,6 +596,40 @@ export interface Sign {
   yaw: number;
 }
 
+
+/**
+ * The tall thing on a church, which is what a district is navigated by.
+ *
+ * The buildings already come off the map with real outlines, so a church is
+ * already the right shape on the ground -- what it is missing is the one part
+ * of it you can see from three streets away. There are 67 places of worship
+ * in this slice and on most of their blocks they are the only thing taller
+ * than a tenement.
+ *
+ * Three sorts, because drawing all of them the same would be putting a spire
+ * on a synagogue: a parish church gets a tower and a spire, a chapel a
+ * bellcote, a synagogue a dome.
+ *
+ * Sized from the building it stands on rather than from a number, so a
+ * cathedral is not the same height as a wayside chapel -- but sized by a rule,
+ * so two churches on the same size of building come out identical and share
+ * one shape between them.
+ */
+export interface Steeple {
+  kind: 'church' | 'chapel' | 'synagogue';
+  /** Where the tower or dome stands, in local metres. */
+  x: number;
+  z: number;
+  /** Which way the tower faces: out towards the street, as a sign does. */
+  yaw: number;
+  /** How thick the tower or drum is, across. */
+  width: number;
+  /** The masonry, from the ground to where the spire or dome starts. */
+  height: number;
+  /** And the spire or dome on top of that. */
+  spire: number;
+}
+
 export interface CityLayout {
   buildings: Building[];
   trees: Tree[];
@@ -611,6 +645,8 @@ export interface CityLayout {
   crossings?: Crossing[];
   /** Shop signs standing on the roofs they belong to. */
   signs?: Sign[];
+  /** Towers, spires and domes on the buildings the map calls churches. */
+  steeples?: Steeple[];
   /** Solid volumes for every object above, in simulation coordinates. */
   boxes: Box[];
   /** Streets to draw, when the world was built from a real map. */

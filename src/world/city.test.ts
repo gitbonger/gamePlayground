@@ -3,6 +3,7 @@ import {
   arrowFade,
   buildVehicle,
   buildVehicleGeometry,
+  buildSteepleGeometry,
   signFade,
   arrowScale,
   buildRoofs,
@@ -11,7 +12,7 @@ import {
   targetFlash,
 } from './city';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
-import { penthouseOf, terraceOf, type Landmark, type Sign } from './layout';
+import { penthouseOf, terraceOf, type Landmark, type Sign, type Steeple } from './layout';
 import { consistLength, layOutTrain, lineLength, shuttle, TRAM, WAGON, type Vehicle } from './train';
 import type { Puff } from './smoke';
 import * as THREE from 'three';
@@ -1152,5 +1153,100 @@ describe('how far a sign can be read from', () => {
       expect(now).toBeLessThanOrEqual(last);
       last = now;
     }
+  });
+});
+
+describe('steeples', () => {
+  const spire = (over: Partial<Steeple> = {}): Steeple => ({
+    kind: 'church',
+    x: 0,
+    z: 0,
+    yaw: 0,
+    width: 8,
+    height: 30,
+    spire: 12,
+    ...over,
+  });
+
+  const withSteeples = (steeples: Steeple[]) =>
+    buildWorld({ ...buildLayoutFromMap(map, defaultMapWorldOptions), steeples });
+
+  const shapesOf = (world: ReturnType<typeof buildWorld>) => {
+    const shapes = new Set<THREE.BufferGeometry>();
+    let towers = 0;
+    world.group.traverse((object) => {
+      if (object.name !== 'steeple') return;
+      towers += 1;
+      shapes.add((object as THREE.Mesh).geometry as THREE.BufferGeometry);
+    });
+    return { towers, shapes: shapes.size };
+  };
+
+  it('builds one shape for churches that come out the same size', () => {
+    // Sixty of these on the map. The measurements are rounded to a quarter
+    // metre where they are worked out precisely so that this can happen --
+    // and it is built once, at load, as the vehicles are.
+    const world = withSteeples([spire(), spire({ x: 400 }), spire({ x: 800, z: 400 })]);
+    expect(shapesOf(world)).toEqual({ towers: 3, shapes: 1 });
+    world.dispose();
+  });
+
+  it('builds a different one for a church of a different size', () => {
+    // Which is the other half: if it did not, sharing by size would be
+    // sharing by nothing, and every church in the district would be whatever
+    // size happened to be built first.
+    const world = withSteeples([spire(), spire({ x: 400, height: 44 }), spire({ x: 800, width: 5 })]);
+    expect(shapesOf(world)).toEqual({ towers: 3, shapes: 3 });
+    world.dispose();
+  });
+
+  it('gives the three sorts three silhouettes', () => {
+    // A spire on a synagogue would be worse than leaving it a plain hall.
+    //
+    // Asked of the vertices rather than of how many geometry objects came
+    // back: the cache is keyed on the kind, so three sorts are three objects
+    // however they are drawn -- and counting objects passed with the chapel
+    // drawn as a church.
+    const shapeOf = (kind: Steeple['kind']) => {
+      const geometry = buildSteepleGeometry({ kind, width: 8, height: 30, spire: 12 });
+      const points = Array.from(geometry.getAttribute('position').array);
+      geometry.dispose();
+      return points;
+    };
+    const church = shapeOf('church');
+    const chapel = shapeOf('chapel');
+    const synagogue = shapeOf('synagogue');
+    expect(chapel).not.toEqual(church);
+    expect(synagogue).not.toEqual(church);
+    expect(synagogue).not.toEqual(chapel);
+  });
+
+  it('takes no notice of where the church stands', () => {
+    // The claim the sharing rests on, as it is for a tram: where it is lives
+    // on the mesh, so the shape can be handed to the next church.
+    const here = buildSteepleGeometry({ kind: 'church', width: 8, height: 30, spire: 12 });
+    const there = buildSteepleGeometry({ kind: 'church', width: 8, height: 30, spire: 12 });
+    const a = Array.from(here.getAttribute('position').array);
+    const b = Array.from(there.getAttribute('position').array);
+    expect(a).toEqual(b);
+    here.dispose();
+    there.dispose();
+  });
+
+  it('puts the spire above the tower and nothing below the ground', () => {
+    // Built in its own coordinates, standing on nought, so a mesh dropped at
+    // the church's position stands on the street rather than in it.
+    const geometry = buildSteepleGeometry({ kind: 'church', width: 8, height: 30, spire: 12 });
+    const points = geometry.getAttribute('position');
+    let low = Infinity;
+    let high = -Infinity;
+    for (let i = 0; i < points.count; i += 1) {
+      low = Math.min(low, points.getY(i));
+      high = Math.max(high, points.getY(i));
+    }
+    expect(low).toBeCloseTo(0, 3);
+    // The masonry, the spire on top of it, and a cross on top of that.
+    expect(high).toBeGreaterThan(30 + 12);
+    geometry.dispose();
   });
 });

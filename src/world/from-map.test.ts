@@ -1767,3 +1767,127 @@ describe('shop signs', () => {
     expect(world.signs).toEqual([]);
   });
 });
+
+describe('steeples', () => {
+  /** A long thin nave, which is what a church footprint mostly is. */
+  const CHURCH = [100, 30, 44, 18, 0, 16];
+  const worshipping = (worship: number[][], buildings: number[][] = [CHURCH]): MapData => ({
+    ...mapOf(BLOCK),
+    buildings,
+    worship,
+  });
+
+  it('puts a tower and a spire on the building the map calls a church', () => {
+    // The buildings already come off the map with real outlines, so a church
+    // is the right shape on the ground already. What it is missing is the one
+    // part of it you can see from three streets away.
+    const world = buildLayoutFromMap(worshipping([[100, 30, 0]]));
+    expect(world.steeples).toHaveLength(1);
+    const tower = world.steeples![0]!;
+    expect(tower.kind).toBe('church');
+    expect(tower.height).toBeGreaterThan(16);
+    expect(tower.spire).toBeGreaterThan(0);
+  });
+
+  it('tells the three sorts apart', () => {
+    // Drawing them all the same would be putting a spire on a synagogue.
+    // Sixty of these on the real map: 46 churches, 8 chapels, 6 synagogues.
+    const kinds = [0, 1, 2].map(
+      (which) =>
+        buildLayoutFromMap(worshipping([[100, 30, which]])).steeples![0]!,
+    );
+    expect(kinds.map((k) => k.kind)).toEqual(['church', 'chapel', 'synagogue']);
+    // A chapel's bellcote is a fraction of a parish tower, and a synagogue's
+    // drum is broader than either.
+    expect(kinds[1]!.width).toBeLessThan(kinds[0]!.width);
+    expect(kinds[2]!.width).toBeGreaterThan(kinds[0]!.width);
+  });
+
+  it('stands the tower at one end of the nave and the dome over the middle', () => {
+    // Which is most of what tells the two silhouettes apart from the air.
+    const church = buildLayoutFromMap(worshipping([[100, 30, 0]])).steeples![0]!;
+    const synagogue = buildLayoutFromMap(worshipping([[100, 30, 2]])).steeples![0]!;
+    expect(Math.abs(church.x - 100)).toBeGreaterThan(10);
+    expect(Math.abs(synagogue.x - 100)).toBeLessThan(0.001);
+    expect(Math.abs(synagogue.z - 30)).toBeLessThan(0.001);
+  });
+
+  it('keeps the tower on the building rather than in the street', () => {
+    // It is put at one end of the long axis, so it has to stay inside the
+    // footprint: half the nave less half the tower, and no further.
+    const tower = buildLayoutFromMap(worshipping([[100, 30, 0]])).steeples![0]!;
+    expect(Math.abs(tower.x - 100)).toBeLessThanOrEqual(44 / 2 - tower.width / 2 + 0.001);
+    expect(Math.abs(tower.z - 30)).toBeLessThan(0.001);
+  });
+
+  it('grows one steeple where the map records a church twice', () => {
+    // A church usually carries both a `building=church` way and an
+    // `amenity=place_of_worship` node inside it -- one church, two points.
+    // Eight churches on the real map grew a pair of spires from that.
+    //
+    // The two points have to land on *different* buildings for this to be the
+    // rule under test: the fitter cuts a big bent outline into wings, and it
+    // is the two wings of one church that defeat a one-per-building rule. So
+    // two boxes, side by side, as a fitted church actually arrives -- a test
+    // with both points in one box passes with the distance rule removed.
+    const wings = [
+      [92, 30, 26, 18, 0, 16],
+      [118, 30, 26, 18, 0, 16],
+    ];
+    const twice = buildLayoutFromMap(worshipping([[92, 30, 0], [118, 30, 0]], wings));
+    expect(twice.steeples).toHaveLength(1);
+
+    // And two churches genuinely far apart still get one each, or the rule
+    // above would be satisfied by never building a second steeple at all.
+    const apart = [
+      [92, 30, 26, 18, 0, 16],
+      [92, 400, 26, 18, 0, 16],
+    ];
+    expect(
+      buildLayoutFromMap(worshipping([[92, 30, 0], [92, 400, 0]], apart)).steeples,
+    ).toHaveLength(2);
+  });
+
+  it('is solid, and can be stood on', () => {
+    // A tower is the tallest thing on most of these blocks. One a bird flies
+    // through is worse than none.
+    const world = buildLayoutFromMap(worshipping([[100, 30, 0]]));
+    const tower = world.steeples![0]!;
+    const solid = createColliderField(world.boxes);
+
+    // Flown at, at the height of the masonry, from clear ground outside it.
+    const into = solid.sweep(
+      vec(tower.x, tower.height - 3, tower.z + 60),
+      vec(tower.x, tower.height - 3, tower.z),
+      0.25,
+    );
+    expect(into, 'the tower stops a bird').not.toBeNull();
+
+    // And landed on, from above the spire.
+    const onto = solid.sweep(
+      vec(tower.x, tower.height + tower.spire + 30, tower.z),
+      vec(tower.x, tower.height - 1, tower.z),
+      0.25,
+    );
+    expect(onto, 'and can be perched on').not.toBeNull();
+    // Well up the spire, not just clear of the tower: a sweep of a sphere
+    // comes to rest a radius above whatever it lands on, so `> height` is
+    // satisfied by the tower alone and says nothing about the spire.
+    expect(onto!.point.y).toBeGreaterThan(tower.height + tower.spire * 0.5);
+  });
+
+  it('does not box the spire out to the width of the tower', () => {
+    // A spire tapers. Boxed square to its full height, a church would stop a
+    // bird ten metres clear of a cross a few centimetres thick.
+    const world = buildLayoutFromMap(worshipping([[100, 30, 0]]));
+    const tower = world.steeples![0]!;
+    const solid = createColliderField(world.boxes);
+    // Level with the spire, and outside half its width: clear air.
+    const past = solid.sweep(
+      vec(tower.x + tower.width * 0.45, tower.height + tower.spire * 0.6, tower.z + 60),
+      vec(tower.x + tower.width * 0.45, tower.height + tower.spire * 0.6, tower.z - 60),
+      0.2,
+    );
+    expect(past).toBeNull();
+  });
+});

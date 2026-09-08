@@ -45,6 +45,7 @@ import {
   SPECIES,
   STREET_TREE,
   type Sign,
+  type Steeple,
   type Building,
   type Bush,
   type Grave,
@@ -305,6 +306,58 @@ const SIGN_STREET = 60;
  */
 const SIGN_WIDTH = { share: 0.6, least: 8, most: 26 };
 
+/**
+ * How a steeple is sized from the building under it.
+ *
+ * A rule rather than a table, so a cathedral and a wayside chapel are not the
+ * same height -- and a rule rather than a random, so the same building always
+ * grows the same steeple and two churches of a size share one shape.
+ *
+ * The tower is a share of the building's *short* side, because a nave is long
+ * and thin and a tower is square. The heights are multiples of the building's
+ * own, which is how a real one relates to its nave: about half as much again
+ * for the masonry, and a spire about as tall as the tower is.
+ */
+const STEEPLE = {
+  church: { across: 0.4, least: 4, most: 10, tower: 1.5, rise: 8, spire: 1.6 },
+  // A chapel gets a bellcote and not a tower: a thin thing on the ridge. Ten
+  // of the sixty-seven here are chapels, and a chapel with a parish church's
+  // spire on it is a chapel nobody would recognise.
+  chapel: { across: 0.22, least: 1.6, most: 3.2, tower: 1.05, rise: 1.5, spire: 2.2 },
+  // A dome on a drum, and the drum is broad: a synagogue's dome sits over the
+  // middle of the hall rather than at one end of it.
+  synagogue: { across: 0.55, least: 5, most: 14, tower: 1.15, rise: 2, spire: 0.9 },
+} as const;
+
+/**
+ * How near two steeples may stand, in metres.
+ *
+ * Thirty-five, and it is a fix rather than a taste. A church usually carries
+ * both a `building=church` way and an `amenity=place_of_worship` node inside
+ * it -- one church, two points -- and the outline is big and bent, so the
+ * building fitter has already cut it into wings. The two points then land on
+ * two different wings of the same church and it grows two spires. Measured on
+ * this map: eight churches had a pair.
+ *
+ * Deduping on the *building* is what does not work, and deduping on distance
+ * does: no two churches in this district stand within thirty-five metres of
+ * each other, and both halves of one church always do.
+ */
+const STEEPLE_APART = 35;
+
+/**
+ * The tallest a steeple may come out, in metres.
+ *
+ * The height is a multiple of the building's own, and for a church the map's
+ * height is often already the tower rather than the nave -- so the rule
+ * compounded and produced a seventy-three metre parish church. Fifty-five is
+ * about what the big ones here are.
+ */
+const STEEPLE_TALLEST = 55;
+
+/** What the map's numbers mean, in the order `worshipKind` writes them. */
+const WORSHIP_KINDS = ['church', 'chapel', 'synagogue'] as const;
+
 export function buildLayoutFromMap(
   map: MapData,
   options: MapWorldOptions = defaultMapWorldOptions,
@@ -552,8 +605,9 @@ export function buildLayoutFromMap(
   // the outline was reduced to and whether that box survived the story and
   // the railway.
   const signs: Sign[] = [];
+  const CELL = 60;
+  let standingOn: (x: number, z: number) => number | null = () => null;
   {
-    const CELL = 60;
     const grid = new Map<string, number[]>();
     const cell = (x: number, z: number) => `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`;
     buildings.forEach((building, index) => {
@@ -595,6 +649,7 @@ export function buildLayoutFromMap(
       }
       return nearest;
     };
+    standingOn = under;
 
     // One to a roof. Two shops in the same block of flats is common -- a
     // grocer and a filling station share a building on this map -- and two
@@ -635,6 +690,110 @@ export function buildLayoutFromMap(
         ),
         yaw,
       });
+    }
+  }
+
+  // --- Steeples ---------------------------------------------------------------
+  // On whatever building the map's place of worship turns out to be in, by
+  // the same rule the signs use -- and one to a building, because a church
+  // often carries both a `building=church` way and an `amenity` node inside
+  // it, which is two points and one church.
+  const steeples: Steeple[] = [];
+  {
+    const taken = new Set<number>();
+    for (const row of map.worship ?? []) {
+      const [x, z, which] = row;
+      if (x === undefined || z === undefined) continue;
+      const kind = WORSHIP_KINDS[which ?? 0] ?? 'church';
+      const index = standingOn(x, z);
+      if (index === null || taken.has(index)) continue;
+      const host = buildings[index]!;
+      // Not next to one that is already up -- see `STEEPLE_APART`.
+      if (
+        steeples.some(
+          (up) => Math.hypot(up.x - host.x, up.z - host.z) < STEEPLE_APART,
+        )
+      ) {
+        continue;
+      }
+      taken.add(index);
+
+      const shape = STEEPLE[kind];
+      // Rounded to a quarter of a metre here rather than on the way out, so
+      // that everything worked out from it -- where the tower stands as well
+      // as how wide it is -- agrees with the number that is finally written
+      // down. Rounded afterwards, the tower could overhang the end of its own
+      // nave by up to an eighth of a metre.
+      //
+      // The rounding is what lets two churches on much the same building come
+      // out identical and share one shape; see `city.ts`, which caches on it.
+      const across =
+        Math.round(
+          Math.min(shape.most, Math.max(shape.least, Math.min(host.width, host.depth) * shape.across)) * 4,
+        ) / 4;
+
+      // The building's long axis, in world metres. Local +X is its `width`,
+      // and this map turns a local direction by (cos, -sin).
+      const turn = host.yaw ?? 0;
+      const long =
+        host.width >= host.depth
+          ? { x: Math.cos(turn), z: -Math.sin(turn) }
+          : { x: Math.sin(turn), z: Math.cos(turn) };
+
+      // Which way the street is, which decides both which end of the nave the
+      // tower stands on and which way it looks. A church with its tower in
+      // the back yard is a church you cannot see from the road.
+      const street = streets.nearest(host.x, host.z, SIGN_STREET);
+      const out = street
+        ? { x: street.nearX - host.x, z: street.nearZ - host.z }
+        : { x: long.x, z: long.z };
+
+      // A tower stands at one end of the nave; a dome sits over the middle of
+      // the hall. That difference is most of what tells the two silhouettes
+      // apart from the air.
+      const along =
+        kind === 'synagogue' ? 0 : Math.max(0, Math.max(host.width, host.depth) / 2 - across / 2);
+      const towards = long.x * out.x + long.z * out.z >= 0 ? 1 : -1;
+
+      steeples.push({
+        kind,
+        x: host.x + long.x * along * towards,
+        z: host.z + long.z * along * towards,
+        yaw: -Math.atan2(out.x, -out.z),
+        // Rounded to a quarter of a metre, so that two churches on much the
+        // same building come out identical and share one shape between them
+        // -- `city.ts` caches on exactly these three numbers.
+        width: across,
+        height:
+          Math.round(
+            Math.min(host.height * shape.tower + shape.rise, STEEPLE_TALLEST - across * shape.spire) *
+              4,
+          ) / 4,
+        spire: Math.round(across * shape.spire * 4) / 4,
+      });
+
+      // Solid, in two parts. A tower is the tallest thing on most of these
+      // blocks and a bird has to be able to hit it and stand on it -- a
+      // fifty-five metre spire you fly through is worse than no spire.
+      //
+      // Two boxes rather than one because a spire tapers: boxed square to its
+      // full height, a church would stop a bird ten metres out from a cross
+      // three hundred millimetres thick. The masonry gets its own width and
+      // the spire half of it, which is about the middle of a cone.
+      const raised = steeples[steeples.length - 1]!;
+      boxes.push(turnedBox(raised.x, raised.z, raised.width, raised.height, raised.width, raised.yaw));
+      if (raised.spire > 0.5) {
+        const cap = turnedBox(
+          raised.x,
+          raised.z,
+          raised.width / 2,
+          raised.height + raised.spire,
+          raised.width / 2,
+          raised.yaw,
+        );
+        cap.minY = raised.height;
+        boxes.push(cap);
+      }
     }
   }
 
@@ -1221,6 +1380,7 @@ export function buildLayoutFromMap(
     boxes,
     crossings,
     signs,
+    steeples,
     roads: map.roads,
     bridges,
     rails: map.rails ?? [],

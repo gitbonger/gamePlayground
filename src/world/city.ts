@@ -1102,6 +1102,38 @@ export function buildWorld(
     group.add(decks);
   }
 
+  // --- Steeples ---------------------------------------------------------------
+  // One shape per size, not one per church. Sixty-seven of them on this map;
+  // a steeple is a pure function of its four numbers and the numbers are
+  // rounded to a quarter-metre where they are worked out, so churches on much
+  // the same building share a shape. Built once here and kept -- nothing
+  // rebuilds geometry per frame, as with the vehicles.
+  if (layout.steeples?.length) {
+    const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    disposables.push(material);
+    const towers = new Map<string, THREE.BufferGeometry>();
+
+    for (const steeple of layout.steeples) {
+      const key = `${steeple.kind}:${steeple.width}:${steeple.height}:${steeple.spire}`;
+      let shape = towers.get(key);
+      if (!shape) {
+        shape = buildSteepleGeometry(steeple);
+        towers.set(key, shape);
+        // Pushed where it is made, so a shape shared by six churches is
+        // disposed once rather than six times.
+        disposables.push(shape);
+      }
+
+      const mesh = new THREE.Mesh(shape, material);
+      mesh.position.set(steeple.x, 0, steeple.z);
+      mesh.rotation.y = steeple.yaw;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.name = 'steeple';
+      group.add(mesh);
+    }
+  }
+
   // --- Shop signs -----------------------------------------------------------
   // After the bridges and before the return, because a sign stands on a roof
   // and the roofs are already up.
@@ -2359,6 +2391,104 @@ function buildSigns(
   material.customProgramCacheKey = () => 'shop-sign';
 
   return { geometry, material };
+}
+
+
+/** Rendered masonry, a little paler than the crowd it stands in. */
+const STEEPLE_STONE = 0xb3a894;
+/**
+ * Oxidised copper, which is what a Budapest spire is.
+ *
+ * The whole point of the colour: at three streets' distance the shape is a
+ * grey wedge among grey wedges, and the green is what says "church" before
+ * the shape does.
+ */
+const STEEPLE_COPPER = 0x4e8f78;
+/** The slate a chapel's little roof is, which is not copper. */
+const STEEPLE_SLATE = 0x50535a;
+
+/**
+ * The tall part of a church, built to its own measurements.
+ *
+ * A pure function of the four numbers on a `Steeple` -- what sort, how thick,
+ * how tall, and how much spire -- and of nothing else. Where it stands is on
+ * the mesh, as it is for a tram, which is what lets two churches of a size
+ * share one shape.
+ */
+export function buildSteepleGeometry(spec: {
+  kind: 'church' | 'chapel' | 'synagogue';
+  width: number;
+  height: number;
+  spire: number;
+}): THREE.BufferGeometry {
+  const pieces: { geometry: THREE.BufferGeometry; color: number }[] = [];
+  const half = spec.width / 2;
+
+  if (spec.kind === 'synagogue') {
+    // A drum with a dome on it, and a lantern on the dome. No cross and no
+    // spire: a synagogue drawn as a church is worse than one drawn as a
+    // plain hall.
+    const drum = new THREE.CylinderGeometry(half, half, spec.height, 12);
+    drum.translate(0, spec.height / 2, 0);
+    pieces.push({ geometry: drum, color: STEEPLE_STONE });
+
+    const dome = new THREE.SphereGeometry(half * 1.05, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    dome.scale(1, Math.max(0.5, spec.spire / half), 1);
+    dome.translate(0, spec.height, 0);
+    pieces.push({ geometry: dome, color: STEEPLE_COPPER });
+
+    const finial = new THREE.CylinderGeometry(half * 0.06, half * 0.09, spec.spire * 0.5, 6);
+    finial.translate(0, spec.height + spec.spire + spec.spire * 0.2, 0);
+    pieces.push({ geometry: finial, color: STEEPLE_COPPER });
+  } else if (spec.kind === 'chapel') {
+    // A bellcote: a thin gable standing on the ridge with a little roof, and
+    // that is all. Ten of the sixty-seven places of worship here are chapels,
+    // and a chapel wearing a parish spire is not a chapel.
+    const post = new THREE.BoxGeometry(spec.width, spec.height, spec.width * 0.55);
+    post.translate(0, spec.height / 2, 0);
+    pieces.push({ geometry: post, color: STEEPLE_STONE });
+
+    const cap = new THREE.ConeGeometry(spec.width * 0.85, spec.spire, 4);
+    cap.rotateY(Math.PI / 4);
+    cap.translate(0, spec.height + spec.spire / 2, 0);
+    pieces.push({ geometry: cap, color: STEEPLE_SLATE });
+  } else {
+    // A square tower with a belfry opening near the top, and a spire.
+    const tower = new THREE.BoxGeometry(spec.width, spec.height, spec.width);
+    tower.translate(0, spec.height / 2, 0);
+    pieces.push({ geometry: tower, color: STEEPLE_STONE });
+
+    // The belfry: a darker band near the head of the tower, which is what
+    // reads as openings without being openings. Proud of the masonry by a few
+    // centimetres so it cannot fight the wall it sits on for pixels.
+    const belfry = new THREE.BoxGeometry(spec.width + 0.06, spec.height * 0.16, spec.width + 0.06);
+    belfry.translate(0, spec.height * 0.86, 0);
+    pieces.push({ geometry: belfry, color: 0x3a3a3e });
+
+    // A cornice, so the spire starts from something rather than growing out
+    // of the wall.
+    const cornice = new THREE.BoxGeometry(spec.width * 1.18, spec.width * 0.11, spec.width * 1.18);
+    cornice.translate(0, spec.height + spec.width * 0.055, 0);
+    pieces.push({ geometry: cornice, color: STEEPLE_STONE });
+
+    const spire = new THREE.ConeGeometry(half * 1.02, spec.spire, 4);
+    spire.rotateY(Math.PI / 4);
+    spire.translate(0, spec.height + spec.width * 0.11 + spec.spire / 2, 0);
+    pieces.push({ geometry: spire, color: STEEPLE_COPPER });
+
+    // And a cross on the top, as two thin bars.
+    const arm = spec.width * 0.22;
+    const bar = spec.width * 0.045;
+    const top = spec.height + spec.width * 0.11 + spec.spire;
+    const upright = new THREE.BoxGeometry(bar, arm * 2.1, bar);
+    upright.translate(0, top + arm, 0);
+    pieces.push({ geometry: upright, color: STEEPLE_COPPER });
+    const cross = new THREE.BoxGeometry(arm * 1.3, bar, bar);
+    cross.translate(0, top + arm * 1.35, 0);
+    pieces.push({ geometry: cross, color: STEEPLE_COPPER });
+  }
+
+  return painted(pieces);
 }
 
 /** Standard gauge, in metres: the distance between the inside faces of a pair. */
