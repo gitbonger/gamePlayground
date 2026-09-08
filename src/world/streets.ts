@@ -112,6 +112,15 @@ export interface MapData {
    * the air: something tall that is not a block of flats.
    */
   worship?: readonly (readonly number[])[];
+  /**
+   * Tram platforms, as flat runs of `x, z`: `[x0, z0, x1, z1, ...]`.
+   *
+   * The way the map drew the kerb, open -- most are two points, and the few
+   * closed ones are a depot yard or an underpass rather than an island. What
+   * a platform *is* is worked out at the other end, where the track is known:
+   * see `PLATFORM` in `from-map.ts`.
+   */
+  stops?: readonly (readonly number[])[];
 }
 
 /** A building outline, as the game wants it. */

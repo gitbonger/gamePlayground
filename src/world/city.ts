@@ -20,6 +20,7 @@ import {
   PUMP,
   penthouseOf,
   PERSON_HEIGHT,
+  SHELTER,
   terraceOf,
   type Building,
   type CityLayout,
@@ -722,6 +723,66 @@ export function buildWorld(
     });
     zebra.instanceMatrix.needsUpdate = true;
     group.add(zebra);
+  }
+
+  // --- Tram platforms -------------------------------------------------------
+  // The islands people wait on. The one piece of a tram stop that is a thing
+  // rather than a timetable, and the piece that says a street is a tram street
+  // even when no tram is on it: a long pale sliver lying down the middle of
+  // the carriageway, with huts on it.
+  //
+  // Three instanced meshes for the lot -- slab, hut, roof -- because they are
+  // three boxes repeated sixty-odd times and nothing about one of them differs
+  // except where it stands.
+  if (layout.platforms?.length) {
+    const concrete = new THREE.MeshLambertMaterial({ color: 0x9c9a92 });
+    // Dark, because a shelter is mostly glass with a frame round it and glass
+    // seen from above is whatever is behind it -- which here is the street.
+    const frame = new THREE.MeshLambertMaterial({ color: 0x33383c });
+    // And the roof pale, which is the whole of what one looks like from up
+    // there: a flat rectangle floating over a dark box.
+    const canopy = new THREE.MeshLambertMaterial({ color: 0xb9bcb8 });
+    disposables.push(concrete, frame, canopy);
+
+    const huts = layout.platforms.reduce((n, stop) => n + stop.shelters.length, 0);
+    const islands = new THREE.InstancedMesh(boxGeometry, concrete, layout.platforms.length);
+    const walls = new THREE.InstancedMesh(boxGeometry, frame, huts);
+    const roofs = new THREE.InstancedMesh(boxGeometry, canopy, huts);
+    islands.name = 'platforms';
+    for (const mesh of [islands, walls, roofs]) {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      // Spread over four kilometres, like everything else instanced here.
+      mesh.frustumCulled = false;
+      group.add(mesh);
+    }
+
+    let hut = 0;
+    layout.platforms.forEach((stop, i) => {
+      rotation.setFromAxisAngle(up, stop.yaw);
+      position.set(stop.x, stop.height / 2, stop.z);
+      scale.set(stop.width, stop.height, stop.depth);
+      matrix.compose(position, rotation, scale);
+      islands.setMatrixAt(i, matrix);
+
+      const cos = Math.cos(stop.yaw);
+      const sin = Math.sin(stop.yaw);
+      for (const at of stop.shelters) {
+        const x = stop.x + at * cos;
+        const z = stop.z - at * sin;
+        position.set(x, stop.height + SHELTER.tall / 2, z);
+        scale.set(SHELTER.long, SHELTER.tall, SHELTER.deep);
+        matrix.compose(position, rotation, scale);
+        walls.setMatrixAt(hut, matrix);
+
+        position.set(x, stop.height + SHELTER.tall + SHELTER.roof / 2, z);
+        scale.set(SHELTER.long + SHELTER.eaves * 2, SHELTER.roof, SHELTER.deep + SHELTER.eaves * 2);
+        matrix.compose(position, rotation, scale);
+        roofs.setMatrixAt(hut, matrix);
+        hut += 1;
+      }
+    });
+    for (const mesh of [islands, walls, roofs]) mesh.instanceMatrix.needsUpdate = true;
   }
 
   // --- Finishing lines ------------------------------------------------------

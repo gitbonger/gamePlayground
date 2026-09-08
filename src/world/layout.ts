@@ -647,6 +647,49 @@ export interface Footprint {
   height: number;
 }
 
+/**
+ * A tram platform: the island people stand on, beside the running line.
+ *
+ * A box rather than the way the map drew it. Half of them come down as a
+ * two-node line with no width at all -- the map is saying where the kerb runs
+ * and leaving the rest to whoever needs it -- and the six that are closed
+ * rings are a depot yard and an underpass, whose real outline is not a
+ * platform shape. So the line decides where it is and how long, and how wide
+ * is a fact about trams.
+ */
+export interface Platform {
+  x: number;
+  z: number;
+  /** Along the track. */
+  width: number;
+  /** Across it. */
+  depth: number;
+  yaw: number;
+  /** Kerb height above the carriageway. */
+  height: number;
+  /**
+   * Where the shelters stand, as distances along the platform from its middle.
+   *
+   * Decided here rather than by the renderer, because a shelter is a thing you
+   * can perch on: worked out at draw time it would be drawn in one place and
+   * solid in another, or solid nowhere. Empty for a short stop, which in this
+   * district is a pole and a flag and nothing to stand under.
+   */
+  shelters: readonly number[];
+}
+
+/**
+ * A tram shelter, in metres.
+ *
+ * `long` is three or four people out of the rain, `deep` a little narrower
+ * than the island so it does not overhang its own kerb, and `tall` a shade
+ * over head height. The roof oversails on all four sides, which is the whole
+ * silhouette of one from above -- a flat pale rectangle floating on a dark
+ * box -- and from a pigeon's altitude the roof is the only part of it that is
+ * ever seen.
+ */
+export const SHELTER = { long: 4.6, deep: 1.9, tall: 2.4, roof: 0.16, eaves: 0.35 } as const;
+
 export interface CityLayout {
   buildings: Building[];
   trees: Tree[];
@@ -666,6 +709,8 @@ export interface CityLayout {
   signs?: Sign[];
   /** Towers, spires and domes on the buildings the map calls churches. */
   steeples?: Steeple[];
+  /** Tram platforms, where the map recorded any. */
+  platforms?: Platform[];
   /** Solid volumes for every object above, in simulation coordinates. */
   boxes: Box[];
   /** Streets to draw, when the world was built from a real map. */

@@ -47,6 +47,8 @@ import {
   STREET_TREE,
   type Footprint,
   type Sign,
+  type Platform,
+  SHELTER,
   type Steeple,
   type Building,
   type Bush,
@@ -375,6 +377,30 @@ const STEEPLE_APART = 35;
  * about what the big ones here are.
  */
 const STEEPLE_TALLEST = 55;
+
+/**
+ * A tram platform, in metres.
+ *
+ * `wide` is a fact about trams rather than about the map: half the platforms
+ * come down as a two-node line with no width at all. Two and a half metres is
+ * a Budapest island -- room to stand two deep and let a pram past.
+ *
+ * `clear` is what keeps the two apart. A tram body is 2.4 m, so 1.2 m from
+ * the centreline is the side of the car; 1.6 m leaves a hand's width and is
+ * about where a real platform edge stands. Measured on this map, four of the
+ * sixty-six sit inside that -- the Baross depot yard and the island under the
+ * Erzsébet királyné útja underpass, both drawn as areas that take the track
+ * in -- so the near edge is *held* at this rather than trusted to it, and
+ * anything that cannot be pushed clear without leaving its own line behind is
+ * dropped.
+ *
+ * `rise` is the kerb: a step up, not a stage.
+ *
+ * `sheltered` is how long a platform has to be before one is drawn on it. The
+ * short ones are single-ended stops in a side street with a pole and nothing
+ * else.
+ */
+const PLATFORM = { wide: 2.5, clear: 1.6, rise: 0.25, sheltered: 30, perShelter: 45, shove: 4 };
 
 /** What the map's numbers mean, in the order `worshipKind` writes them. */
 const WORSHIP_KINDS = ['church', 'chapel', 'synagogue'] as const;
@@ -966,6 +992,135 @@ export function buildLayoutFromMap(
     });
   }
 
+  /**
+   * Tram platforms, squared up and pushed clear of the track.
+   *
+   * The map gives a line and nothing else: where the kerb runs, and for six
+   * of the sixty-six a closed ring round a depot or an underpass. So the line
+   * is asked for two things only -- where it is and which way it runs -- and
+   * the rest is a fact about trams. See `PLATFORM`.
+   *
+   * Pushed rather than trusted. A platform drawn over its own track is a
+   * platform a tram drives through, and no amount of care in the survey makes
+   * that not happen; measuring the track and shoving the slab off it makes it
+   * not happen whatever the survey says.
+   */
+  /**
+   * Where the shelters stand on a platform of this length.
+   *
+   * One in the middle of a short island, and one every so often along a long
+   * one: a hundred and twenty metres of platform with a single hut at the
+   * midpoint is a platform nobody could shelter on. Spread evenly and kept
+   * off the ends, so the last one does not hang over the ramp.
+   */
+  const shelteredAt = (along: number): number[] => {
+    if (along < PLATFORM.sheltered) return [];
+    const many = Math.max(1, Math.floor(along / PLATFORM.perShelter));
+    if (many === 1) return [0];
+    const span = along - SHELTER.long * 2;
+    return Array.from({ length: many }, (_, i) => ((i + 0.5) / many - 0.5) * span);
+  };
+
+  const platforms: Platform[] = [];
+  for (const row of map.stops ?? []) {
+    const ring: [number, number][] = [];
+    for (let i = 0; i + 1 < row.length; i += 2) ring.push([row[i]!, row[i + 1]!]);
+    if (ring.length < 2) continue;
+
+    // Where it is and which way it runs. Three points or more get the box,
+    // whose long side is the platform however bent the line is; two points
+    // are the line itself.
+    const box = ring.length >= 3 ? orientedBox(ring) : null;
+    const along = box
+      ? Math.max(box.width, box.depth)
+      : Math.hypot(ring[1]![0] - ring[0]![0], ring[1]![1] - ring[0]![1]);
+    const yaw =
+      box && box.width >= box.depth
+        ? box.yaw
+        : box
+          ? box.yaw + Math.PI / 2
+          : Math.atan2(-(ring[1]![1] - ring[0]![1]), ring[1]![0] - ring[0]![0]);
+    let x = box ? box.x : (ring[0]![0] + ring[1]![0]) / 2;
+    let z = box ? box.z : (ring[0]![1] + ring[1]![1]) / 2;
+    if (along < 8) continue;
+
+    // Off the track -- the whole slab, not its middle.
+    //
+    // Measuring the centre is not enough twice over. A platform beside a
+    // curve has its middle clear and its ends swung in, and an island sits
+    // *between* the two directions, so shoving it off the nearer track walks
+    // it into the further one. What has to be true is that no corner of the
+    // slab is within a car's half-width of any centreline, and the only way
+    // to know that is to ask along its whole length.
+    //
+    // So: the smallest sideways shift that clears everything, or nothing at
+    // all. Tried in quarter metres out to a few, both ways, nearest first --
+    // a platform that has to be carried further than that is not a platform
+    // this rule understands, it is a yard drawn as one.
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
+    /** How near this slab comes to a running line, sitting `off` to one side. */
+    const nearestRail = (off: number) => {
+      let least = Infinity;
+      // Both long edges, along the length. Five stations plus the ends is
+      // enough for a platform against a street corner's radius.
+      const steps = Math.max(4, Math.ceil(along / 8));
+      for (let i = 0; i <= steps; i += 1) {
+        const run = (i / steps - 0.5) * along;
+        for (const side of [-PLATFORM.wide / 2, PLATFORM.wide / 2]) {
+          const across = side + off;
+          const at = anyTrack.nearest(x + run * cos + across * sin, z - run * sin + across * cos, 30);
+          if (at) least = Math.min(least, at.distance);
+        }
+      }
+      return least;
+    };
+    let offset: number | null = null;
+    for (let step = 0; step * 0.25 <= PLATFORM.shove; step += 1) {
+      const tries = step === 0 ? [0] : [step * 0.25, -step * 0.25];
+      const fits = tries.find((off) => nearestRail(off) >= PLATFORM.clear);
+      if (fits !== undefined) {
+        offset = fits;
+        break;
+      }
+    }
+    if (offset === null) continue;
+    x += offset * sin;
+    z += offset * cos;
+
+    // The shelters are solid, which is what makes them worth having: the
+    // island itself is a step, and a step is ground -- but a hut with a flat
+    // roof two and a half metres up, in the middle of a street, is somewhere
+    // to land. The slab is not given a box: at a quarter of a metre it is a
+    // kerb, and a kerb the collider knows about is a wall to fly into at
+    // ankle height.
+    for (const at of shelteredAt(along)) {
+      boxes.push(
+        turnedBox(
+          x + at * cos,
+          z - at * sin,
+          SHELTER.long,
+          PLATFORM.rise + SHELTER.tall + SHELTER.roof,
+          SHELTER.deep,
+          yaw,
+        ),
+      );
+    }
+
+    platforms.push({
+      x,
+      z,
+      width: along,
+      depth: PLATFORM.wide,
+      yaw,
+      height: PLATFORM.rise,
+      // One in the middle of a short island, and one every so often along a
+      // long one -- a hundred and twenty metres of platform with a single hut
+      // at the midpoint is a platform nobody could shelter on.
+      shelters: shelteredAt(along),
+    });
+  }
+
   const blocks = extractBlocks(map.roads, {
     minArea: options.minBlockArea,
     maxArea: options.maxBlockArea,
@@ -1501,6 +1656,7 @@ export function buildLayoutFromMap(
     people,
     boxes,
     crossings,
+    platforms,
     plans,
     signs,
     steeples,

@@ -89,7 +89,9 @@ const ROAD_WIDTHS: Record<string, number> = {
  *
  * Everything else OpenStreetMap files under `railway` is left out: platforms
  * and ventilation shafts are not track, and `razed`, `abandoned` and `disused`
- * alignments are lines that are no longer there to see.
+ * alignments are lines that are no longer there to see. Tram platforms do come
+ * down, as `stops` -- see the furniture query -- but as things standing beside
+ * a railway rather than as railway.
  */
 /**
  * How finely a building outline is kept, in metres.
@@ -319,8 +321,18 @@ async function main() {
     `[out:json][timeout:180];(` +
       `node["highway"="crossing"]["crossing"~"^(marked|zebra|traffic_signals)$"](${bbox});` +
       `node["natural"="tree"](${bbox});` +
+      // Tram platforms: the islands people stand on, which is the one piece
+      // of a tram stop that is a thing rather than a timetable. Ways rather
+      // than the `railway=tram_stop` nodes, because a node says a service
+      // calls here and a way says where the kerb is -- and the kerb is what
+      // there is to see from the air.
+      //
+      // Rides along with the rest of the street furniture rather than in a
+      // query of its own: it is fifty ways, and a round trip costs more than
+      // they do.
+      `way["public_transport"="platform"]["tram"="yes"](${bbox});` +
       `);out geom;`,
-    'crossings and trees',
+    'crossings, trees and tram platforms',
   );
 
   // The handful of places worth putting a name on, and the churches. Both are
@@ -511,7 +523,28 @@ async function main() {
   // buildings are stored as arrays.
   const crossings: number[][] = [];
   const trees: number[][] = [];
+  /**
+   * Tram platforms, as flat runs of `x, z` the way a building plan is.
+   *
+   * Kept as drawn rather than reduced to a box here. Six of the fifty are
+   * closed rings -- a depot yard, the island under the Erzsébet királyné útja
+   * underpass -- and which ones those are is not a fact this end should be
+   * making decisions about. The world builder measures them, and it is the
+   * end that knows where the track ended up.
+   */
+  const stops: number[][] = [];
   for (const element of dotted.elements) {
+    if (element.type === 'way') {
+      if (!element.geometry || element.geometry.length < 2) continue;
+      rawPoints += element.geometry.length;
+      // Half a metre, which is finer than a road gets: a platform is two and
+      // a half metres wide and thinning it at a road's metre and a half would
+      // straighten the very corners that say how long it is.
+      const points = toLocal(element.geometry, 0.5);
+      if (points.length < 2) continue;
+      stops.push(points.flatMap(([x, z]) => [x!, z!]));
+      continue;
+    }
     if (element.lat === undefined || element.lon === undefined) continue;
     const at = [
       Math.round((element.lon - lon) * perDegree.lon * 10) / 10,
@@ -566,6 +599,7 @@ async function main() {
         plans,
         crossings,
         trees,
+        stops,
         brands,
         signs,
         worship,
@@ -576,7 +610,9 @@ async function main() {
   );
 
   const kb = (
-    Buffer.byteLength(JSON.stringify({ roads, bridges, rails, areas, plans, crossings, trees, brands, signs, worship })) / 1024
+    Buffer.byteLength(
+      JSON.stringify({ roads, bridges, rails, areas, plans, crossings, trees, stops, brands, signs, worship }),
+    ) / 1024
   ).toFixed(0);
   process.stderr.write(
     `${roads.length} roads, ${bridges.length} bridges and ${rails.length} railways ` +
@@ -585,6 +621,7 @@ async function main() {
       `(${plans.filter((b) => b[0] !== null).length} of them saying how tall, ` +
       `${plans.reduce((n, b) => n + (b.length - 1) / 2, 0)} corners between them), ` +
       `${crossings.length} crossings, ${trees.length} trees, ` +
+      `${stops.length} tram platforms, ` +
       `${signs.length} shop signs of ${brands.length} brands, ${worship.length} churches, ` +
       `${rawPoints} points before thinning, ${kb} kB -> ${out}\n`,
   );

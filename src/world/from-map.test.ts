@@ -7,6 +7,7 @@ import {
   pointOn,
   PUMP,
   SPECIES,
+  SHELTER,
   STREET_TREE,
   terraceOf,
   type Landmark,
@@ -2174,5 +2175,75 @@ describe('where a tree may not stand', () => {
     // And the verge is still planted: the rule is the carriageway, not a
     // setback of its own.
     expect(world.trees.some((tree) => Math.abs(tree.z) < 10)).toBe(true);
+  });
+});
+
+describe('tram platforms', () => {
+  const map = homeMap as unknown as MapData;
+  const city = buildLayoutFromMap(map, defaultMapWorldOptions);
+  const platforms = city.platforms ?? [];
+  const rails = indexStreets(map.rails ?? []);
+  /** Half a tram body, which is what a platform must not be inside of. */
+  const BODY = 2.4 / 2;
+
+  const corners = (stop: (typeof platforms)[number]) => {
+    const cos = Math.cos(stop.yaw);
+    const sin = Math.sin(stop.yaw);
+    return ([
+      [-stop.width / 2, -stop.depth / 2],
+      [stop.width / 2, -stop.depth / 2],
+      [stop.width / 2, stop.depth / 2],
+      [-stop.width / 2, stop.depth / 2],
+    ] as [number, number][]).map(([dx, dz]) => ({
+      x: stop.x + dx * cos + dz * sin,
+      z: stop.z - dx * sin + dz * cos,
+    }));
+  };
+
+  it('builds one for nearly every way the map drew', () => {
+    // Nearly, not all: two of the sixty-six are a depot yard and the island
+    // under an underpass, both drawn as areas that take the track in, and
+    // neither can be stood anywhere that is not on a running line.
+    expect(platforms.length).toBeGreaterThan(60);
+    expect(platforms.length).toBeLessThanOrEqual((map.stops ?? []).length);
+  });
+
+  it('never puts one where a tram would drive through it', () => {
+    // The whole question, and the reason the slab is pushed off the track
+    // rather than trusted to be clear of it. Every corner, not the middle: a
+    // platform beside a curve has its middle clear and its ends swung in.
+    for (const stop of platforms) {
+      for (const at of corners(stop)) {
+        const rail = rails.nearest(at.x, at.z, 40);
+        if (!rail) continue;
+        expect(rail.distance, `platform at ${stop.x.toFixed(0)},${stop.z.toFixed(0)}`).toBeGreaterThan(BODY);
+      }
+    }
+  });
+
+  it('keeps them beside the line rather than carrying them off it', () => {
+    // The other half of that. A rule that only had to get the slab off the
+    // track could put it on the pavement, and a tram platform on the pavement
+    // is not a tram platform. Everything built is still within a few metres
+    // of a running line.
+    for (const stop of platforms) {
+      const rail = rails.nearest(stop.x, stop.z, 40);
+      expect(rail, `platform at ${stop.x.toFixed(0)},${stop.z.toFixed(0)}`).not.toBeNull();
+      expect(rail!.distance).toBeLessThan(12);
+    }
+  });
+
+  it('puts a shelter on the long ones and none on the short', () => {
+    const short = platforms.filter((stop) => stop.width < 25);
+    const long = platforms.filter((stop) => stop.width > 60);
+    expect(long.length).toBeGreaterThan(3);
+    for (const stop of long) expect(stop.shelters.length, `${stop.width} m`).toBeGreaterThan(0);
+    for (const stop of short) expect(stop.shelters, `${stop.width} m`).toEqual([]);
+    // And a shelter stands on its platform rather than off the end of it.
+    for (const stop of platforms) {
+      for (const at of stop.shelters) {
+        expect(Math.abs(at) + SHELTER.long / 2, `${stop.width} m`).toBeLessThanOrEqual(stop.width / 2);
+      }
+    }
   });
 });
