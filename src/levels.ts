@@ -597,6 +597,21 @@ export interface Level {
    */
   escort: boolean;
   /**
+   * Whether the map may say where she is.
+   *
+   * Off by default, because for most of the game the whole question is where
+   * she is: she is taken on `Teleki tér` and not found again until the loft,
+   * and a pink dot over the trapper's roof in between would be the answer to
+   * the five levels that are the asking.
+   *
+   * On at the two ends of that. Before it she is on the branch he left her
+   * on and he knows it; after it she is in a cage on a roof he has stood on,
+   * and he knows that too. The loft itself is neither -- it turns on the
+   * instant his feet touch the roof, which is a thing that happens during
+   * the level rather than a fact about it: see `foundHer` in `main.ts`.
+   */
+  hersKnown?: boolean;
+  /**
    * Whether the wings tire on this level at all.
    *
    * Off everywhere but one. Stamina is the cost of flapping and the reason a
@@ -823,6 +838,11 @@ export const crossed = (line: Line, x: number, z: number): boolean =>
  * kill on levels that have nothing to do with them -- was invisible from
  * anywhere the levels themselves are described.
  */
+/**
+ * Whether this level puts her on the map. See `Level.hersKnown`.
+ */
+export const hersOnMap = (level: Level): boolean => level.hersKnown ?? false;
+
 export const crowsOn = (level: Level): boolean => level.crows ?? false;
 
 export const LEVELS: readonly Level[] = [
@@ -845,6 +865,8 @@ export const LEVELS: readonly Level[] = [
     health: 0.2,
     when: EVENING,
     escort: false,
+    // She is three feet away. There is nothing to give away yet.
+    hersKnown: true,
     target: { kind: 'landmark', name: HOME_TREE.name },
     // The pink one, and the only bird in the game wearing her colours. She
     // stands beside the nest rather than on it.
@@ -884,6 +906,9 @@ export const LEVELS: readonly Level[] = [
     // most needs it: half a kilometre of nothing but trees.
     escort: true,
     flock: 10,
+    // Still on the branch, and he has no reason to think otherwise: this is
+    // the errand, and it is a morning like any other until he gets back.
+    hersKnown: true,
     // The same slab the next level is about: the arrow points at the food for
     // the whole way there, because that is what he is doing. This half is
     // over when he is halfway, and nobody is standing on the line.
@@ -1123,7 +1148,8 @@ export const LEVELS: readonly Level[] = [
     health: 1,
     when: EVENING,
     escort: false,
-    // The one level the wings do not tire on -- see `tireless`.
+    // The one level with something to do on it where the wings do not tire
+    // -- see `tireless`. The two after the ending do not either.
     tireless: true,
     target: { kind: 'landmark', name: LOFT.name },
     // Her, in the cage, and nobody else. There used to be somebody who lives
@@ -1158,6 +1184,10 @@ export const LEVELS: readonly Level[] = [
     // map is west or south of here, and aiming at one of those would be an
     // arrow pointing over the player's shoulder.
     target: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' },
+    // He has stood on that roof and seen her in the cage. Where she is has
+    // stopped being the question -- getting her out of it is -- so the map
+    // says so, and keeps saying so until she is flying beside him.
+    hersKnown: true,
     // Nobody at the end of it -- a level finished by flying through a line
     // has nobody standing there, which is the rule that keeps the three
     // finishes apart. She is on the loft terrace, as she is in every level
@@ -1187,6 +1217,10 @@ export const LEVELS: readonly Level[] = [
     when: EVENING,
     escort: false,
     target: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' },
+    // He has stood on that roof and seen her in the cage. Where she is has
+    // stopped being the question -- getting her out of it is -- so the map
+    // says so, and keeps saying so until she is flying beside him.
+    hersKnown: true,
     cast: [
       { who: 'White', on: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' }, along: 2.5, across: 0 },
       { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 },
@@ -1218,6 +1252,10 @@ export const LEVELS: readonly Level[] = [
     // level's objective; it is this level's direction, which is what a
     // target is for on a level that ends at a line.
     target: { kind: 'landmark', name: LOFT.name },
+    // He has stood on that roof and seen her in the cage. Where she is has
+    // stopped being the question -- getting her out of it is -- so the map
+    // says so, and keeps saying so until she is flying beside him.
+    hersKnown: true,
     // Nobody: a level finished by flying through a line has nobody standing
     // at the end of it. She is on the terrace, as she has been since the
     // park.
@@ -1252,6 +1290,10 @@ export const LEVELS: readonly Level[] = [
     escort: true,
     flock: 30,
     target: { kind: 'landmark', name: LOFT.name },
+    // He has stood on that roof and seen her in the cage. Where she is has
+    // stopped being the question -- getting her out of it is -- so the map
+    // says so, and keeps saying so until she is flying beside him.
+    hersKnown: true,
     // Her, and nobody else. The whole flight is for her, so the bird waiting
     // at the end of it is the one in the cage -- there is no third party to
     // be met on the roof and finding somebody else there would be the level
@@ -1290,6 +1332,10 @@ export const LEVELS: readonly Level[] = [
     // with him.
     flockBall: 7.5,
     flockAhead: 15,
+    // And nothing is being tested. These two are somewhere to go rather than
+    // something to get through: a flight that ends because the wings gave out
+    // is a failure, and there is nothing here to fail at. Same as the loft.
+    tireless: true,
     // Nothing is being taught any more, and nothing is hunting.
     teaches: false,
     // Nobody standing anywhere: she is flying, and everyone else has been
@@ -1318,6 +1364,10 @@ export const LEVELS: readonly Level[] = [
     // himself or with strangers, and her coming is what the ending is -- so a
     // second level with her in it would spend the ending twice.
     escort: false,
+    // And nothing is being tested. These two are somewhere to go rather than
+    // something to get through: a flight that ends because the wings gave out
+    // is a failure, and there is nothing here to fail at. Same as the loft.
+    tireless: true,
     // Nothing is being taught any more, and nothing is hunting.
     teaches: false,
     // Nobody standing anywhere, nothing aimed at, and no way to finish it.

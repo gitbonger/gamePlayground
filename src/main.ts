@@ -54,6 +54,7 @@ import {
   CHARACTERS,
   crossed,
   crowsOn,
+  hersOnMap,
   lineThrough,
   dialogueOf,
   cagedIn,
@@ -2198,6 +2199,41 @@ function arrived(): boolean {
   );
 }
 
+/**
+ * Where to put her dot on the map, or null for not at all.
+ *
+ * Three cases, in the order they outrank each other. Flying with him she is
+ * her own bird in the flock and that is where she is, whatever any level says
+ * she is standing on. Otherwise it is a question about the story: the map may
+ * only say where she is on the levels that say he knows -- see
+ * `Level.hersKnown` -- because between the branch and the loft the whole game
+ * is looking for her, and a pink dot on the trapper's roof would hand over
+ * five levels' worth of answer.
+ *
+ * And the loft itself, which is neither. He does not know when it begins and
+ * does know by the time it ends, so it turns on at the moment in between:
+ * his feet on the roof she is caged on. `arrived` is exactly that moment --
+ * it is what puts the crows away too -- and the level goes on for as long as
+ * it takes him to walk over to her, which is the part of it she should be on
+ * the map for.
+ */
+function hersDot(hersAt: number | null): { x: number; z: number } | null {
+  if (escorted && hersAt !== null) {
+    const flying = flock.members[hersAt];
+    if (flying && flying.down <= 0) {
+      return { x: flying.state.position.x, z: flying.state.position.z };
+    }
+  }
+  const spec = LEVELS[level];
+  if (!spec) return null;
+  const ends = spec.finish;
+  const found =
+    hersOnMap(spec) || (ends.kind === 'meeting' && ends.who === PINK.name && arrived());
+  if (!found) return null;
+  const her = residents.find((resident) => resident.who.name === PINK.name);
+  return her?.here ? { x: her.state.position.x, z: her.state.position.z } : null;
+}
+
 function reachLevel(): void {
   // Anyone at all, not just the one this level is about: standing with a
   // pigeon is standing with a pigeon, and the camera should say so.
@@ -3053,14 +3089,8 @@ function frame(nowMs: number) {
             : [{ x: member.state.position.x, z: member.state.position.z }],
         )
       : [],
-    // And her, pulled out of them, on the levels where the flock is her.
-    her:
-      escorted && hersAt !== null && (flock.members[hersAt]?.down ?? 1) <= 0
-        ? {
-            x: flock.members[hersAt]!.state.position.x,
-            z: flock.members[hersAt]!.state.position.z,
-          }
-        : null,
+    // And her, wherever she is worth marking.
+    her: hersDot(hersAt),
     // Only the ones actually in the air on a level that has them. The flock
     // of crows exists all game and is held down on the twelve levels that are
     // not about it, so drawing the members without asking would put eight

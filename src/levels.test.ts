@@ -5,6 +5,7 @@ import {
   crossed,
   crossingLine,
   crowsOn,
+  hersOnMap,
   lineThrough,
   dialogueOf,
   BELLY_FULL,
@@ -965,18 +966,28 @@ describe('what the levels aim at', () => {
     }
   });
 
-  it('tires the wings everywhere but the one level built for looking', () => {
+  it('tires the wings on every level there is a way to fail', () => {
     // Stamina is the cost of flapping and the reason a long leg has to be
     // glided rather than beaten out. Taking it away takes away most of what
     // makes flying a decision, so it is not a kindness handed out wherever a
     // level is hard -- which is what this is here to stop.
+    //
+    // Two sorts of level may have it. The one built for looking, and the ones
+    // with no way to finish at all: a flight that ends because the wings gave
+    // out is a failure, and a level you cannot fail is not a level you should
+    // be able to fail at by running down a bar.
     const free = LEVELS.filter((level) => level.tireless);
-    expect(free.map((level) => level.name)).toEqual(['The Loft']);
+    expect(free.map((level) => level.name)).toEqual(['The Loft', 'Everafter', 'Andrássy']);
+    for (const level of free.slice(1)) expect(level.finish.kind, level.name).toBe('free');
+    // And every level with nothing to finish has it, not just some of them.
+    for (const level of LEVELS) {
+      if (level.finish.kind === 'free') expect(level.tireless, level.name).toBe(true);
+    }
 
-    // And it is the one released highest, which is the reason: what the
-    // player should be doing up there is looking at the district they have
-    // just spent four levels crossing, and a bar that empties while they
-    // look is a bar telling them to stop looking.
+    // The looking one is the level released highest, which is the reason for
+    // it: what the player should be doing up there is looking at the district
+    // they have just spent four levels crossing, and a bar that empties while
+    // they look is a bar telling them to stop looking.
     const highest = Math.max(...LEVELS.map((level) => level.release));
     expect(free[0]!.release).toBe(highest);
   });
@@ -1566,3 +1577,47 @@ function handovers(turn: Turn): string[] {
   }
   return found;
 }
+
+describe('what the map is allowed to say about her', () => {
+  const named = (name: string) => LEVELS.find((level) => level.name === name)!;
+
+  it('marks her while he still knows where she is', () => {
+    // She is standing next to him on the first, and on the branch he left her
+    // on for the second. Neither gives anything away.
+    expect(hersOnMap(named('Nest'))).toBe(true);
+    expect(hersOnMap(named('Temető'))).toBe(true);
+  });
+
+  it('goes quiet from the level she is taken to the level she is found', () => {
+    // The whole middle of the game is looking for her, and a pink dot over
+    // the trapper's roof is the answer to all of it. `Teleki tér` is where
+    // she goes -- the cast says so -- and `The Loft` is where he finds her,
+    // which is a thing that happens *during* that level rather than a fact
+    // about it: see `hersDot` in `main.ts`.
+    for (const name of [
+      'Teleki tér',
+      'Mátyás tér',
+      'Jani Pali tér',
+      'Népszínház',
+      'Blaha',
+      'The Loft',
+    ]) {
+      expect(hersOnMap(named(name)), name).toBe(false);
+    }
+  });
+
+  it('marks her again once he has stood on the roof she is caged on', () => {
+    for (const name of ['Fiumei út', 'Keleti', 'Coming on strong', 'The rescue']) {
+      expect(hersOnMap(named(name)), name).toBe(true);
+    }
+  });
+
+  it('has a way to turn her on at the loft, since the level cannot', () => {
+    // The rule `main.ts` uses is "a level finished by meeting her, arrived
+    // at". This is the half of it that lives here: the loft is finished by
+    // meeting her, and it is the only one of the quiet levels that is.
+    const loft = named('The Loft');
+    expect(loft.finish.kind).toBe('meeting');
+    expect(loft.finish.kind === 'meeting' && loft.finish.who).toBe(PINK.name);
+  });
+});
