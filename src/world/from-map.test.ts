@@ -2074,39 +2074,48 @@ describe('what a building is solid as', () => {
 
 describe('inventing trees, or not', () => {
   const wooded = mapOf(BLOCK, [PARK]);
+  const BARE = { ...defaultMapWorldOptions, inventsTrees: false };
 
-  it('plants none of its own while the switch is off', () => {
-    // Off for now, so that what the map records can be looked at on its own:
-    // the eight hundred street trees somebody actually walked past and wrote
-    // down, and nothing invented around them.
-    expect(buildLayoutFromMap(wooded, defaultMapWorldOptions).trees).toEqual([]);
+  it('plants its own by default', () => {
+    // It was turned off once, to see the district with only the trees
+    // somebody had recorded standing in a street: 763 of them against 12,656.
+    // OpenStreetMap maps street trees well and park trees hardly at all, so
+    // "only what is on the map" came out as lines of trees along a few roads
+    // and a cemetery of bare grass -- and the cemetery is a level.
+    expect(defaultMapWorldOptions.inventsTrees).toBe(true);
+    expect(buildLayoutFromMap(wooded, defaultMapWorldOptions).trees.length).toBeGreaterThan(10);
   });
 
-  it('still plants them when it is on, so the feature is only asleep', () => {
-    // Not deleted. Every number that says how thickly to plant is still
-    // there, and this is the whole of putting the wood back.
-    expect(buildLayoutFromMap(wooded, PLANTED).trees.length).toBeGreaterThan(10);
+  it('plants none of its own when asked not to', () => {
+    // The switch is kept because the question was worth being able to ask
+    // again: it is a decision rather than a fact.
+    expect(buildLayoutFromMap(wooded, BARE).trees).toEqual([]);
   });
 
   it('keeps the street trees either way', () => {
     // Those are not invented: somebody recorded each of them standing in a
-    // street, and they are the reason the switch exists.
-    const streeted = { ...wooded, trees: [[30, 30], [45, 30], [60, 30]] };
-    const off = buildLayoutFromMap(streeted as MapData, defaultMapWorldOptions).trees;
+    // street, and they are the reason the switch exists at all.
+    const streeted = { ...wooded, trees: [[30, 30], [45, 30], [60, 30]] } as MapData;
+    const off = buildLayoutFromMap(streeted, BARE).trees;
     expect(off.length).toBe(3);
     expect(off.every((tree) => tree.species === STREET_TREE)).toBe(true);
+
+    // And they are still all there among the planted ones.
+    const on = buildLayoutFromMap(streeted, defaultMapWorldOptions).trees;
+    expect(on.filter((tree) => tree.species === STREET_TREE)).toHaveLength(3);
   });
 
   it('still lays the gravestones with the planting switched off', () => {
     // The stones are laid by the same walk over the ground that plants the
-    // trees, and turning the trees off must not empty the cemetery -- a
-    // district with no burial ground in it is a district missing a level.
+    // trees, so the switch goes inside that walk rather than around it.
+    // Turning the trees off must not empty the cemetery: a district with no
+    // burial ground in it is a district missing a level.
     const burial: Area = {
       kind: 'park',
       points: [[10, 10], [190, 10], [190, 190], [10, 190]],
     };
     const yard = buildLayoutFromMap(mapOf(BLOCK, [burial]), {
-      ...defaultMapWorldOptions,
+      ...BARE,
       // The middle of it, which is what names it as a burial ground.
       cemetery: { x: 100, z: 100 },
     });

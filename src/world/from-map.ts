@@ -132,15 +132,19 @@ export interface MapWorldOptions {
   /**
    * Whether to plant any of them.
    *
-   * Off, for now, so that what is on the map can be looked at on its own: the
-   * eight hundred street trees somebody actually recorded standing in a
-   * street, and nothing invented around them. Everything above still says how
-   * thickly to plant, and turning this back on is the whole of putting the
-   * wood back.
+   * On. It was turned off once, to see what the district looked like with
+   * only the trees somebody had actually recorded standing in a street: 763
+   * of them against 12,656. The answer is that OpenStreetMap maps street
+   * trees well and park trees hardly at all, so "only what is on the map"
+   * comes out as lines of trees along a few roads and a cemetery of bare
+   * grass -- and the cemetery is a level.
+   *
+   * Kept as a switch because the question was worth being able to ask again,
+   * and because the answer is a decision rather than a fact.
    *
    * It does not stop the walk over the ground, only the tree at the end of
-   * it. The same walk lays the gravestones in the cemetery, and a district
-   * with no burial ground in it is a district missing a level.
+   * it. The same walk lays the gravestones in the cemetery, and turning the
+   * trees off must not empty the burial ground.
    */
   inventsTrees: boolean;
   seed: number;
@@ -193,7 +197,7 @@ export const defaultMapWorldOptions: MapWorldOptions = {
   spacing: 9,
   parkTrees: 19,
   gardenTrees: 60,
-  inventsTrees: false,
+  inventsTrees: true,
   trainReach: 40,
   seed: 11,
 };
