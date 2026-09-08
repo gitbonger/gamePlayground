@@ -24,11 +24,13 @@ import {
   type Building,
   type CityLayout,
   type Landmark,
+  type Footprint,
   type Sign,
   type Station,
 } from './layout';
 import type { Rail, Road } from './streets';
 import { DECK, deckOf, type Bridge } from './bridges';
+import { insetRing, orientedBox, shoelace } from './plans';
 import { CARRIAGE, ENGINE, TRAM, WAGON, type Train, type Vehicle } from './train';
 import { defaultSmokeOptions, puffOpacity, puffRadius, type Puff } from './smoke';
 import { SEED_SIZE } from './seeds';
@@ -479,23 +481,10 @@ export function buildWorld(
   group.add(ground);
   disposables.push(groundGeometry, groundMaterial, groundTexture);
 
-  // --- Buildings ----------------------------------------------------------
-  // One InstancedMesh per colour keeps the whole skyline at a handful of draw
-  // calls, which matters far more than the geometry itself.
+  // A shared unit box, for the described things that are still boxes: the
+  // crowd of buildings is not one of them any more -- see `buildPlans`.
   const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
   disposables.push(boxGeometry);
-
-  const perColour = Math.ceil(layout.buildings.length / BUILDING_COLORS.length);
-  const buckets: THREE.InstancedMesh[] = BUILDING_COLORS.map((colour) => {
-    const material = withWindows(new THREE.MeshLambertMaterial({ color: colour }));
-    disposables.push(material);
-    const mesh = new THREE.InstancedMesh(boxGeometry, material, perColour);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.count = 0;
-    group.add(mesh);
-    return mesh;
-  });
 
   const matrix = new THREE.Matrix4();
   const position = new THREE.Vector3();
@@ -763,28 +752,27 @@ export function buildWorld(
   scattered.frustumCulled = false;
   if (options.seeds) group.add(scattered);
 
-  const roofGeometry = buildRoofs(layout.buildings);
+  // --- Buildings ------------------------------------------------------------
+  // Drawn as the outlines the map gave, walls and roof, in two buffers: one
+  // for the window shader and one for the tiles.
+  const { walls: wallGeometry, roofs: roofGeometry } = buildPlans(layout.plans ?? []);
+  const wallMaterial = withWindows(
+    new THREE.MeshLambertMaterial({ vertexColors: true }),
+  );
   const roofMaterial = withTiles(new THREE.MeshLambertMaterial({ color: 0xffffff }));
-  disposables.push(roofGeometry, roofMaterial);
+  disposables.push(wallGeometry, wallMaterial, roofGeometry, roofMaterial);
+
+  const walls = new THREE.Mesh(wallGeometry, wallMaterial);
+  walls.castShadow = true;
+  walls.receiveShadow = true;
+  walls.name = 'walls';
+  group.add(walls);
 
   const roofs = new THREE.Mesh(roofGeometry, roofMaterial);
   roofs.castShadow = true;
   roofs.receiveShadow = true;
+  roofs.name = 'roofs';
   group.add(roofs);
-
-  layout.buildings.forEach((building, i) => {
-    const walls = building.height - roofRise(building);
-    rotation.setFromAxisAngle(up, building.yaw ?? 0);
-    position.set(building.x, walls / 2, building.z);
-    // Buildings on a real map face their street, so the instance carries a
-    // turn as well as a size.
-    scale.set(building.width, walls, building.depth);
-    matrix.compose(position, rotation, scale);
-
-    const bucket = buckets[i % buckets.length]!;
-    bucket.setMatrixAt(bucket.count++, matrix);
-  });
-  for (const bucket of buckets) bucket.instanceMatrix.needsUpdate = true;
 
   // --- Trees --------------------------------------------------------------
   // Low, dense clutter near the ground: this is what sells low-altitude speed.
@@ -2506,6 +2494,171 @@ export function buildSteepleGeometry(spec: {
   }
 
   return painted(pieces);
+}
+
+
+/**
+ * The buildings, as the outlines the map drew rather than as boxes.
+ *
+ * Every wall is a real wall: an L-plan corner house is an L, a block with a
+ * courtyard notch has the notch, and the 1,605 buildings that used to stand in
+ * the road stand on their own plots. Nine thousand outlines and sixty-seven
+ * thousand corners between them.
+ *
+ * Two buffers, because there are two shaders: the walls take the window grid
+ * and the roofs take the tiles, and both work off world position and surface
+ * normal rather than off texture coordinates -- which is why neither had to
+ * change when the geometry stopped being a box.
+ *
+ * One draw call each. The colour rides on the vertices instead of on the
+ * material, so the six shades of stucco the district is painted in cost
+ * nothing extra: a box could be instanced six times over and an outline
+ * cannot be instanced at all.
+ */
+function buildPlans(plans: readonly Footprint[]): {
+  walls: THREE.BufferGeometry;
+  roofs: THREE.BufferGeometry;
+} {
+  const wallPoints: number[] = [];
+  const wallNormals: number[] = [];
+  const wallColours: number[] = [];
+  const roofPoints: number[] = [];
+  const roofNormals: number[] = [];
+
+  const tint = new THREE.Color();
+  const shades = BUILDING_COLORS.map((colour) => new THREE.Color(colour));
+
+  plans.forEach((plan, index) => {
+    const ring = plan.ring;
+    if (ring.length < 3 || plan.height <= 0) return;
+
+    // How much of the height is roof. A polygon has no single depth, so the
+    // roof is pitched off the narrowest way across it -- which for a
+    // courtyard wing is the wing, and is what decides a roof anyway.
+    const box = orientedBox(ring as number[][]);
+    const narrow = box ? Math.min(box.width, box.depth) : 8;
+    const rise = roofRise({ depth: narrow, height: plan.height });
+    const eaves = plan.height - rise;
+
+    tint.copy(shades[index % shades.length]!);
+
+    // --- Walls and roof ------------------------------------------------------
+    // Wound so the outside faces out, whichever way round the ring was drawn,
+    // and with every normal worked out from that winding rather than written
+    // down beside it. Written down, the two disagreed: the walls were wound
+    // one way and lit as though they faced the other, so the whole district
+    // came out lit from inside and black.
+    const out = shoelace(ring) > 0 ? 1 : -1;
+
+    /** One wall panel, from a lower edge to an upper one that may be inset. */
+    const panel = (
+      a: readonly number[],
+      b: readonly number[],
+      low: number,
+      ta: readonly number[],
+      tb: readonly number[],
+      high: number,
+      into: number[],
+      normals: number[],
+      colours: number[] | null,
+    ) => {
+      const face =
+        out > 0
+          ? [
+              [a[0]!, low, a[1]!], [ta[0]!, high, ta[1]!], [tb[0]!, high, tb[1]!],
+              [a[0]!, low, a[1]!], [tb[0]!, high, tb[1]!], [b[0]!, low, b[1]!],
+            ]
+          : [
+              [b[0]!, low, b[1]!], [tb[0]!, high, tb[1]!], [ta[0]!, high, ta[1]!],
+              [b[0]!, low, b[1]!], [ta[0]!, high, ta[1]!], [a[0]!, low, a[1]!],
+            ];
+      pushFacet(face, into, normals);
+      if (colours) for (let i = 0; i < 6; i += 1) colours.push(tint.r, tint.g, tint.b);
+    };
+
+    const ridge = rise > 0.05 ? insetRing(ring, rise / ROOF_PITCH) : null;
+
+    for (let i = 0; i < ring.length; i += 1) {
+      const j = (i + 1) % ring.length;
+      const a = ring[i]!;
+      const b = ring[j]!;
+      if (Math.hypot(b[0]! - a[0]!, b[1]! - a[1]!) < 1e-4) continue;
+
+      // The wall: straight up from the ground to the eaves.
+      panel(a, b, 0, a, b, eaves, wallPoints, wallNormals, wallColours);
+
+      // And the pitch above it, leaning in to the ridge.
+      if (ridge) {
+        panel(a, b, eaves, ridge[i]!, ridge[j]!, plan.height, roofPoints, roofNormals, null);
+      }
+    }
+
+    const cap = ridge ?? ring;
+    const capY = ridge ? plan.height : eaves;
+
+    // And the flat between the ridges, which on a narrow wing is nothing and
+    // on a broad building is most of it.
+    const flat = cap.map((p) => new THREE.Vector2(p[0]!, p[1]!));
+    if (flat.length >= 3) {
+      let faces: number[][] = [];
+      try {
+        faces = THREE.ShapeUtils.triangulateShape(flat, []);
+      } catch {
+        faces = [];
+      }
+      for (const [i, j, k] of faces) {
+        const a = cap[i!]!;
+        const b = cap[j!]!;
+        const c = cap[k!]!;
+        // Wound to face up, whichever way the triangulator handed it back.
+        const turn =
+          (b[0]! - a[0]!) * (c[1]! - a[1]!) - (b[1]! - a[1]!) * (c[0]! - a[0]!) > 0 ? -1 : 1;
+        const face =
+          turn > 0
+            ? [[a[0]!, capY, a[1]!], [b[0]!, capY, b[1]!], [c[0]!, capY, c[1]!]]
+            : [[a[0]!, capY, a[1]!], [c[0]!, capY, c[1]!], [b[0]!, capY, b[1]!]];
+        for (const point of face) {
+          roofPoints.push(point[0]!, point[1]!, point[2]!);
+          roofNormals.push(0, 1, 0);
+        }
+      }
+    }
+  });
+
+  const walls = new THREE.BufferGeometry();
+  walls.setAttribute('position', new THREE.Float32BufferAttribute(wallPoints, 3));
+  walls.setAttribute('normal', new THREE.Float32BufferAttribute(wallNormals, 3));
+  walls.setAttribute('color', new THREE.Float32BufferAttribute(wallColours, 3));
+
+  const roofs = new THREE.BufferGeometry();
+  roofs.setAttribute('position', new THREE.Float32BufferAttribute(roofPoints, 3));
+  roofs.setAttribute('normal', new THREE.Float32BufferAttribute(roofNormals, 3));
+
+  return { walls, roofs };
+}
+
+/** Six points making two triangles, with a normal worked out from the first. */
+function pushFacet(face: number[][], points: number[], normals: number[]): void {
+  const a = face[0]!;
+  const b = face[1]!;
+  const c = face[2]!;
+  const ux = b[0]! - a[0]!;
+  const uy = b[1]! - a[1]!;
+  const uz = b[2]! - a[2]!;
+  const vx = c[0]! - a[0]!;
+  const vy = c[1]! - a[1]!;
+  const vz = c[2]! - a[2]!;
+  let nx = uy * vz - uz * vy;
+  let ny = uz * vx - ux * vz;
+  let nz = ux * vy - uy * vx;
+  const length = Math.hypot(nx, ny, nz) || 1;
+  nx /= length;
+  ny /= length;
+  nz /= length;
+  for (const point of face) {
+    points.push(point[0]!, point[1]!, point[2]!);
+    normals.push(nx, ny, nz);
+  }
 }
 
 /** Standard gauge, in metres: the distance between the inside faces of a pair. */

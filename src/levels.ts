@@ -938,10 +938,15 @@ export const LEVELS: readonly Level[] = [
     // Three marks down the way west, which is a route through a district
     // with nothing else in it to steer by: the squares are behind him and
     // the line ahead is a stripe you cannot see until you are near it.
+    // Along Népszínház utca, six and ten metres further down it than they
+    // were: the marks were on the street's own centreline, which is where
+    // they belong, but two of them fell inside the box the collider keeps for
+    // the building beside them. A mark is help, so it goes where the bird can
+    // actually fly to it -- the street is the same street either way.
     waypoints: [
       [47.494767, 19.07711],
-      [47.495094, 19.075731],
-      [47.495327, 19.074701],
+      [47.495059, 19.075798],
+      [47.495281, 19.074818],
     ],
     // Three hundred and twenty metres west of the square he takes off from,
     // and the stripe runs square across the way in to it.

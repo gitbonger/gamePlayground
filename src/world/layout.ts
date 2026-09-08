@@ -630,6 +630,23 @@ export interface Steeple {
   spire: number;
 }
 
+
+/**
+ * A building as it is drawn: the outline the map gave, and how tall it is.
+ *
+ * Distinct from the boxes in `buildings`, which are the same buildings as the
+ * collider wants them -- one outline can be several boxes, and a box is a
+ * rectangle where this is whatever shape the building really is. Distinct too
+ * from `BuildingPlan` off the map, whose height may be null; by the time one
+ * of these exists the height has been settled, invented if need be.
+ */
+export interface Footprint {
+  /** The footprint, open: the last point does not repeat the first. */
+  ring: readonly (readonly number[])[];
+  /** Metres to the ridge, as `Building.height` means it. */
+  height: number;
+}
+
 export interface CityLayout {
   buildings: Building[];
   trees: Tree[];
@@ -643,6 +660,8 @@ export interface CityLayout {
   people: Person[];
   /** Painted pedestrian crossings, where the map recorded any. */
   crossings?: Crossing[];
+  /** The buildings as the map drew them, which is what gets drawn. */
+  plans?: Footprint[];
   /** Shop signs standing on the roofs they belong to. */
   signs?: Sign[];
   /** Towers, spires and domes on the buildings the map calls churches. */

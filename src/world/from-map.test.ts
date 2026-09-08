@@ -31,6 +31,38 @@ import { createBird, defaultParams, neutralControls, step } from '../sim/flight'
 import { vec } from '../sim/math3';
 
 /**
+ * A rectangular outline, written the way the map bakes one.
+ *
+ * The fixtures in this file were boxes when the map baked boxes. They are
+ * rings now, and a rectangle is the ring these tests want: `[height, x0, z0,
+ * ...]`, four corners, turned about its middle.
+ */
+const boxPlan = (
+  x: number,
+  z: number,
+  width: number,
+  depth: number,
+  yaw: number,
+  height: number | null,
+): (number | null)[] => {
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  const flat: (number | null)[] = [height];
+  for (const [ax, az] of [
+    [-width / 2, -depth / 2],
+    [width / 2, -depth / 2],
+    [width / 2, depth / 2],
+    [-width / 2, depth / 2],
+  ]) {
+    // The turn this map uses: a local (dx, dz) goes to
+    // (x + dx*cos + dz*sin, z - dx*sin + dz*cos).
+    flat.push(x + ax! * cos + az! * sin, z - ax! * sin + az! * cos);
+  }
+  return flat;
+};
+
+
+/**
  * Four streets round one 200 m block, overshooting the corners.
  *
  * Junctions appear as points on both streets, because that is how a crossing
@@ -55,10 +87,10 @@ const BLOCK: Road[] = [
  * question. There is no generator now, so the buildings come from the map like
  * everything else, and this is a map's worth of them laid on a grid.
  */
-const PAVED: number[][] = (() => {
-  const rows: number[][] = [];
+const PAVED: (number | null)[][] = (() => {
+  const rows: (number | null)[][] = [];
   for (let x = 12; x <= 188; x += 13) {
-    for (let z = 12; z <= 188; z += 13) rows.push([x, z, 9, 7, 0, 14]);
+    for (let z = 12; z <= 188; z += 13) rows.push(boxPlan(x, z, 9, 7, 0, 14));
   }
   return rows;
 })();
@@ -76,7 +108,7 @@ const mapOf = (roads: Road[], areas: Area[] = [], rails: Rail[] = []): MapData =
 /** The same, with the block built on, for the rules about where one may not be. */
 const builtOn = (roads: Road[], areas: Area[] = [], rails: Rail[] = []): MapData => ({
   ...mapOf(roads, areas, rails),
-  buildings: PAVED,
+  plans: PAVED,
 });
 
 /**
@@ -1407,12 +1439,12 @@ describe('two trains in one yard', () => {
 describe('buildings the map already knows about', () => {
   /** Two real outlines, as the baker writes them: [x, z, w, d, yaw, height]. */
   const OUTLINES = [
-    [60, 60, 20, 12, 0, 18.6],
-    [140, 60, 24, 14, 0.4, null],
+    boxPlan(60, 60, 20, 12, 0, 18.6),
+    boxPlan(140, 60, 24, 14, 0.4, null),
   ];
 
   const withBuildings = (options: Partial<typeof defaultMapWorldOptions> = {}) =>
-    buildLayoutFromMap({ ...mapOf(BLOCK), buildings: OUTLINES } as MapData, {
+    buildLayoutFromMap({ ...mapOf(BLOCK), plans: OUTLINES } as MapData, {
       ...defaultMapWorldOptions,
       ...options,
     });
@@ -1548,7 +1580,7 @@ describe('trees that came off the map', () => {
     const world = buildLayoutFromMap(
       {
         ...mapOf(EAST),
-        buildings: [[80, 40, 30, 20, 0, 15]],
+        plans: [boxPlan(80, 40, 30, 20, 0, 15)],
         trees: [[80, 40], [200, 40]],
       } as MapData,
       defaultMapWorldOptions,
@@ -1684,12 +1716,12 @@ describe('shop signs', () => {
    * The street the block is drawn round runs along z = 0, so the sign has a
    * street to face and a wrong way to face it.
    */
-  const SHOP_BUILDING = [100, 30, 40, 20, 0, 15];
+  const SHOP_BUILDING = boxPlan(100, 30, 40, 20, 0, 15);
   const signed = (
     signs: number[][],
     brands: string[] = ['Tesco'],
-    buildings: number[][] = [SHOP_BUILDING],
-  ): MapData => ({ ...mapOf(BLOCK), buildings, brands, signs });
+    plans: (number | null)[][] = [SHOP_BUILDING],
+  ): MapData => ({ ...mapOf(BLOCK), plans, brands, signs });
 
   it('stands the sign on the roof of the shop’s own building', () => {
     // Not on the ground and not in the air. The levels release the bird
@@ -1747,7 +1779,7 @@ describe('shop signs', () => {
     // Six metres across, which is narrower than the narrowest board the
     // width rule would otherwise settle on -- that is the case the clamp is
     // for, and a wider building does not test it at all.
-    const small = [100, 30, 6, 5, 0, 15];
+    const small = boxPlan(100, 30, 6, 5, 0, 15);
     const sign = buildLayoutFromMap(signed([[100, 30, 0]], ['Tesco'], [small])).signs![0]!;
     expect(sign.width).toBeLessThanOrEqual(6);
     expect(sign.width).toBeGreaterThan(0);
@@ -1770,12 +1802,11 @@ describe('shop signs', () => {
 
 describe('steeples', () => {
   /** A long thin nave, which is what a church footprint mostly is. */
-  const CHURCH = [100, 30, 44, 18, 0, 16];
-  const worshipping = (worship: number[][], buildings: number[][] = [CHURCH]): MapData => ({
-    ...mapOf(BLOCK),
-    buildings,
-    worship,
-  });
+  const CHURCH = boxPlan(100, 30, 44, 18, 0, 16);
+  const worshipping = (
+    worship: number[][],
+    plans: (number | null)[][] = [CHURCH],
+  ): MapData => ({ ...mapOf(BLOCK), plans, worship });
 
   it('puts a tower and a spire on the building the map calls a church', () => {
     // The buildings already come off the map with real outlines, so a church
@@ -1830,19 +1861,13 @@ describe('steeples', () => {
     // is the two wings of one church that defeat a one-per-building rule. So
     // two boxes, side by side, as a fitted church actually arrives -- a test
     // with both points in one box passes with the distance rule removed.
-    const wings = [
-      [92, 30, 26, 18, 0, 16],
-      [118, 30, 26, 18, 0, 16],
-    ];
+    const wings = [boxPlan(92, 30, 26, 18, 0, 16), boxPlan(118, 30, 26, 18, 0, 16)];
     const twice = buildLayoutFromMap(worshipping([[92, 30, 0], [118, 30, 0]], wings));
     expect(twice.steeples).toHaveLength(1);
 
     // And two churches genuinely far apart still get one each, or the rule
     // above would be satisfied by never building a second steeple at all.
-    const apart = [
-      [92, 30, 26, 18, 0, 16],
-      [92, 400, 26, 18, 0, 16],
-    ];
+    const apart = [boxPlan(92, 30, 26, 18, 0, 16), boxPlan(92, 400, 26, 18, 0, 16)];
     expect(
       buildLayoutFromMap(worshipping([[92, 30, 0], [92, 400, 0]], apart)).steeples,
     ).toHaveLength(2);
@@ -1900,8 +1925,8 @@ describe('buildings and the carriageway', () => {
    * z = 8. A building centred at z = 12 with a depth of 20 reaches to z = 2,
    * which is six metres inside the carriageway.
    */
-  const inTheRoad = [100, 12, 20, 20, 0, 15];
-  const laid = (buildings: number[][]) => ({ ...mapOf(BLOCK), buildings }) as MapData;
+  const inTheRoad = boxPlan(100, 12, 20, 20, 0, 15);
+  const laid = (plans: (number | null)[][]) => ({ ...mapOf(BLOCK), plans }) as MapData;
   const near = (world: ReturnType<typeof buildLayoutFromMap>, x: number) =>
     world.buildings.find((b) => Math.abs(b.x - x) < 12);
 
@@ -1928,7 +1953,7 @@ describe('buildings and the carriageway', () => {
   it('leaves a building that is nowhere near a road alone', () => {
     // Most of the district. A rule that shaved every building would be a rule
     // that shrank the city.
-    const clear = [100, 100, 20, 20, 0, 15];
+    const clear = boxPlan(100, 100, 20, 20, 0, 15);
     const b = near(buildLayoutFromMap(laid([clear])), 100)!;
     expect(b.width).toBe(20);
     expect(b.depth).toBe(20);
@@ -1943,7 +1968,7 @@ describe('buildings and the carriageway', () => {
     // where a house was.
     // Eight metres deep, centred four metres inside the kerb: trimming it
     // clear would leave two, which is not a house.
-    const shallow = [100, 6, 10, 8, 0, 15];
+    const shallow = boxPlan(100, 6, 10, 8, 0, 15);
     const b = near(buildLayoutFromMap(laid([shallow])), 100)!;
     expect(b.depth).toBe(8);
     expect(b.z).toBe(6);
@@ -1952,7 +1977,7 @@ describe('buildings and the carriageway', () => {
   it('clears a corner house of both the streets it stands on', () => {
     // One pass trims one axis, and a corner house overruns two streets at
     // once. On the real map a single pass got 1,605 down to 798 and stopped.
-    const corner = [10, 10, 24, 24, 0, 15];
+    const corner = boxPlan(10, 10, 24, 24, 0, 15);
     const world = buildLayoutFromMap(laid([corner]));
     const b = world.buildings.find((x) => Math.abs(x.x - 10) < 14)!;
     // North side of the block is 16 m wide about z = 0; the west side is 8 m

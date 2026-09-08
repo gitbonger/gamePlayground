@@ -17,7 +17,40 @@ import { consistLength, layOutTrain, lineLength, shuttle, TRAM, WAGON, type Vehi
 import type { Puff } from './smoke';
 import * as THREE from 'three';
 import { createColliderField } from '../sim/collision';
+import { inside } from './plans';
 import type { MapData, Rail, Road } from './streets';
+
+/**
+ * A rectangular outline, written the way the map bakes one.
+ *
+ * The fixtures in this file were boxes when the map baked boxes. They are
+ * rings now, and a rectangle is the ring these tests want: `[height, x0, z0,
+ * ...]`, four corners, turned about its middle.
+ */
+const boxPlan = (
+  x: number,
+  z: number,
+  width: number,
+  depth: number,
+  yaw: number,
+  height: number | null,
+): (number | null)[] => {
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  const flat: (number | null)[] = [height];
+  for (const [ax, az] of [
+    [-width / 2, -depth / 2],
+    [width / 2, -depth / 2],
+    [width / 2, depth / 2],
+    [-width / 2, depth / 2],
+  ]) {
+    // The turn this map uses: a local (dx, dz) goes to
+    // (x + dx*cos + dz*sin, z - dx*sin + dz*cos).
+    flat.push(x + ax! * cos + az! * sin, z - ax! * sin + az! * cos);
+  }
+  return flat;
+};
+
 
 const BLOCK: Road[] = [
   { kind: 'primary', width: 16, points: [[-40, 0], [0, 0], [200, 0], [240, 0]] },
@@ -70,10 +103,10 @@ const map: MapData = {
   // And buildings, because the world no longer invents any: they come off the
   // map like the roads do. A handful on a grid, all of them stating a height,
   // which is what a real extract mostly looks like.
-  buildings: (() => {
-    const rows: number[][] = [];
+  plans: (() => {
+    const rows: (number | null)[][] = [];
     for (let x = 110; x <= 185; x += 15) {
-      for (let z = 20; z <= 185; z += 15) rows.push([x, z, 11, 8, 0, 15]);
+      for (let z = 20; z <= 185; z += 15) rows.push(boxPlan(x, z, 11, 8, 0, 15));
     }
     return rows;
   })(),
@@ -1295,3 +1328,153 @@ describe('steeples', () => {
     geometry.dispose();
   });
 });
+
+describe('buildings drawn as the outlines the map gave', () => {
+  /** An L, which is the shape a box gets wrong and the whole reason for this. */
+  const ELL: (number | null)[] = [
+    15,
+    ...([[0, 0], [60, 0], [60, 20], [20, 20], [20, 60], [0, 60]] as number[][]).flat(),
+  ];
+  const drawn = (plans: (number | null)[][]) =>
+    buildWorld(buildLayoutFromMap({ ...map, plans } as MapData, defaultMapWorldOptions));
+
+  const meshNamed = (world: ReturnType<typeof buildWorld>, name: string) => {
+    let found: THREE.Mesh | null = null;
+    world.group.traverse((object) => {
+      if (object.name === name) found = object as THREE.Mesh;
+    });
+    return found!;
+  };
+
+  it('draws the notch in an L rather than filling it in', () => {
+    // The whole point. A box round an L is a rectangle, and a rectangle
+    // covers the corner the building does not -- which is what put 1,605
+    // buildings in the road.
+    const world = drawn([ELL]);
+    const points = meshNamed(world, 'walls').geometry.getAttribute('position');
+    // The far corner of the L's notch, well inside the box and well outside
+    // the building.
+    let nearNotch = Infinity;
+    for (let i = 0; i < points.count; i += 1) {
+      nearNotch = Math.min(nearNotch, Math.hypot(points.getX(i) - 50, points.getZ(i) - 50));
+    }
+    expect(nearNotch, 'no wall stands in the notch').toBeGreaterThan(20);
+    world.dispose();
+  });
+
+  it('roofs a building with about its own area of roof', () => {
+    // The bug that got past everything else, and the one only looking caught.
+    // The roof cap is triangulated, and a footprint pulled in for its ridge
+    // can cross itself on a concave shape -- at which point the triangulator
+    // hands back a sheet up to two hundred times the area of the building. On
+    // the real map 954 buildings had one, lying across whole blocks.
+    const world = drawn([ELL]);
+    const points = meshNamed(world, 'roofs').geometry.getAttribute('position');
+
+    // The roof's area seen from above, which for a hipped roof is the
+    // footprint: 60x20 plus 20x40.
+    let flat = 0;
+    for (let i = 0; i + 2 < points.count; i += 3) {
+      const ax = points.getX(i);
+      const az = points.getZ(i);
+      const bx = points.getX(i + 1);
+      const bz = points.getZ(i + 1);
+      const cx = points.getX(i + 2);
+      const cz = points.getZ(i + 2);
+      flat += Math.abs((bx - ax) * (cz - az) - (bz - az) * (cx - ax)) / 2;
+    }
+    const footprint = 60 * 20 + 20 * 40;
+    expect(flat).toBeGreaterThan(footprint * 0.9);
+    expect(flat).toBeLessThan(footprint * 1.1);
+
+    // And it is a roof rather than a lid. The area above is the whole
+    // footprint either way -- a flat cap covers exactly as much ground as a
+    // hipped one -- so the pitch has to be asked for separately: the level
+    // part at the ridge is a fraction of the building, and the rest slopes.
+    let level = 0;
+    for (let i = 0; i + 2 < points.count; i += 3) {
+      if (Math.min(points.getY(i), points.getY(i + 1), points.getY(i + 2)) < 14.9) continue;
+      const ax = points.getX(i);
+      const az = points.getZ(i);
+      level +=
+        Math.abs(
+          (points.getX(i + 1) - ax) * (points.getZ(i + 2) - az) -
+            (points.getZ(i + 1) - az) * (points.getX(i + 2) - ax),
+        ) / 2;
+    }
+    expect(level, 'the flat at the ridge is a fraction of the roof').toBeLessThan(footprint * 0.6);
+    world.dispose();
+  });
+
+  it('faces every wall outwards, whichever way the ring was drawn', () => {
+    // Lit from inside, the whole district came out black. The normals are
+    // worked out from the winding now rather than written down beside it, so
+    // this is really a test that the winding is right.
+    // Both ways round, because the map draws them both ways and a rule that
+    // took the winding for granted is right for half of them and inside out
+    // for the other half.
+    const backwards: (number | null)[] = [15, ...[...ELL_RING].reverse().flat()];
+    for (const plan of [ELL, backwards]) {
+    const world = drawn([plan]);
+    const geometry = meshNamed(world, 'walls').geometry;
+    const points = geometry.getAttribute('position');
+    const normals = geometry.getAttribute('normal');
+    for (let i = 0; i < points.count; i += 3) {
+      // A step along the normal from the middle of the face leaves the
+      // building; a step against it stays inside.
+      const x = (points.getX(i) + points.getX(i + 1) + points.getX(i + 2)) / 3;
+      const z = (points.getZ(i) + points.getZ(i + 1) + points.getZ(i + 2)) / 3;
+      const nx = normals.getX(i);
+      const nz = normals.getZ(i);
+      expect(inside(x + nx * 0.5, z + nz * 0.5, ELL_RING), `face ${i / 3} points out`).toBe(false);
+      expect(inside(x - nx * 0.5, z - nz * 0.5, ELL_RING), `face ${i / 3} has an inside`).toBe(true);
+    }
+    world.dispose();
+    }
+  });
+
+  it('pitches the roof off the narrow way across, not the long way', () => {
+    // A polygon has no single depth, and a roof is decided by the short way
+    // over it: a sixty-metre wing twelve metres deep gets a wing's roof, not
+    // a five-metre one. Taken off the long side, every terrace in the
+    // district would wear the steepest roof the rule allows.
+    const wing: (number | null)[] = [
+      30,
+      ...([[0, 0], [60, 0], [60, 12], [0, 12]] as number[][]).flat(),
+    ];
+    const world = drawn([wing]);
+    const roof = meshNamed(world, 'roofs').geometry.getAttribute('position');
+    let low = Infinity;
+    for (let i = 0; i < roof.count; i += 1) low = Math.min(low, roof.getY(i));
+    // Twelve deep at a rise of half its half-depth is three metres of roof.
+    expect(30 - low).toBeCloseTo(3, 3);
+    world.dispose();
+  });
+
+  it('stands the walls on the ground and the roof on the walls', () => {
+    const world = drawn([ELL]);
+    const walls = meshNamed(world, 'walls').geometry.getAttribute('position');
+    const roof = meshNamed(world, 'roofs').geometry.getAttribute('position');
+    let wallLow = Infinity;
+    let wallHigh = -Infinity;
+    for (let i = 0; i < walls.count; i += 1) {
+      wallLow = Math.min(wallLow, walls.getY(i));
+      wallHigh = Math.max(wallHigh, walls.getY(i));
+    }
+    let roofLow = Infinity;
+    let roofHigh = -Infinity;
+    for (let i = 0; i < roof.count; i += 1) {
+      roofLow = Math.min(roofLow, roof.getY(i));
+      roofHigh = Math.max(roofHigh, roof.getY(i));
+    }
+    expect(wallLow).toBeCloseTo(0, 6);
+    // The ridge is the height, as `roofRise` has always meant it, so the
+    // walls stop short of it by exactly the roof.
+    expect(roofHigh).toBeCloseTo(15, 6);
+    expect(roofLow).toBeCloseTo(wallHigh, 6);
+    expect(wallHigh).toBeLessThan(15);
+    world.dispose();
+  });
+});
+
+const ELL_RING: number[][] = [[0, 0], [60, 0], [60, 20], [20, 20], [20, 60], [0, 60]];

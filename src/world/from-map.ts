@@ -16,7 +16,7 @@
 
 import { aabb, turnedBox, type Box } from '../sim/collision';
 import {
-  bakedBuildings,
+  bakedPlans,
   bakedPoints,
   indexStreets,
   type MapData,
@@ -25,6 +25,7 @@ import {
 } from './streets';
 import { footprintSamples, indexAreas, type AreaIndex } from './areas';
 import { DECK, deckOf } from './bridges';
+import { fitBoxes, orientedBox } from './plans';
 import { fillHeights } from './heights';
 import { extractBlocks, type Block } from './blocks';
 import {
@@ -44,6 +45,7 @@ import {
   PERSON_WIDTH,
   SPECIES,
   STREET_TREE,
+  type Footprint,
   type Sign,
   type Steeple,
   type Building,
@@ -440,6 +442,7 @@ export function buildLayoutFromMap(
   const rand = mulberry32(options.seed);
 
   const buildings: Building[] = [];
+  const plans: Footprint[] = [];
   const trees: Tree[] = [];
   const boxes: Box[] = [];
 
@@ -650,12 +653,26 @@ export function buildLayoutFromMap(
     depth: number;
     yaw: number;
   }) => {
-    // Corners rather than a middle: a box overruns a street with its corner,
-    // and its middle is a frontage away from the kerb.
+    // The four corners and the middle of each wall, and nothing else. A box
+    // overruns a street with its corner or its face -- never with its middle,
+    // which is a frontage away from the kerb -- so the grid of footprint
+    // samples the rest of this file uses is both dearer and no better here:
+    // at a four-metre step a forty-by-twenty building is seventy-seven
+    // points, and this runs three times for each of thirteen thousand wings.
+    // That grid was 60% of the whole world build.
     let worst = 0;
     let atX = 0;
     let atZ = 0;
-    for (const [sx, sz] of footprintSamples(each.x, each.z, each.width, each.depth, each.yaw, 4)) {
+    const cos = Math.cos(each.yaw);
+    const sin = Math.sin(each.yaw);
+    const corners: [number, number][] = [];
+    for (const ax of [-each.width / 2, 0, each.width / 2]) {
+      for (const az of [-each.depth / 2, 0, each.depth / 2]) {
+        if (ax === 0 && az === 0) continue;
+        corners.push([each.x + ax * cos + az * sin, each.z - ax * sin + az * cos]);
+      }
+    }
+    for (const [sx, sz] of corners) {
       const road = streets.nearest(sx, sz, widestRoad / 2 + 2);
       if (!road) continue;
       const over = road.width / 2 - road.distance;
@@ -692,7 +709,18 @@ export function buildLayoutFromMap(
     };
   };
 
-  const fromMap = bakedBuildings(map);
+  // The outlines the map drew, which are what gets built and what gets drawn.
+  //
+  // One outline is one building. The boxes below it are the collider's
+  // business -- a courtyard block is fitted as a wing along each side rather
+  // than as one slab over the hole -- but the decisions are taken per
+  // building, because half a church kept and half deleted is not a thing.
+  const fromMap = bakedPlans(map.plans);
+  const sited = fromMap.map((plan) => {
+    const box = orientedBox(plan.ring);
+    return { plan, box };
+  });
+
   // Worked out over the whole set before any of it is filtered, because a
   // building the story or a railway takes out is still evidence about the
   // height of the ones left standing.
@@ -702,10 +730,14 @@ export function buildLayoutFromMap(
   // those off the world's own stream would mean every tree, bush and parked
   // car in the district moved the next time a mapper recorded a storey count
   // somewhere in Jozsefvaros.
-  const heights = fillHeights(fromMap, mulberry32(options.seed + 1));
-  for (const [index, raw] of fromMap.entries()) {
-    const each = offTheCarriageway(raw);
-    const footprint = footprintSamples(each.x, each.z, each.width, each.depth, each.yaw, 4);
+  const heights = fillHeights(
+    sited.map(({ plan, box }) => ({ x: box?.x ?? 0, z: box?.z ?? 0, height: plan.height })),
+    mulberry32(options.seed + 1),
+  );
+
+  for (const [index, { plan, box }] of sited.entries()) {
+    if (!box) continue;
+    const footprint = footprintSamples(box.x, box.z, box.width, box.depth, box.yaw, 4);
 
     // The story wins. A described thing -- the loft, the home tree, a square
     // with a name -- keeps its ground against a real building exactly as it
@@ -716,7 +748,7 @@ export function buildLayoutFromMap(
     // And nothing across a railway. There is little of this in real data --
     // it is mostly platform canopies and signal boxes -- but the goods yard
     // has to stay a goods yard.
-    if (onTrack(each.x, each.z, each.width, each.depth, each.yaw)) continue;
+    if (onTrack(box.x, box.z, box.width, box.depth, box.yaw)) continue;
 
     // Its own height where the map gave one, and its nearest neighbour's
     // where it did not -- see `heights.ts` for why that is better than the
@@ -724,8 +756,25 @@ export function buildLayoutFromMap(
     // district about forty per cent too tall.
     const height = heights[index]!;
 
-    buildings.push({ x: each.x, z: each.z, width: each.width, depth: each.depth, height, yaw: each.yaw });
-    boxes.push(turnedBox(each.x, each.z, each.width, height, each.depth, each.yaw));
+    // Drawn as the ring the map drew.
+    plans.push({ ring: plan.ring, height });
+
+    // And flown into as boxes, which is what the collider is made of. Pulled
+    // back off the carriageway one at a time: a fitted wing can overrun a
+    // kerb even where the outline does not, and an invisible wall in the
+    // street is worse than a visible one.
+    for (const wing of fitBoxes(plan.ring)) {
+      const each = offTheCarriageway(wing);
+      buildings.push({
+        x: each.x,
+        z: each.z,
+        width: each.width,
+        depth: each.depth,
+        height,
+        yaw: each.yaw,
+      });
+      boxes.push(turnedBox(each.x, each.z, each.width, height, each.depth, each.yaw));
+    }
   }
 
   // --- Shop signs -----------------------------------------------------------
@@ -1508,6 +1557,7 @@ export function buildLayoutFromMap(
     people,
     boxes,
     crossings,
+    plans,
     signs,
     steeples,
     roads: map.roads,

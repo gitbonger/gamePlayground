@@ -13,6 +13,7 @@
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { orientedBox } from '../src/world/plans';
 import { dirname, resolve } from 'node:path';
 
 import { metresPerDegree } from '../src/world/geo';
@@ -90,6 +91,16 @@ const ROAD_WIDTHS: Record<string, number> = {
  * and ventilation shafts are not track, and `razed`, `abandoned` and `disused`
  * alignments are lines that are no longer there to see.
  */
+/**
+ * How finely a building outline is kept, in metres.
+ *
+ * Six tenths. The corners are the whole point of keeping the outline at all,
+ * so this is a good deal finer than the metre and a half the roads get -- but
+ * a building drawn to the centimetre is a quarter of a megabyte of detail
+ * nobody flying over it at fifty metres can see.
+ */
+const PLAN_DETAIL = 0.6;
+
 const RAIL_WIDTHS: Record<string, number> = {
   rail: 8,
   light_rail: 7,
@@ -167,176 +178,6 @@ function lineDistance(p: number[], a: number[], b: number[]): number {
 
   const t = Math.max(0, Math.min(1, ((p[0]! - a[0]!) * dx + (p[1]! - a[1]!) * dz) / lengthSquared));
   return Math.hypot(p[0]! - (a[0]! + t * dx), p[1]! - (a[1]! + t * dz));
-}
-
-/**
- * The smallest turned rectangle that covers a footprint.
- *
- * A building in the game is `{ x, z, width, depth, yaw }` -- a box on the
- * ground with a turn -- and a building in OpenStreetMap is a ring of ten or
- * twenty points. Rather than teach the game about polygons, the ring is
- * reduced to the box that best covers it, here, once, at bake time.
- *
- * That is a real loss and it is the right one. What it keeps is the thing
- * worth having: where the building actually is, which way it actually faces,
- * and how big it actually is. What it loses is the notch in the corner, and
- * nobody flying over a city at fifty metres has ever seen a notch. A block of
- * these is still a ring of buildings round a courtyard, because the real ones
- * are a ring of buildings round a courtyard.
- *
- * Rotating calipers, in the cheap form: the best rectangle shares an edge with
- * the hull, so every edge is tried and the smallest area wins. The rings here
- * are a dozen points, so trying all of them is nothing.
- */
-function orientedBox(
-  ring: number[][],
-): { x: number; z: number; width: number; depth: number; yaw: number } | null {
-  if (ring.length < 3) return null;
-
-  let best: { area: number; yaw: number; cx: number; cz: number; w: number; d: number } | null =
-    null;
-
-  for (let i = 0; i < ring.length; i += 1) {
-    const a = ring[i]!;
-    const b = ring[(i + 1) % ring.length]!;
-    const dx = b[0]! - a[0]!;
-    const dz = b[1]! - a[1]!;
-    if (Math.hypot(dx, dz) < 1e-6) continue;
-
-    // The turn that puts this edge along the box's own X axis. The game's
-    // convention -- Three.js's rotation.y, which `footprintSamples` and the
-    // collider both follow -- takes a local (dx, dz) to
-    // (x + dx*cos + dz*sin, z - dx*sin + dz*cos), so going the other way is
-    // this.
-    const yaw = Math.atan2(-dz, dx);
-    const cos = Math.cos(yaw);
-    const sin = Math.sin(yaw);
-
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minZ = Infinity;
-    let maxZ = -Infinity;
-    for (const p of ring) {
-      const lx = p[0]! * cos - p[1]! * sin;
-      const lz = p[0]! * sin + p[1]! * cos;
-      if (lx < minX) minX = lx;
-      if (lx > maxX) maxX = lx;
-      if (lz < minZ) minZ = lz;
-      if (lz > maxZ) maxZ = lz;
-    }
-
-    const w = maxX - minX;
-    const d = maxZ - minZ;
-    const area = w * d;
-    if (!best || area < best.area) {
-      // Back out of the box's frame into the world.
-      const lx = (minX + maxX) / 2;
-      const lz = (minZ + maxZ) / 2;
-      best = { area, yaw, w, d, cx: lx * cos + lz * sin, cz: -lx * sin + lz * cos };
-    }
-  }
-
-  if (!best) return null;
-  return { x: best.cx, z: best.cz, width: best.w, depth: best.d, yaw: best.yaw };
-}
-
-/** Twice the signed area of a ring: positive or negative says which way round. */
-function shoelace(ring: number[][]): number {
-  let sum = 0;
-  for (let i = 0; i < ring.length; i += 1) {
-    const a = ring[i]!;
-    const b = ring[(i + 1) % ring.length]!;
-    sum += a[0]! * b[1]! - b[0]! * a[1]!;
-  }
-  return sum;
-}
-
-/** Whether a point is inside a ring, by the crossing count. */
-function inside(x: number, z: number, ring: number[][]): boolean {
-  let within = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
-    const a = ring[i]!;
-    const b = ring[j]!;
-    if (
-      a[1]! > z !== b[1]! > z &&
-      x < ((b[0]! - a[0]!) * (z - a[1]!)) / (b[1]! - a[1]!) + a[0]!
-    ) {
-      within = !within;
-    }
-  }
-  return within;
-}
-
-/** How deep a wing of a courtyard block is, in metres. */
-const WING = 12;
-
-/**
- * A footprint as one box, or as a ring of wings when one box will not do.
- *
- * The box is the right answer for the great majority: a building is a
- * rectangle, near enough, and reducing it to one is what keeps this map to a
- * size a browser will download. It is the wrong answer for two shapes, and
- * this district is full of both -- the L, and the closed courtyard block whose
- * outline goes all the way round a hole.
- *
- * Reduced to one box, a courtyard block becomes a solid slab the size of the
- * whole block. Measured over this map, taking the box every time put fifty
- * percent of the ground under a building, which is roughly twice what a dense
- * European district actually is, and it filled in every courtyard in
- * Józsefváros -- which is the one thing about the place worth having.
- *
- * So the fit is checked. Where the box covers much more than the outline
- * encloses, the shape is a ring or an L, and what is emitted instead is a wing
- * along each side of it: exactly what the generator invents for a block, only
- * now standing where the real building stands.
- */
-function fitBoxes(
-  ring: number[][],
-): { x: number; z: number; width: number; depth: number; yaw: number }[] {
-  const box = orientedBox(ring);
-  if (!box) return [];
-
-  const enclosed = Math.abs(shoelace(ring)) / 2;
-  // A rectangle scores 1. Anything up to about a half again is a building with
-  // a bay or a chamfered corner, and the box is still the honest answer.
-  if (enclosed > 0 && box.width * box.depth <= enclosed * 1.55) return [box];
-
-  // Otherwise, wings. Which side of each edge is *into* the shape is asked
-  // rather than worked out from the winding: a step inward from the middle of
-  // the edge either lands inside the outline or it does not, and that is a
-  // question with an answer.
-  const wings: { x: number; z: number; width: number; depth: number; yaw: number }[] = [];
-  for (let i = 0; i < ring.length; i += 1) {
-    const a = ring[i]!;
-    const b = ring[(i + 1) % ring.length]!;
-    const run = Math.hypot(b[0]! - a[0]!, b[1]! - a[1]!);
-    if (run < 7) continue;
-
-    const ux = (b[0]! - a[0]!) / run;
-    const uz = (b[1]! - a[1]!) / run;
-    const midX = (a[0]! + b[0]!) / 2;
-    const midZ = (a[1]! + b[1]!) / 2;
-
-    let nx = -uz;
-    let nz = ux;
-    if (!inside(midX + nx * 0.5, midZ + nz * 0.5, ring)) {
-      nx = -nx;
-      nz = -nz;
-    }
-    // Still not inside either way: a sliver too thin to have an inside.
-    if (!inside(midX + nx * 0.5, midZ + nz * 0.5, ring)) continue;
-
-    wings.push({
-      x: midX + nx * (WING / 2),
-      z: midZ + nz * (WING / 2),
-      width: run,
-      depth: WING,
-      yaw: Math.atan2(-uz, ux),
-    });
-  }
-
-  // A shape that produced no usable wing is better as its box than as nothing.
-  return wings.length > 0 ? wings : [box];
 }
 
 /**
@@ -602,14 +443,26 @@ async function main() {
   }
 
   // --- Buildings -----------------------------------------------------------
-  // Every outline reduced to the turned box that covers it -- see
-  // `orientedBox` for what that keeps and what it throws away.
-  //
-  // Written as bare arrays rather than named fields. There are seven and a
-  // half thousand of them, and `{"x":-123.4,"z":56.7,...}` against
-  // `[-123.4,56.7,...]` is three hundred kilobytes of the same numbers. The
-  // order is written down where the type is.
-  const buildings: (number | null)[][] = [];
+  /**
+   * Every building as the outline the map drew, not as a box covering it.
+   *
+   * `[height, x0, z0, x1, z1, ...]`, with `height` null where the building
+   * does not say how tall it is, and the ring not closed -- the last point
+   * does not repeat the first.
+   *
+   * Bare arrays for the same reason everything else here is: this is a
+   * generated file with nine thousand of these in it, and the names would be
+   * a quarter of a megabyte of the same two letters.
+   *
+   * It used to be a box per building, worked out here. A box is what the
+   * collider wants and it is still what the collider gets -- but it is
+   * derived on the way in now, from this, so that the thing drawn and the
+   * thing flown into come from one outline. Baking the box and throwing the
+   * outline away meant every L-plan corner house and every block with a
+   * courtyard notch was drawn as the rectangle round it, and 1,605 of them
+   * stood in the road.
+   */
+  const plans: (number | null)[][] = [];
   for (const element of built.elements) {
     const tags = element.tags ?? {};
     // Not a building: a wall, a fence, a bridge deck tagged as one.
@@ -626,25 +479,30 @@ async function main() {
           ? [element.geometry]
           : [];
 
+    const height = storeys(tags);
     for (const ring of rings) {
       if (ring.length < 4) continue;
       rawPoints += ring.length;
-      // Barely thinned: the box is worked out from the ring, and thinning it
-      // first would be throwing away the corners that decide the answer.
-      const points = toLocal(ring, 0.4);
-      const height = storeys(tags);
-      for (const box of fitBoxes(points)) {
-        // Sheds, bin stores and the odd one-metre sliver of a mis-drawn wall.
-        if (box.width < 2.5 || box.depth < 2.5) continue;
-        buildings.push([
-          Math.round(box.x * 10) / 10,
-          Math.round(box.z * 10) / 10,
-          Math.round(box.width * 10) / 10,
-          Math.round(box.depth * 10) / 10,
-          Math.round(box.yaw * 1000) / 1000,
-          height === null ? null : Math.round(height * 10) / 10,
-        ]);
+      const points = toLocal(ring, PLAN_DETAIL);
+      // A ring comes closed, with its last node the same as its first. Kept
+      // that way it is a zero-length wall, and every consumer would have to
+      // remember to skip it.
+      const first = points[0]!;
+      const last = points[points.length - 1]!;
+      if (points.length > 1 && Math.hypot(first[0]! - last[0]!, first[1]! - last[1]!) < 0.01) {
+        points.pop();
       }
+      if (points.length < 3) continue;
+
+      // Sheds, bin stores and the odd one-metre sliver of a mis-drawn wall.
+      const box = orientedBox(points);
+      if (!box || box.width < 2.5 || box.depth < 2.5) continue;
+
+      const flat: (number | null)[] = [height === null ? null : Math.round(height * 10) / 10];
+      for (const [x, z] of points) {
+        flat.push(Math.round(x! * 10) / 10, Math.round(z! * 10) / 10);
+      }
+      plans.push(flat);
     }
   }
 
@@ -705,7 +563,7 @@ async function main() {
         bridges,
         rails,
         areas,
-        buildings,
+        plans,
         crossings,
         trees,
         brands,
@@ -718,13 +576,14 @@ async function main() {
   );
 
   const kb = (
-    Buffer.byteLength(JSON.stringify({ roads, bridges, rails, areas, buildings, crossings, trees, brands, signs, worship })) / 1024
+    Buffer.byteLength(JSON.stringify({ roads, bridges, rails, areas, plans, crossings, trees, brands, signs, worship })) / 1024
   ).toFixed(0);
   process.stderr.write(
     `${roads.length} roads, ${bridges.length} bridges and ${rails.length} railways ` +
       `(${keptPoints} points), ` +
-      `${areas.length} green areas, ${buildings.length} buildings ` +
-      `(${buildings.filter((b) => b[5] !== null).length} of them saying how tall), ` +
+      `${areas.length} green areas, ${plans.length} buildings ` +
+      `(${plans.filter((b) => b[0] !== null).length} of them saying how tall, ` +
+      `${plans.reduce((n, b) => n + (b.length - 1) / 2, 0)} corners between them), ` +
       `${crossings.length} crossings, ${trees.length} trees, ` +
       `${signs.length} shop signs of ${brands.length} brands, ${worship.length} churches, ` +
       `${rawPoints} points before thinning, ${kb} kB -> ${out}\n`,

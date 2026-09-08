@@ -9,6 +9,7 @@
 
 import { aabb, type Aabb } from '../sim/collision';
 import type { Bridge } from './bridges';
+import { fitBoxes } from './plans';
 import type { Area } from './areas';
 
 export interface Road {
@@ -52,24 +53,25 @@ export interface MapData {
   /** Parks, woods, playing fields and water. Absent on older baked maps. */
   areas?: Area[];
   /**
-   * Real building outlines, each reduced to the turned box that covers it.
+   * Real building outlines, as the map drew them.
    *
-   * `[x, z, width, depth, yaw, height]`, with `height` null where the building
-   * does not say how tall it is. Bare arrays rather than named fields because
-   * there are seven and a half thousand of them and the names would be three
-   * hundred kilobytes of the same six numbers repeated -- this is a generated
-   * file, and the only place the order has to be known is here and in the one
-   * loop that reads it.
+   * `[height, x0, z0, x1, z1, ...]` per building, with `height` null where it
+   * does not say how tall it is, and the ring left open -- the last point does
+   * not repeat the first.
    *
-   * A box rather than the outline. What it keeps is where the building is,
-   * which way it faces and how big it is; what it loses is the notch in the
-   * corner, and nobody flying over a city at fifty metres has ever seen a
-   * notch. A block of them is still a ring round a courtyard, because the real
-   * ones are a ring round a courtyard.
+   * Bare arrays rather than named fields because there are nine thousand of
+   * them and the names would be a quarter of a megabyte of the same two
+   * letters. This is a generated file, and the only places the order has to
+   * be known are here and `bakedPlans`.
    *
-   * Absent on older baked maps, in which case the generator invents them.
+   * The outline rather than a box round it. It used to be a box, worked out
+   * at bake time, and a box is still what the collider gets -- but it is
+   * derived from this on the way in now, so the thing drawn and the thing
+   * flown into cannot disagree. Baked as a box and the outline thrown away,
+   * every L-plan corner house was drawn as the rectangle round it, and 1,605
+   * buildings stood in the road.
    */
-  buildings?: readonly (readonly (number | null)[])[];
+  plans?: readonly (readonly (number | null)[])[];
   /**
    * Painted pedestrian crossings, as `[x, z]`.
    *
@@ -124,31 +126,47 @@ export interface MapBuilding {
 }
 
 /**
- * The six numbers of a baked building, named.
+ * The boxes the collider needs, worked out from the outlines.
  *
- * One place knows the order, and this is it.
+ * One outline can come back as several: a courtyard block is fitted as a wing
+ * along each side of it rather than as one slab over the hole. See
+ * `fitBoxes`, which decides which.
+ *
+ * The height rides along on each box, so a building that was cut into wings
+ * has all of its wings the same height -- which is what it is.
  */
 export const bakedBuildings = (map: MapData): MapBuilding[] =>
-  (map.buildings ?? []).flatMap((row) => {
-    const [x, z, width, depth, yaw, height] = row;
-    if (
-      x === null ||
-      x === undefined ||
-      z === null ||
-      z === undefined ||
-      width === null ||
-      width === undefined ||
-      depth === null ||
-      depth === undefined ||
-      yaw === null ||
-      yaw === undefined
-    ) {
-      return [];
-    }
-    return [{ x, z, width, depth, yaw, height: height ?? null }];
-  });
+  bakedPlans(map.plans).flatMap((plan) =>
+    fitBoxes(plan.ring).map((box) => ({ ...box, height: plan.height })),
+  );
 
 /** And the pairs, for the two things that are only ever a place. */
+
+/** A building as the map drew it: a ring, and how tall it says it is. */
+export interface BuildingPlan {
+  /** Metres, or null where the map gave neither a height nor a storey count. */
+  height: number | null;
+  /** The footprint, open: the last point does not repeat the first. */
+  ring: [number, number][];
+}
+
+/** Unpack the baked outlines, dropping anything too short to be a shape. */
+export const bakedPlans = (
+  rows: readonly (readonly (number | null)[])[] | undefined,
+): BuildingPlan[] =>
+  (rows ?? []).flatMap((row) => {
+    const ring: [number, number][] = [];
+    for (let i = 1; i + 1 < row.length; i += 2) {
+      const x = row[i];
+      const z = row[i + 1];
+      if (typeof x !== 'number' || typeof z !== 'number') return [];
+      ring.push([x, z]);
+    }
+    if (ring.length < 3) return [];
+    const height = row[0];
+    return [{ height: typeof height === 'number' ? height : null, ring }];
+  });
+
 export const bakedPoints = (rows: readonly (readonly number[])[] | undefined): [number, number][] =>
   (rows ?? []).flatMap((row) =>
     row.length >= 2 && Number.isFinite(row[0]) && Number.isFinite(row[1])
