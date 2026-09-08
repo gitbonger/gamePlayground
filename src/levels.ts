@@ -247,6 +247,30 @@ export const HOMECOMING: Scene = {
 };
 
 /**
+ * The belly is full, said standing on the concrete.
+ *
+ * No `endsOn`, so the camera stays where it is and he says it on the slab he
+ * has just eaten off -- the same shape as the beat on Mátyás tér, and the
+ * same reason. Level three used to end by cutting straight from the last seed
+ * to a nine-hundred-metre flight home, which is the game answering a question
+ * the player had not been told was being asked: nothing said the errand was
+ * done, so the camera leaving looked like the camera taking over.
+ *
+ * A monologue rather than a conversation, because there is nobody on Teleki
+ * tér to have one with. The panel already draws one -- a monologue is a
+ * conversation with one speaker, shown in his own colour with nothing to say
+ * back -- and this is the second of them.
+ */
+export const BELLY_FULL: Scene = {
+  name: 'a full belly',
+  // Nowhere to go and no arc to get there by: this happens where he is.
+  seconds: 0,
+  cruise: 0,
+  says: ['My belly is full, time to fly home!'],
+  opens: { scene: HOMECOMING.name },
+};
+
+/**
  * Off to the eighth district to look.
  *
  * Nothing to say, so it does not hold: the take-off that ends the beat at the
@@ -331,6 +355,7 @@ export const UP_TO_THE_ROOFS: Scene = {
 };
 
 export const SCENES: readonly Scene[] = [
+  BELLY_FULL,
   HOMECOMING,
   TO_MATYAS,
   NOT_AT_MATYAS,
@@ -884,7 +909,7 @@ export const LEVELS: readonly Level[] = [
     // so the next thing that happens is going home -- which the game flies,
     // because nine hundred metres of park he has already crossed twice is not
     // a level, it is the journey between two of them.
-    finish: { kind: 'fed', opens: { scene: HOMECOMING.name } },
+    finish: { kind: 'fed', opens: { scene: BELLY_FULL.name } },
   },
   {
     // Into the eighth district to look for her. He is put down over

@@ -7,6 +7,7 @@ import {
   crowsOn,
   lineThrough,
   dialogueOf,
+  BELLY_FULL,
   HOMECOMING,
   NOT_AT_MATYAS,
   LEVELS,
@@ -650,18 +651,45 @@ describe('what the levels aim at', () => {
     // homecoming has a line and holds; the flight into town has none and runs
     // straight into the level, so what the player sees is one movement.
     const holds = SCENES.filter((scene) => scene.says !== undefined);
-    expect(holds.map((scene) => scene.name)).toEqual([HOMECOMING.name, NOT_AT_MATYAS.name]);
-    // Both of them name where he is going next, which is what a monologue in
-    // a search is for: it is the only thing telling the player why the next
-    // level exists.
+    expect(holds.map((scene) => scene.name)).toEqual([
+      BELLY_FULL.name,
+      HOMECOMING.name,
+      NOT_AT_MATYAS.name,
+    ]);
+    // And every line of it is a line: a monologue with an empty one in it is
+    // a blank row in the panel.
     for (const scene of holds) {
-      const spoken = scene.says!.join(' ');
-      const named = LEVELS.some((level) => spoken.includes(level.name));
-      expect(named, spoken).toBe(true);
-      // And every line of it is a line: a monologue with an empty one in it
-      // is a blank row in the panel.
       for (const line of scene.says!) expect(line.length, scene.name).toBeGreaterThan(0);
     }
+  });
+
+  it('names the next place on the beats that are a search', () => {
+    // The search levels are a run of "fly there, land, find nothing, name the
+    // next place", and the monologue is the only thing telling the player why
+    // the level after this one exists. Asked of those beats rather than of
+    // every monologue: the one at the end of an errand is not a search, and
+    // has nothing to point at.
+    for (const scene of [HOMECOMING, NOT_AT_MATYAS]) {
+      const spoken = scene.says!.join(' ');
+      expect(LEVELS.some((level) => spoken.includes(level.name)), spoken).toBe(true);
+    }
+  });
+
+  it('says the errand is done before the camera takes it over', () => {
+    // Level three ended by cutting from the last seed straight into a nine
+    // hundred metre flight home, which is the game answering a question the
+    // player was never told was being asked: nothing said the errand was
+    // finished, so the camera leaving looked like the camera taking over.
+    //
+    // No `endsOn`, so it happens where he is standing -- the same shape as
+    // the beat on Mátyás tér, and the same reason.
+    const eating = LEVELS.find((level) => level.finish.kind === 'fed')!;
+    expect(eating.name).toBe('Teleki tér');
+    expect(eating.finish).toEqual({ kind: 'fed', opens: { scene: BELLY_FULL.name } });
+    expect(BELLY_FULL.endsOn).toBeUndefined();
+    expect(BELLY_FULL.says).toHaveLength(1);
+    // And it hands on to the flight home rather than ending the story.
+    expect(BELLY_FULL.opens).toEqual({ scene: HOMECOMING.name });
   });
 
   it('leaves nobody standing on a level that is finished by finding nobody', () => {
