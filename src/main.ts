@@ -97,6 +97,7 @@ import {
 } from './sim/collision';
 import { createChaseCamera, defaultCameraParams, defaultWatchParams } from './render/camera';
 import { createHud } from './render/hud';
+import { createMinimap } from './render/minimap';
 import { defaultSight, sighted } from './render/sighted';
 import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
@@ -638,6 +639,14 @@ const chase = createChaseCamera(camera);
 const sightForward = new THREE.Vector3();
 const sight = { ...defaultSight, eye: camera.position, forward: sightForward };
 const hud = createHud(overlay, map.attribution);
+/**
+ * The map in the corner, turned so forward is up.
+ *
+ * Given the streets once: they never change, and bucketing seven and a half
+ * thousand segments every frame would be the whole point of a minimap thrown
+ * away on drawing it.
+ */
+const minimap = createMinimap(overlay, layout.roads ?? []);
 const outcome = createOutcomePanel(overlay);
 const input = createInput();
 
@@ -3020,6 +3029,29 @@ function frame(nowMs: number) {
     unproject(interpolatedState.position, map.centre),
     !LEVELS[level]?.tireless,
   );
+  // The same three things the world is showing -- what is aimed at, the mark
+  // that is up, and the line that finishes the level -- seen from above and
+  // turned so forward is up. Read off the same places the world reads them
+  // from, so the map cannot disagree with the thing it is a map of.
+  const ending = LEVELS[level] ? finishingLine(LEVELS[level]!) : null;
+  minimap.update({
+    at: interpolatedState.position,
+    heading: heading(interpolatedState),
+    // Whatever finishes the level, which is not always a thing with a marker
+    // over it. A level that ends at a line has no target to point at on
+    // purpose -- there is nothing to land on, so the arrow in the world is
+    // down -- and it is exactly those levels the player is most lost on: the
+    // stripe is painted on the ground nine hundred metres away, behind a
+    // building. So the map points at the line's own crossing point, which is
+    // the spot the level is asking you to fly through.
+    target: aim
+      ? { x: aim.position.x, z: aim.position.z }
+      : ending
+        ? { x: ending.x, z: ending.z }
+        : null,
+    mark: waymarks.at,
+    line: ending,
+  });
   renderer.render(scene, camera);
   // Then the arrows, on a fresh depth buffer so the world cannot cover them.
   renderer.autoClear = false;

@@ -502,3 +502,19 @@ body {
   text-transform: uppercase;
   color: var(--dim);
 }
+
+/* --- The map in the corner ------------------------------------------------ */
+/*
+ * Above the coordinates and the credit, which live in the same corner. Its
+ * own element rather than part of the HUD column: that column is a stack of
+ * readouts on the left, and this is a picture on the right.
+ */
+.hud-minimap {
+  position: absolute;
+  right: 16px;
+  bottom: 74px;
+  width: 148px;
+  height: 148px;
+  /* Nothing here is clicked. */
+  pointer-events: none;
+}
