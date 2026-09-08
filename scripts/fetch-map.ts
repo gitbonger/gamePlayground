@@ -533,6 +533,15 @@ async function main() {
    * end that knows where the track ended up.
    */
   const stops: number[][] = [];
+  /**
+   * What each of them is called, in step with `stops`.
+   *
+   * A separate list rather than a field, because a stop is a run of numbers
+   * and one string in the middle of it would cost every reader a special
+   * case. Empty where the map does not say -- a third of them are a kerb
+   * somebody drew without naming.
+   */
+  const stopNames: string[] = [];
   for (const element of dotted.elements) {
     if (element.type === 'way') {
       if (!element.geometry || element.geometry.length < 2) continue;
@@ -543,6 +552,7 @@ async function main() {
       const points = toLocal(element.geometry, 0.5);
       if (points.length < 2) continue;
       stops.push(points.flatMap(([x, z]) => [x!, z!]));
+      stopNames.push(element.tags?.['name'] ?? '');
       continue;
     }
     if (element.lat === undefined || element.lon === undefined) continue;
@@ -600,6 +610,7 @@ async function main() {
         crossings,
         trees,
         stops,
+        stopNames,
         brands,
         signs,
         worship,
@@ -611,7 +622,9 @@ async function main() {
 
   const kb = (
     Buffer.byteLength(
-      JSON.stringify({ roads, bridges, rails, areas, plans, crossings, trees, stops, brands, signs, worship }),
+      JSON.stringify({
+        roads, bridges, rails, areas, plans, crossings, trees, stops, stopNames, brands, signs, worship,
+      }),
     ) / 1024
   ).toFixed(0);
   process.stderr.write(
@@ -621,7 +634,7 @@ async function main() {
       `(${plans.filter((b) => b[0] !== null).length} of them saying how tall, ` +
       `${plans.reduce((n, b) => n + (b.length - 1) / 2, 0)} corners between them), ` +
       `${crossings.length} crossings, ${trees.length} trees, ` +
-      `${stops.length} tram platforms, ` +
+      `${stops.length} tram platforms (${new Set(stopNames.filter(Boolean)).size} named stops), ` +
       `${signs.length} shop signs of ${brands.length} brands, ${worship.length} churches, ` +
       `${rawPoints} points before thinning, ${kb} kB -> ${out}\n`,
   );

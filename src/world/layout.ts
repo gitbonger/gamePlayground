@@ -658,6 +658,8 @@ export interface Footprint {
  * is a fact about trams.
  */
 export interface Platform {
+  /** What the stop is called, or '' where the map does not say. */
+  name: string;
   x: number;
   z: number;
   /** Along the track. */

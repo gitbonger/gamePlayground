@@ -400,7 +400,26 @@ const STEEPLE_TALLEST = 55;
  * short ones are single-ended stops in a side street with a pole and nothing
  * else.
  */
-const PLATFORM = { wide: 2.5, clear: 1.6, rise: 0.25, sheltered: 30, perShelter: 45, shove: 4 };
+const PLATFORM = {
+  wide: 2.5,
+  clear: 1.6,
+  rise: 0.25,
+  sheltered: 30,
+  perShelter: 45,
+  shove: 4,
+  /** How many people are waiting on one: a few, never none, never a crowd. */
+  waiting: { least: 1, most: 5 },
+};
+
+/**
+ * How far from a running line a platform still belongs to it, in metres.
+ *
+ * Twelve. Wide enough to take in the far track of a pair -- an island stands
+ * between the two directions and serves both, so a tram on either stops at
+ * it -- and narrow enough that a platform on the next street along is not
+ * something to pull up for.
+ */
+const PLATFORM_SERVED = 12;
 
 /** What the map's numbers mean, in the order `worshipKind` writes them. */
 const WORSHIP_KINDS = ['church', 'chapel', 'synagogue'] as const;
@@ -1022,10 +1041,10 @@ export function buildLayoutFromMap(
   };
 
   const platforms: Platform[] = [];
-  for (const row of map.stops ?? []) {
+  (map.stops ?? []).forEach((row, index) => {
     const ring: [number, number][] = [];
     for (let i = 0; i + 1 < row.length; i += 2) ring.push([row[i]!, row[i + 1]!]);
-    if (ring.length < 2) continue;
+    if (ring.length < 2) return;
 
     // Where it is and which way it runs. Three points or more get the box,
     // whose long side is the platform however bent the line is; two points
@@ -1042,7 +1061,7 @@ export function buildLayoutFromMap(
           : Math.atan2(-(ring[1]![1] - ring[0]![1]), ring[1]![0] - ring[0]![0]);
     let x = box ? box.x : (ring[0]![0] + ring[1]![0]) / 2;
     let z = box ? box.z : (ring[0]![1] + ring[1]![1]) / 2;
-    if (along < 8) continue;
+    if (along < 8) return;
 
     // Off the track -- the whole slab, not its middle.
     //
@@ -1084,7 +1103,7 @@ export function buildLayoutFromMap(
         break;
       }
     }
-    if (offset === null) continue;
+    if (offset === null) return;
     x += offset * sin;
     z += offset * cos;
 
@@ -1107,7 +1126,43 @@ export function buildLayoutFromMap(
       );
     }
 
+    // And somebody waiting. A tram stop with nobody on it is a concrete
+    // sliver in the road; one with three people on it is a tram stop.
+    //
+    // Facing along the line rather than any which way, because that is what
+    // waiting for a tram looks like: everyone turned the way it comes from,
+    // give or take. Which of the two ways is a coin, since a platform serves
+    // one direction and this end has no idea which.
+    const waiting =
+      PLATFORM.waiting.least +
+      Math.floor(rand() * (PLATFORM.waiting.most - PLATFORM.waiting.least + 1));
+    const huts = shelteredAt(along);
+    const clearOfHuts = (run: number) =>
+      !huts.some((at) => Math.abs(run - at) < SHELTER.long / 2 + 0.5);
+    for (let i = 0; i < waiting; i += 1) {
+      // Kept off the ends, and out of the huts -- a figure inside a solid box
+      // is a figure nobody sees, and the one place it would be worth standing.
+      //
+      // Tried a few times rather than skipped, so a short platform with a hut
+      // down the middle of it still has somebody on it. Six goes and then
+      // wherever it landed: a platform that cannot fit a person beside its own
+      // shelter is one the player will never be close enough to count.
+      let run = 0;
+      for (let go = 0; go < 6; go += 1) {
+        run = (rand() - 0.5) * Math.max(0, along - 2);
+        if (clearOfHuts(run)) break;
+      }
+      const across = (rand() - 0.5) * (PLATFORM.wide - 1.2);
+      people.push({
+        x: x + run * cos + across * sin,
+        z: z - run * sin + across * cos,
+        base: PLATFORM.rise,
+        facing: yaw + (rand() < 0.5 ? 0 : Math.PI) + (rand() - 0.5) * 0.6,
+      });
+    }
+
     platforms.push({
+      name: map.stopNames?.[index] ?? '',
       x,
       z,
       width: along,
@@ -1119,7 +1174,7 @@ export function buildLayoutFromMap(
       // at the midpoint is a platform nobody could shelter on.
       shelters: shelteredAt(along),
     });
-  }
+  });
 
   const blocks = extractBlocks(map.roads, {
     minArea: options.minBlockArea,
@@ -1403,6 +1458,50 @@ export function buildLayoutFromMap(
   // is 198 m of that, leaving it shuffling back and forth over eighty. Among
   // the lines close enough to be the one meant, the roomiest is the one to
   // stand it on.
+  /**
+   * Where along a line its platforms are, for a rake of this length.
+   *
+   * The line is walked once and every platform offered each segment, which is
+   * a few thousand comparisons at world build and nothing at all after that.
+   *
+   * Only those actually beside the line: `PLATFORM_SERVED` is wide enough to
+   * take in the far track of a pair -- an island serves both directions and a
+   * tram on either of them stops at it -- and narrow enough that a platform
+   * on the next street is not a call.
+   *
+   * Calls too near an end are dropped rather than clamped. A tram pulling up
+   * with half of itself off the line is worse than one running past a stop.
+   */
+  const callsAlong = (line: Rail, consist: number): number[] => {
+    if (!platforms.length) return [];
+    const run = lineLength(line.points);
+    const found: number[] = [];
+    for (const stop of platforms) {
+      let travelled = 0;
+      let best: { away: number; at: number } | null = null;
+      for (let i = 1; i < line.points.length; i += 1) {
+        const a = line.points[i - 1]!;
+        const b = line.points[i]!;
+        const dx = b[0] - a[0];
+        const dz = b[1] - a[1];
+        const span = Math.hypot(dx, dz);
+        if (span > 0) {
+          const t = Math.max(
+            0,
+            Math.min(1, ((stop.x - a[0]) * dx + (stop.z - a[1]) * dz) / (span * span)),
+          );
+          const away = Math.hypot(stop.x - (a[0] + dx * t), stop.z - (a[1] + dz * t));
+          if (!best || away < best.away) best = { away, at: travelled + span * t };
+        }
+        travelled += span;
+      }
+      if (!best || best.away > PLATFORM_SERVED) continue;
+      if (best.at < consist / 2 + 1 || best.at > run - consist / 2 - 1) continue;
+      found.push(Math.round(best.at * 100) / 100);
+    }
+    return [...new Set(found)].sort((a, b) => a - b);
+  };
+
   const trains: Train[] = [];
   /**
    * Lines already occupied.
@@ -1523,6 +1622,8 @@ export function buildLayoutFromMap(
       stock,
       cars: spec.cars,
       turnaround: stockTurnaround(stock),
+      calls: stock === 'tram' ? callsAlong(line, consistLength(spec.cars, stock)) : [],
+      held: 0,
       vehicles,
     });
   }
@@ -1604,6 +1705,11 @@ export function buildLayoutFromMap(
           stock: want.stock,
           cars: want.cars,
           turnaround: stockTurnaround(want.stock),
+          // Worked out per route rather than per tram, since every tram on a
+          // route calls at the same places -- but the routes are traced in
+          // this loop, so this is where it can be asked.
+          calls: want.stock === 'tram' ? callsAlong(route.line, length) : [],
+          held: 0,
           vehicles,
         });
       }

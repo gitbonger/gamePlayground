@@ -116,8 +116,7 @@ import {
   moveTrainBoxes,
   onVehicle,
   rakeNear,
-  recycle,
-  shuttle,
+  advance,
   vehicleCount,
   stackTop,
   stockIsHauled,
@@ -647,7 +646,7 @@ const hud = createHud(overlay, map.attribution);
  * thousand segments every frame would be the whole point of a minimap thrown
  * away on drawing it.
  */
-const minimap = createMinimap(overlay, layout.roads ?? []);
+const minimap = createMinimap(overlay, layout.roads ?? [], layout.platforms ?? []);
 const outcome = createOutcomePanel(overlay);
 const input = createInput();
 
@@ -1980,6 +1979,17 @@ const TRAIN_REACH = 300;
  * where more stops being visible.
  */
 const DISTANT_REDRAW = 1 / 30;
+
+/**
+ * How long a tram stands at a stop, in seconds.
+ *
+ * Two, which is short for a tram and right for this. A real one dwells for
+ * fifteen or twenty; a pigeon crosses this district in under a minute, and a
+ * tram parked for twenty seconds in a game that long is a tram that has
+ * broken down. Two is long enough to read as stopping and to land on, and
+ * short enough that the street is never still.
+ */
+const DWELL = 2;
 /** When each train was last laid out in world coordinates. */
 const laidOut = layout.trains.map(() => Number.NEGATIVE_INFINITY);
 /**
@@ -2071,28 +2081,27 @@ function moveTrains(dt: number) {
     // at the ends -- so there is nothing to gain by skipping it.
     const consist = consistLength(train.cars, train.stock);
     const line = lineLength(train.line.points);
-    if (train.turnaround === 'recycle') {
-      const run = recycle(line, consist, train.along, train.direction, train.speed * dt);
-      train.along = run.along;
-      // A wrap is not a movement, and everything downstream that works from
-      // the difference between two ticks has to be told so. Setting the
-      // previous position to the new one says it once, for all of them: the
-      // frame between the ticks is drawn where the tram now is rather than
-      // swept backwards across the city, and the copy below is taken after
-      // the vehicles have been moved rather than before, so nothing standing
-      // on the tram is carried the length of the route with it.
-      //
-      // Which means a pigeon on the roof of a tram that reaches the end of
-      // the line is left standing in the air, and falls. That is the right
-      // answer: the tram it was on has gone.
-      if (run.wrapped) {
-        wrapped[index] = true;
-        previousAlong[index] = run.along;
-      }
-    } else {
-      const run = shuttle(line, consist, train.along, train.direction, train.speed * dt);
-      train.along = run.along;
-      train.direction = run.direction;
+    // Where it gets to, stops and all -- see `advance`. A tram calls at its
+    // platforms and waits there, which is the difference between a tram and a
+    // thing on rails: the whole street stops with it.
+    const went = advance(train, consist, line, dt, DWELL);
+    train.along = went.along;
+    train.direction = went.direction;
+    train.held = went.held;
+    // A wrap is not a movement, and everything downstream that works from the
+    // difference between two ticks has to be told so. Setting the previous
+    // position to the new one says it once, for all of them: the frame between
+    // the ticks is drawn where the tram now is rather than swept backwards
+    // across the city, and the copy below is taken after the vehicles have
+    // been moved rather than before, so nothing standing on the tram is
+    // carried the length of the route with it.
+    //
+    // Which means a pigeon on the roof of a tram that reaches the end of the
+    // line is left standing in the air, and falls. That is the right answer:
+    // the tram it was on has gone.
+    if (went.wrapped) {
+      wrapped[index] = true;
+      previousAlong[index] = went.along;
     }
 
     // The tags are handed out for every train in turn whatever happens next,
@@ -2123,7 +2132,11 @@ function moveTrains(dt: number) {
     // Every box knows how fast the rake is running, which is what makes
     // being touched by one fatal rather than merely blocking.
     const boxes = trainBoxSets[index]!;
-    moveTrainBoxes(boxes, train.vehicles, base, train.speed);
+    // The speed it is doing, not the speed it runs at. Every box carries this
+    // and it is what makes being touched by one fatal -- so a tram standing
+    // in a platform has to say nought, or the safest place in the city to
+    // land is the one thing in it that kills you.
+    moveTrainBoxes(boxes, train.vehicles, base, train.held > 0 ? 0 : train.speed);
     fields.push(createColliderField(boxes));
   });
 

@@ -18,6 +18,7 @@
  * between them are the shape you actually recognise.
  */
 
+import type { Platform } from '../world/layout';
 import type { Road } from '../world/streets';
 
 /**
@@ -46,8 +47,64 @@ const SIZE = 296;
  */
 const CELL = 100;
 
+/**
+ * How near two islands of the same name are the same stop, in metres.
+ *
+ * A stop is an island each side of the street and often two to a side, all
+ * carrying the one name: sixty-six platforms between twenty-one names on this
+ * map. Written four times over, the panel says `Blaha Lujza tér` in a pile of
+ * overlapping text.
+ *
+ * A hundred and eighty, because a junction stop puts its islands on different
+ * arms of the crossroads and the widest such pair here -- Magdolna utca --
+ * is a hundred and seventy-seven metres. Merged, the name sits at the middle
+ * of them, which is the junction, which is where somebody would point.
+ *
+ * Only ever within one name, so no distance merges two different stops. What
+ * a bigger number risks is two genuinely different places that happen to
+ * share a name, and this district has none.
+ */
+const STOP_TOGETHER = 180;
+
+/**
+ * How many stop names the panel will show at once.
+ *
+ * Four. The panel is 320 m across and this district has a tram stop every
+ * two hundred metres, so unlimited is six or seven names over a map the size
+ * of a beer mat. The nearest few are the ones that answer "where am I".
+ */
+const STOPS_SHOWN = 4;
+
 /** How many times a second a crow blinks on the panel. */
 const CROW_BLINK = 3;
+
+/** The stop names: small, and in the pale grey-yellow a tram is. */
+const STOP_TEXT = 9;
+const STOP_INK = '#d8d2b4';
+
+/**
+ * The longest a name is printed at, in characters.
+ *
+ * The panel is 296 across and the district's names run to thirty-five --
+ * `Blaha Lujza tér M (Népszínház utca)` -- which at this size is two thirds
+ * of the width and does not fit inside a circle whatever side of the dot it
+ * is put on. Twenty is about half the panel, which fits.
+ */
+const STOP_CHARS = 20;
+
+/**
+ * The part of a stop's name worth printing.
+ *
+ * The head of it. Hungarian stop names qualify themselves in brackets --
+ * which arm of the junction, which street -- and the qualification is the
+ * part a player already knows from the dot being where it is. `Blaha Lujza
+ * tér M (Népszínház utca)` is Blaha, and the map is already saying which
+ * corner of Blaha.
+ */
+export function shortStop(name: string): string {
+  const head = name.replace(/\s*\(.*$/, '').trim();
+  return head.length > STOP_CHARS ? `${head.slice(0, STOP_CHARS - 1)}…` : head;
+}
 
 /**
  * The flock, and her.
@@ -151,7 +208,39 @@ export function onPanel(
   };
 }
 
-export function createMinimap(container: HTMLElement, roads: readonly Road[]): Minimap {
+/**
+ * The named stops, one point apiece.
+ *
+ * Exported because the merging is the only part of this with a rule in it and
+ * the rule is easy to get wrong quietly: too tight and the panel says a name
+ * four times, too loose and two stops down the same street become one.
+ */
+export function namedStops(
+  platforms: readonly Platform[],
+): { x: number; z: number; name: string }[] {
+  const merged: { x: number; z: number; name: string; count: number }[] = [];
+  for (const stop of platforms) {
+    if (!stop.name) continue;
+    const near = merged.find(
+      (had) => had.name === stop.name && Math.hypot(had.x - stop.x, had.z - stop.z) <= STOP_TOGETHER,
+    );
+    if (near) {
+      // The middle of however many islands carry the name, which for a pair
+      // either side of a street is the middle of the street -- which is where
+      // somebody would point when they said the name.
+      near.x += (stop.x - near.x) / (near.count + 1);
+      near.z += (stop.z - near.z) / (near.count + 1);
+      near.count += 1;
+    } else merged.push({ x: stop.x, z: stop.z, name: stop.name, count: 1 });
+  }
+  return merged.map(({ x, z, name }) => ({ x, z, name }));
+}
+
+export function createMinimap(
+  container: HTMLElement,
+  roads: readonly Road[],
+  platforms: readonly Platform[] = [],
+): Minimap {
   const canvas = document.createElement('canvas');
   canvas.className = 'hud-minimap';
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -162,6 +251,7 @@ export function createMinimap(container: HTMLElement, roads: readonly Road[]): M
   const ctx = canvas.getContext('2d')!;
   const middle = SIZE / 2;
   const scale = middle / REACH;
+  const stops = namedStops(platforms);
 
   // Every street segment, bucketed by where it is, once.
   const grid = new Map<string, number[][]>();
@@ -243,6 +333,72 @@ export function createMinimap(container: HTMLElement, roads: readonly Road[]): M
         void on;
       }
       ctx.restore();
+
+      // The tram stops, named.
+      //
+      // The one thing on this panel that is a place rather than a thing: a
+      // player who knows this district knows where Blaha is, and a name on
+      // the map is worth more to them than any amount of street geometry.
+      // Under everything that moves, and in the tram's own yellow-grey, so it
+      // reads as printing on the map rather than as something happening.
+      const nearest = stops
+        .map((stop) => ({ stop, spot: to(stop.x, stop.z) }))
+        .filter(({ spot }) => Math.hypot(spot.x - middle, spot.y - middle) < middle - 26)
+        .sort(
+          (a, b) =>
+            Math.hypot(a.spot.x - middle, a.spot.y - middle) -
+            Math.hypot(b.spot.x - middle, b.spot.y - middle),
+        )
+        .slice(0, STOPS_SHOWN);
+      ctx.font = `500 ${STOP_TEXT}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+      ctx.textBaseline = 'middle';
+      const printed: { x: number; y: number; width: number }[] = [];
+      /** Whether a run of the panel at this height is inside the rim. */
+      const withinRim = (from: number, to: number, y: number) => {
+        const room = middle - 4;
+        return (
+          Math.hypot(from - middle, y - middle) <= room &&
+          Math.hypot(to - middle, y - middle) <= room
+        );
+      };
+      for (const { stop, spot } of nearest) {
+        ctx.fillStyle = STOP_INK;
+        ctx.fillRect(spot.x - 2, spot.y - 2, 4, 4);
+
+        const label = shortStop(stop.name);
+        const width = ctx.measureText(label).width;
+        // Whichever side of the dot keeps the whole name inside the rim. The
+        // panel is round, so "fits on the canvas" is not the question: a name
+        // that fits the square and not the circle is a name with its first
+        // half clipped off, which is worse than no name.
+        const right = withinRim(spot.x + 5, spot.x + 5 + width, spot.y);
+        const leftFits = withinRim(spot.x - 5 - width, spot.x - 5, spot.y);
+        if (!right && !leftFits) continue;
+        ctx.textAlign = right ? 'left' : 'right';
+        const at = right ? spot.x + 5 : spot.x - 5;
+        const left = right ? at : at - width;
+        // Not on top of a name already there. Two different stops can stand
+        // sixty-seven metres apart in this district, which is thirty pixels,
+        // and two names in the same thirty pixels is one unreadable name. The
+        // dot is still drawn: something is there, and it is nearer than the
+        // one whose name is printed.
+        const clashes = printed.some(
+          (had) =>
+            Math.abs(had.y - spot.y) < STOP_TEXT + 3 &&
+            left < had.x + had.width + 3 &&
+            had.x < left + width + 3,
+        );
+        if (clashes) continue;
+        // A dark backing, so a name over a street is still a name.
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = '#0d1116';
+        ctx.fillRect(left - 2, spot.y - STOP_TEXT / 2 - 2, width + 4, STOP_TEXT + 4);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = STOP_INK;
+        ctx.fillText(label, at, spot.y);
+        printed.push({ x: left, y: spot.y, width });
+      }
+      ctx.textAlign = 'left';
 
       // The rim, drawn after the clip so the streets do not paint over it.
       ctx.strokeStyle = 'rgba(226, 232, 240, 0.5)';

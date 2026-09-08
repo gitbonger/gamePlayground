@@ -121,6 +121,15 @@ export interface MapData {
    * see `PLATFORM` in `from-map.ts`.
    */
   stops?: readonly (readonly number[])[];
+  /**
+   * What each of `stops` is called, in step with it, '' where unnamed.
+   *
+   * Sixty-six platforms between twenty-three named stops: a stop is an island
+   * each side of the street, and often two islands to a side, all carrying
+   * the one name. Whoever shows these to a player has to say the name once --
+   * see `namedStops` in the minimap.
+   */
+  stopNames?: readonly string[];
 }
 
 /** A building outline, as the game wants it. */

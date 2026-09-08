@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { onPanel } from './minimap';
+import { namedStops, onPanel, shortStop } from './minimap';
 
 /** A panel 100 across, showing 200 m each way. */
 const MIDDLE = 50;
@@ -189,5 +189,58 @@ describe('the flock on the panel', () => {
     map.update({ ...nothing, flock: [{ x: 0, z: -5000 }], her: { x: 5000, z: 0 } });
     expect(dots.filter((dot) => dot.colour === '#5cd68a')).toHaveLength(0);
     expect(dots.filter((dot) => dot.colour === '#ef9ab8')).toHaveLength(0);
+  });
+});
+
+describe('naming the tram stops', () => {
+  const island = (name: string, x: number, z: number) => ({
+    name,
+    x,
+    z,
+    width: 50,
+    depth: 2.5,
+    yaw: 0,
+    height: 0.25,
+    shelters: [],
+  });
+
+  it('says a stop once, however many islands it has', () => {
+    // Sixty-six platforms between twenty-one names on the real map: an island
+    // each side of the street, often two to a side. Written once per island
+    // the panel says `Blaha Lujza tér` in a pile of overlapping text.
+    const merged = namedStops([
+      island('Blaha Lujza tér M', 0, 0),
+      island('Blaha Lujza tér M', 14, 0),
+      island('Blaha Lujza tér M', 0, 20),
+    ]);
+    expect(merged).toHaveLength(1);
+    // At the middle of them, which for a pair either side of a street is the
+    // middle of the street.
+    expect(merged[0]!.x).toBeGreaterThan(0);
+    expect(merged[0]!.x).toBeLessThan(14);
+  });
+
+  it('keeps two stops apart even when they share a name', () => {
+    // The risk of merging by name at all. Nothing in this district is like
+    // this, and the rule should still not fuse a kilometre.
+    expect(namedStops([island('Mester utca', 0, 0), island('Mester utca', 900, 0)])).toHaveLength(2);
+  });
+
+  it('leaves the unnamed ones off entirely', () => {
+    // A third of the islands are a kerb somebody drew without naming, and a
+    // dot with no name against it is a dot that means nothing.
+    expect(namedStops([island('', 0, 0), island('Golgota tér', 40, 0)])).toEqual([
+      { x: 40, z: 0, name: 'Golgota tér' },
+    ]);
+  });
+
+  it('prints the part of a name that says which stop it is', () => {
+    // The head. Hungarian stop names qualify themselves in brackets -- which
+    // arm of the junction -- and the map is already saying which arm by
+    // where the dot is.
+    expect(shortStop('Blaha Lujza tér M (Népszínház utca)')).toBe('Blaha Lujza tér M');
+    expect(shortStop('Teleki László tér')).toBe('Teleki László tér');
+    // And nothing longer than the panel can hold.
+    expect(shortStop('Erzsébet királyné útja, aluljáró'.repeat(2)).length).toBeLessThanOrEqual(20);
   });
 });

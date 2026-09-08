@@ -229,7 +229,107 @@ export interface Train {
    * it would be a second place to keep in step with the first.
    */
   turnaround: Turnaround;
+  /**
+   * Distances along the line where it calls, in metres, sorted.
+   *
+   * A platform's own midpoint, projected onto the line, and the middle of the
+   * rake is what pulls up on it -- so a forty metre tram at a hundred metre
+   * island stands in the middle of the island, which is where one does.
+   *
+   * Worked out once, when the world is built. Empty for anything that calls
+   * nowhere, which is every train on heavy rail: a goods rake in a yard has
+   * no passengers to set down.
+   */
+  calls: readonly number[];
+  /** Seconds left standing at one. Zero for a train that is running. */
+  held: number;
   vehicles: Vehicle[];
+}
+
+/**
+ * The place this train pulls up at, if it reaches one this step.
+ *
+ * `from` and `to` are where the middle of the rake is before and after the
+ * step, which may be either way round -- a shuttling train runs both ways
+ * down the same list.
+ *
+ * Strictly crossed, and that is the whole of the trick: a tram that has just
+ * pulled up is standing *exactly* on a call, and a test that counted landing
+ * on one as reaching it would find the same platform again on the tick it
+ * left, and again, and never move.
+ */
+/**
+ * Where a train has got to after a tick, stops and all.
+ *
+ * The whole of what a train does with time, in one place: it runs, it reaches
+ * the end and does whatever its sort does there, and it stands at its
+ * platforms on the way. Pulled out of the tick loop so it can be driven a
+ * thousand ticks at a time by a test rather than by flying up to a tram and
+ * watching -- the thing worth being sure of here is that a tram which pulls
+ * up also pulls away again, and that is not a thing an eye is good at.
+ *
+ * `dwell` is how long it stands. Everything is returned rather than written,
+ * so the caller can tell a wrap from a journey.
+ */
+export function advance(
+  train: Pick<Train, 'along' | 'direction' | 'speed' | 'turnaround' | 'calls' | 'held'>,
+  consist: number,
+  run: number,
+  dt: number,
+  dwell: number,
+): { along: number; direction: number; held: number; wrapped: boolean } {
+  // Standing at a stop, if it is. Counted down before it is moved rather than
+  // after, so the tick it pulls up is the first tick of the wait rather than
+  // the last tick of the run.
+  if (train.held > 0) {
+    return {
+      along: train.along,
+      direction: train.direction,
+      held: Math.max(0, train.held - dt),
+      wrapped: false,
+    };
+  }
+
+  const step = train.speed * dt;
+  if (train.turnaround === 'recycle') {
+    const went = recycle(run, consist, train.along, train.direction, step);
+    // A wrap is not a journey -- the tram has been picked up and put down at
+    // the other end of the line -- so nothing is called at across one.
+    const call = went.wrapped
+      ? null
+      : callReached(train.calls, train.along - consist / 2, went.along - consist / 2);
+    return {
+      along: call === null ? went.along : call + consist / 2,
+      direction: train.direction,
+      held: call === null ? 0 : dwell,
+      wrapped: went.wrapped,
+    };
+  }
+
+  const went = shuttle(run, consist, train.along, train.direction, step);
+  const call = callReached(train.calls, train.along - consist / 2, went.along - consist / 2);
+  return {
+    along: call === null ? went.along : call + consist / 2,
+    // Turned round even on the tick it pulls up: where it is and which way it
+    // is pointing are two facts, and a stop does not undo the second.
+    direction: went.direction,
+    held: call === null ? 0 : dwell,
+    wrapped: false,
+  };
+}
+
+export function callReached(
+  calls: readonly number[],
+  from: number,
+  to: number,
+): number | null {
+  let best: number | null = null;
+  for (const at of calls) {
+    if ((from - at) * (to - at) >= 0) continue;
+    // The nearest one ahead, for a step long enough to pass two of them.
+    if (best === null || Math.abs(at - from) < Math.abs(best - from)) best = at;
+  }
+  return best;
 }
 
 /**

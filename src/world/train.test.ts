@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  advance,
   carriedBy,
   carryPassengers,
   chainageOf,
@@ -1355,5 +1356,97 @@ describe('carrying whatever is standing on a train', () => {
 
     // The wagon went 160 m and the passenger stayed exactly where it was.
     expect(rider.position.x).toBeCloseTo(rake[3]!.x - 160, 6);
+  });
+});
+
+describe('calling at stops', () => {
+  /** A tram on a 400 m ring, calling at 100 and 250 metres along it. */
+  const tram = () => ({
+    along: 60,
+    direction: 1,
+    speed: 10,
+    turnaround: 'recycle' as const,
+    calls: [100, 250],
+    held: 0,
+  });
+  const CONSIST = 40;
+  const RUN = 400;
+  const DWELL = 2;
+  const TICK = 1 / 120;
+
+  /** Run it for `seconds`, returning where it was at the end of each tick. */
+  const drive = (train: ReturnType<typeof tram>, seconds: number) => {
+    const track: { at: number; held: number }[] = [];
+    let now = { ...train };
+    for (let i = 0; i < Math.round(seconds / TICK); i += 1) {
+      const went = advance(now, CONSIST, RUN, TICK, DWELL);
+      now = { ...now, along: went.along, direction: went.direction, held: went.held };
+      track.push({ at: now.along - CONSIST / 2, held: now.held });
+    }
+    return track;
+  };
+
+  it('stops when the middle of it reaches a platform', () => {
+    // The middle, not the front: a forty metre tram at a hundred metre island
+    // stands in the middle of the island, which is where one does.
+    // Six seconds to reach it from a standing sixty metres back, and a
+    // couple more to be sure it is standing there rather than passing.
+    const track = drive(tram(), 8);
+    const stopped = track.filter((tick) => tick.held > 0);
+    expect(stopped.length).toBeGreaterThan(0);
+    for (const tick of stopped) expect(tick.at).toBeCloseTo(100, 6);
+  });
+
+  it('stands there for the dwell and no longer', () => {
+    // To within a tick. Two hundred and forty subtractions of a hundred and
+    // twentieth from two do not come to exactly nought, and chasing that
+    // would be chasing eight milliseconds.
+    const track = drive(tram(), 12);
+    const held = track.filter((tick) => tick.held > 0).length;
+    expect(held * TICK).toBeCloseTo(DWELL, 1);
+  });
+
+  it('pulls away again', () => {
+    // The whole reason this is a test rather than a look. A rule that counted
+    // landing on a call as reaching one would find the same platform on the
+    // tick it left, and again, and the tram would never move -- and from the
+    // air a tram that has stopped and a tram that has stopped for ever look
+    // exactly alike for the first few seconds.
+    const track = drive(tram(), 12);
+    const last = track[track.length - 1]!;
+    expect(last.held).toBe(0);
+    // Four seconds of running after the stop, at ten metres a second.
+    expect(last.at).toBeGreaterThan(130);
+  });
+
+  it('calls at each of them once a lap, in order', () => {
+    // Forty seconds is a lap of 400 m at 10 m/s plus the two dwells.
+    const track = drive(tram(), 44);
+    const stops: number[] = [];
+    let was = 0;
+    for (const tick of track) {
+      if (tick.held > 0 && was === 0) stops.push(Math.round(tick.at));
+      was = tick.held;
+    }
+    expect(stops).toEqual([100, 250]);
+  });
+
+  it('leaves a train with nowhere to call alone', () => {
+    // Which is every train on heavy rail. A goods rake in a yard has no
+    // passengers to set down, and one that paused every so often for no
+    // visible reason would read as a bug, because it would be one.
+    const goods = { ...tram(), calls: [] as number[] };
+    for (const tick of drive(goods, 8)) expect(tick.held).toBe(0);
+  });
+
+  it('does not call across the end of the line', () => {
+    // A wrap is not a journey: the tram has been picked up and put down at
+    // the other end. Anything between where it was and where it now is has
+    // not been passed through.
+    // A hundredth of a metre from the end, so this tick takes it over.
+    const late = { ...tram(), along: RUN - 0.01 };
+    const first = advance(late, CONSIST, RUN, TICK, DWELL);
+    expect(first.wrapped).toBe(true);
+    expect(first.held).toBe(0);
   });
 });
