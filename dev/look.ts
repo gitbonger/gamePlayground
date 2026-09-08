@@ -24,7 +24,22 @@ import { buildWorld } from '../src/world/city';
 import type { MapData } from '../src/world/streets';
 
 const map = homeMap as unknown as MapData;
-const full = buildLayoutFromMap(map, defaultMapWorldOptions);
+// The same world the game builds, trams and all -- otherwise a count of what
+// it costs to draw is a count of a city with no traffic in it.
+const yard = { x: -400, z: -180 };
+const full = buildLayoutFromMap(map, {
+  ...defaultMapWorldOptions,
+  trains: [
+    { near: yard, cars: 12 },
+    { near: yard, cars: 6, stock: 'carriage', speed: 16, runsOut: true },
+    { near: yard, cars: 4, stock: 'carriage', speed: 13, runsOut: true },
+    { near: yard, cars: 8, stock: 'carriage', speed: 11, runsOut: true },
+  ],
+  fill: [
+    { stock: 'tram', cars: 4, speed: 10, minRoute: 320, most: 30, headway: 90 },
+    { stock: 'carriage', cars: 5, speed: 14, minRoute: 1200, most: 8, headway: 0 },
+  ],
+});
 const world = buildWorld(full);
 
 const scene = new THREE.Scene();
@@ -50,4 +65,10 @@ renderer.render(scene, camera);
 // Left where a console can reach it, so the page is also somewhere to ask
 // what the world costs to draw: `__look.renderer.info` after a frame is the
 // draw calls and triangles, and re-rendering in a loop times it.
-(window as unknown as { __look: unknown }).__look = { renderer, scene, camera, world };
+// The trains have to be put where the layout says before anything is counted:
+// left alone they are all stacked at the origin, and a draw-call count of a
+// heap of trams at nought says nothing about a city with trams in it.
+world.updateTrains(full.trains ?? []);
+renderer.render(scene, camera);
+
+(window as unknown as { __look: unknown }).__look = { renderer, scene, camera, world, layout: full };
