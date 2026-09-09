@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   advance,
+  blockedBy,
+  noseAhead,
   carriedBy,
   carryPassengers,
   chainageOf,
@@ -1448,5 +1450,79 @@ describe('calling at stops', () => {
     const first = advance(late, CONSIST, RUN, TICK, DWELL);
     expect(first.wrapped).toBe(true);
     expect(first.held).toBe(0);
+  });
+});
+
+describe('seeing what is in the way', () => {
+  /** A vehicle pointing along +x, which in the collider's yaw is nought. */
+  const car = (x: number, z: number, yaw = 0) => ({ x, z, yaw });
+  const east = { x: 1, z: 0 };
+  const nose = { x: 0, z: 0 };
+  const look = { x: 25, z: 0 };
+
+  it('stops for one in front, going the same way', () => {
+    expect(blockedBy(nose, east, look, [car(28, 0)], 12)).toBe(true);
+  });
+
+  it('ignores one coming the other way', () => {
+    // Two trams meeting head-on are on the two tracks of a pair, which is
+    // what a pair of tracks is for: they are metres apart and they pass.
+    expect(blockedBy(nose, east, look, [car(28, 0, Math.PI)], 12)).toBe(false);
+  });
+
+  it('ignores one it has already passed', () => {
+    // Behind the nose and *within reach of the look-ahead point*, which is
+    // the case that matters: on a curve the point found along the track can
+    // come back round near something this train is level with or has gone by,
+    // and stopping for that is stopping for your own tail.
+    //
+    // So the look-ahead point is put close in, where a vehicle four metres
+    // astern is nine metres from it -- inside the twelve. Only the test
+    // against the nose can reject this one.
+    const near = { x: 5, z: 0 };
+    expect(blockedBy(nose, east, near, [car(-4, 0)], 12)).toBe(false);
+    // And the same vehicle four metres *ahead* does stop it, so what is being
+    // measured is which side of the nose it is on and nothing else.
+    expect(blockedBy(nose, east, near, [car(4, 0)], 12)).toBe(true);
+  });
+
+  it('cannot have two trains each in front of the other', () => {
+    // The bug this replaced, and the reason trams drove through each other.
+    // Tested as the property rather than as a case: two rakes that have got
+    // into the same piece of track used to find each other at their own
+    // look-ahead points, so both stopped, both waited out the give-up timer,
+    // and both then carried on through.
+    //
+    // Asked of the nose along the way it is going, the relation cannot be
+    // symmetric: if it is ahead of me, I am behind it.
+    // Both look-ahead points put right on top of both trains, which is the
+    // worst case the geometry allows: on a bend, or where two routes cross,
+    // the point found along one train's track can sit on the other one.
+    for (const gap of [0.5, 2, 6, 10]) {
+      const mine = { x: 0, z: 0 };
+      const theirs = { x: gap, z: 0 };
+      const between = { x: gap / 2, z: 0 };
+      const iStop = blockedBy(mine, east, between, [car(theirs.x, theirs.z)], 12);
+      const theyStop = blockedBy(theirs, east, between, [car(mine.x, mine.z)], 12);
+      expect(iStop && theyStop, `${gap} m apart`).toBe(false);
+      // And one of them does stop, so the pair is resolved rather than both
+      // being waved through.
+      expect(iStop || theyStop, `${gap} m apart`).toBe(true);
+    }
+  });
+
+  it('looks along the track rather than out of the nose', () => {
+    // A box thrown straight ahead of a tram on a bend points at the buildings
+    // on the outside of the curve and misses the tram it is following. The
+    // look-ahead point comes off the line, so a quarter circle still finds it.
+    const bend: Rail = {
+      kind: 'tram',
+      width: 6,
+      points: [[0, 0], [40, 0], [70, 30], [70, 70]],
+    };
+    const ahead = noseAhead({ line: bend, along: 40, direction: 1 }, 20, 25);
+    expect(ahead).not.toBeNull();
+    // Round the corner: past the bend at (40, 0), so its z has left nought.
+    expect(Math.abs(ahead!.z)).toBeGreaterThan(5);
   });
 });

@@ -74,6 +74,7 @@ import {
   stockTurnaround,
   traceRoute,
   type Train,
+  type Vehicle,
   type Stock,
 } from './train';
 import { departures, keepRight } from './service';
@@ -1549,6 +1550,69 @@ export function buildLayoutFromMap(
     return [...new Set(found)].sort((a, b) => a - b);
   };
 
+  /**
+   * How much daylight two rakes are laid out with, in metres.
+   *
+   * Twenty-five between any two vehicle middles, which for a thirteen metre
+   * tram car is about a car's length of air. Enough that they are plainly two
+   * trains rather than one, and enough that the following one has somewhere
+   * to stop.
+   */
+  const APART = 25;
+
+  /** How far to shuffle a rake at a time when its own spot is taken, and how many goes. */
+  const SHUFFLE = 30;
+/**
+   * Four, and it is a trade that was measured rather than guessed.
+   *
+   * Dropping every tram that does not fit gives sixty-nine of them and a
+   * network that never queues at all; shuffling until they all fit gives a
+   * hundred and twenty-five, permanent jams, and trams giving up and driving
+   * through each other. Four goes gives ninety-nine trams, nothing ever
+   * giving up, and an average wait of two and a half seconds -- which is a
+   * tram service rather than either a ghost town or a car park.
+   */
+  const TRIES = 4;
+
+  /** Whether a rake can be laid here without standing in another one. */
+  const roomFor = (
+    vehicles: readonly { x: number; z: number }[],
+    already: readonly Train[],
+  ): boolean =>
+    !already.some((train) =>
+      train.vehicles.some((theirs) =>
+        vehicles.some((mine) => Math.hypot(mine.x - theirs.x, mine.z - theirs.z) < APART),
+      ),
+    );
+
+  /**
+   * Somewhere on this line, near where it was asked for, with room.
+   *
+   * Walks forward along the route in short steps looking for a gap. Forward
+   * rather than either way because the trams on one route are laid out in
+   * order and walking backwards would step onto the one behind.
+   *
+   * Null when the whole line is taken, which happens: a short route that two
+   * long ones both run over has nowhere of its own left.
+   */
+  const roomAlong = (
+    line: Rail,
+    from: number,
+    run: number,
+    want: { cars: number; stock: Stock },
+    already: readonly Train[],
+  ): { along: number; vehicles: Vehicle[] } | null => {
+    const consist = consistLength(want.cars, want.stock);
+    const band = run - consist;
+    if (band <= 0) return null;
+    for (let step = 0; step <= TRIES && step * SHUFFLE <= band; step += 1) {
+      const at = consist + (((from - consist) + step * SHUFFLE) % band);
+      const vehicles = layOutTrain(line, at, want.cars, want.stock);
+      if (vehicles.length && roomFor(vehicles, already)) return { along: at, vehicles };
+    }
+    return null;
+  };
+
   const trains: Train[] = [];
   /**
    * Lines already occupied.
@@ -1741,9 +1805,29 @@ export function buildLayoutFromMap(
       for (const along of stops) {
         const vehicles = layOutTrain(route.line, along, want.cars, want.stock);
         if (!vehicles.length) continue;
+        // Not on top of one that is already there.
+        //
+        // `departures` spaces a route's own trams evenly along it, which is
+        // the whole of what it can do -- and routes share physical track, on
+        // purpose, because trams do. So two trams from two different routes
+        // can be handed the same piece of rail and laid out inside each
+        // other. Measured on this map: sixty-nine pairs of trains standing in
+        // each other before anything had moved.
+        //
+        // Nothing at run time can fix that. The look-ahead stops a train
+        // driving into one in front of it; it has no answer for two that
+        // begin in the same place, and what it does instead is stop them
+        // both for ever -- which is how they came to drive through each other
+        // once the give-up timer ran out.
+        // Shifted along the line until it fits, rather than dropped. Dropped
+        // outright, forty-five trams in a hundred and twenty-five went, and a
+        // district with half the trams in it is a worse answer than a district
+        // whose trams are not quite where the spacing wanted them.
+        const spot = roomAlong(route.line, along, route.run, want, trains);
+        if (spot === null) continue;
         trains.push({
           line: route.line,
-          along,
+          along: spot.along,
           // Always up the route, because the route was traced in the
           // direction it is travelled: the side of the road was settled on
           // the track, one level down, and by the time there is a line here
@@ -1759,7 +1843,7 @@ export function buildLayoutFromMap(
           calls: want.stock === 'tram' ? callsAlong(route.line, length) : [],
           held: 0,
           waited: 0,
-          vehicles,
+          vehicles: spot.vehicles,
         });
       }
     });

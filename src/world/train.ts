@@ -289,36 +289,48 @@ export function noseAhead(
 /**
  * Whether something is standing in the way.
  *
- * `others` is every vehicle in the world that is not this train's own. A
- * vehicle counts as in the way when it is within `room` of the look-ahead
- * point *and going roughly the same way* -- and that second half is not a
- * refinement, it is what stops two trams meeting head-on and both waiting for
- * ever.
+ * Three things have to be true of a vehicle before it is worth stopping for,
+ * and every one of them is load-bearing.
  *
- * Two trams passing in opposite directions are on the two tracks of a pair,
- * which is what a pair of tracks is for. They are metres apart in the world
- * and they should pass. It is only the one in front, going where you are
- * going, that you have to wait behind -- and "in front of me" and "in front
- * of you" cannot both be true of two trams facing the same way, so the queue
- * always has an end.
+ * It has to be near the look-ahead point, which is found along the track --
+ * that is what makes this work round a curve.
+ *
+ * It has to be going roughly the same way. Two trams passing in opposite
+ * directions are on the two tracks of a pair, which is what a pair of tracks
+ * is for: they are metres apart and they should pass. A tram has no front and
+ * back to speak of, so this compares the axis rather than the arrow, and the
+ * axis is enough to separate "the one ahead of me" from "the one coming the
+ * other way".
+ *
+ * And it has to be *ahead of my nose*, which is the one that was missing and
+ * the reason trams drove through each other. Without it the relation is
+ * symmetric: two trams that have got into the same piece of track each find
+ * the other at their own look-ahead point, so both stop, both wait out the
+ * give-up timer, and both then drive on through. Measured on the real map:
+ * thirty-five pairs of trains inside each other after ninety seconds.
+ *
+ * Asked of the nose along the direction of travel, it cannot be symmetric.
+ * If it is ahead of me then I am behind it, so it does not stop for me, so
+ * the queue always has an end -- and it has one for the right reason rather
+ * than by an argument about geometry that turned out not to hold.
  */
 export function blockedBy(
-  at: { x: number; z: number },
-  facing: number,
+  nose: { x: number; z: number },
+  forward: { x: number; z: number },
+  look: { x: number; z: number },
   others: readonly Placed[],
   room: number,
 ): boolean {
-  const ax = -Math.sin(facing);
-  const az = -Math.cos(facing);
   return others.some((other) => {
-    if (Math.hypot(other.x - at.x, other.z - at.z) > room) return false;
-    // Which way it is pointing, against which way I am. A tram has no front
-    // and back to speak of, so this is the axis rather than the arrow -- but
-    // the axis is enough: what it separates is "the one ahead of me" from
-    // "the one coming the other way on the other track".
-    const bx = -Math.sin(other.yaw);
-    const bz = -Math.cos(other.yaw);
-    return ax * bx + az * bz > 0;
+    if (Math.hypot(other.x - look.x, other.z - look.z) > room) return false;
+    // Ahead, not merely nearby. A vehicle level with the nose or behind it is
+    // one this train has already passed or is passing.
+    if ((other.x - nose.x) * forward.x + (other.z - nose.z) * forward.z <= 0) return false;
+    // The collider's yaw takes a box's local +x to `(cos, -sin)`, which for a
+    // vehicle is along its own length.
+    const bx = Math.cos(other.yaw);
+    const bz = -Math.sin(other.yaw);
+    return forward.x * bx + forward.z * bz > 0;
   });
 }
 

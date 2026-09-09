@@ -2266,6 +2266,17 @@ const BLOCKING = 12;
 const WAIT_LIMIT = 20;
 
 /**
+ * How clear the start of a line has to be before a tram rejoins it, in metres.
+ *
+ * A tram that reaches the end of its route is picked up and put down at the
+ * other end -- and nothing about being picked up knows whether anything is
+ * standing where it is going. Once the look-ahead stopped them driving into
+ * each other, this was the last way two of them ended up in the same place:
+ * not driven into, materialised into.
+ */
+const REJOIN = 30;
+
+/**
  * How often the look-ahead is worked out, in seconds.
  *
  * A twentieth. A tram does half a metre in that, and it is the difference
@@ -2374,11 +2385,22 @@ function moveTrains(dt: number) {
     if (train.held <= 0) {
       const look = noseAhead(train, consist, LOOK_AHEAD);
       const nose = train.vehicles[train.direction > 0 ? 0 : train.vehicles.length - 1];
+      // Which way it is actually going. A vehicle's yaw runs along its length
+      // towards increasing `along`, so a train running back down the line has
+      // its forward the other way round.
+      const forward =
+        nose === undefined
+          ? null
+          : {
+              x: Math.cos(nose.yaw) * train.direction,
+              z: -Math.sin(nose.yaw) * train.direction,
+            };
       const stuck =
         look !== undefined &&
         look !== null &&
         nose !== undefined &&
-        blockedBy(look, nose.yaw, trafficNear(look, index), BLOCKING);
+        forward !== null &&
+        blockedBy(nose, forward, look, trafficNear(look, index), BLOCKING);
       // Given up on, after a while. See `WAIT_LIMIT`.
       if (stuck && train.waited < WAIT_LIMIT) {
         train.waited += dt;
@@ -2392,6 +2414,23 @@ function moveTrains(dt: number) {
     }
 
     const went = advance(train, consist, line, dt, DWELL);
+    // A tram that has run out of line waits for the start of it to clear.
+    //
+    // A wrap picks the tram up and puts it down at the other end, and there
+    // is nothing about that which knows whether anything is standing there.
+    // It was the last way two trams ended up inside each other once the
+    // look-ahead was fixed: not driven into, materialised into.
+    if (went.wrapped) {
+      const back = pointAlong(train.line.points, went.along - consist / 2);
+      if (back && trafficNear(back, index).some(
+        (other) => Math.hypot(other.x - back.x, other.z - back.z) < REJOIN,
+      )) {
+        train.waited += dt;
+        previousAlong[index] = train.along;
+        tagged += vehicleCount(train.cars, train.stock);
+        return;
+      }
+    }
     // Pulling in, or pulling out. Both are single ticks, so the work of
     // emptying and refilling a platform happens twice a call rather than
     // every frame -- and between them the platform simply has nobody on it.
