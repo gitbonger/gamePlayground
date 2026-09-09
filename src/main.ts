@@ -96,7 +96,7 @@ import { browserChime, createCue } from './render/cue';
 import { createVitals, type Vital } from './render/vitals';
 import {
   approachFor,
-  cautionFor,
+  createWarner,
   courseFor,
   createTipPanel,
   createTutor,
@@ -1459,6 +1459,7 @@ function respawn() {
   // with the distance, which is the whole reason they are measured in metres
   // flown rather than remembered for good.
   tutor.reset();
+  warner.reset();
   outcome.hide();
   chase.snap(bird, cameraParams);
 }
@@ -2061,6 +2062,13 @@ function listen(): Source[] {
 }
 /** Hands out the flying lessons, by how far this flight has gone. */
 const tutor = createTutor();
+/**
+ * The cautions, and which of them has already been said.
+ *
+ * Beside the tutor and reset with it, because one of them is a lesson in
+ * everything but which list it lives in: see `Caution.once`.
+ */
+const warner = createWarner();
 /**
  * Whether the game is still teaching.
  *
@@ -3238,7 +3246,7 @@ function frame(nowMs: number) {
         })
       : null) ??
     (bird.ending === null
-      ? cautionFor(tutorial, {
+      ? warner.warn(tutorial, {
           altitude: telemetry.altitude,
           airspeed: telemetry.airspeed,
           climb: telemetry.climbRate,

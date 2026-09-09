@@ -11,6 +11,7 @@ import {
   COURSES,
   courseFor,
   createTutor,
+  createWarner,
   type Lesson,
 } from './tips';
 
@@ -253,7 +254,7 @@ describe('the cautions, which watch the flight', () => {
   it('calls out slow, low and tired, each on its own', () => {
     expect(cautionFor(true, { ...fine, airspeed: 5 })?.text.en).toBe('Keep flapping!');
     expect(cautionFor(true, { ...fine, altitude: 9, climb: -1 })?.text.en).toBe('Pull up!');
-    expect(cautionFor(true, { ...fine, stamina: 0.29 })?.text.en).toBe('Slow down!');
+    expect(cautionFor(true, { ...fine, stamina: 0.29 })?.text.en).toBe('Try the brakes!');
   });
 
   it('puts the wings before the nose when the bird is low and slow', () => {
@@ -466,5 +467,48 @@ describe('lessons that ask to be said aloud', () => {
       .filter((lesson) => warns.test(lesson.text.en));
     expect(deadly.length).toBeGreaterThan(2);
     for (const lesson of deadly) expect(lesson.spoken, lesson.text.en).toBe(true);
+  });
+});
+
+describe('the caution that is really a lesson', () => {
+  const fine = { altitude: 60, airspeed: 16, climb: 0, stamina: 1, stalled: false, noseUp: false };
+  const spent = { ...fine, stamina: 0.1 };
+
+  it('names the key rather than the symptom', () => {
+    // It used to say `Slow down!`, which is the symptom -- and the symptom was
+    // already being said by the bar in the corner going red at the same mark.
+    // There is a key for this, and a player who has never needed it has never
+    // pressed it.
+    const warner = createWarner();
+    const said = warner.warn(true, spent)!;
+    expect(said.text.en).toBe('Try the brakes!');
+    expect(said.keys).toEqual(['B']);
+  });
+
+  it('says it once and then leaves you alone', () => {
+    // Hearing it again every time the bar dips is nagging rather than
+    // teaching, and the bar is already there for the nagging.
+    const warner = createWarner();
+    expect(warner.warn(true, spent)).not.toBeNull();
+    expect(warner.warn(true, spent)).toBeNull();
+    expect(warner.warn(true, spent)).toBeNull();
+  });
+
+  it('still gives the warnings that are warnings, every time', () => {
+    // The others are about something that is happening now and can happen
+    // again, and a stall you have already had is not a stall you are not in.
+    const warner = createWarner();
+    const low = { ...fine, altitude: 5, climb: -1 };
+    expect(warner.warn(true, low)).not.toBeNull();
+    expect(warner.warn(true, low)).not.toBeNull();
+  });
+
+  it('says it again on a fresh level', () => {
+    // Once per level, not once per game. A death restarts the level, and a
+    // player who died is exactly the player who wants it again.
+    const warner = createWarner();
+    expect(warner.warn(true, spent)).not.toBeNull();
+    warner.reset();
+    expect(warner.warn(true, spent)).not.toBeNull();
   });
 });

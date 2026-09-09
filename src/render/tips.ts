@@ -391,6 +391,19 @@ const TIRED = 0.3;
 export interface Caution extends Tip {
   when(flight: Flying): boolean;
   /**
+   * Said once and then not again.
+   *
+   * For the one of these that is really a lesson rather than a warning: out
+   * of wing is a slow problem with a control attached to it, and the control
+   * is the point. Told about the brake at the moment the brake would help,
+   * you have been told about the brake -- and hearing it again every time the
+   * bar dips is nagging rather than teaching.
+   *
+   * Once per level, not once per game. A death restarts the level, and a
+   * player who died is exactly the player who wants it again.
+   */
+  once?: boolean;
+  /**
    * Shown to everyone, taught or not.
    *
    * A lesson is for somebody learning; a stall is for whoever is in one. A
@@ -438,13 +451,21 @@ export const CAUTIONS: readonly Caution[] = [
     spoken: true,
     when: (flight) => flight.altitude < LOW && flight.climb < 0,
   },
-  // Last, because it is the only one you can put off. Out of wing is a slow
-  // problem: it means the flapping has been paid for and the way to stop
-  // paying is to stop hurrying. The bar in the corner goes red at the same
-  // mark, so the words and the picture say it together.
+  // Last, because it is the only one you can put off -- and the only one that
+  // is a lesson rather than a warning.
+  //
+  // Out of wing is a slow problem: the flapping has been paid for, and the
+  // way to stop paying is to stop hurrying. There is a key for that and a
+  // player who has never needed it has never pressed it, so the words name
+  // it. It used to say `Slow down!`, which is the symptom, and the symptom
+  // was already being said by the bar in the corner going red at the same
+  // mark.
+  //
+  // Said once. See `once`.
   {
     keys: ['B'],
-    text: { en: 'Slow down!', hu: 'Lassíts!' }, icon: 'tired', sort: 'survival',
+    text: { en: 'Try the brakes!', hu: 'Próbáld a féket!' }, icon: 'brake', sort: 'survival',
+    once: true,
     when: (flight) => flight.stamina < TIRED,
   },
 ];
@@ -527,6 +548,40 @@ export const approachFor = (teaching: boolean, flight: Approaching): Tip | null 
  */
 export const cautionFor = (teaching: boolean, flight: Flying): Tip | null =>
   CAUTIONS.find((caution) => (caution.always || teaching) && caution.when(flight)) ?? null;
+
+export interface Warner {
+  /** Whichever caution the flight has earned, or null. */
+  warn(teaching: boolean, flight: Flying): Tip | null;
+  /** Forget what has been said. A level starting is a fresh start. */
+  reset(): void;
+}
+
+/**
+ * `cautionFor`, with a memory for the ones that are only said once.
+ *
+ * The rule itself stays a pure function -- which is what a test wants of it --
+ * and the remembering lives here, the same way the lessons keep theirs in
+ * `createTutor` rather than in the list they come from.
+ */
+export function createWarner(): Warner {
+  const said = new Set<Caution>();
+  return {
+    warn(teaching, flight) {
+      const found = CAUTIONS.find(
+        (caution) =>
+          (caution.always || teaching) &&
+          !(caution.once && said.has(caution)) &&
+          caution.when(flight),
+      );
+      if (!found) return null;
+      if (found.once) said.add(found);
+      return found;
+    },
+    reset() {
+      said.clear();
+    },
+  };
+}
 
 /**
  * Whether a lesson has come round, by whichever end of the flight it counts
