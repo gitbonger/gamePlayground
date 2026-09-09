@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   advance,
   blockedBy,
+  callReached,
+  comeOnAt,
+  legAfter,
+  roomToComeOn,
   noseAhead,
   carriedBy,
   carryPassengers,
@@ -1370,6 +1374,7 @@ describe('calling at stops', () => {
     turnaround: 'recycle' as const,
     calls: [100, 250],
     held: 0,
+    calling: null as number | null,
   });
   const CONSIST = 40;
   const RUN = 400;
@@ -1382,7 +1387,13 @@ describe('calling at stops', () => {
     let now = { ...train };
     for (let i = 0; i < Math.round(seconds / TICK); i += 1) {
       const went = advance(now, CONSIST, RUN, TICK, DWELL);
-      now = { ...now, along: went.along, direction: went.direction, held: went.held };
+      now = {
+        ...now,
+        along: went.along,
+        direction: went.direction,
+        held: went.held,
+        calling: went.calling,
+      };
       track.push({ at: now.along - CONSIST / 2, held: now.held });
     }
     return track;
@@ -1524,5 +1535,120 @@ describe('seeing what is in the way', () => {
     expect(ahead).not.toBeNull();
     // Round the corner: past the bend at (40, 0), so its z has left nought.
     expect(Math.abs(ahead!.z)).toBeGreaterThan(5);
+  });
+});
+
+describe('running out of line', () => {
+  const rail = (points: [number, number][]) => ({ kind: 'tram', width: 6, points });
+  /** Two legs of one service: out along one track, back along the other. */
+  const out = { line: rail([[0, 0], [400, 0]]), calls: [100, 250] };
+  const back = { line: rail([[400, 6], [0, 6]]), calls: [150] };
+  const tram = (on: typeof out) => ({ line: on.line, home: out, next: back });
+
+  it('takes the neighbouring track at the end of its own', () => {
+    // Which is the whole point of it. A route traced from the map is one-way
+    // and it stops; what is there when it stops is the other track of the
+    // pair, running back the way the tram came.
+    expect(legAfter(tram(out), 0, 1)).toBe(back);
+  });
+
+  it('comes home on the leg after', () => {
+    // Not because anything is owed, but because a tram that wandered would
+    // never come back: five of this district's routes end at one corner, so
+    // trams would pool there and the long routes would empty out.
+    expect(legAfter(tram(back), 1, 1)).toBe(out);
+  });
+
+  it('stays on its own route when it has already lent one out', () => {
+    // A tram is away from its own route for the whole of the neighbouring
+    // leg. Let them all go at once and the route reads as deserted.
+    expect(legAfter(tram(out), 1, 1)).toBe(out);
+  });
+
+  it('stays on its own route when there is nowhere to carry on to', () => {
+    // Eleven of the twenty-seven routes here are dead ends. A tram that
+    // reaches one goes off the map and comes back at its own beginning.
+    expect(legAfter({ line: out.line, home: out, next: null }, 0, 1)).toBe(out);
+  });
+
+  it('comes on at the end it is going to travel away from', () => {
+    // `along` is the leading coupling and a rake occupies `[along - consist,
+    // along]` whichever way it is going -- so one running up the line comes on
+    // with its tail on the zero mark and one running down it with its nose
+    // there. The wrong way round puts a tram on at the end it just left.
+    expect(comeOnAt(54, 400, 1)).toBe(54);
+    expect(comeOnAt(54, 400, -1)).toBe(400);
+  });
+});
+
+describe('room to come back on', () => {
+  const straight: [number, number][] = [
+    [0, 0],
+    [400, 0],
+  ];
+
+  it('finds an empty piece of line empty', () => {
+    expect(roomToComeOn(straight, 54, 54, [{ x: 300, z: 0, yaw: 0 }], 20)).toBe(true);
+  });
+
+  it('refuses one with something standing in the middle of it', () => {
+    expect(roomToComeOn(straight, 54, 54, [{ x: 27, z: 0, yaw: 0 }], 20)).toBe(false);
+  });
+
+  it('refuses one with something standing at the nose, not just the middle', () => {
+    // The reason it is asked at three points. A four-car tram is fifty-four
+    // metres long: a clear middle says nothing at all about a clear nose, and
+    // asking only about the middle is how trams came to materialise into each
+    // other at the ends of the lines.
+    expect(roomToComeOn(straight, 54, 54, [{ x: 54, z: 0, yaw: 0 }], 20)).toBe(false);
+  });
+
+  it('refuses one with something standing at the tail', () => {
+    expect(roomToComeOn(straight, 54, 54, [{ x: 0, z: 0, yaw: 0 }], 20)).toBe(false);
+  });
+});
+
+describe('calling at a stop it is already standing at', () => {
+  it('does not reach the call it is pulled up on', () => {
+    // A tram pulls up with its middle exactly on a call, and the next tick
+    // asks whether it has just crossed one. It has not: it is standing on it.
+    expect(callReached([100], 100, 100.1, 100)).toBeNull();
+  });
+
+  it('does not reach it when the arithmetic lands a hair below it', () => {
+    // The bug this exists for, and it is not hypothetical. The tram is put at
+    // `call + consist / 2` and the question is asked of `along - consist / 2`,
+    // which is the same number by algebra and a few parts in a quadrillion
+    // out in floating point. Out on the low side, the tram had "crossed" the
+    // stop it was standing at: put back on it, held for another two seconds,
+    // asked again. Four trams in ninety-nine spent an entire ten-minute
+    // session pulled up at one platform.
+    //
+    // A real pair: half a four-car tram is 27.175 m, and a stop five hundred
+    // metres along a route. Checked rather than assumed to round the wrong
+    // way -- most pairs come back exact, which is why this went unnoticed for
+    // as long as it did.
+    const call = 500.03;
+    const from = call + 27.175 - 27.175;
+    expect(from).toBeLessThan(call);
+    expect(callReached([call], from, from + 0.083, call)).toBeNull();
+  });
+
+  it('drives through one it is not standing at, however close it lands', () => {
+    // The other half, and the reason a tolerance would not do: a tram
+    // arriving at a stop lands within the same fraction of a micron of it as
+    // one standing there. What tells them apart is which one it was just held
+    // at, not how near it is.
+    const call = 500.03;
+    const from = call + 27.175 - 27.175;
+    expect(callReached([call], from, from + 0.083, null)).toBe(call);
+  });
+
+  it('still reaches one it actually runs over', () => {
+    expect(callReached([100], 99.5, 100.5)).toBe(100);
+  });
+
+  it('takes the nearest ahead when a step passes two', () => {
+    expect(callReached([100, 120], 99, 130)).toBe(100);
   });
 });

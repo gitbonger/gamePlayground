@@ -1187,8 +1187,15 @@ export function buildWorld(
   /** Move every vehicle to where its train has got to. */
   const updateTrains = (trains: readonly Train[]) => {
     for (const { mesh, train, vehicle } of rolling) {
-      const at = trains[train]?.vehicles[vehicle];
+      const running = trains[train];
+      const at = running?.vehicles[vehicle];
       if (!at) continue;
+      // A tram that has run out of line is off the map. Its vehicles are
+      // still standing at the end of the track it left, because nothing moves
+      // them until it comes back on somewhere else -- so what says it has
+      // gone is this, and nothing else.
+      mesh.visible = !running.gone;
+      if (running.gone) continue;
       mesh.position.set(at.x, 0, at.z);
       mesh.rotation.y = at.yaw;
     }

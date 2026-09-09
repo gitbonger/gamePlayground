@@ -137,6 +137,9 @@ import {
   noseAhead,
   vehicleCount,
   stackTop,
+  comeOnAt,
+  legAfter,
+  roomToComeOn,
   stockIsHauled,
   stockTop,
   pointAlong,
@@ -156,7 +159,7 @@ import {
   type WalkTelemetry,
 } from './sim/walk';
 import { bearing, distance, project, unproject } from './world/geo';
-import type { MapData } from './world/streets';
+import type { MapData, Rail } from './world/streets';
 import homeMap from './world/data/home.json';
 import { createWind, defaultWindParams } from './sim/wind';
 
@@ -2183,13 +2186,18 @@ const drawnVehicles = layout.trains.map((train) =>
 /** And which of them were near enough to be worth it, this tick. */
 const near = layout.trains.map(() => false);
 /**
- * And which of them went off the end of the line and came round again.
+ * And which of them came back on to the map this tick.
  *
- * Cleared at the top of every tick. A wrap is the one movement in the game
- * that is not a movement, and two things have to know: the frame drawn
- * between two ticks, which would otherwise interpolate the tram backwards
- * across the whole city, and whatever is riding on it, which is carried by
- * the difference between where its vehicle was and where it is.
+ * Cleared at the top of every tick. A tram taking up a leg is the one
+ * movement in the game that is not a movement -- it was nowhere at all a
+ * moment ago -- and two things have to know: the frame drawn between two
+ * ticks, which would otherwise interpolate the tram across the whole city,
+ * and whatever is riding on it, which is carried by the difference between
+ * where its vehicle was and where it is.
+ *
+ * Nothing does ride one, as it happens. A pigeon on the roof of a tram that
+ * reaches the end of the line is left standing in the air, and falls, which
+ * is the right answer: the tram it was on has gone.
  */
 const wrapped = layout.trains.map(() => false);
 
@@ -2266,15 +2274,57 @@ const BLOCKING = 12;
 const WAIT_LIMIT = 20;
 
 /**
- * How clear the start of a line has to be before a tram rejoins it, in metres.
+ * How clear a piece of line has to be before a tram comes on to it, in metres.
  *
- * A tram that reaches the end of its route is picked up and put down at the
- * other end -- and nothing about being picked up knows whether anything is
- * standing where it is going. Once the look-ahead stopped them driving into
- * each other, this was the last way two of them ended up in the same place:
- * not driven into, materialised into.
+ * Nothing about being put down at the start of a line knows whether anything
+ * is standing there, so it has to be asked -- this was the last way two trams
+ * ended up inside each other once the look-ahead was fixed: not driven into,
+ * materialised into.
+ *
+ * Twenty, asked at the nose, the middle and the tail. Those are twenty-seven
+ * metres apart on a four-car tram, so twenty at each of them overlaps and the
+ * whole rake is covered -- which one circle of any size round the middle
+ * never is.
  */
-const REJOIN = 30;
+const COMING_ON = 20;
+
+/**
+ * How many of a route's trams may be away on the neighbouring track at once.
+ *
+ * One. See `legAfter`: a tram runs out along its own route and comes back on
+ * the track that begins where its route ends, which is what a tram does and
+ * what stops it teleporting three kilometres across the district in front of
+ * anybody who flew out to watch. The cost is that a tram is off its own route
+ * half the time, and a route with all its trams away is a tram line with no
+ * trams on it -- ten of twenty-seven of them, measured over ten minutes.
+ *
+ * Lending one at a time costs nothing and settles it: the dip is a single
+ * tram, and the route that has already lent one keeps the rest.
+ */
+const LENT_OUT = 1;
+
+/**
+ * How many of each route's trams are away on somebody else's track.
+ *
+ * Keyed on the line, which is the route: every tram built on it was handed
+ * the same `home`, so the line is what they have in common.
+ */
+const lentFrom = new Map<Rail, number>();
+
+/**
+ * And how many it has altogether, which is what it may lend against.
+ *
+ * A route with one tram lends none. It is the one case the cap above does not
+ * cover on its own -- one out of one is still all of them -- and it is not a
+ * corner: five of this district's tram routes are short enough to have been
+ * given a single tram, and two of them stood empty half the session without
+ * this.
+ */
+const routeTrams = new Map<Rail, number>();
+for (const train of layout.trains) {
+  routeTrams.set(train.home.line, (routeTrams.get(train.home.line) ?? 0) + 1);
+}
+const mayLend = (home: Rail): number => Math.min(LENT_OUT, (routeTrams.get(home) ?? 1) - 1);
 
 /**
  * How often the look-ahead is worked out, in seconds.
@@ -2296,6 +2346,10 @@ const trafficKey = (x: number, z: number) =>
 function seeTraffic(): void {
   trafficGrid.clear();
   layout.trains.forEach((train, index) => {
+    // A tram that is off the map is not in anybody's way. Left in, it would
+    // be the thing parked at the end of the line that stops the next one
+    // coming on -- which is the jam this was written to end.
+    if (train.gone) return;
     for (const at of train.vehicles) {
       const key = trafficKey(at.x, at.z);
       const bucket = trafficGrid.get(key);
@@ -2365,6 +2419,47 @@ function moveTrains(dt: number) {
 
   layout.trains.forEach((train, index) => {
     previousAlong[index] = train.along;
+    // Off the map, waiting to come back on. It takes up the next leg of its
+    // service the moment there is room for the whole rake at the start of it,
+    // and until then it is simply not here -- which is the whole of the fix:
+    // the tram that used to stand at the buffers for four minutes is now
+    // somewhere between one end of its route and the other, as a tram between
+    // journeys is.
+    if (train.gone) {
+      const away = lentFrom.get(train.home.line) ?? 0;
+      const leg = legAfter(train, away, mayLend(train.home.line));
+      const consist = consistLength(train.cars, train.stock);
+      const on = comeOnAt(consist, lineLength(leg.line.points), train.direction);
+      const middle = pointAlong(leg.line.points, on - consist / 2);
+      tagged += vehicleCount(train.cars, train.stock);
+      if (
+        !middle ||
+        !roomToComeOn(leg.line.points, on, consist, trafficNear(middle, index), COMING_ON)
+      ) {
+        train.waited += dt;
+        return;
+      }
+      // Off its own route, or back on it. Counted as it happens rather than
+      // as it is decided, so a tram waiting for room is not yet lent.
+      if (leg.line !== train.home.line) lentFrom.set(train.home.line, away + 1);
+      else if (train.line !== train.home.line) {
+        lentFrom.set(train.home.line, Math.max(0, away - 1));
+      }
+      train.line = leg.line;
+      train.calls = leg.calls;
+      train.along = on;
+      train.held = 0;
+      train.calling = null;
+      train.waited = 0;
+      train.gone = false;
+      // Not a movement: it was nowhere a moment ago. Saying so keeps the
+      // frame between the ticks from being drawn as a sweep across the city.
+      previousAlong[index] = on;
+      wrapped[index] = true;
+      moveTrain(train.vehicles, train.line, train.along, train.cars, train.stock);
+      laidOut[index] = clock;
+      return;
+    }
     // Where it is. Every train, every tick, whether or not anyone is looking:
     // a train is part of the world rather than a prop, and one that stopped
     // while your back was turned would be in the wrong place when you came
@@ -2414,22 +2509,26 @@ function moveTrains(dt: number) {
     }
 
     const went = advance(train, consist, line, dt, DWELL);
-    // A tram that has run out of line waits for the start of it to clear.
+    // Run out of line. It goes -- now, and whether or not there is anywhere
+    // for it to come back on.
     //
-    // A wrap picks the tram up and puts it down at the other end, and there
-    // is nothing about that which knows whether anything is standing there.
-    // It was the last way two trams ended up inside each other once the
-    // look-ahead was fixed: not driven into, materialised into.
+    // Those used to be one decision, and that was the bug: a tram reaching
+    // the end of its route was only picked up if the place it was going to be
+    // put down was clear, so a tram with nowhere to go stood at the buffers
+    // instead. On this map the ends of the routes are piled on top of one
+    // another -- five routes finish at the same corner -- so the place it
+    // wanted was very often held by another tram in exactly the same fix.
+    // Fifty-six of ninety-nine trains stood for over ten seconds at a
+    // stretch; the worst stood for four minutes at the end of the track, in
+    // plain sight of anyone who flew out to the edge of the district.
+    //
+    // Separating them costs nothing. Leaving is always possible.
     if (went.wrapped) {
-      const back = pointAlong(train.line.points, went.along - consist / 2);
-      if (back && trafficNear(back, index).some(
-        (other) => Math.hypot(other.x - back.x, other.z - back.z) < REJOIN,
-      )) {
-        train.waited += dt;
-        previousAlong[index] = train.along;
-        tagged += vehicleCount(train.cars, train.stock);
-        return;
-      }
+      train.gone = true;
+      train.waited = 0;
+      previousAlong[index] = train.along;
+      tagged += vehicleCount(train.cars, train.stock);
+      return;
     }
     // Pulling in, or pulling out. Both are single ticks, so the work of
     // emptying and refilling a platform happens twice a call rather than
@@ -2441,22 +2540,7 @@ function moveTrains(dt: number) {
     train.along = went.along;
     train.direction = went.direction;
     train.held = went.held;
-    // A wrap is not a movement, and everything downstream that works from the
-    // difference between two ticks has to be told so. Setting the previous
-    // position to the new one says it once, for all of them: the frame between
-    // the ticks is drawn where the tram now is rather than swept backwards
-    // across the city, and the copy below is taken after the vehicles have
-    // been moved rather than before, so nothing standing on the tram is
-    // carried the length of the route with it.
-    //
-    // Which means a pigeon on the roof of a tram that reaches the end of the
-    // line is left standing in the air, and falls. That is the right answer:
-    // the tram it was on has gone.
-    if (went.wrapped) {
-      wrapped[index] = true;
-      previousAlong[index] = went.along;
-    }
-
+    train.calling = went.calling;
     // The tags are handed out for every train in turn whatever happens next,
     // so that skipping one does not renumber the rest -- a resident's idea of
     // which wagon it is standing on is one of these numbers.
@@ -3633,7 +3717,11 @@ function frame(nowMs: number) {
     // frame, and six hundred and twenty-five is not.
     stock: layout.trains.flatMap((train) => {
       const head = train.vehicles[0];
-      if (!head) return [];
+      // One that has run out of line is off the map altogether, and its
+      // vehicles are still standing wherever it last was. Drawn, it would be
+      // a tram parked at the end of the track -- which is exactly the thing
+      // the player was seeing and that is no longer there.
+      if (!head || train.gone) return [];
       const away = Math.hypot(head.x - interpolatedState.position.x, head.z - interpolatedState.position.z);
       // The whole consist behind the head, in a straight line, which errs
       // towards drawing a rake whose tail is just off the panel.

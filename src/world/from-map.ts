@@ -73,6 +73,7 @@ import {
   stockRuns,
   stockTurnaround,
   traceRoute,
+  type Leg,
   type Train,
   type Vehicle,
   type Stock,
@@ -449,6 +450,45 @@ const PLATFORM = {
  * something to pull up for.
  */
 const PLATFORM_SERVED = 12;
+
+/**
+ * How near another route's beginning has to be to this one's end, in metres.
+ *
+ * Twenty-five. Where two tracks of a pair meet at a terminus the map puts
+ * them within a few metres of each other -- measured over this district,
+ * every real pairing is inside eight, and the nearest thing that is *not* a
+ * pairing is fifty-two metres away. So there is a wide gap to sit in, and
+ * nothing here has to be delicate.
+ */
+const HANDOVER = 25;
+
+/**
+ * For each route, the track that begins where it ends.
+ *
+ * The map has no notion of this any more than it has a notion of a junction:
+ * two routes sharing a terminus is a coincidence of coordinates, and this is
+ * that coincidence read off. Nearest wins where several begin at the same
+ * corner, which on this map is five of them at once.
+ */
+export function nextLegs(lines: readonly Rail[], legs: readonly Leg[]): (Leg | null)[] {
+  const ends = lines.map((line) => {
+    const run = lineLength(line.points);
+    return { start: pointAlong(line.points, 0), finish: pointAlong(line.points, run) };
+  });
+  return lines.map((_, i) => {
+    const finish = ends[i]!.finish;
+    if (!finish) return null;
+    let best: { leg: Leg; away: number } | null = null;
+    for (let j = 0; j < lines.length; j += 1) {
+      const start = ends[j]!.start;
+      if (j === i || !start) continue;
+      const away = Math.hypot(start.x - finish.x, start.z - finish.z);
+      if (away > HANDOVER) continue;
+      if (!best || away < best.away) best = { leg: legs[j]!, away };
+    }
+    return best?.leg ?? null;
+  });
+}
 
 /** What the map's numbers mean, in the order `worshipKind` writes them. */
 const WORSHIP_KINDS = ['church', 'chapel', 'synagogue'] as const;
@@ -1725,6 +1765,7 @@ export function buildLayoutFromMap(
       : spec.setOff === undefined
         ? 1
         : directionFor(line.points, along, spec.setOff);
+    const calls = stock === 'tram' ? callsAlong(line, consistLength(spec.cars, stock)) : [];
     trains.push({
       line,
       along,
@@ -1733,8 +1774,14 @@ export function buildLayoutFromMap(
       stock,
       cars: spec.cars,
       turnaround: stockTurnaround(stock),
-      calls: stock === 'tram' ? callsAlong(line, consistLength(spec.cars, stock)) : [],
+      calls,
+      // A train asked for by name runs the line it was asked for and no
+      // other: it is where it is because a level wanted it there.
+      home: { line, calls },
+      next: null,
+      gone: false,
       held: 0,
+      calling: null,
       waited: 0,
       vehicles,
     });
@@ -1785,7 +1832,24 @@ export function buildLayoutFromMap(
       for (const part of spare.over) taken.delete(part);
     });
 
-    routes.slice(0, want.most).forEach((route, index) => {
+    // Which track each route carries on to, now that they are all known.
+    //
+    // A route ends where the straightest continuation runs out, and what is
+    // almost always there is the other track of the pair, beginning and
+    // running back the way the tram came. That is a fact about the geometry
+    // rather than about any tram, so it is settled here, once, and every tram
+    // on the route is handed the same answer.
+    const running = routes.slice(0, want.most);
+    const legs: Leg[] = running.map((route) => ({
+      line: route.line,
+      calls: want.stock === 'tram' ? callsAlong(route.line, length) : [],
+    }));
+    const carriesOn: (Leg | null)[] =
+      stockTurnaround(want.stock) === 'recycle'
+        ? nextLegs(running.map((route) => route.line), legs)
+        : running.map(() => null);
+
+    running.forEach((route, index) => {
       // Several to a route, spaced evenly round it -- but only for stock
       // that recycles. A shuttling train cannot share a route with another:
       // it reverses at the end and works back down the line it came up, so
@@ -1840,8 +1904,12 @@ export function buildLayoutFromMap(
           // Worked out per route rather than per tram, since every tram on a
           // route calls at the same places -- but the routes are traced in
           // this loop, so this is where it can be asked.
-          calls: want.stock === 'tram' ? callsAlong(route.line, length) : [],
+          calls: legs[index]!.calls,
+          home: legs[index]!,
+          next: carriesOn[index] ?? null,
+          gone: false,
           held: 0,
+          calling: null,
           waited: 0,
           vehicles: spot.vehicles,
         });

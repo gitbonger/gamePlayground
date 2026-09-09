@@ -199,6 +199,19 @@ export interface Vehicle extends Placed {
   width: number;
 }
 
+/**
+ * One leg of a service: a line, and where along it the trams call.
+ *
+ * A tram is not tied to one line for ever. It runs to the end of this one and
+ * takes up another -- see `Train.next` -- and the calls belong to the line
+ * rather than to the tram, so the two travel together or the tram stops at
+ * the places the last line had.
+ */
+export interface Leg {
+  line: Rail;
+  calls: readonly number[];
+}
+
 export interface Train {
   /** The line it runs on. */
   line: Rail;
@@ -244,12 +257,53 @@ export interface Train {
   /** Seconds left standing at one. Zero for a train that is running. */
   held: number;
   /**
+   * The call it is standing at, or has just pulled away from.
+   *
+   * One tick of memory, and it exists for exactly one reason: see
+   * `callReached`. Without it a tram put down on a stop finds that stop again
+   * the moment it tries to leave, and never leaves.
+   */
+  calling: number | null;
+  /**
    * Seconds it has been held up by something in its way.
    *
    * Counted rather than flagged so that a wait can be given up on: see
    * `WAIT_LIMIT`. Nought whenever the road ahead is clear.
    */
   waited: number;
+  /**
+   * The line it belongs to, and where it calls on it.
+   *
+   * The same line and calls it was built with. A tram that has gone off on to
+   * the neighbouring track has to be able to find its way back to its own
+   * route, and this is what it comes back to.
+   */
+  home: Leg;
+  /**
+   * The track it takes up at the end of this one, if there is one.
+   *
+   * A tram route as traced from the map is one-way and it *stops*: it runs to
+   * the last piece of track that carries on straight and there the line ends,
+   * usually at the edge of the map and sometimes in the middle of a street.
+   * What is almost always there is the other track of the pair, running back
+   * the way the tram came, and this is it -- measured on this map, sixteen of
+   * twenty-seven routes end within a few metres of another one beginning.
+   *
+   * Null for the other eleven, which are dead ends. A tram that reaches one
+   * of those simply goes.
+   */
+  next: Leg | null;
+  /**
+   * Off the map, waiting for room to come back on.
+   *
+   * A tram that has run out of line is gone: not drawn, not solid, not on the
+   * minimap, not making any noise, and not in anyone's way. The alternative
+   * was standing at the end of the track until the place it wanted to come
+   * back on cleared, and on this map that came to minutes at a time -- fifty-
+   * six of ninety-nine trains stood for over ten seconds at a stretch, one of
+   * them for over four minutes, parked at the buffers in plain sight.
+   */
+  gone: boolean;
   vehicles: Vehicle[];
 }
 
@@ -348,12 +402,21 @@ export function blockedBy(
  * so the caller can tell a wrap from a journey.
  */
 export function advance(
-  train: Pick<Train, 'along' | 'direction' | 'speed' | 'turnaround' | 'calls' | 'held'>,
+  train: Pick<
+    Train,
+    'along' | 'direction' | 'speed' | 'turnaround' | 'calls' | 'held' | 'calling'
+  >,
   consist: number,
   run: number,
   dt: number,
   dwell: number,
-): { along: number; direction: number; held: number; wrapped: boolean } {
+): {
+  along: number;
+  direction: number;
+  held: number;
+  wrapped: boolean;
+  calling: number | null;
+} {
   // Standing at a stop, if it is. Counted down before it is moved rather than
   // after, so the tick it pulls up is the first tick of the wait rather than
   // the last tick of the run.
@@ -363,6 +426,10 @@ export function advance(
       direction: train.direction,
       held: Math.max(0, train.held - dt),
       wrapped: false,
+      // Still the stop it is standing at. Forgetting it here is forgetting it
+      // where it matters: the tick the dwell runs out is the tick it has to
+      // know which platform not to pull up at again.
+      calling: train.calling,
     };
   }
 
@@ -373,17 +440,23 @@ export function advance(
     // the other end of the line -- so nothing is called at across one.
     const call = went.wrapped
       ? null
-      : callReached(train.calls, train.along - consist / 2, went.along - consist / 2);
+      : callReached(train.calls, train.along - consist / 2, went.along - consist / 2, train.calling);
     return {
       along: call === null ? went.along : call + consist / 2,
       direction: train.direction,
       held: call === null ? 0 : dwell,
       wrapped: went.wrapped,
+      calling: call,
     };
   }
 
   const went = shuttle(run, consist, train.along, train.direction, step);
-  const call = callReached(train.calls, train.along - consist / 2, went.along - consist / 2);
+  const call = callReached(
+    train.calls,
+    train.along - consist / 2,
+    went.along - consist / 2,
+    train.calling,
+  );
   return {
     along: call === null ? went.along : call + consist / 2,
     // Turned round even on the tick it pulls up: where it is and which way it
@@ -391,16 +464,39 @@ export function advance(
     direction: went.direction,
     held: call === null ? 0 : dwell,
     wrapped: false,
+    calling: call,
   };
 }
 
+/**
+ * The call a step ran over, if it ran over one.
+ *
+ * `standingAt` is the call the train has just been held at, and it is the
+ * whole of why this takes four arguments instead of three. A tram is put down
+ * at `call + consist / 2`, and the question is asked of `along - consist / 2`
+ * -- the same number by algebra, and a few parts in a quadrillion out in
+ * floating point. Out on the low side, and the tram has "crossed" the stop it
+ * is standing at: it is put back on it, held for another two seconds, and
+ * asked again for ever. Four trams in ninety-nine spent an entire ten-minute
+ * session pulled up at one platform, counting the same dwell down over and
+ * over.
+ *
+ * A tolerance cannot tell those apart, which was the first thing tried: a
+ * train arriving at a stop lands within the same fraction of a micron of it
+ * as one standing there, and a rule wide enough to forgive the second drives
+ * straight through the first. The difference is not in the arithmetic, it is
+ * in the history -- so the history is what gets passed, and the comparison
+ * stays exact, because it is the same number out of the same array.
+ */
 export function callReached(
   calls: readonly number[],
   from: number,
   to: number,
+  standingAt: number | null = null,
 ): number | null {
   let best: number | null = null;
   for (const at of calls) {
+    if (at === standingAt) continue;
     if ((from - at) * (to - at) >= 0) continue;
     // The nearest one ahead, for a step long enough to pass two of them.
     if (best === null || Math.abs(at - from) < Math.abs(best - from)) best = at;
@@ -487,6 +583,79 @@ export function recycle(
   // wrapped moved by the width of the route in a tick, and nothing that ran
   // normally moved by more than its step.
   return { along: put, wrapped: Math.abs(put - along) > Math.abs(step) + 1e-9 };
+}
+
+/**
+ * Which line a tram takes up when it runs out of the one it is on.
+ *
+ * Out along its own route, back along the neighbouring track, out again. That
+ * is what a tram service is, and it is also the only arrangement that leaves
+ * the map with the same trams on it in ten minutes as it has now.
+ *
+ * The obvious rule -- always carry on to whatever track begins where this one
+ * ends -- does not do that. The routes traced from this map are one-way and
+ * they do not pair up as out-and-back: five different routes end at the same
+ * corner, so five routes feed one, and two of them are fed by nothing at all.
+ * Trams would drain out of the long routes into a couple of short ones over
+ * about eight minutes of play, which is a district that quietly loses its
+ * trams while you fly around it.
+ *
+ * So it comes home on the leg after. Which leg it is on is read off the line
+ * rather than kept as a flag, a flag being a second copy of something already
+ * written down.
+ *
+ * That alone was not enough. Coming home means every tram is on its own route
+ * about half the time, and half of a route's trams being away at once is a
+ * route that reads as deserted: measured over ten minutes, ten of the
+ * twenty-seven tram routes stood empty for a good part of it and one of them
+ * for two thirds. So a route lends out `allowed` trams and no more -- one, in
+ * practice -- and `away` is how many of this route's are out at the moment.
+ * The tram that finds its route has already lent one simply goes home, which
+ * is what it would have done before any of this existed.
+ */
+export function legAfter(
+  train: Pick<Train, 'line' | 'home' | 'next'>,
+  away: number,
+  allowed: number,
+): Leg {
+  if (train.line !== train.home.line) return train.home;
+  return train.next && away < allowed ? train.next : train.home;
+}
+
+/**
+ * Where a rake stands the moment it comes on to a line, as an `along`.
+ *
+ * `along` is the leading coupling and a rake occupies `[along - consist,
+ * along]` whichever way it is going -- so one running up the line comes on
+ * with its tail on the zero mark, and one running down it comes on with its
+ * nose there, at the far end. Getting this the wrong way round puts a tram on
+ * at the end it was trying to leave.
+ */
+export function comeOnAt(consist: number, run: number, direction: number): number {
+  return direction > 0 ? consist : run;
+}
+
+/**
+ * Whether a rake could stand there without something already in it.
+ *
+ * Sampled at the nose, the middle and the tail rather than at the middle
+ * alone. A four-car tram is fifty-four metres long, and a clear middle says
+ * nothing whatever about a clear nose -- which is how trams came to
+ * materialise into each other at the ends of the lines.
+ */
+export function roomToComeOn(
+  points: readonly Point2[],
+  along: number,
+  consist: number,
+  others: readonly Placed[],
+  room: number,
+): boolean {
+  for (const share of [0, 0.5, 1]) {
+    const at = pointAlong(points, along - consist * share);
+    if (!at) continue;
+    if (others.some((other) => Math.hypot(other.x - at.x, other.z - at.z) < room)) return false;
+  }
+  return true;
 }
 
 /**
