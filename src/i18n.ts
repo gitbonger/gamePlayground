@@ -83,6 +83,8 @@ export const PHRASES = {
     hu: 'Nyomj egy számot a válaszhoz!',
   },
   nowFlying: { en: 'now flying', hu: 'most repülöd' },
+  /** The one thing in the game with a bar of its own that is not the bird. */
+  cage: { en: 'the cage', hu: 'a kalitka' },
 } as const satisfies Record<string, Words>;
 
 export type Phrase = keyof typeof PHRASES;

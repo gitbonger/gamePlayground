@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { beginRescue, BREAKS_AFTER } from './rescue';
+import { beginRescue, PECK_EVERY, ROUNDS, SETTLES } from './rescue';
 import { defaultParams } from './sim/flight';
 import { isPerched } from './sim/flight';
 
@@ -28,15 +28,57 @@ const run = (rescue: ReturnType<typeof beginRescue>, seconds: number) => {
 };
 
 describe('the thirty who came to help', () => {
-  it('arrives on its feet rather than landing', () => {
-    // The cheat, and the reason for it: the last level is a hundred and
-    // fifty-five metres long and a flock lets one bird out at a time, so by
-    // the time the hero is on the roof there are four of them in the sky.
-    // What arrives is not a flock. These are simply there.
+  it('comes down out of the air rather than being simply there', () => {
+    // The cheat is still a cheat -- these are not the flock and the flight
+    // model never sees them -- but arriving *at all* is worth having. They
+    // start above the roof and behind their spots, and glide in.
     const rescue = staged();
     expect(rescue.helpers).toHaveLength(30);
+    const roof = defaultParams.groundHeight + defaultParams.bodyRadius;
     for (const helper of rescue.helpers) {
-      expect(isPerched(helper.state), 'standing').toBe(true);
+      expect(helper.doing, 'in the air').toBe('coming');
+      expect(helper.state.position.y, 'above the roof').toBeGreaterThan(roof + 5);
+      expect(isPerched(helper.state), 'not standing yet').toBe(false);
+    }
+  });
+
+  it('gets all of them down, and not on the same frame', () => {
+    // Thirty birds touching down together is one event; spread over a second
+    // and a half it is a flock coming in.
+    const rescue = staged();
+    const roof = defaultParams.groundHeight + defaultParams.bodyRadius;
+    // The first of them is down at about two and a third seconds and the last
+    // at about three and four fifths, so partway through there is a flock
+    // half on the roof and half still in the air.
+    run(rescue, 2.9);
+    const early = rescue.helpers.filter((helper) => helper.doing !== 'coming').length;
+    expect(early, 'some are down').toBeGreaterThan(0);
+    expect(early, 'and some are still coming').toBeLessThan(30);
+
+    run(rescue, 2);
+    for (const helper of rescue.helpers) {
+      expect(helper.doing, 'all down').not.toBe('coming');
+      expect(helper.state.position.y, 'on the roof').toBeCloseTo(roof, 5);
+      expect(isPerched(helper.state), 'on its feet').toBe(true);
+    }
+  });
+
+  it('stands them still for a while before they go for it', () => {
+    // They have just flown across the district and the thing they came for is
+    // right there. Walking into it off the landing gives the arrival no
+    // weight at all.
+    const rescue = staged();
+    // All down, and none of them has been down five seconds yet -- the first
+    // to arrive did so at about two and a third.
+    run(rescue, 4);
+    const where = rescue.helpers.map((helper) => ({ ...helper.state.position }));
+    run(rescue, SETTLES - 2.5);
+    for (const [i, helper] of rescue.helpers.entries()) {
+      const moved = Math.hypot(
+        helper.state.position.x - where[i]!.x,
+        helper.state.position.z - where[i]!.z,
+      );
+      expect(moved, 'still waiting').toBeLessThan(0.5);
     }
   });
 
@@ -62,7 +104,7 @@ describe('the thirty who came to help', () => {
     const before = rescue.helpers.map((helper) =>
       Math.hypot(helper.state.position.x - 0, helper.state.position.z - -6),
     );
-    run(rescue, BREAKS_AFTER);
+    run(rescue, 4 + SETTLES + 6);
     const after = rescue.helpers.map((helper) =>
       Math.hypot(helper.state.position.x - 0, helper.state.position.z - -6),
     );
@@ -82,22 +124,46 @@ describe('the thirty who came to help', () => {
     }
   });
 
-  it('breaks the cage after five seconds, and not before', () => {
-    // Long enough for the nearest of them to have reached it and the furthest
-    // to still be coming, which is what makes it read as thirty birds doing
-    // something rather than as a timer running out.
+  it('breaks the cage when it has been worked at, not when a timer runs out', () => {
+    // It used to come apart five seconds after they appeared, on a clock that
+    // knew nothing about whether anybody had reached it. Now every go at it
+    // takes a piece off, and the bar is the thing being watched.
     const rescue = staged();
-    run(rescue, BREAKS_AFTER - 0.5);
-    expect(rescue.broken, 'still standing').toBe(false);
-    run(rescue, 1);
-    expect(rescue.broken, 'and then not').toBe(true);
+    expect(rescue.health, 'whole to start with').toBe(1);
+    expect(rescue.started, 'nobody there yet').toBe(false);
+
+    // Nothing has happened to it while they are still coming down and
+    // standing about.
+    run(rescue, 4 + SETTLES - 0.5);
+    expect(rescue.health, 'untouched').toBe(1);
+    expect(rescue.broken).toBe(false);
+
+    // They arrive, and it starts coming apart.
+    run(rescue, 6);
+    expect(rescue.started, 'somebody is at it').toBe(true);
+    expect(rescue.health, 'and it shows').toBeLessThan(1);
+    expect(rescue.broken, 'but not all at once').toBe(false);
+
+    // Every one of them has a fixed number of goes at it, so it gives way.
+    run(rescue, PECK_EVERY * ROUNDS + 4);
+    expect(rescue.health).toBe(0);
+    expect(rescue.broken).toBe(true);
+  });
+
+  it('takes a good deal longer than it used to', () => {
+    // Five times, near enough: it was five seconds flat.
+    const rescue = staged();
+    let took = 0;
+    for (; took < 90 && !rescue.broken; took += DT) rescue.update(DT);
+    expect(took, 'not a moment').toBeGreaterThan(20);
+    expect(took, 'and not for ever').toBeLessThan(45);
   });
 
   it('faces them at the thing they came for', () => {
     // Thirty birds standing round a cage looking at the sky is thirty birds
     // that do not know why they are there.
     const rescue = staged();
-    run(rescue, BREAKS_AFTER);
+    run(rescue, 4 + SETTLES);
     const looking = rescue.helpers.filter((helper) => {
       const want = Math.atan2(0 - helper.state.position.x, -(-6 - helper.state.position.z));
       const facing = Math.atan2(

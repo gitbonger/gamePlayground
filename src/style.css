@@ -691,3 +691,40 @@ body {
   /* Nothing here is clicked. */
   pointer-events: none;
 }
+
+/* The one bar that is not about the bird: something being worked on, up where
+   the thing being worked on is. See `render/gauge.ts`. */
+.gauge {
+  position: absolute;
+  left: 50%;
+  /* Below the line that names the level, which sits at 12% -- the two are up
+     at the same time for a few seconds at the start of the level, and the bar
+     lasts a great deal longer than the name does. */
+  top: 17%;
+  transform: translateX(-50%);
+  width: min(340px, 40vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.gauge-name {
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #f4f7fb;
+  text-shadow: 0 0 12px rgba(8, 11, 15, 0.95), 0 2px 4px rgba(8, 11, 15, 0.9);
+}
+
+.gauge .bar {
+  width: 100%;
+}
+
+/* Stepped rather than smooth, because it moves in steps: thirty birds having
+   a go at it in turn. A transition long enough to smooth that out would be a
+   bar that lags what the birds are doing. */
+.gauge-fill {
+  transition: width 0.18s linear;
+}

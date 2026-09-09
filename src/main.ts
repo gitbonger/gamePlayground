@@ -1,6 +1,7 @@
 // Named apart from this file's own `crowdOn`, which is about pigeons.
 import { crowdOn as fillPlatform } from './world/waiting';
 import {
+  PHRASES,
   languageNow,
   otherLanguage,
   read,
@@ -94,6 +95,7 @@ import { browserKit, createAmbience, type Source } from './render/ambience';
 import { browserChime, createCue } from './render/cue';
 import { createVitals, type Vital } from './render/vitals';
 import { MESSAGES, NOTICE, type Moment } from './render/messages';
+import { createGauge } from './render/gauge';
 import { codesOf, createTipPanel, createTipStack } from './render/tips';
 import { loadProgress, saveProgress } from './progress';
 import { DEFAULT_MODE, MODES, otherMode, paramsFor, windFor, type Mode } from './sim/modes';
@@ -1250,6 +1252,14 @@ let trapperGone = false;
  */
 let rescue: ReturnType<typeof beginRescue> | null = null;
 /**
+ * Where the cage is while one is running, so the hero can be turned to it.
+ *
+ * Kept beside the rescue rather than read off `cageBox` at the point of use,
+ * because the box is taken away the moment the bars burst and what he should
+ * go on looking at is the place they burst in.
+ */
+let rescueAt: Vec3 | null = null;
+/**
  * A rig each for them, built once and reused.
  *
  * Thirty, which is what the last level asks for. They are hidden until there
@@ -1667,6 +1677,7 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // And nobody has been rescued yet: the whole point of it is that it happens
   // when he arrives, so a restart of that level has to arrive again.
   rescue = null;
+  rescueAt = null;
   for (const rig of helperRigs) rig.object.visible = false;
   // And he is standing there again -- unless he has been taken apart and this
   // is what comes after that.
@@ -2056,6 +2067,8 @@ const menu = createLevelMenu(overlay, LEVELS, () => {
   (picked) => playLevel(picked));
 const talkPanel = createDialoguePanel(overlay);
 const tipPanel = createTipPanel(overlay);
+/** And the cage's, on the one level that has something to work at. */
+const gauge = createGauge(overlay);
 /**
  * What is up, and for how long. See `TipStack`.
  *
@@ -3068,9 +3081,15 @@ function frame(nowMs: number) {
     // Round to look at whoever is talking, at walking pace, for as long as
     // the conversation lasts -- so the shot is two birds facing each other
     // rather than one addressing the back of the other's head.
+    // Round to look at whoever is talking -- or, on the roof at the end of
+    // the story, at the cage. He has just flown across the district for it
+    // and the birds are coming down behind him; standing with his back to it
+    // is the one thing he would not be doing.
     walkControls.turn = talkingTo
       ? faceTurn(bird, talkingTo.state.position, flightParams, TICK)
-      : allowed.turn;
+      : rescueAt
+        ? faceTurn(bird, rescueAt, flightParams, TICK)
+        : allowed.turn;
     walkControls.launch = allowed.launch;
     const wasDown = isPerched(bird);
     onFoot = walk(bird, walkControls, flightParams, TICK, solid);
@@ -3135,6 +3154,11 @@ function frame(nowMs: number) {
         morphs: PIGEON_MORPHS.length,
         flight: flightParams,
       });
+      rescueAt = vec(
+        (cageBox.minX + cageBox.maxX) / 2,
+        bird.position.y,
+        (cageBox.minZ + cageBox.maxZ) / 2,
+      );
     }
     if (rescue) {
       rescue.update(TICK, solid);
@@ -3394,6 +3418,11 @@ function frame(nowMs: number) {
   // rather than guessed at: the four-line exchange at the loft is twice the
   // two-line one on the branch, and the instruction has to clear both.
   tipPanel.show(saying, talkPanel.height());
+  // The cage, while thirty birds are working at it. Shown from the moment the
+  // first of them reaches it rather than from the moment they arrive: before
+  // that there is nothing happening to it, and a full bar sitting there is a
+  // bar that has not started.
+  gauge.show(rescue && rescue.started && !rescue.broken ? PHRASES.cage : null, rescue?.health ?? 1);
   // A note when the newest instruction changes, saying what kind it is: see
   // `Tip.sort`. Compared here rather than inside the panel, because a sound is
   // not drawing -- and the panel is asked what to show sixty times a second.
@@ -3559,7 +3588,10 @@ function frame(nowMs: number) {
     if (!rig) return;
     const shown = sighted(helper.state.position, sight);
     rig.object.visible = shown;
-    if (shown) rig.update(helper.state, 'perched', frameTime);
+    // Wings out while it is still coming down, and feet under it once it is
+    // there. The pose is the only thing that says which of the two is
+    // happening: they are the same bird in the same place a second apart.
+    if (shown) rig.update(helper.state, helper.doing === 'coming' ? 'gliding' : 'perched', frameTime);
   });
 
   dogs.forEach((hound, i) => {
