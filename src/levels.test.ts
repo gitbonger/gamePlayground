@@ -38,7 +38,7 @@ import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
 import { ROOFLINE } from './world/heights';
 import { defaultFlockOptions, FLOCK_AHEAD } from './flock';
 import type { MapData } from './world/streets';
-import { COURSES, courseFor } from './render/tips';
+import { MESSAGES } from './render/messages';
 
 /**
  * The level the story ends on.
@@ -1052,17 +1052,22 @@ describe('what the levels aim at', () => {
   });
 
   it('teaches its lessons to a level that exists', () => {
-    // The courses are keyed by level name, the way a conversation reaches for
-    // a level by name and a level reaches for a landmark by name -- and the
-    // cost is the same: a typo is a set of instructions that silently never
-    // appear, on a level that quietly teaches nothing. Three of these were
-    // written in one sitting while the levels were being renamed around them,
-    // which is exactly when that happens.
+    // A message names the levels it belongs to, the way a conversation
+    // reaches for a level by name and a level reaches for a landmark by name
+    // -- and the cost is the same: a typo is an instruction that silently
+    // never appears, on a level that quietly teaches nothing. Three of these
+    // were written in one sitting while the levels were being renamed around
+    // them, which is exactly when that happens.
     const names = new Set(LEVELS.map((level) => level.name));
-    for (const taught of Object.keys(COURSES)) {
-      expect(names, `${taught} teaches, and is not a level`).toContain(taught);
+    for (const each of MESSAGES) {
+      for (const taught of each.on ?? []) {
+        expect(names, `${each.id} is for ${taught}, which is not a level`).toContain(taught);
+      }
     }
   });
+
+  /** Whatever a level has to say for itself. */
+  const saidOn = (level: string) => MESSAGES.filter((each) => each.on?.includes(level));
 
   it('tells the food level what to do once the feet are down', () => {
     // The one thing that level cannot be finished without, and the only
@@ -1072,12 +1077,15 @@ describe('what the levels aim at', () => {
     //
     // What it says is what to *do*. It used to say what it achieves -- "eat
     // the seeds to restore your health" -- and the panel is for the first.
-    const landed = courseFor('Teleki tér').filter((lesson) => lesson.landed === true);
-    expect(landed, 'exactly one, at the moment of landing').toHaveLength(1);
-    expect(landed[0]!.text.en).toContain('Collect');
-    expect(landed[0]!.text.en).toContain('seeds');
+    const seeds = saidOn('Teleki tér').find((each) => each.id === 'seeds');
+    expect(seeds, 'the level has one').toBeDefined();
+    expect(seeds!.text.en).toContain('Collect');
+    expect(seeds!.text.en).toContain('seeds');
     // And spoken, because the level cannot go on without it.
-    expect(landed[0]!.spoken).toBe(true);
+    expect(seeds!.spoken).toBe(true);
+    // At the moment of landing, which is the only trigger it has.
+    expect(seeds!.when({ perched: true } as never)).toBe(true);
+    expect(seeds!.when({ perched: false } as never)).toBe(false);
   });
 
   it('tells the yard the three things that landing there needs', () => {
@@ -1085,15 +1093,23 @@ describe('what the levels aim at', () => {
     // you: it has to be landed on, it reverses, and only one wagon counts.
     // None of the three is a control and none can be worked out by looking,
     // which is what a one-off is for.
-    const said = courseFor('Keleti').map((lesson) => lesson.text.en);
+    const yard = saidOn('Keleti');
+    const said = yard.map((each) => each.text.en);
     expect(said).toHaveLength(3);
     expect(said.join(' | ')).toContain('land on the train');
     expect(said.join(' | ')).toContain('changing directions');
     expect(said.join(' | ')).toContain('marked car');
 
-    // And they are spread across the flight rather than arriving together.
-    const marks = courseFor('Keleti').map((lesson) => lesson.at);
-    expect(marks).toEqual([50, 100, 150]);
+    // And they are spread across the flight rather than arriving together:
+    // each comes true at a different distance flown.
+    const marks = [50, 100, 150].map(
+      (flown) => yard.filter((each) => each.when({ flown } as never)).length,
+    );
+    expect(marks).toEqual([1, 2, 3]);
+
+    // All three stop the moment the feet are down: whatever they were about,
+    // the arriving is over.
+    for (const each of yard) expect(each.done?.({ perched: true } as never), each.id).toBe(true);
   });
 
   it('ends on a level that does not end', () => {

@@ -1,613 +1,122 @@
 import { sameInBoth } from '../i18n';
 import { describe, expect, it } from 'vitest';
-import { LEVELS } from '../levels';
-import { project } from '../world/geo';
-import HOME_MAP from '../world/data/home.json';
-import {
-  approachFor,
-  CAUTIONS,
-  cautionFor,
-  codesFor,
-  COURSES,
-  courseFor,
-  createTutor,
-  createWarner,
-  type Lesson,
-  createTipStack,
-} from './tips';
+import { createTipStack, type Tip } from './tips';
+import type { Message, Moment } from './messages';
 
-const EARLY: Lesson = { at: 20, keys: ['↑'], text: sameInBoth('up') };
-const LATE: Lesson = { at: 100, keys: ['B'], text: sameInBoth('brake') };
-const COURSE = [EARLY, LATE];
+/** A moment with nothing happening in it; every message here decides itself. */
+const nowhere = {} as Moment;
 
-describe('handing out the flying lessons', () => {
-  it('says nothing until the flight has gone far enough', () => {
-    // Distance rather than time, because distance is the only measure of the
-    // flight that is also a measure of the player: somebody still working out
-    // which way is up has not covered twenty metres.
-    const tutor = createTutor(COURSE, 7);
-    expect(tutor.update({ flown: 0, toGo: 9999 }, 1 / 60)).toBeNull();
-    expect(tutor.update({ flown: 19.9, toGo: 9999 }, 1 / 60)).toBeNull();
-    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.text.en).toBe('up');
-  });
-
-  it('gives one at a time, in the order the flight reaches them', () => {
-    // Starting a flight already past both thresholds -- which a respawn into
-    // the middle of one would -- must not stack two tips into one corner.
-    const tutor = createTutor(COURSE, 7, 1.5);
-    expect(tutor.update({ flown: 500, toGo: 9999 }, 1 / 60)?.text.en).toBe('up');
-    expect(tutor.update({ flown: 500, toGo: 9999 }, 1)?.text.en).toBe('up');
-
-    // And the corner empties between them. Two instructions that never share
-    // the screen but never leave it either read as one instruction changing
-    // its mind.
-    expect(tutor.update({ flown: 500, toGo: 9999 }, 7)).toBeNull();
-    expect(tutor.update({ flown: 500, toGo: 9999 }, 1)).toBeNull();
-    expect(tutor.update({ flown: 500, toGo: 9999 }, 1)?.text.en).toBe('brake');
-  });
-
-  it('takes a lesson away once it has been up long enough', () => {
-    const tutor = createTutor([EARLY], 7, 1.5);
-    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)).not.toBeNull();
-    expect(tutor.update({ flown: 21, toGo: 9999 }, 6)).not.toBeNull();
-    // Seven seconds of showing, then the corner is empty again.
-    expect(tutor.update({ flown: 22, toGo: 9999 }, 1)).toBeNull();
-  });
-
-  it('never gives the same lesson twice in one flight', () => {
-    const tutor = createTutor([EARLY], 7, 1.5);
-    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)).not.toBeNull();
-    tutor.update({ flown: 30, toGo: 9999 }, 8);
-    tutor.update({ flown: 30, toGo: 9999 }, 2);
-    for (const travelled of [40, 200, 900]) {
-      expect(tutor.update({ flown: travelled, toGo: 9999 }, 1 / 60), `${travelled} m`).toBeNull();
-    }
-  });
-
-  it('gives them all again to a flight that starts over', () => {
-    // The player who has just flown into a building is the one who most wants
-    // to be told again, and the one who never crashes never sees a repeat.
-    const tutor = createTutor([EARLY], 7, 1.5);
-    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)).not.toBeNull();
-    tutor.update({ flown: 30, toGo: 9999 }, 8);
-    tutor.update({ flown: 30, toGo: 9999 }, 2);
-    expect(tutor.update({ flown: 40, toGo: 9999 }, 1 / 60)).toBeNull();
-
-    tutor.reset();
-    // And not straight away: the new flight has to earn it over again.
-    expect(tutor.update({ flown: 0, toGo: 9999 }, 1 / 60)).toBeNull();
-    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.text.en).toBe('up');
-  });
-
-  it('goes away when the player uses the key it is about', () => {
-    // A lesson somebody is already following is a lesson they do not need on
-    // screen -- and pressing the key is the shortest way to find out that it
-    // worked.
-    const tutor = createTutor([EARLY], 7, 1.5);
-    const nothing = () => false;
-    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60, nothing)?.text.en).toBe('up');
-    expect(tutor.update({ flown: 21, toGo: 9999 }, 1 / 60, (codes) => codes.includes('ArrowUp'))).toBeNull();
-    // And stays away: it has been given, key or no key.
-    expect(tutor.update({ flown: 22, toGo: 9999 }, 2, nothing)).toBeNull();
-    expect(tutor.update({ flown: 23, toGo: 9999 }, 1 / 60, nothing)).toBeNull();
-  });
-
-  it('knows which keys on the keyboard each drawn key stands for', () => {
-    // The arrows are drawn as arrows and the same control is also on WASD, so
-    // one label answers to two codes -- and a label with no codes at all is a
-    // tip that can never be dismissed by doing what it says.
-    for (const lesson of Object.values(COURSES).flat()) {
-      const codes = codesFor(lesson);
-      expect(codes.length, lesson.text.en).toBeGreaterThanOrEqual(lesson.keys.length);
-    }
-    // A tip with no keys at all is a thing worth saying that is not a
-    // control, and it is dismissed by time rather than by doing it.
-    expect(codesFor({ keys: [], text: sameInBoth('advice') })).toEqual([]);
-    expect(codesFor({ keys: ['↑', '↓'], text: sameInBoth('') })).toContain('KeyW');
-    expect(codesFor({ keys: ['SPACE'], text: sameInBoth('') })).toEqual(['Space']);
-  });
-
-  it('asks for one turn at a time, in the order they are written', () => {
-    // The real courses rather than the fixture.
-    for (const course of Object.values(COURSES)) {
-      // In the order they were written, for the ones counted from the
-      // take-off. The ones counted from the arrival are in the same list and
-      // come round when the arrival does, which is not a position in a list.
-      const order = course.flatMap((lesson) => (lesson.at === undefined ? [] : [lesson.at]));
-      expect([...order].sort((a, b) => a - b)).toEqual(order);
-
-      for (const lesson of course) {
-        // One trigger of the three, never two and never none: a lesson with
-        // no trigger is never given, and a lesson with two is a lesson whose
-        // moment depends on which of them you ask.
-        expect(
-          [lesson.at, lesson.within, lesson.landed].filter((trigger) => trigger !== undefined),
-          lesson.text.en,
-        ).toHaveLength(1);
-        // Short enough to take in at a glance, since it is read while flying.
-        // Both languages: Hungarian runs longer than English and the panel is
-        // the same width in either.
-        for (const words of [lesson.text.en, lesson.text.hu]) {
-          expect(words.length, words).toBeGreaterThan(0);
-          expect(words.length, words).toBeLessThan(60);
-        }
-        // And every key it draws has to do something. Drawing none is
-        // allowed -- some things are worth saying that are not a control --
-        // but a key on screen that answers to nothing is a lie.
-        for (const key of lesson.keys) {
-          expect(codesFor({ keys: [key], text: sameInBoth('') }).length, key).toBeGreaterThan(0);
-        }
-      }
-    }
-  });
-
-  it('teaches nothing to a level that does not exist', () => {
-    // A course is keyed by a level's name, the way everything else in this
-    // game that points at a level is, and the cost of that is a typo being a
-    // lesson nobody is ever given -- silently, because a course that is never
-    // looked up is indistinguishable from a level with nothing to teach.
-    const levels = new Set(LEVELS.map((level) => level.name));
-    for (const name of Object.keys(COURSES)) {
-      expect(levels, `${name} has a course but is not a level`).toContain(name);
-    }
-  });
-
-  it('gives every lesson long enough to be given', () => {
-    // A lesson counted from the take-off has to come round before the level
-    // can end, or it is a lesson nobody is ever shown -- and nothing would
-    // say so: an ungiven lesson looks exactly like a level with less to
-    // teach. The crow warning is fifty metres into a flight that ends at four
-    // hundred and fifty, which is the shape this is guarding.
-    for (const level of LEVELS) {
-      const ends = level.finish;
-      if (ends.kind !== 'crossing') continue;
-      // How far the level actually is: the release point to the line.
-      const centre = HOME_MAP.centre as [number, number];
-      const from = project(level.start[0], level.start[1], centre);
-      const line = project(ends.through[0], ends.through[1], centre);
-      const flown = Math.hypot(line.x - from.x, line.z - from.z);
-      for (const lesson of courseFor(level.name)) {
-        if (lesson.at === undefined) continue;
-        expect(lesson.at, `${level.name}: ${lesson.text.en}`).toBeLessThan(flown);
-      }
-    }
-  });
-
-  it('belongs to a level, so a later one never sees it again', () => {
-    // The rule that makes a one-off a one-off. A death repeats the lesson,
-    // because the flight is being flown again; a later level does not,
-    // because it is a different flight with different things to think about.
-    // Being told to try turning while threading a goods yard would be the
-    // game talking over itself.
-    const tutor = createTutor(COURSE, 7, 1.5);
-    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.text.en).toBe('up');
-
-    // Handed another level's course, the old one is gone -- however far this
-    // flight is taken, and whether or not the new level has anything of its
-    // own to say.
-    //
-    // Asked of a real level rather than of an empty list, because the empty
-    // list is the easy half. This used to use the goods yard as its example
-    // of a level with nothing to teach, which was true of it right up until
-    // the yard was given three lessons of its own -- and then the test was
-    // checking that nothing came back from a course that was no longer
-    // empty, which is a different and much weaker thing.
-    tutor.teach(courseFor('Keleti'), 0);
-    for (const travelled of [20, 100, 900]) {
-      const said = tutor.update({ flown: travelled, toGo: 9999 }, 1 / 60);
-      expect(said?.text.en, `${travelled} m`).not.toBe('up');
-      expect(said?.text.en, `${travelled} m`).not.toBe('down');
-    }
-
-    // And a name with no course at all teaches nothing, which is the other
-    // half of it: every level that says nothing says nothing by default
-    // rather than by having an empty list written out for it.
-    expect(courseFor('a level that teaches nothing')).toEqual([]);
-    const quiet = createTutor(COURSE, 7, 1.5);
-    quiet.teach(courseFor('a level that teaches nothing'), 0);
-    for (const travelled of [20, 100, 900]) {
-      expect(quiet.update({ flown: travelled, toGo: 9999 }, 1 / 60), `${travelled} m`).toBeNull();
-    }
-  });
-
-  it('holds a landing lesson back until the feet are down', () => {
-    // The third way a lesson comes round, and the reason it is not a
-    // distance: a player who overshot the concrete and came back has flown
-    // further than one who got it right, and both have just landed. Neither
-    // end of the flight can express that.
-    const eating = [{ landed: true, keys: [], text: sameInBoth('eat') }];
-    const tutor = createTutor(eating, 7, 1.5);
-
-    // Nine hundred metres of flying is not a landing.
-    for (const flown of [0, 30, 900]) {
-      expect(tutor.update({ flown, toGo: 0.5 }, 1 / 60), `${flown} m`).toBeNull();
-    }
-    expect(tutor.update({ flown: 900, toGo: 0.5, landed: true }, 1 / 60)?.text.en).toBe('eat');
-  });
-
-  it('counts a level taken up in mid-air from where it was taken up', () => {
-    // A level handed over by crossing a line inherits the distance the last
-    // one ran up -- five hundred metres of it. Counted from zero, every
-    // lesson it has would be a lesson already missed.
-    const tutor = createTutor([], 7, 1.5);
-    tutor.teach(COURSE, 500);
-    expect(tutor.update({ flown: 500, toGo: 9999 }, 1 / 60)).toBeNull();
-    expect(tutor.update({ flown: 519, toGo: 9999 }, 1 / 60)).toBeNull();
-    expect(tutor.update({ flown: 520, toGo: 9999 }, 1 / 60)?.text.en).toBe('up');
-  });
+/**
+ * A message that is simply on or off, for testing the holding rather than the
+ * deciding. What each real one decides is `messages.test.ts`'s business.
+ */
+const tip = (id: string, on = true, gone = false): Message => ({
+  id,
+  keys: [],
+  text: sameInBoth(id),
+  when: () => on,
+  done: () => gone,
 });
 
-describe('the cautions, which watch the flight', () => {
-  /** A bird that is fine: high, fast, fresh and flying. */
-  const fine = {
-    altitude: 120,
-    airspeed: 16,
-    stamina: 1,
-    stalled: false,
-    climb: 0,
-    noseUp: false,
-  };
+const said = (tips: readonly Tip[]) => tips.map((each) => each.text.en);
 
-  it('says nothing to a flight that is going well', () => {
-    expect(cautionFor(true, fine)).toBeNull();
-  });
-
-  it('calls out slow, low and tired, each on its own', () => {
-    expect(cautionFor(true, { ...fine, airspeed: 5 })?.text.en).toBe('Keep flapping!');
-    expect(cautionFor(true, { ...fine, altitude: 9, climb: -1 })?.text.en).toBe('Pull up!');
-    expect(cautionFor(true, { ...fine, stamina: 0.29 })?.text.en).toBe('Try the brakes!');
-  });
-
-  it('puts the wings before the nose when the bird is low and slow', () => {
-    // The one ordering that matters. Low and slow looks like a case for
-    // pulling up, and pulling up with no speed is how a bird stalls into the
-    // ground it was trying to clear -- so the answer is the wings, which are
-    // the only control that makes more of both.
-    expect(cautionFor(true, { ...fine, altitude: 5, climb: -1, airspeed: 4 })?.text.en).toBe(
-      'Keep flapping!',
-    );
-  });
-
-  it('leaves the slow problem until the quick ones are over', () => {
-    // Tired is the only one of the three you can put off, so it is the only
-    // one that gives way. A bird about to hit the ground has a bigger problem
-    // than the one it will have in thirty seconds.
-    const spent = { ...fine, altitude: 5, climb: -1, stamina: 0.1 };
-    expect(cautionFor(true, spent)?.text.en).toBe('Pull up!');
-  });
-
-  it('leaves height to fly in without being talked to', () => {
-    // The gap between the two cautions is where the game is quiet, and it was
-    // too narrow to fly in: at twenty metres a pigeon crossing a park was
-    // told to pull up the whole way, and pulling up hard enough to stop it
-    // stalls the wing, which brings on the other caution, which drops it back
-    // under twenty. Two instructions taking it in turns.
-    //
-    // Flying low is not the problem. Going down is.
-    expect(cautionFor(true, { ...fine, altitude: 8, climb: 0 })).toBeNull();
-    expect(cautionFor(true, { ...fine, altitude: 8, climb: 1 })).toBeNull();
-    expect(cautionFor(true, { ...fine, altitude: 15, climb: -2 })).toBeNull();
-    expect(cautionFor(true, { ...fine, altitude: 8, climb: -2 })?.text.en).toBe('Pull up!');
-  });
-
-  it('answers a sink with the wings once there is no nose left to give', () => {
-    // The reported miss, and it is a physics error rather than a missing
-    // message: a bird going down with its nose already up cannot pull up.
-    // There is no more nose to give, and asking for it takes the wing past
-    // working. So the same situation gets a different answer depending on
-    // what the wing is already doing.
-    const sinking = { ...fine, altitude: 8, climb: -2 };
-    expect(cautionFor(true, sinking)?.text.en).toBe('Pull up!');
-    expect(cautionFor(true, { ...sinking, noseUp: true })?.text.en).toBe('Keep flapping!');
-  });
-
-  it('does not nag a bird that is merely gliding nose-high', () => {
-    // Every glide is nose-up and sinking; that is what gliding is. The wings
-    // are only the answer when the sink is a problem -- low, or slow.
-    expect(cautionFor(true, { ...fine, noseUp: true, climb: -1 })).toBeNull();
-    expect(cautionFor(true, { ...fine, noseUp: true, climb: -1, altitude: 40 })).toBeNull();
-  });
-
-  it('keeps them all for the taught and none for the rest', () => {
-    // A pigeon spends half its life low, slow and tired on purpose, so these
-    // stop once the game stops teaching. There is nothing left that is shown
-    // to everybody: the stall warning was the one, and it is gone -- see
-    // `CAUTIONS`.
-    const struggling = { ...fine, altitude: 5, climb: -1, airspeed: 4, stamina: 0.1 };
-    expect(cautionFor(false, struggling)).toBeNull();
-    expect(cautionFor(true, struggling)).not.toBeNull();
-    expect(CAUTIONS.some((caution) => caution.always)).toBe(false);
-  });
-
-  it('says nothing about a stall', () => {
-    // It fired whenever the wing was past its angle, which on a pigeon being
-    // flown properly is most of a hard turn -- and a warning that goes off
-    // while you are doing the right thing teaches you to ignore warnings.
-    // The recovery is unchanged; what has gone is the caption on it.
-    const stalled = { ...fine, stalled: true };
-    expect(cautionFor(true, stalled)).toBeNull();
-    expect(cautionFor(false, stalled)).toBeNull();
-  });
-
-  it('draws every one of them with a key that does something', () => {
-    for (const warning of CAUTIONS) {
-      for (const words of [warning.text.en, warning.text.hu]) {
-        expect(words.length, words).toBeLessThan(30);
-      }
-      expect(codesFor(warning).length, warning.text.en).toBeGreaterThan(0);
-    }
-  });
-
-  it('takes its thresholds in the simulation\'s own units', () => {
-    // Twenty km/h is the readout; 5.6 m/s is the air. A threshold written in
-    // km/h would be a threshold about the display rather than about flying,
-    // and the display is the thing most likely to change.
-    expect(cautionFor(true, { ...fine, airspeed: 20 / 3.6 - 0.01 })?.text.en).toBe('Keep flapping!');
-    expect(cautionFor(true, { ...fine, airspeed: 20 / 3.6 + 0.01 })).toBeNull();
-  });
-});
-
-describe('talking an approach down', () => {
-  /** On the way in: a hundred metres to go, low and steady. */
-  const near = { toGo: 100, altitude: 20, fast: false, sinking: false };
-
-  it('says nothing until the target is close', () => {
-    // Out here it is a flight, not an approach, and the arrow is enough.
-    expect(approachFor(true, { ...near, toGo: 151 })).toBeNull();
-    expect(approachFor(true, { ...near, toGo: 150 })).not.toBeNull();
-  });
-
-  it('deals with height first, because height is the one that runs out', () => {
-    // A pigeon glides about six to one. Too high at a hundred metres out
-    // cannot be fixed at twenty, whereas too fast can -- so height is said
-    // first even when both are wrong.
-    const high = { ...near, altitude: 60, fast: true };
-    expect(approachFor(true, high)?.text.en).toBe('Lose some height');
-    expect(approachFor(true, { ...high, altitude: 20 })?.text.en).toBe('Brake to slow down');
-  });
-
-  it('answers a hard sink with the wings, not the nose', () => {
-    // At roof height, beating arrests a sink; pulling the nose up trades the
-    // speed there is no longer any of.
-    expect(approachFor(true, { ...near, altitude: 10, sinking: true })?.text.en).toBe('Beat to soften it');
-    // Higher up there is room to fly out of it, and the general instruction
-    // stands.
-    expect(approachFor(true, { ...near, altitude: 30, toGo: 120, sinking: true })?.text.en).toBe(
-      'Brake, then pull up',
-    );
-  });
-
-  it('ends on the nose coming up, which is the last thing you do', () => {
-    // And says it in the same three words the caution says, on purpose: the
-    // same key doing the same thing to the same bird. "Flare" is what a pilot
-    // calls this and is no use to somebody who has never landed anything --
-    // asked what it meant, the first player to read it guessed it was the
-    // part of a wing that opens to brake.
-    expect(approachFor(true, { ...near, toGo: 20, altitude: 5 })?.text.en).toBe('Pull up!');
-    expect(
-      cautionFor(true, {
-        altitude: 8,
-        airspeed: 16,
-        stamina: 1,
-        stalled: false,
-        climb: -2,
-        noseUp: false,
-      })?.text.en,
-    ).toBe('Pull up!');
-  });
-
-  it('draws every one of them with a key that does something', () => {
-    const shown = [
-      approachFor(true, { ...near, altitude: 60 }),
-      approachFor(true, { ...near, fast: true }),
-      approachFor(true, { ...near, altitude: 10, sinking: true }),
-      approachFor(true, { ...near, toGo: 20, altitude: 5 }),
-      approachFor(true, near),
-    ];
-    for (const tip of shown) {
-      expect(tip).not.toBeNull();
-      expect(codesFor(tip!).length, tip!.text.en).toBeGreaterThan(0);
-      for (const words of [tip!.text.en, tip!.text.hu]) {
-        expect(words.length, words).toBeLessThan(30);
-      }
-    }
-  });
-});
-
-describe('talking a landing down', () => {
-  const near = { toGo: 60, altitude: 10, fast: false, sinking: false };
-
-  it('says nothing at all on a level that teaches nothing', () => {
-    // The approach coaching is the tutor by another name: four instructions
-    // about which key to press and when. A level past the point the game
-    // explains itself should not hand them out at the moment the player is
-    // busiest -- which is what `The rescue` was doing, on the roof, at the
-    // end of the story.
-    expect(approachFor(false, near)).toBeNull();
-    expect(approachFor(false, { ...near, altitude: 60, fast: true })).toBeNull();
-    expect(approachFor(false, { ...near, toGo: 20, altitude: 5 })).toBeNull();
-    // And it is the same flight that would have been talked down otherwise.
-    expect(approachFor(true, near)).not.toBeNull();
-  });
-});
-
-describe('lessons that ask to be said aloud', () => {
-  it('hands the tutor’s lesson back whole', () => {
-    // It used to rebuild it as `{ keys, text }`, which quietly dropped
-    // `spoken` -- and `spoken` is the only thing the voice reads. So every
-    // lesson in the game that asked to be announced was silent, including
-    // `Crows! Fly low!`, which is the one thing on that route a player cannot
-    // work out by looking.
-    const tutor = createTutor();
-    tutor.teach([{ at: 10, keys: [], text: sameInBoth('Crows! Fly low!'), spoken: true }], 0);
-    const given = tutor.update({ flown: 20, toGo: 9999 }, 1 / 60);
-    expect(given?.text.en).toBe('Crows! Fly low!');
-    expect(given?.spoken).toBe(true);
-  });
-
-  it('leaves a quiet lesson quiet', () => {
-    // The other half of it. A voice that reads every instruction is a voice
-    // that gets turned off, and then it is not there for the one that
-    // mattered.
-    const tutor = createTutor();
-    tutor.teach([{ at: 10, keys: [], text: sameInBoth('Approaching Teleki tér') }], 0);
-    expect(tutor.update({ flown: 20, toGo: 9999 }, 1 / 60)?.spoken).toBeUndefined();
-  });
-
-  it('says every life-and-death lesson in the game out loud', () => {
-    // The ones about crows and about the train are the two that kill you.
-    // Asked of the real courses, so a lesson written later without the flag
-    // is caught here rather than by somebody dying quietly.
-    // The ones that warn about something that kills you: the crows, and the
-    // train you have to be on. Not `Chill, no crows here`, which says a level
-    // is safe -- a voice reading that one out is a voice saying something
-    // nobody needed to hear.
-    const warns = /^(Crows!|Mind the crows|You need to land on the train|Careful)/;
-    const deadly = Object.values(COURSES)
-      .flat()
-      .filter((lesson) => warns.test(lesson.text.en));
-    expect(deadly.length).toBeGreaterThan(2);
-    for (const lesson of deadly) expect(lesson.spoken, lesson.text.en).toBe(true);
-  });
-});
-
-describe('the caution that is really a lesson', () => {
-  const fine = { altitude: 60, airspeed: 16, climb: 0, stamina: 1, stalled: false, noseUp: false };
-  const spent = { ...fine, stamina: 0.1 };
-
-  it('names the key rather than the symptom', () => {
-    // It used to say `Slow down!`, which is the symptom -- and the symptom was
-    // already being said by the bar in the corner going red at the same mark.
-    // There is a key for this, and a player who has never needed it has never
-    // pressed it.
-    const warner = createWarner();
-    const said = warner.warn(true, spent)!;
-    expect(said.text.en).toBe('Try the brakes!');
-    expect(said.keys).toEqual(['B']);
-  });
-
-  it('says it once and then leaves you alone', () => {
-    // Hearing it again every time the bar dips is nagging rather than
-    // teaching, and the bar is already there for the nagging.
-    const warner = createWarner();
-    expect(warner.warn(true, spent)).not.toBeNull();
-    expect(warner.warn(true, spent)).toBeNull();
-    expect(warner.warn(true, spent)).toBeNull();
-  });
-
-  it('still gives the warnings that are warnings, every time', () => {
-    // The others are about something that is happening now and can happen
-    // again, and a stall you have already had is not a stall you are not in.
-    const warner = createWarner();
-    const low = { ...fine, altitude: 5, climb: -1 };
-    expect(warner.warn(true, low)).not.toBeNull();
-    expect(warner.warn(true, low)).not.toBeNull();
-  });
-
-  it('says it again on a fresh level', () => {
-    // Once per level, not once per game. A death restarts the level, and a
-    // player who died is exactly the player who wants it again.
-    const warner = createWarner();
-    expect(warner.warn(true, spent)).not.toBeNull();
-    warner.reset();
-    expect(warner.warn(true, spent)).not.toBeNull();
-  });
-});
-
-describe('stacking up what the game has to say', () => {
-  const tip = (text: string, keys: string[] = []) => ({ keys, text: sameInBoth(text) });
-  const said = (tips: readonly { text: { en: string } }[]) => tips.map((t) => t.text.en);
-
+describe('holding what the game has to say', () => {
   it('shows two things that arrive together, rather than one of them', () => {
     // The whole reason this exists. The corner used to pick a winner out of a
     // chain of `??`, which meant everything below the winner was not late --
     // it was never said. A crow closing while the wings ran out said "crows",
     // and the stamina was simply never mentioned.
     const stack = createTipStack(3, 3);
-    expect(said(stack.update([tip('Crows!'), tip('Keep flapping!')], 0))).toEqual([
-      'Crows!',
-      'Keep flapping!',
-    ]);
+    expect(said(stack.update([tip('crows'), tip('flap')], nowhere, 0))).toEqual(['crows', 'flap']);
   });
 
   it('keeps the older one where it was when a new one arrives', () => {
-    // Oldest first, so the stack reads in the order it was said and the newest
-    // is always in the same place -- nearest the bird.
+    // Oldest first, so the stack reads in the order it was said and the
+    // newest is always in the same place -- nearest the bird.
     const stack = createTipStack(3, 3);
-    stack.update([tip('Pull up!')], 0);
-    expect(said(stack.update([tip('Turn right!')], 1))).toEqual(['Pull up!', 'Turn right!']);
+    stack.update([tip('pullUp')], nowhere, 0);
+    expect(said(stack.update([tip('pullUp'), tip('tryRight')], nowhere, 1))).toEqual([
+      'pullUp',
+      'tryRight',
+    ]);
   });
 
   it('takes one away once it has had its time', () => {
     const stack = createTipStack(3, 3);
-    stack.update([tip('Turn right!')], 0);
-    expect(said(stack.update([], 2.9))).toEqual(['Turn right!']);
-    expect(stack.update([], 3.1)).toEqual([]);
+    stack.update([tip('tryRight')], nowhere, 0);
+    expect(said(stack.update([tip('tryRight', false)], nowhere, 2.9))).toEqual(['tryRight']);
+    expect(stack.update([tip('tryRight', false)], nowhere, 3.1)).toEqual([]);
   });
 
   it('keeps one that is still true past its time', () => {
-    // The half that keeps a caution honest. "Pull up" is true until the ground
-    // stops being a problem, and one that timed out while it was still true
-    // would blink off and straight back on.
+    // The half that keeps a warning honest. "Pull up" is true until the
+    // ground stops being a problem, and one that timed out while it was still
+    // true would blink off and straight back on.
     const stack = createTipStack(3, 3);
     for (let t = 0; t <= 10; t += 0.5) {
-      expect(said(stack.update([tip('Pull up!')], t)), `${t}s`).toEqual(['Pull up!']);
+      expect(said(stack.update([tip('pullUp')], nowhere, t)), `${t}s`).toEqual(['pullUp']);
     }
-    // And goes as soon as it stops being true.
-    expect(stack.update([], 10.5)).toEqual([]);
+    expect(stack.update([tip('pullUp', false)], nowhere, 10.5)).toEqual([]);
+  });
+
+  it('drops one the moment it says it is finished, however long it has been up', () => {
+    // The other half, and the one the whole redesign is for: an instruction
+    // the player has just acted on is an instruction that worked, and leaving
+    // it up says the game did not notice.
+    const stack = createTipStack(3, 3);
+    expect(said(stack.update([tip('flap')], nowhere, 0))).toEqual(['flap']);
+    expect(stack.update([tip('flap', true, true)], nowhere, 0.2)).toEqual([]);
   });
 
   it('never shows more than a screenful', () => {
     // Four warnings and a lesson is a player who reads none of them.
     const stack = createTipStack(3, 3);
     const showing = stack.update(
-      [tip('one'), tip('two'), tip('three'), tip('four'), tip('five')],
+      ['one', 'two', 'three', 'four', 'five'].map((id) => tip(id)),
+      nowhere,
       0,
     );
     expect(said(showing)).toEqual(['three', 'four', 'five']);
   });
 
   it('pushes the oldest off rather than refusing the newest', () => {
-    // The newest is the one the game has just decided to say. Dropping that to
-    // keep a three-second-old hint would be the queue ignoring the emergency.
+    // The newest is the one the game has just decided to say. Dropping that
+    // to keep a three-second-old hint would be the queue ignoring the
+    // emergency.
     const stack = createTipStack(3, 3);
-    stack.update([tip('one'), tip('two'), tip('three')], 0);
-    expect(said(stack.update([tip('four')], 1))).toEqual(['two', 'three', 'four']);
+    const three = ['one', 'two', 'three'].map((id) => tip(id));
+    stack.update(three, nowhere, 0);
+    expect(said(stack.update([...three, tip('four')], nowhere, 1))).toEqual([
+      'two',
+      'three',
+      'four',
+    ]);
   });
 
-  it('ignores the nulls it is handed', () => {
-    // So a caller can offer a list of maybes without filtering it first.
+  it('leaves out a message that does not belong to this level', () => {
     const stack = createTipStack(3, 3);
-    expect(said(stack.update([null, tip('Pull up!'), null], 0))).toEqual(['Pull up!']);
+    const elsewhere: Message = { ...tip('seeds'), on: ['Teleki tér'] };
+    const here = { level: 'Blaha' } as Moment;
+    expect(stack.update([elsewhere], here, 0)).toEqual([]);
+    expect(said(stack.update([elsewhere], { level: 'Teleki tér' } as Moment, 0))).toEqual(['seeds']);
   });
 
-  it('does not count one instruction twice when the language changes', () => {
-    // The panel is told sixty times a second and the words change under it on
-    // TAB. Keyed on the English, so the same instruction stays the same one.
+  it('says a once-a-level message once, however often it comes true', () => {
     const stack = createTipStack(3, 3);
-    stack.update([{ keys: [], text: { en: 'Pull up!', hu: 'Húzd fel!' } }], 0);
-    const showing = stack.update([{ keys: [], text: { en: 'Pull up!', hu: 'Húzd fel!' } }], 0.5);
-    expect(showing).toHaveLength(1);
+    const lesson: Message = { ...tip('tryRight'), once: true };
+    expect(said(stack.update([lesson], nowhere, 0))).toEqual(['tryRight']);
+    // Gone when its time is up, and it does not come back.
+    stack.update([{ ...lesson, when: () => false }], nowhere, 4);
+    expect(stack.update([lesson], nowhere, 5)).toEqual([]);
   });
 
-  it('tells two instructions with the same words apart by their picture', () => {
-    // `Fly low!` beside a crow and `Fly low!` beside a landing are two
-    // different things to do.
+  it('says it again for a flight that starts over', () => {
+    // A death restarts the level, and a player who died is exactly the one
+    // who wants the lesson again.
     const stack = createTipStack(3, 3);
-    const showing = stack.update(
-      [
-        { keys: [], text: sameInBoth('Fly low!'), icon: 'crow' as const },
-        { keys: [], text: sameInBoth('Fly low!'), icon: 'land' as const },
-      ],
-      0,
-    );
-    expect(showing).toHaveLength(2);
-  });
-
-  it('forgets everything for a flight that starts again', () => {
-    const stack = createTipStack(3, 3);
-    stack.update([tip('Pull up!')], 0);
+    const lesson: Message = { ...tip('tryRight'), once: true };
+    stack.update([lesson], nowhere, 0);
     stack.reset();
-    expect(stack.update([], 0.1)).toEqual([]);
+    expect(said(stack.update([lesson], nowhere, 0.1))).toEqual(['tryRight']);
   });
 });

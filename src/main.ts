@@ -1,16 +1,13 @@
 // Named apart from this file's own `crowdOn`, which is about pigeons.
 import { crowdOn as fillPlatform } from './world/waiting';
-import type { IconName } from './render/icons';
 import {
+  languageNow,
   otherLanguage,
-  theOtherWay,
-  PHRASES,
   read,
   rememberLanguage,
   say,
   setLanguage,
   startLanguage,
-  type Words,
 } from './i18n';
 import * as THREE from 'three';
 /**
@@ -95,16 +92,8 @@ import { browserTone, createAlarm } from './render/alarm';
 import { browserKit, createAmbience, type Source } from './render/ambience';
 import { browserChime, createCue } from './render/cue';
 import { createVitals, type Vital } from './render/vitals';
-import {
-  approachFor,
-  createWarner,
-  courseFor,
-  createTipPanel,
-  createTipStack,
-  HELD,
-  createTutor,
-  type Tip,
-} from './render/tips';
+import { MESSAGES, NOTICE, type Moment } from './render/messages';
+import { codesOf, createTipPanel, createTipStack } from './render/tips';
 import { loadProgress, saveProgress } from './progress';
 import { DEFAULT_MODE, MODES, otherMode, paramsFor, windFor, type Mode } from './sim/modes';
 import { createLevelMenu } from './render/menu';
@@ -1577,8 +1566,6 @@ function respawn() {
   // A flight starting again is a player starting again: the lessons come back
   // with the distance, which is the whole reason they are measured in metres
   // flown rather than remembered for good.
-  tutor.reset();
-  warner.reset();
   tipStack.reset();
   outcome.hide();
   chase.snap(bird, cameraParams);
@@ -1772,7 +1759,6 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // What this level teaches, from where it starts teaching it. A level taken
   // up in mid-air inherits the distance the last one ran up, so the course
   // counts from here rather than from the take-off two levels ago.
-  tutor.teach(courseFor(spec.name), where === 'in place' ? run.stats.distance : 0);
   // The finishing line, if this level has one: square across the way to the
   // target, so far along it. Worked out here, from the release point this
   // level was given rather than from wherever the bird happens to be, so that
@@ -2011,8 +1997,6 @@ function holdOn(scene: Scene): void {
   // reads back zeroes, which is the truth about it.
   telemetry = step(bird, neutralControls(), flightParams, 0);
   outcome.hide();
-  // Nothing left to teach. Whatever course the level had, the level is over.
-  tutor.teach([], run.stats.distance);
 }
 
 /**
@@ -2075,6 +2059,8 @@ const tipPanel = createTipPanel(overlay);
  * the panel's job is to draw whatever it is handed.
  */
 const tipStack = createTipStack();
+/** The last thing said, so a note is sounded when it changes rather than every frame. */
+let announced: string | null = null;
 /** The bars over the heads of the birds you are looking at. */
 const vitals = createVitals(overlay);
 /**
@@ -2187,15 +2173,6 @@ function listen(): Source[] {
 
   return near_;
 }
-/** Hands out the flying lessons, by how far this flight has gone. */
-const tutor = createTutor([], HELD);
-/**
- * The cautions, and which of them has already been said.
- *
- * Beside the tutor and reset with it, because one of them is a lesson in
- * everything but which list it lives in: see `Caution.once`.
- */
-const warner = createWarner();
 /**
  * Whether the game is still teaching.
  *
@@ -2956,137 +2933,13 @@ function openedName(): string | null {
  * is that the controls are different now.
  */
 /** The last thing said about the voice itself, and when. */
-let voiceNote: { text: Words; icon: IconName; at: number } | null = null;
-/** How long that stays up, in seconds. */
-const NOTICE = 2;
+let voiceNote: { said: 'on' | 'off'; at: number } | null = null;
 
-/** Said in three places, so written once. */
-const TAKE_OFF: Words = { en: 'Take off!', hu: 'Szállj fel!' };
 
-/**
- * The offer of the other language, each written in the language it offers.
- *
- * Turned over before it is shown -- see `theOtherWay` -- because the one
- * person this is for is the one who cannot read the game as it stands.
- */
-const OTHER_TONGUE: Words = {
-  en: 'Press TAB for English',
-  hu: 'Magyar nyelvért nyomd meg a TAB-ot',
-};
 
-/** Whether the note about the other language has been put up yet. */
-let toldOfLanguage = false;
 
-/**
- * A word about the game itself rather than about the flight.
- *
- * One thing, once, on the opening screen: which key changes the language,
- * said in the language the player is not being given. It goes up beside the
- * conversation rather than instead of it, which is the whole reason the panel
- * stacks -- the first screen of the game already has something to say, and
- * this cannot wait for it to finish or it will never be read.
- *
- * Given once and then never again. It is the sort of thing that is either
- * noticed in the first ten seconds or not wanted at all, and a note that
- * comes back every time you restart the first level is a note you learn to
- * look past.
- */
-function sideNote(): Tip | null {
-  if (toldOfLanguage || level !== 0) return null;
-  toldOfLanguage = true;
-  return {
-    keys: ['TAB'],
-    text: theOtherWay(OTHER_TONGUE),
-    // The flag of the language on offer, not of the one being spoken: the
-    // picture and the sentence have to be saying the same thing.
-    icon: otherLanguage() === 'hu' ? 'flagHu' : 'flagEn',
-    sort: 'hint',
-  };
-}
 
-/**
- * The warning, made once rather than every frame.
- *
- * Same object every time, which is also what keeps the panel from rebuilding
- * itself: it compares what it is asked to show against what it is showing.
- */
-const LOCKED_ON: Tip = {
-  keys: [],
-  text: { en: 'Crows locked on!', hu: 'A varjak rád álltak!' },
-  icon: 'crow',
-  beep: true,
-};
 
-/** What the corner last said, so a note sounds on the change and not on the frame. */
-let announced: string | null = null;
-
-function command(): Tip | null {
-  // The flight is over badly. The one instruction that has to be there
-  // whatever else is happening, and it goes in the corner because that is
-  // where a player looks for a key -- it used to be a line at the bottom of
-  // the ending panel in the top left, which is neither where the keys are nor
-  // where the eye is.
-  //
-  // A crash, not any ending: a landing is an ending too, and the thing to
-  // press after a good one is the take-off, which is two lines below.
-  if (hasCrashed(bird)) {
-    return {
-      keys: ['R'],
-      text: { en: 'to restart', hu: 'az újrakezdéshez' },
-      icon: 'takeOff',
-      sort: 'story',
-    };
-  }
-  // A setting confirming itself outranks everything for a moment, because
-  // the player has just pressed a key and is owed an answer about it.
-  if (voiceNote && clock - voiceNote.at < NOTICE)
-    // Spoken, so that turning it on is answered in the voice being turned on.
-    return { keys: ['V'], text: voiceNote.text, icon: voiceNote.icon, spoken: true };
-
-  if (finished && talkingTo && !midSentence())
-    // Said aloud: without it the flight does not continue at all.
-    return { keys: ['SPACE'], text: TAKE_OFF, icon: 'takeOff', spoken: true };
-
-  // Somebody is waiting for an answer. The replies are on the screen with
-  // numbers beside them and nothing else says the numbers are keys -- and a
-  // conversation nobody knows how to answer is a game that has stopped.
-  //
-  // Above the stance rather than inside it: a conversation happens on foot
-  // today and the rule is about the conversation, not about the feet.
-  if (midSentence()) return { keys: [], text: PHRASES.answerPrompt, icon: 'talk' };
-
-  // Standing on a branch or a square having just said something to nobody.
-  // The same key and the same words as leaving a conversation, because it is
-  // the same act -- he has finished talking and he is going.
-  if (waiting) return { keys: ['SPACE'], text: TAKE_OFF, icon: 'takeOff', spoken: true };
-
-  // On foot, where the corner is quiet.
-  //
-  // A bird that has put its feet down is not being taught anything: the level
-  // has been flown, the controls it is now using are two arrows and a
-  // spacebar, and the panel telling it so is a line that never goes away --
-  // `command` outranks the tutor, and the corner holds one thing, so a
-  // standing prompt is a lesson the level never gets to give. On Teleki tér
-  // it flickered against the level's own instruction for as long as the bird
-  // was down.
-  //
-  // Two exceptions, and both are answers to something the player is in the
-  // middle of rather than a description of the controls.
-  if (isPerched(bird)) {
-    if (talkingTo) return null;
-    // Walked into something. Transient, and about the thing in the way rather
-    // than about walking.
-    if (onFoot.blocked) {
-      return {
-        keys: ['←', '→'],
-        text: { en: 'Turn and walk round it', hu: 'Fordulj és kerüld ki' },
-        icon: 'walk',
-      };
-    }
-    return null;
-  }
-  return null;
-}
 
 /** The resident this level is about, if it has one. */
 function levelPerson(): Resident | null {
@@ -3156,12 +3009,9 @@ function frame(nowMs: number) {
     // Said through the panel rather than shown here and overwritten a line
     // later by whatever the flight has to say: the panel is told what to show
     // once a frame, so anything written straight to it lasts one frame.
-    voiceNote = {
-      ...(voice.toggle()
-        ? { text: { en: 'Voice on', hu: 'Hang be' }, icon: 'voiceOn' as const }
-        : { text: { en: 'Voice off', hu: 'Hang ki' }, icon: 'voiceOff' as const }),
-      at: clock,
-    };
+    // Which way it went, and when. The words and the picture belong with
+    // every other message's, in `MESSAGES`.
+    voiceNote = { said: voice.toggle() ? 'on' : 'off', at: clock };
   }
   // Leaving a finished conversation starts the next level rather than taking
   // off from this one, so the key is taken here before the flight model can
@@ -3477,86 +3327,64 @@ function frame(nowMs: number) {
   const settling =
     bird.ending === null && toGo <= 150 ? landingReadiness(bird, flightParams) : null;
 
-  /**
-   * A crow has picked him out and is coming.
-   *
-   * Above everything the flight has to say about itself, and below only the
-   * things the player has just pressed a key about: a landing that is going
-   * badly can be talked down on the next flight, and this one cannot.
-   *
-   * It stays up for as long as it is true rather than being given once. The
-   * panel shows one thing at a time and drops it when it changes, so this
-   * simply outranks whatever else was there and comes back if the crow does.
-   */
-  const hunter =
-    hunted &&
-    bird.ending === null &&
-    // Not on foot. They are still up there and still following him -- see the
-    // catch -- but a warning about a thing that cannot happen is a warning
-    // that teaches the player to ignore warnings.
-    !isPerched(bird) &&
-    (crows?.members ?? []).some((crow) => crow.hunting && crow.down <= 0)
-      ? LOCKED_ON
-      : null;
 
-  const approaching =
-    (settling
-      ? approachFor(tutorial, {
-          toGo,
-          altitude: telemetry.altitude,
-          fast: !settling.speedOk,
-          sinking: !settling.sinkOk,
-        })
-      : null);
-  const cautioning =
-    (bird.ending === null
-      ? warner.warn(tutorial, {
-          altitude: telemetry.altitude,
-          airspeed: telemetry.airspeed,
-          climb: telemetry.climbRate,
-          stamina: bird.stamina,
-          stalled: telemetry.stalled,
-          // Two thirds of the way to the stall: enough of an angle that the
-          // wing is working hard and more of it would buy nothing.
-          noseUp: telemetry.angleOfAttack > flightParams.stallAngle * 0.65,
-        })
-      : null);
+  // The moment, as every message sees it. One record, built once a frame, and
+  // the only thing any of them is allowed to ask about the world -- see
+  // `Moment`. What decides whether a thing is on screen lives in
+  // `messages.ts` beside the words it decides for, rather than in five
+  // mechanisms that each knew a different corner of the game.
+  const moment: Moment = {
+    level: LEVELS[level]?.name ?? '',
+    teaching: tutorial,
+    since: clock - startedAt,
+    altitude: telemetry.altitude,
+    airspeed: telemetry.airspeed,
+    climb: telemetry.climbRate,
+    stamina: bird.stamina,
+    stalled: telemetry.stalled,
+    // Two thirds of the way to the stall: enough of an angle that the wing is
+    // working hard and more of it would buy nothing.
+    noseUp: telemetry.angleOfAttack > flightParams.stallAngle * 0.65,
+    flown: run.stats.distance,
+    toGo,
+    // Only where there is something marked to put down on. A level that ends
+    // at a line has nothing to land on, so nothing should be talking anybody
+    // down -- and a bird sinking towards a marked roof is doing as it was
+    // asked, so it should not be told it is in trouble.
+    landing: aim ? toGo : Infinity,
+    perched: isPerched(bird),
+    crashed: hasCrashed(bird),
+    blocked: onFoot.blocked,
+    // The landing rule's own verdicts rather than thresholds restated here,
+    // so what the panel says is what the ground will say a moment later.
+    // Nothing is wrong with an arrival that is not happening: out of range of
+    // anywhere to land, neither of these is asked.
+    tooFast: settling !== null && !settling.speedOk,
+    tooHard: settling !== null && !settling.sinkOk,
+    hunted:
+      hunted &&
+      bird.ending === null &&
+      (crows?.members ?? []).some((crow) => crow.hunting && crow.down <= 0),
+    answering: midSentence(),
+    leaving: finished && talkingTo !== null && !midSentence(),
+    held: waiting !== null,
+    talking: talkingTo !== null,
+    watching: cutscene !== null,
+    // Named as the panel draws them, and turned into keyboard codes by the
+    // one mapping that also draws the caps: see `codesOf`.
+    down: (keys) => input.anyDown(codesOf(keys)),
+    voice: voiceNote && clock - voiceNote.at < NOTICE ? voiceNote.said : null,
+    speaking: languageNow(),
+  };
 
-  // Everything that applies right now, in the order it should stack if two of
-  // them turn up together: what the game has arranged, then what is hunting
-  // you, then the arrival, then the flight, then what there is spare
-  // attention to learn.
-  //
-  // All of them, rather than the first that is not null. The corner used to
-  // pick one and the rest were not late, they were never said -- a crow
-  // closing while the wings ran out said "crows", and the stamina was simply
-  // never mentioned. The stack decides how long each stays; see `TipStack`.
-  //
-  // Which also means the tutor can be asked every frame now. It could not
-  // before: a lesson handed into a corner that was showing something else was
-  // given, never seen, and never given again, so a level flown entirely below
-  // the "pull up" mark taught nothing.
-  const offered = cutscene
-    ? // An audience is not told which key to press.
-      []
-    : waiting
-      ? // Held on a beat: the one key that does anything, and nothing else.
-        // No cautions -- the bird is standing still -- and no lessons, which
-        // would be the game teaching over the top of the story.
-        [command(), sideNote()]
-      : [
-          command(),
-          hunter,
-          approaching,
-          cautioning,
-          tutor.update(
-            { flown: run.stats.distance, toGo, landed: isPerched(bird) },
-            frameTime,
-            input.anyDown,
-          ),
-          sideNote(),
-        ];
-  const saying = tipStack.update(offered, clock);
+  // An audience is not told which key to press, and a beat that is being held
+  // is the story talking -- so the only thing offered over one is the key
+  // that leaves it. Everything else judges itself: see `MESSAGES`.
+  const saying = tipStack.update(
+    moment.watching ? [] : moment.held ? MESSAGES.filter((m) => m.id === 'takeOff') : MESSAGES,
+    moment,
+    clock,
+  );
   // Over the conversation card when there is one. Its height is asked for
   // rather than guessed at: the four-line exchange at the loft is twice the
   // two-line one on the branch, and the instruction has to clear both.
@@ -3578,7 +3406,7 @@ function frame(nowMs: number) {
   // standing in front of the words `Crows locked on!` -- and the sound is
   // exactly the part that must not wait its turn. It is a warning about
   // something happening now, not a reading of what is on screen.
-  if (hunter) alarm.sound(clock);
+  if (moment.hunted && !moment.perched) alarm.sound(clock);
   // And the city, which is mostly quiet. Gathered on its own slow beat and
   // offered every frame: what to play and how rarely is the ambience's own
   // business -- see `createAmbience`.
