@@ -15,6 +15,12 @@ import base from './vite.config';
  * loading is what that flight is flying, for as long as the flight lasts, and
  * a refresh is how you ask for the newer one.
  *
+ * The file watcher stays on, and that is the part that was got wrong first
+ * time: switched off along with the reloads, the server went on serving
+ * whatever it had transformed when it started, and a refresh brought back the
+ * same stale page. It is the *client* that must not be told about changes,
+ * not the server that must not notice them.
+ *
  * `strictPort` on purpose: a server that quietly moves to the next free port
  * when this one is taken is a second server nobody meant to start, and the
  * whole point is knowing which one you are on.
@@ -24,10 +30,10 @@ export default defineConfig({
   server: {
     port: 5199,
     strictPort: true,
+    // No socket to the page, so nothing can push an update into it or ask it
+    // to reload. The server still watches the files and still throws away
+    // what it has transformed when one changes -- which is what makes the
+    // next refresh serve the new code rather than the old.
     hmr: false,
-    // No warm-up reloads either: `vite` reloads the page when a file it
-    // cannot hot-swap changes, and that is the same interruption by another
-    // name.
-    watch: null,
   },
 });
