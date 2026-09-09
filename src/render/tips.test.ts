@@ -13,6 +13,7 @@ import {
   createTutor,
   createWarner,
   type Lesson,
+  createTipStack,
 } from './tips';
 
 const EARLY: Lesson = { at: 20, keys: ['↑'], text: sameInBoth('up') };
@@ -510,5 +511,103 @@ describe('the caution that is really a lesson', () => {
     expect(warner.warn(true, spent)).not.toBeNull();
     warner.reset();
     expect(warner.warn(true, spent)).not.toBeNull();
+  });
+});
+
+describe('stacking up what the game has to say', () => {
+  const tip = (text: string, keys: string[] = []) => ({ keys, text: sameInBoth(text) });
+  const said = (tips: readonly { text: { en: string } }[]) => tips.map((t) => t.text.en);
+
+  it('shows two things that arrive together, rather than one of them', () => {
+    // The whole reason this exists. The corner used to pick a winner out of a
+    // chain of `??`, which meant everything below the winner was not late --
+    // it was never said. A crow closing while the wings ran out said "crows",
+    // and the stamina was simply never mentioned.
+    const stack = createTipStack(3, 3);
+    expect(said(stack.update([tip('Crows!'), tip('Keep flapping!')], 0))).toEqual([
+      'Crows!',
+      'Keep flapping!',
+    ]);
+  });
+
+  it('keeps the older one where it was when a new one arrives', () => {
+    // Oldest first, so the stack reads in the order it was said and the newest
+    // is always in the same place -- nearest the bird.
+    const stack = createTipStack(3, 3);
+    stack.update([tip('Pull up!')], 0);
+    expect(said(stack.update([tip('Turn right!')], 1))).toEqual(['Pull up!', 'Turn right!']);
+  });
+
+  it('takes one away once it has had its time', () => {
+    const stack = createTipStack(3, 3);
+    stack.update([tip('Turn right!')], 0);
+    expect(said(stack.update([], 2.9))).toEqual(['Turn right!']);
+    expect(stack.update([], 3.1)).toEqual([]);
+  });
+
+  it('keeps one that is still true past its time', () => {
+    // The half that keeps a caution honest. "Pull up" is true until the ground
+    // stops being a problem, and one that timed out while it was still true
+    // would blink off and straight back on.
+    const stack = createTipStack(3, 3);
+    for (let t = 0; t <= 10; t += 0.5) {
+      expect(said(stack.update([tip('Pull up!')], t)), `${t}s`).toEqual(['Pull up!']);
+    }
+    // And goes as soon as it stops being true.
+    expect(stack.update([], 10.5)).toEqual([]);
+  });
+
+  it('never shows more than a screenful', () => {
+    // Four warnings and a lesson is a player who reads none of them.
+    const stack = createTipStack(3, 3);
+    const showing = stack.update(
+      [tip('one'), tip('two'), tip('three'), tip('four'), tip('five')],
+      0,
+    );
+    expect(said(showing)).toEqual(['three', 'four', 'five']);
+  });
+
+  it('pushes the oldest off rather than refusing the newest', () => {
+    // The newest is the one the game has just decided to say. Dropping that to
+    // keep a three-second-old hint would be the queue ignoring the emergency.
+    const stack = createTipStack(3, 3);
+    stack.update([tip('one'), tip('two'), tip('three')], 0);
+    expect(said(stack.update([tip('four')], 1))).toEqual(['two', 'three', 'four']);
+  });
+
+  it('ignores the nulls it is handed', () => {
+    // So a caller can offer a list of maybes without filtering it first.
+    const stack = createTipStack(3, 3);
+    expect(said(stack.update([null, tip('Pull up!'), null], 0))).toEqual(['Pull up!']);
+  });
+
+  it('does not count one instruction twice when the language changes', () => {
+    // The panel is told sixty times a second and the words change under it on
+    // TAB. Keyed on the English, so the same instruction stays the same one.
+    const stack = createTipStack(3, 3);
+    stack.update([{ keys: [], text: { en: 'Pull up!', hu: 'Húzd fel!' } }], 0);
+    const showing = stack.update([{ keys: [], text: { en: 'Pull up!', hu: 'Húzd fel!' } }], 0.5);
+    expect(showing).toHaveLength(1);
+  });
+
+  it('tells two instructions with the same words apart by their picture', () => {
+    // `Fly low!` beside a crow and `Fly low!` beside a landing are two
+    // different things to do.
+    const stack = createTipStack(3, 3);
+    const showing = stack.update(
+      [
+        { keys: [], text: sameInBoth('Fly low!'), icon: 'crow' as const },
+        { keys: [], text: sameInBoth('Fly low!'), icon: 'land' as const },
+      ],
+      0,
+    );
+    expect(showing).toHaveLength(2);
+  });
+
+  it('forgets everything for a flight that starts again', () => {
+    const stack = createTipStack(3, 3);
+    stack.update([tip('Pull up!')], 0);
+    stack.reset();
+    expect(stack.update([], 0.1)).toEqual([]);
   });
 });

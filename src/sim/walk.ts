@@ -422,17 +422,43 @@ export function meeting(a: BirdState, b: BirdState, within = MEET_RADIUS): boole
  */
 export function turnToFace(state: BirdState, at: Vec3, p: FlightParams, dt: number): void {
   if (!isPerched(state)) return;
+  const most = p.walkTurnRate * dt;
+  state.orientation = quatFromAxisAngle(
+    vec(0, 1, 0),
+    -(heading(state) + faceTurn(state, at, p, dt) * most),
+  );
+}
 
-  const want = Math.atan2(at.x - state.position.x, -(at.z - state.position.z));
-  const facing = heading(state);
+/**
+ * How hard to turn, as a walk control, to come round and look at a point.
+ *
+ * The same answer as `turnToFace` gives, handed to the walk model instead of
+ * written straight into the orientation -- so a bird turning under its own
+ * control puts its feet down while it does it, and one being turned for it
+ * does not.
+ *
+ * There were two of these once, this one written out again in `main.ts` for
+ * the hero in a conversation, and it had the sign of the offset the wrong way
+ * round: `atan2(-dx, -dz)` rather than `atan2(dx, -dz)`. That is the target
+ * mirrored across north, so the hero turned to face somebody who was not
+ * there, and by exactly the angle that would have been right if she had been
+ * on the other side of him. On the branch at the start of the game it had him
+ * looking away from his own mate while she talked to him.
+ */
+export function faceTurn(state: BirdState, at: Vec3, p: FlightParams, dt: number): number {
+  const dx = at.x - state.position.x;
+  const dz = at.z - state.position.z;
+  // Standing on top of somebody is not a direction. Without this the bird
+  // spins to whatever `atan2(0, 0)` came out as.
+  if (Math.hypot(dx, dz) < 0.05) return 0;
 
+  const want = Math.atan2(dx, -dz);
   // The short way round. Turning 350 degrees to the left to look 10 to the
   // right is the sort of thing that happens without this.
-  let off = (want - facing + Math.PI) % (Math.PI * 2);
+  let off = (want - heading(state) + Math.PI) % (Math.PI * 2);
   if (off < 0) off += Math.PI * 2;
   off -= Math.PI;
 
   const most = p.walkTurnRate * dt;
-  const step = off > most ? most : off < -most ? -most : off;
-  state.orientation = quatFromAxisAngle(vec(0, 1, 0), -(facing + step));
+  return most <= 0 ? 0 : Math.max(-1, Math.min(1, off / most));
 }

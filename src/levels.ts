@@ -595,7 +595,7 @@ export interface Level {
    * Nothing in the story knows about them. Passing the last one does not do
    * anything at all.
    */
-  waypoints?: readonly [number, number][];
+  waypoints?: readonly Waypoint[];
   /**
    * Whether the flock flies with him on this one.
    *
@@ -833,6 +833,24 @@ export function crossingLine(
   return { x: from.x + ux * at, z: from.z + uz * at, ux, uz };
 }
 
+/**
+ * A mark along the way, and what passing it takes.
+ *
+ * The two kinds are the two shapes the game already has for "you have got
+ * there", and the difference is whether it can be missed. A `mark` is a place
+ * on the ground: it is passed by flying within twenty metres of it, which is
+ * help you can fly past without noticing. A `line` is drawn square across the
+ * route and runs the width of the map, so any path from the release point to
+ * the far side crosses it -- the same rule and the same stripe that finishes
+ * a level, put partway along one instead.
+ *
+ * Both carry a coordinate and nothing else, because both *are* a coordinate:
+ * what differs is the question asked of the bird's position, not the data.
+ */
+export type Waypoint =
+  | { kind: 'mark'; at: [number, number] }
+  | { kind: 'line'; at: [number, number] };
+
 /** Whether a point is on the far side of the line. */
 export const crossed = (line: Line, x: number, z: number): boolean =>
   (x - line.x) * line.ux + (z - line.z) * line.uz >= 0;
@@ -893,18 +911,18 @@ export const LEVELS: readonly Level[] = [
     // learn flying and landing at the same time. Nine hundred metres of
     // flapping first, and the slab is still there when he arrives.
     name: 'Temető',
-    // Twenty metres the far side of the home tree, so that the tree is the
-    // first thing in front of him: he is released facing his target, the
-    // target is most of a kilometre west, and the tree stands between. Being
-    // put here from the menu or after a death is being put back at the top of
-    // the same flight, looking at the same thing he looked at on leaving it.
-    start: [47.494019, 19.096828],
-    // Five metres over the crest he has just left, which is the whole
-    // difference between this level and every other one: he is not dropped
-    // into it from the sky, he is leaving a tree. It also means the flight
-    // cannot be glided -- from twenty-three metres a pigeon covers about a
-    // hundred and forty of the nine hundred.
-    release: HOME_TREE.height + 5,
+    // The tree, because that is where this level begins: the conversation on
+    // the branch opens it, so `releaseFor` stands him on the branch whether
+    // he walked into the level or picked it out of the menu. Neither of these
+    // two numbers is reached while that holds -- they are what the level
+    // would fall back to if the conversation before it ever stopped opening
+    // it, and a level without a place is not one.
+    //
+    // They used to be the continuity: a hand-picked point twenty metres past
+    // the tree and five metres over it, written to look like leaving a branch
+    // without being it. That is the mechanism's job now.
+    start: [47.493997, 19.096538],
+    release: HOME_TREE.height,
     // The same morning and nothing eaten yet. A fifth of a belly is about six
     // hundred metres and this half is six of them, which is a level that can
     // be flown only by a bird that never climbs; a quarter gives it the
@@ -936,14 +954,24 @@ export const LEVELS: readonly Level[] = [
     // twenty metres out, which is short of the line by eighty: a mark past
     // the stripe is one nobody can ever reach, because reaching the stripe
     // ends the level.
+    // Lines rather than places, on this one only. The first long flight in
+    // the game is nine hundred metres over a park with nothing in it, and a
+    // column twenty metres wide is a thing a first-time player flies straight
+    // past without ever knowing it was there. A stripe square across the
+    // route cannot be missed, and it is the same stripe the level ends on --
+    // so by the time the last one arrives it has been read three times.
+    //
+    // The column still stands on each of them. The stripe is what says you
+    // have arrived; the column is what says where to aim from four hundred
+    // metres out, and painted ground says nothing at all at that range.
     waypoints: [
-      [47.494035, 19.094306],
+      { kind: 'line', at: [47.494035, 19.094306] },
       // Fifteen metres further on than the even spacing wanted, because the
       // even spacing put it inside a house. These were laid down the middle of
       // the route the night before the real buildings arrived, when there was
       // nothing on the ground to be inside of.
-      [47.494051, 19.091851],
-      [47.494063, 19.089927],
+      { kind: 'line', at: [47.494051, 19.091851] },
+      { kind: 'line', at: [47.494063, 19.089927] },
     ],
     // Six hundred metres along, which is where the second half of the errand
     // begins -- the same point, said once. It used to be said twice, as a
@@ -1077,9 +1105,9 @@ export const LEVELS: readonly Level[] = [
     // the building beside them. A mark is help, so it goes where the bird can
     // actually fly to it -- the street is the same street either way.
     waypoints: [
-      [47.494767, 19.07711],
-      [47.495059, 19.075798],
-      [47.495281, 19.074818],
+      { kind: 'mark', at: [47.494767, 19.07711] },
+      { kind: 'mark', at: [47.495059, 19.075798] },
+      { kind: 'mark', at: [47.495281, 19.074818] },
     ],
     // Three hundred and twenty metres west of the square he takes off from,
     // and the stripe runs square across the way in to it.

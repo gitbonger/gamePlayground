@@ -17,11 +17,12 @@
  *    in it. A banked wing tilts its lift out of the vertical, so a turn costs
  *    height unless it is paid for. An arrival is judged on what legs can
  *    actually absorb.
- *  - **Basic** is the same model with three of its consequences taken off the
- *    player. The air is still, a turn holds its height, and an arrival has to
- *    be a good deal worse before it counts as a crash. Nothing is faked and
- *    nothing is special-cased: the wing still stalls, the wind still exists
- *    for everything else, and the ground is still hard.
+ *  - **Basic** is the same model with four of its consequences taken off the
+ *    player. The air is still, a turn holds its height, an arrival has to be
+ *    a good deal worse before it counts as a crash, and flying costs neither
+ *    the wings nor the belly. Nothing is faked and nothing is special-cased:
+ *    the wing still stalls, the wind still exists for everything else, and
+ *    the ground is still hard.
  */
 
 import { calm, type WindField } from './wind';
@@ -69,6 +70,21 @@ export interface Mode {
    */
   spendsBelly: boolean;
   /**
+   * Whether flapping tires the wings at all.
+   *
+   * Off in the beginner's mode, and it is the last thing in the game that was
+   * still charging them for flying. The belly already costs nothing there --
+   * but stamina is what the belly is spent *on*, so a bird that cannot go
+   * hungry could still run its wings down over a long leg, sink, and have no
+   * way to do anything about it. Half a constraint, and the half that gives
+   * no warning worth acting on.
+   *
+   * A level may also say `tireless`, and that stays: it is a decision about
+   * one particular flight -- the loft, where the player should be looking at
+   * the district rather than at a bar -- and it holds in either mode.
+   */
+  tires: boolean;
+  /**
    * How much harder an arrival may be than the realistic rule allows.
    *
    * One number for both the sink and the speed, because they are the same
@@ -82,10 +98,11 @@ export const MODES: Record<ModeName, Mode> = {
   basic: {
     name: 'basic',
     title: 'Basic',
-    says: 'still air, free turns, soft landings, no hunger',
+    says: 'still air, free turns, soft landings, no hunger, wings that do not tire',
     windy: false,
     bankLiftRecovery: 1,
     spendsBelly: false,
+    tires: false,
     // Ten metres a second of sink and twenty-five of speed, against four and
     // ten. A bird can arrive at a run rather than having to be placed.
     landingAllowance: 2.5,
@@ -97,6 +114,7 @@ export const MODES: Record<ModeName, Mode> = {
     windy: true,
     bankLiftRecovery: 0,
     spendsBelly: true,
+    tires: true,
     landingAllowance: 1,
   },
 };
@@ -126,6 +144,8 @@ export function paramsFor(mode: Mode, base: FlightParams = defaultParams): Fligh
     // Nothing at all rather than less: the belly is either a constraint or it
     // is scenery, and half a constraint is a thing a player cannot plan for.
     bellyPerStamina: mode.spendsBelly ? base.bellyPerStamina : 0,
+    // Nothing rather than less, for the same reason: see `tires`.
+    flapStaminaCost: mode.tires ? base.flapStaminaCost : 0,
     landingSink: base.landingSink * mode.landingAllowance,
     landingSpeed: base.landingSpeed * mode.landingAllowance,
   };

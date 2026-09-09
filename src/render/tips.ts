@@ -715,6 +715,105 @@ export function createTutor(
   };
 }
 
+/**
+ * How long an instruction stays up once it has arrived, in seconds.
+ *
+ * Three. It used to be seven, which was the right number for a corner that
+ * showed one thing at a time: an instruction that was replaced the moment the
+ * next one arrived had to earn its place by staying. Now that they stack, a
+ * long life is what fills the screen, and three is about as long as a thing
+ * has to be up to be read while flying.
+ */
+export const HELD = 3;
+
+/**
+ * How many may be up at once.
+ *
+ * Three. Not a screenful, which is what a stack with no limit becomes the
+ * first time the bird is low, slow, tired and being chased -- four warnings
+ * and a lesson, and the player reads none of them. The fourth pushes the
+ * oldest off the top, so what is on screen is always the most recent three
+ * things the game had to say.
+ */
+export const STACKED = 3;
+
+/**
+ * The instructions that are up, oldest first.
+ *
+ * The corner used to show exactly one thing, chosen by a chain of `??` --
+ * which meant that everything below the winner was not late, it was *never
+ * said*. A crow closing while the wings ran out said "crows"; the stamina was
+ * simply never mentioned. Stacking is the fix, and it changes what has to be
+ * decided: not which one instruction wins, but how long each of them stays
+ * and how many may be up together.
+ *
+ * An instruction is kept for `held` seconds, and for as long after that as it
+ * is still being offered. That second half is what keeps a caution honest: a
+ * warning about the ground is true until the ground stops being a problem,
+ * and one that timed out while it was still true would blink off and on.
+ */
+export interface TipStack {
+  /**
+   * Offer everything that applies now, and get back what to show.
+   *
+   * Order matters on the way in and only on the way in: the first time two
+   * arrive in the same frame, the earlier of them is the older of the two.
+   * Nulls are allowed and ignored, so a caller can hand over a list of maybes
+   * without filtering it first.
+   */
+  update(offered: readonly (Tip | null)[], now: number): readonly Tip[];
+  /** Clear it, for a flight that is starting again. */
+  reset(): void;
+}
+
+/**
+ * What makes two instructions the same instruction.
+ *
+ * The words in English rather than in the language being played, so that
+ * pressing TAB mid-flight does not turn one instruction into two -- and the
+ * icon and keys as well, because `Fly low!` beside a crow and `Fly low!`
+ * beside a rooftop would be two different things to do.
+ */
+const sameTip = (tip: Tip): string => `${tip.icon ?? ''}|${tip.keys.join('+')}|${tip.text.en}`;
+
+export function createTipStack(held = HELD, most = STACKED): TipStack {
+  interface Up {
+    tip: Tip;
+    at: string;
+    /** When it arrived, and when it was last still true. */
+    arrived: number;
+    offered: number;
+  }
+  let up: Up[] = [];
+
+  return {
+    update(offered, now) {
+      for (const tip of offered) {
+        if (!tip) continue;
+        const at = sameTip(tip);
+        const already = up.find((each) => each.at === at);
+        if (already) {
+          // The same thing, still true. It keeps the place it has had rather
+          // than jumping to the bottom of the stack every frame.
+          already.offered = now;
+          already.tip = tip;
+          continue;
+        }
+        up.push({ tip, at, arrived: now, offered: now });
+      }
+      // Gone once it has had its time, unless it is still true.
+      up = up.filter((each) => now - each.arrived < held || each.offered >= now);
+      // And never more than a screenful: the oldest goes first, which is the
+      // one the player has had the longest to read.
+      if (up.length > most) up = up.slice(up.length - most);
+      return up.map((each) => each.tip);
+    },
+    reset() {
+      up = [];
+    },
+  };
+}
+
 export interface TipPanel {
   /**
    * Show a tip, or pass null to take the panel away.
@@ -725,7 +824,7 @@ export interface TipPanel {
    * that goes hunting through the page for another panel is two panels that
    * cannot be moved independently.
    */
-  show(tip: Tip | null, clearOf?: number): void;
+  show(tips: readonly Tip[], clearOf?: number): void;
   dispose(): void;
 }
 
@@ -735,42 +834,50 @@ export function createTipPanel(container: HTMLElement): TipPanel {
   root.hidden = true;
   container.appendChild(root);
 
-  /** What is on screen, so an unchanged tip is not rebuilt every frame. */
+  /** What is on screen, so an unchanged stack is not rebuilt every frame. */
   let showing: string | null = null;
 
+  /** One instruction, as a row of the stack. */
+  function draw(tip: Tip): HTMLElement {
+    // The colour says what kind of thing this is before a word of it has been
+    // read: see `Tip.sort`. On the row rather than on the stack, now that
+    // there is more than one row and they need not be the same kind.
+    const row = document.createElement('div');
+    row.className = `tip-row tip-${tip.sort ?? 'hint'}`;
+
+    // The picture first, on the left, because it is the part that is read
+    // without reading -- and it is the same picture in both languages.
+    if (tip.icon) row.appendChild(drawIcon(tip.icon));
+
+    for (const key of tip.keys) {
+      const cap = document.createElement('b');
+      cap.className = 'tip-key';
+      cap.textContent = key;
+      row.appendChild(cap);
+    }
+
+    const said = document.createElement('span');
+    said.className = 'tip-text';
+    said.textContent = read(tip.text);
+    row.appendChild(said);
+    return row;
+  }
+
   return {
-    show(tip, clearOf = 0) {
+    show(tips, clearOf = 0) {
       // Lifted over whatever is standing at the bottom. Nought puts it back
       // where the stylesheet asks for it, which is under the bird.
       root.style.marginBottom = clearOf > 0 ? `${clearOf + 18}px` : '';
-      // The words rather than the tip, so the same instruction in a language
-      // that has just been swapped counts as a different thing to show.
-      const wanted = tip ? `${tip.icon ?? ''} ${tip.keys.join('+')} ${read(tip.text)}` : null;
+      // The words rather than the tips, so the same instructions in a language
+      // that has just been swapped count as a different thing to show.
+      const wanted = tips
+        .map((tip) => `${tip.icon ?? ''} ${tip.keys.join('+')} ${read(tip.text)}`)
+        .join('\n');
       if (wanted === showing) return;
       showing = wanted;
 
-      root.hidden = tip === null;
-      root.replaceChildren();
-      if (!tip) return;
-      // The colour says what kind of thing this is before a word of it has
-      // been read: see `Tip.sort`.
-      root.className = `tip tip-${tip.sort ?? 'hint'}`;
-
-      // The picture first, on the left, because it is the part that is read
-      // without reading -- and it is the same picture in both languages.
-      if (tip.icon) root.appendChild(drawIcon(tip.icon));
-
-      for (const key of tip.keys) {
-        const cap = document.createElement('b');
-        cap.className = 'tip-key';
-        cap.textContent = key;
-        root.appendChild(cap);
-      }
-
-      const said = document.createElement('span');
-      said.className = 'tip-text';
-      said.textContent = read(tip.text);
-      root.appendChild(said);
+      root.hidden = tips.length === 0;
+      root.replaceChildren(...tips.map(draw));
     },
     dispose() {
       root.remove();

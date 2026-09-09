@@ -149,6 +149,17 @@ export function onLanguageChange(listener: () => void): void {
  */
 export const sameInBoth = (words: string): Words => ({ en: words, hu: words });
 
+/**
+ * The same pair, the other way round.
+ *
+ * For the one thing in the game that has to be shown in the language the
+ * player is *not* reading: the note on the opening screen saying which key
+ * swaps them. Written naturally -- each slot is the offer of that language,
+ * in that language -- and then turned over here, so the sentence a Hungarian
+ * speaker needs is the one an English-speaking game shows.
+ */
+export const theOtherWay = (words: Words): Words => ({ en: words.hu, hu: words.en });
+
 /** A label, in the language the game is in. */
 export const say = (phrase: Phrase): string => PHRASES[phrase][language];
 

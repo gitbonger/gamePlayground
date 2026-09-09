@@ -6,6 +6,8 @@ import {
   meeting,
   neutralWalk,
   stanceOf,
+  standStill,
+  faceTurn,
   turnToFace,
   walk,
   type WalkControls,
@@ -727,5 +729,56 @@ describe('the stride animation', () => {
     const paused = bird.stridePhase;
     walked(bird, neutralWalk(), 1);
     expect(bird.stridePhase).toBe(paused);
+  });
+});
+
+describe('turning to look at somebody', () => {
+  /** A bird standing at the origin, facing north (-Z). */
+  const standing = () => {
+    const bird = createBird(vec(0, STANDING, 0), 0, 0);
+    standStill(bird);
+    return bird;
+  };
+
+  it('turns right for somebody on the right', () => {
+    // The bug this was written for. The offset used to be read as
+    // `atan2(-dx, -dz)` -- the target mirrored across north -- so the bird
+    // turned to face somebody who was not there, by exactly the angle that
+    // would have been right had they been on the other side of it. On the
+    // branch at the start of the game that had the hero looking away from his
+    // own mate while she talked to him.
+    expect(faceTurn(standing(), vec(10, STANDING, 0), p, TICK)).toBeGreaterThan(0);
+  });
+
+  it('turns left for somebody on the left', () => {
+    expect(faceTurn(standing(), vec(-10, STANDING, 0), p, TICK)).toBeLessThan(0);
+  });
+
+  it('does not turn at all for somebody straight ahead', () => {
+    expect(faceTurn(standing(), vec(0, STANDING, -10), p, TICK)).toBeCloseTo(0, 6);
+  });
+
+  it('takes the short way round', () => {
+    // Somebody a little to the right of directly behind is a small turn to
+    // the left, not most of a circle to the right.
+    const behind = faceTurn(standing(), vec(1, STANDING, 10), p, TICK);
+    expect(behind).toBeGreaterThan(0);
+  });
+
+  it('says nothing about a direction when there is no direction to have', () => {
+    // Standing on top of somebody. Without this the bird spins to whatever
+    // `atan2(0, 0)` happens to come out as.
+    expect(faceTurn(standing(), vec(0, STANDING, 0), p, TICK)).toBe(0);
+  });
+
+  it('agrees with the turn that is applied for the bird', () => {
+    // Two implementations of one idea is what put the sign wrong in the first
+    // place, so `turnToFace` is this answer written into the orientation.
+    for (const at of [vec(10, STANDING, 3), vec(-4, STANDING, -9), vec(0, STANDING, 12)]) {
+      const bird = standing();
+      const wanted = heading(bird) + faceTurn(bird, at, p, TICK) * p.walkTurnRate * TICK;
+      turnToFace(bird, at, p, TICK);
+      expect(heading(bird), `${at.x},${at.z}`).toBeCloseTo(wanted, 6);
+    }
   });
 });

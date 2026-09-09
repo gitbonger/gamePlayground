@@ -205,7 +205,7 @@ describe('flying every level', () => {
     const inside: string[] = [];
     for (const level of LEVELS) {
       for (const [i, mark] of (level.waypoints ?? []).entries()) {
-        const point = at(mark);
+        const point = at(mark.at);
         const hit = world.buildings.find((b) => {
           const turn = -(b.yaw ?? 0);
           const dx = point.x - b.x;

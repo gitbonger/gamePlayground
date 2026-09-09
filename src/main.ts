@@ -3,6 +3,7 @@ import { crowdOn as fillPlatform } from './world/waiting';
 import type { IconName } from './render/icons';
 import {
   otherLanguage,
+  theOtherWay,
   PHRASES,
   read,
   rememberLanguage,
@@ -87,7 +88,7 @@ import {
   type Standing,
 } from './levels';
 import { HOME_TREE, JANI_SQUARE, LANDMARKS, LOFT, PARK_PATCH, WEST_PATCH } from './landmarks';
-import { alone, begin, isOver, reply, type Exchange } from './dialogue';
+import { alone, begin, isOver, opensFrom, reply, type Exchange } from './dialogue';
 import { createDialoguePanel, speechColour } from './render/dialogue';
 import { browserSpeaker, createVoice } from './render/voice';
 import { browserTone, createAlarm } from './render/alarm';
@@ -99,6 +100,8 @@ import {
   createWarner,
   courseFor,
   createTipPanel,
+  createTipStack,
+  HELD,
   createTutor,
   type Tip,
 } from './render/tips';
@@ -153,6 +156,7 @@ import {
   meeting,
   standStill,
   stanceOf,
+  faceTurn,
   turnToFace,
   walk,
   type WalkControls,
@@ -370,21 +374,34 @@ function finishingLine(spec: Level): Line | null {
   );
 }
 
-/** The finishing lines to paint, one for every level that ends at one. */
+/**
+ * Every line to paint: the one that finishes a level, and the ones along it.
+ *
+ * The same stripe for both, because they are the same thing asked at two
+ * points -- square across the way in from the release point, so any path to
+ * the far side crosses it. What differs is only when each is shown: see
+ * `World.gates`.
+ */
 const gates = LEVELS.flatMap((spec) => {
-  const line = finishingLine(spec);
-  if (!line) return [];
   // The band is modelled along its own x, so it is turned to lie along the
   // route: the same convention everything else on this map is turned in.
-  return [
-    {
-      name: spec.name,
-      x: line.x,
-      z: line.z,
-      yaw: Math.atan2(-line.uz, line.ux),
-      span: GATE_SPAN,
-    },
-  ];
+  const paint = (line: Line, mark: number | null) => ({
+    name: spec.name,
+    mark,
+    x: line.x,
+    z: line.z,
+    yaw: Math.atan2(-line.uz, line.ux),
+    span: GATE_SPAN,
+  });
+
+  const from = project(spec.start[0], spec.start[1], map.centre);
+  const along = (spec.waypoints ?? []).flatMap((mark, index) =>
+    mark.kind === 'line'
+      ? [paint(lineThrough(from, project(mark.at[0], mark.at[1], map.centre)), index)]
+      : [],
+  );
+  const ending = finishingLine(spec);
+  return ending ? [...along, paint(ending, null)] : along;
 });
 
 /**
@@ -722,6 +739,47 @@ function switchMode(to: Mode): void {
 }
 
 /**
+ * Where the hero stands to talk to whoever is waiting on a level, if anybody.
+ *
+ * Opposite them: her offset from the middle of the thing, mirrored. The
+ * middle would be simpler and is wrong -- on a platform not much wider than
+ * the two of them it puts him on top of her. Mirrored, they face each other
+ * across it.
+ *
+ * Pulled out because two things want it now. A level that *begins* perched
+ * uses it to stand him there, and a level that was walked into from one of
+ * those uses it to work out where it began -- see `releaseFor`.
+ */
+function opposite(spec: Level): { at: Vec3; facing: Vec3 } | null {
+  const waiting = waitingIn(spec);
+  const stood = waiting ? standingSpot(waiting) : null;
+  const marker = objective(targetName(spec));
+  if (!waiting || !stood || !marker) return null;
+
+  const described = LANDMARKS.find((l) => l.name === spec.target?.name);
+  const across = pointOn(
+    { x: marker.position.x, z: marker.position.z, yaw: described?.yaw ?? 0 },
+    -waiting.along,
+    -waiting.across,
+  );
+  return { at: vec(across.x, stood.at.y, across.z), facing: stood.at };
+}
+
+/**
+ * The level whose conversation opens this one, if one does.
+ *
+ * Read off the conversations rather than declared on the levels, because it
+ * is the conversation that hands over: a reply says which level it opens, and
+ * this is that fact looked at from the other end.
+ */
+function handedFrom(name: string): Level | undefined {
+  return LEVELS.find((spec) => {
+    const said = dialogueOf(spec);
+    return said !== undefined && opensFrom(said).includes(name);
+  });
+}
+
+/**
  * Where a level starts, and which way the bird is pointed.
  *
  * The release point is named in degrees, but the city around it is generated,
@@ -757,29 +815,33 @@ function releaseFor(spec: Level): { at: Vec3; heading: number; perched: boolean 
   const aim = spec.facing
     ? project(spec.facing[0], spec.facing[1], map.centre)
     : first
-      ? project(first[0], first[1], map.centre)
+      ? project(first.at[0], first.at[1], map.centre)
       : marker
         ? { x: marker.position.x, z: marker.position.z }
         : home;
 
-  // A perched level does not release the bird at all: it stands him on the
-  // thing the level is about, opposite whoever is waiting there -- her offset
-  // from the middle, mirrored. The middle would be simpler and is wrong: on a
-  // platform not much wider than the two of them it puts him on top of her.
-  // Mirrored, they face each other across it, and the level is complete
-  // before the player has touched anything, which is the whole idea of it.
-  const waiting = spec.begins === 'perched' ? waitingIn(spec) : undefined;
-  const stood = waiting ? standingSpot(waiting) : null;
-  const described = LANDMARKS.find((l) => l.name === spec.target?.name);
-  if (marker && stood && waiting) {
-    const across = pointOn(
-      { x: marker.position.x, z: marker.position.z, yaw: described?.yaw ?? 0 },
-      -waiting.along,
-      -waiting.across,
-    );
-    const at = vec(across.x, stood.at.y, across.z);
-    return { at, heading: bearing(at, stood.at), perched: true };
-  }
+  // A perched level does not release the bird at all: it stands him where the
+  // conversation happens, opposite whoever is waiting there.
+  const own = spec.begins === 'perched' ? opposite(spec) : null;
+  if (own) return { at: own.at, heading: bearing(own.at, own.facing), perched: true };
+
+  // Neither does one that was walked into from the level before it.
+  //
+  // Every level after the first begins where the last one ended, and for five
+  // of them that ending is a conversation held standing on something: the
+  // branch, a roof, the deck of a wagon. Played through, the bird does not
+  // move at all -- the level changes under his feet and he takes off. Started
+  // cold, from the menu or after flying into a chimney, he used to be dropped
+  // into the air at whatever coordinate the level had been given, and the
+  // second level's was a hand-picked one twenty metres past the tree and five
+  // above it, written to look like leaving a branch without being it.
+  //
+  // So the mechanism does it instead, for all five: the level begins standing
+  // where the conversation that opened it was held. Nothing is special-cased,
+  // and nothing has to be kept in step with a landmark that moves.
+  const before = handedFrom(spec.name);
+  const walked = before ? opposite(before) : null;
+  if (walked) return { at: walked.at, heading: bearing(walked.at, aim), perched: true };
 
   return {
     at: vec(
@@ -1408,10 +1470,39 @@ function hint(spec: Level, on: boolean): void {
   for (const marker of world.markers) {
     marker.setActive(on && pointing && marker.name === targetName(spec));
   }
-  // Only this level's line is painted. Every other one belongs to a flight
-  // that is not being flown, and a stripe across the ground that means
+  // Only this level's finishing line is painted. Every other one belongs to a
+  // flight that is not being flown, and a stripe across the ground that means
   // nothing is worse than no stripe at all.
-  for (const gate of world.gates) gate.object.visible = on && gate.name === spec.name;
+  //
+  // The waylines are not touched here. They come and go with the mark being
+  // steered at rather than with the level, so they are turned over every
+  // frame instead -- see `paintWayline`.
+  for (const gate of world.gates) {
+    if (gate.mark === null) gate.object.visible = on && gate.name === spec.name;
+    else gate.object.visible = false;
+  }
+}
+
+/**
+ * Paint the stripe for the mark being steered at, and only that one.
+ *
+ * A wayline is the finishing line's rule used partway along a level: a stripe
+ * square across the route that any path to the far side has to cross. What it
+ * buys over a column is that it cannot be flown past -- the first long flight
+ * in the game is nine hundred metres over an empty park, and a twenty-metre
+ * column is a thing a first-time player misses without ever knowing it was
+ * there.
+ *
+ * One at a time, like the columns and for the same reason: a route painted
+ * out all at once is a map, and reading a map is a different activity from
+ * flying.
+ */
+function paintWayline(): void {
+  const here = LEVELS[level]?.name;
+  for (const gate of world.gates) {
+    if (gate.mark === null) continue;
+    gate.object.visible = gate.name === here && gate.mark === waymarks.index;
+  }
 }
 
 const run = createRunTracker(bird);
@@ -1463,6 +1554,7 @@ function respawn() {
   // flown rather than remembered for good.
   tutor.reset();
   warner.reset();
+  tipStack.reset();
   outcome.hide();
   chase.snap(bird, cameraParams);
 }
@@ -1638,10 +1730,21 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // The marks, from the first one: they are help with *this* level, so they
   // start again with it -- including after a death, when the player is most
   // likely to want them.
+  // The marks, placed, each carrying whatever passing it takes. A line's is
+  // worked out from the release point, exactly as a level's finishing line
+  // is, so the stripe painted on the ground and the rule that notices you
+  // crossing it are the same line.
+  const from = project(spec.start[0], spec.start[1], map.centre);
   waymarks = createWaymarks(
-    (spec.waypoints ?? []).map((at) => project(at[0], at[1], map.centre)),
+    (spec.waypoints ?? []).map((mark) => {
+      const point = project(mark.at[0], mark.at[1], map.centre);
+      return mark.kind === 'line'
+        ? { ...point, across: lineThrough(from, point) }
+        : point;
+    }),
   );
   waymark.show(waymarks.at, waymarks.next);
+  paintWayline();
 
   finished = false;
   talk = null;
@@ -1951,6 +2054,14 @@ const menu = createLevelMenu(overlay, LEVELS, () => {
   (picked) => playLevel(picked));
 const talkPanel = createDialoguePanel(overlay);
 const tipPanel = createTipPanel(overlay);
+/**
+ * What is up, and for how long. See `TipStack`.
+ *
+ * Kept beside the panel rather than inside it, because it is a decision about
+ * the game -- how long a thing is worth saying, and how many at once -- and
+ * the panel's job is to draw whatever it is handed.
+ */
+const tipStack = createTipStack();
 /** The bars over the heads of the birds you are looking at. */
 const vitals = createVitals(overlay);
 /**
@@ -2064,7 +2175,7 @@ function listen(): Source[] {
   return near_;
 }
 /** Hands out the flying lessons, by how far this flight has gone. */
-const tutor = createTutor();
+const tutor = createTutor([], HELD);
 /**
  * The cautions, and which of them has already been said.
  *
@@ -2764,35 +2875,6 @@ function banner(): string | null {
   return null;
 }
 
-/**
- * How hard to turn to end up facing a place, as a walk control.
- *
- * Driven through the walk model's own turn rather than by writing the
- * orientation, so the bird turns the way it turns when the player does it:
- * same rate, same footwork, same everything. Written straight into the
- * quaternion it would snap, and a bird that snaps round to face somebody is a
- * bird nobody believes is standing there.
- *
- * Full rate until it is nearly there and then exactly enough to arrive, which
- * is what the divide by the tick's own turn is doing -- so it stops on the
- * bearing rather than hunting about it.
- *
- * Facing nought is -Z and forward for a heading is `(-sin, -cos)`, so the
- * heading that looks at an offset is `atan2(-dx, -dz)`.
- */
-function turningTo(at: Vec3): number {
-  const dx = at.x - bird.position.x;
-  const dz = at.z - bird.position.z;
-  if (Math.hypot(dx, dz) < 0.05) return 0;
-  const want = Math.atan2(-dx, -dz);
-  // The short way round: turning three hundred degrees to save sixty is the
-  // other thing a naive difference does.
-  let off = want - heading(bird);
-  while (off > Math.PI) off -= Math.PI * 2;
-  while (off < -Math.PI) off += Math.PI * 2;
-  const most = flightParams.walkTurnRate * TICK;
-  return Math.max(-1, Math.min(1, off / most));
-}
 
 /** Whether the conversation still wants something said before you go. */
 const midSentence = (): boolean => talkingTo !== null && talk !== null && !isOver(talk);
@@ -2867,6 +2949,47 @@ const NOTICE = 2;
 
 /** Said in three places, so written once. */
 const TAKE_OFF: Words = { en: 'Take off!', hu: 'Szállj fel!' };
+
+/**
+ * The offer of the other language, each written in the language it offers.
+ *
+ * Turned over before it is shown -- see `theOtherWay` -- because the one
+ * person this is for is the one who cannot read the game as it stands.
+ */
+const OTHER_TONGUE: Words = {
+  en: 'Press TAB for English',
+  hu: 'Magyar nyelvért nyomd meg a TAB-ot',
+};
+
+/** Whether the note about the other language has been put up yet. */
+let toldOfLanguage = false;
+
+/**
+ * A word about the game itself rather than about the flight.
+ *
+ * One thing, once, on the opening screen: which key changes the language,
+ * said in the language the player is not being given. It goes up beside the
+ * conversation rather than instead of it, which is the whole reason the panel
+ * stacks -- the first screen of the game already has something to say, and
+ * this cannot wait for it to finish or it will never be read.
+ *
+ * Given once and then never again. It is the sort of thing that is either
+ * noticed in the first ten seconds or not wanted at all, and a note that
+ * comes back every time you restart the first level is a note you learn to
+ * look past.
+ */
+function sideNote(): Tip | null {
+  if (toldOfLanguage || level !== 0) return null;
+  toldOfLanguage = true;
+  return {
+    keys: ['TAB'],
+    text: theOtherWay(OTHER_TONGUE),
+    // The flag of the language on offer, not of the one being spoken: the
+    // picture and the sentence have to be saying the same thing.
+    icon: otherLanguage() === 'hu' ? 'flagHu' : 'flagEn',
+    sort: 'hint',
+  };
+}
 
 /**
  * The warning, made once rather than every frame.
@@ -3074,7 +3197,12 @@ function frame(nowMs: number) {
       doing,
     );
     walkControls.forward = allowed.forward;
-    walkControls.turn = talkingTo ? turningTo(talkingTo.state.position) : allowed.turn;
+    // Round to look at whoever is talking, at walking pace, for as long as
+    // the conversation lasts -- so the shot is two birds facing each other
+    // rather than one addressing the back of the other's head.
+    walkControls.turn = talkingTo
+      ? faceTurn(bird, talkingTo.state.position, flightParams, TICK)
+      : allowed.turn;
     walkControls.launch = allowed.launch;
     const wasDown = isPerched(bird);
     onFoot = walk(bird, walkControls, flightParams, TICK, solid);
@@ -3230,6 +3358,7 @@ function frame(nowMs: number) {
     for (const crowd of crowds) crowd.update(TICK, solid, wind);
     if (waymarks.update(bird.position.x, bird.position.z)) {
       waymark.show(waymarks.at, waymarks.next);
+      paintWayline();
     }
     if (bird.ending === null) run.update(bird, TICK);
     // Alive rather than airborne. A crossing is flown over and a belly is
@@ -3357,9 +3486,7 @@ function frame(nowMs: number) {
       ? LOCKED_ON
       : null;
 
-  const urgent =
-    command() ??
-    hunter ??
+  const approaching =
     (settling
       ? approachFor(tutorial, {
           toGo,
@@ -3367,7 +3494,8 @@ function frame(nowMs: number) {
           fast: !settling.speedOk,
           sinking: !settling.sinkOk,
         })
-      : null) ??
+      : null);
+  const cautioning =
     (bird.ending === null
       ? warner.warn(tutorial, {
           altitude: telemetry.altitude,
@@ -3381,41 +3509,56 @@ function frame(nowMs: number) {
         })
       : null);
 
-  // The tutor is only asked while the corner is free. Asked anyway, it would
-  // hand out lessons into a panel that is showing something else -- given,
-  // never seen, and never given again -- which is the whole failure mode of a
-  // queue that does not know whether anyone is listening. A level flown
-  // entirely below the "pull up" mark would have taught nothing.
-  // Some lessons count from the take-off and some from the arrival, and the
-  // arrival is the harder half.
-  const saying = cutscene
+  // Everything that applies right now, in the order it should stack if two of
+  // them turn up together: what the game has arranged, then what is hunting
+  // you, then the arrival, then the flight, then what there is spare
+  // attention to learn.
+  //
+  // All of them, rather than the first that is not null. The corner used to
+  // pick one and the rest were not late, they were never said -- a crow
+  // closing while the wings ran out said "crows", and the stamina was simply
+  // never mentioned. The stack decides how long each stays; see `TipStack`.
+  //
+  // Which also means the tutor can be asked every frame now. It could not
+  // before: a lesson handed into a corner that was showing something else was
+  // given, never seen, and never given again, so a level flown entirely below
+  // the "pull up" mark taught nothing.
+  const offered = cutscene
     ? // An audience is not told which key to press.
-      null
+      []
     : waiting
       ? // Held on a beat: the one key that does anything, and nothing else.
         // No cautions -- the bird is standing still -- and no lessons, which
         // would be the game teaching over the top of the story.
-        command()
-      : (urgent ??
-        tutor.update(
-          { flown: run.stats.distance, toGo, landed: isPerched(bird) },
-          frameTime,
-          input.anyDown,
-        ));
+        [command(), sideNote()]
+      : [
+          command(),
+          hunter,
+          approaching,
+          cautioning,
+          tutor.update(
+            { flown: run.stats.distance, toGo, landed: isPerched(bird) },
+            frameTime,
+            input.anyDown,
+          ),
+          sideNote(),
+        ];
+  const saying = tipStack.update(offered, clock);
   // Over the conversation card when there is one. Its height is asked for
   // rather than guessed at: the four-line exchange at the loft is twice the
   // two-line one on the branch, and the instruction has to clear both.
   tipPanel.show(saying, talkPanel.height());
-  // A note when the instruction changes, saying what kind it is: see `Tip.sort`.
-  // Compared here rather than inside the panel, because a sound is not
-  // drawing -- and the panel is asked what to show sixty times a second.
-  const words = saying ? read(saying.text) : null;
-  if (words !== null && words !== announced) cue.sound(saying?.sort ?? 'hint');
+  // A note when the newest instruction changes, saying what kind it is: see
+  // `Tip.sort`. Compared here rather than inside the panel, because a sound is
+  // not drawing -- and the panel is asked what to show sixty times a second.
+  const newest = saying[saying.length - 1] ?? null;
+  const words = newest ? read(newest.text) : null;
+  if (words !== null && words !== announced) cue.sound(newest?.sort ?? 'hint');
   announced = words;
   // Only the critical ones are said aloud. A voice that reads every
   // instruction is a voice that gets turned off, and then it is not there for
   // the one that mattered.
-  voice.update(saying?.spoken ? saying : null, clock);
+  voice.update(newest?.spoken ? newest : null, clock);
   // And the two-tone warning, driven by the crow rather than by the panel.
   //
   // The panel holds one thing at a time, so a lesson or a landing call can be
@@ -3683,7 +3826,6 @@ function frame(nowMs: number) {
   sun.position.copy(sun.target.position).add(sunOffset);
   sun.target.updateMatrixWorld();
 
-
   hud.update(
     interpolatedState,
     telemetry,
@@ -3691,7 +3833,10 @@ function frame(nowMs: number) {
     smoothedFps,
     banner(),
     unproject(interpolatedState.position, map.centre),
-    !LEVELS[level]?.tireless,
+    // Whether the wings tire at all, which two things can settle: the level,
+    // for the one flight that is about looking rather than flying, and the
+    // mode, since the beginner's one charges nothing for flying.
+    mode.tires && !LEVELS[level]?.tireless,
   );
   // The same three things the world is showing -- what is aimed at, the mark
   // that is up, and the line that finishes the level -- seen from above and

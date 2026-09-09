@@ -126,6 +126,28 @@ export function begin(turn: Turn): Exchange {
 export const isOver = (exchange: Exchange): boolean => exchange.replies.length === 0;
 
 /**
+ * Every level or scene this conversation can hand over to.
+ *
+ * A conversation is a tree and a hand-over can hang off any branch of it, so
+ * this walks the whole thing rather than looking at the opening turn. Asked
+ * from the other end: given a level, which conversation leads into it -- see
+ * `handedFrom` in `main.ts`, which is how a level works out where it began
+ * without being told.
+ */
+export function opensFrom(turn: Turn): string[] {
+  const found: string[] = [];
+  const walk = (at: Turn): void => {
+    if (at.opens !== undefined) found.push(at.opens);
+    for (const choice of at.you ?? []) {
+      if (choice.opens !== undefined) found.push(choice.opens);
+      if (choice.then) walk(choice.then);
+    }
+  };
+  walk(turn);
+  return [...new Set(found)];
+}
+
+/**
  * Say the `choice`th thing on offer, counting from one.
  *
  * A number that is not on offer leaves the conversation where it was. Saying
@@ -160,7 +182,10 @@ export function reply(exchange: Exchange, choice: number): Exchange {
  * game that shows a reply can go somewhere rather than merely be chosen.
  */
 export const HEADING_OUT: Turn = {
-  them: { en: 'Could you get some food from Teleki tér?', hu: 'Hoznál kaját a Teleki térről?' },
+  them: {
+    en: 'I am starving. Could you get some food from Teleki tér?',
+    hu: 'Éhen halok. Hoznál kaját a Teleki térről?',
+  },
   you: [
     {
       text: { en: 'Yes, sure!', hu: 'Persze, megyek!' },

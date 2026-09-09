@@ -444,10 +444,31 @@ body {
      closer to the bird was the ask, not on top of it. */
   bottom: 12%;
   transform: translateX(-50%);
+  /* A column now rather than a row: several instructions can be true at once
+     -- low, slow, tired, and a crow on your tail -- and a corner that showed
+     one of them was a corner that never said the other three.
+
+     Anchored by its bottom edge, so the newest sits where the only one used
+     to and the stack grows away from the bird rather than over it. */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+
+/* One instruction: the picture, the keycaps, and the words. */
+.tip-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  pointer-events: none;
+}
+
+/* Older ones step back rather than disappearing, so the newest is the one the
+   eye lands on. Nothing is hidden by it -- the whole stack is still legible,
+   which is the point of having one. */
+.tip-row:not(:last-child) {
+  opacity: 0.72;
 }
 
 /* No card at all: the words and the picture, and a halo to hold them up.
@@ -475,14 +496,14 @@ body {
   text-shadow: 0 0 14px rgba(8, 11, 15, 0.95), 0 2px 5px rgba(8, 11, 15, 0.9);
 }
 
-.tip-survival .tip-text {
+.tip-row.tip-survival .tip-text {
   text-shadow:
     0 0 14px rgba(8, 11, 15, 0.95),
     0 2px 5px rgba(8, 11, 15, 0.9),
     0 0 22px rgba(224, 83, 63, 0.85);
 }
 
-.tip-story .tip-text {
+.tip-row.tip-story .tip-text {
   text-shadow:
     0 0 14px rgba(8, 11, 15, 0.95),
     0 2px 5px rgba(8, 11, 15, 0.9),

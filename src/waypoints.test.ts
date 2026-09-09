@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createWaymarks, REACHED } from './waypoints';
+import { lineThrough } from './levels';
 
 const route = [
   { x: 0, z: 0 },
@@ -122,5 +123,63 @@ describe('the marks along a route', () => {
     expect(none.at).toBeNull();
     expect(none.left).toBe(0);
     expect(none.update(0, 0)).toBe(false);
+  });
+});
+
+describe('a mark that is a line rather than a place', () => {
+  /** The release point every line here is drawn square to. */
+  const from = { x: 0, z: 0 };
+  /** Two stripes across a route running east, at 100 m and 200 m. */
+  const lines = [
+    { x: 100, z: 0, across: lineThrough(from, { x: 100, z: 0 }) },
+    { x: 200, z: 0, across: lineThrough(from, { x: 200, z: 0 }) },
+  ];
+
+  it('is passed by crossing it, however wide of it you are', () => {
+    // The whole reason for having one. A column is twenty metres across and
+    // a first-time player flies past it without ever knowing it was there;
+    // a line runs the width of the map, so any path to the far side crosses
+    // it.
+    const marks = createWaymarks(lines);
+    expect(marks.update(101, 400)).toBe(true);
+    expect(marks.at).toEqual(lines[1]);
+  });
+
+  it('is not passed by being near it', () => {
+    // Which is the difference from a place, stated: standing twenty metres
+    // short of a line is standing short of it.
+    const marks = createWaymarks(lines);
+    expect(marks.update(99, 0)).toBe(false);
+    expect(marks.at).toEqual(lines[0]);
+  });
+
+  it('is passed at the moment it is reached, not before', () => {
+    const marks = createWaymarks(lines);
+    expect(marks.update(99.9, 0)).toBe(false);
+    expect(marks.update(100.1, 0)).toBe(true);
+  });
+
+  it('takes them in order, and all of them at once if it has to', () => {
+    // A bird that somehow got past both is not left steering at the first.
+    const marks = createWaymarks(lines);
+    expect(marks.update(300, 0)).toBe(true);
+    expect(marks.at).toBeNull();
+    expect(marks.index).toBe(2);
+  });
+
+  it('says which one is showing, so the right stripe can be painted', () => {
+    const marks = createWaymarks(lines);
+    expect(marks.index).toBe(0);
+    marks.update(150, 0);
+    expect(marks.index).toBe(1);
+  });
+
+  it('mixes with places in one route', () => {
+    // Both are a coordinate; what differs is the question asked of the bird.
+    const mixed = createWaymarks([{ x: 50, z: 0 }, lines[1]!]);
+    expect(mixed.update(50, 0)).toBe(true);
+    expect(mixed.at).toEqual(lines[1]);
+    expect(mixed.update(201, 900)).toBe(true);
+    expect(mixed.at).toBeNull();
   });
 });

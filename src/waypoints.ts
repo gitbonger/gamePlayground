@@ -1,3 +1,5 @@
+import { crossed, type Line } from './levels';
+
 /**
  * Marks strung along a route, one showing at a time.
  *
@@ -28,6 +30,20 @@
  */
 export const REACHED = 20;
 
+/** One mark, placed, and what passing it takes. */
+export interface Placed {
+  x: number;
+  z: number;
+  /**
+   * The line square across the route through it, for a mark that is a line.
+   *
+   * Left out for one that is a place, and that absence is the whole of the
+   * difference: a place is reached by being near it and a line by getting to
+   * the far side of it. See `Waypoint` in `levels.ts`.
+   */
+  across?: Line;
+}
+
 export interface Waymarks {
   /** The one showing now, or null once they have all been passed. */
   readonly at: { x: number; z: number } | null;
@@ -42,6 +58,14 @@ export interface Waymarks {
   /** How many are still to come, including the one showing. */
   readonly left: number;
   /**
+   * Which one is showing, counting from nought.
+   *
+   * For anything that has to find the thing painted on the ground for it:
+   * a line's stripe is built with the world, one per mark, and this is how
+   * the right one is picked out. Past the last, it is the number of them.
+   */
+  readonly index: number;
+  /**
    * Take the bird's position on the ground, and say whether one was passed.
    *
    * True on the tick a mark is reached, so a caller can make a noise about it
@@ -54,12 +78,21 @@ export interface Waymarks {
   update(x: number, z: number): boolean;
 }
 
-export function createWaymarks(points: readonly { x: number; z: number }[]): Waymarks {
+export function createWaymarks(points: readonly Placed[]): Waymarks {
   let at = 0;
 
-  const within = (x: number, z: number) => {
+  /**
+   * Whether the mark showing has been passed.
+   *
+   * Two questions, and which one gets asked is the mark's own business: a
+   * place is near enough, a line has been got to the far side of. Everything
+   * else here -- the order, the arrow to the next one, the counting -- is the
+   * same for both, which is why they are one list rather than two.
+   */
+  const passed = (x: number, z: number) => {
     const point = points[at];
     if (!point) return false;
+    if (point.across) return crossed(point.across, x, z);
     return Math.hypot(point.x - x, point.z - z) <= REACHED;
   };
 
@@ -73,13 +106,16 @@ export function createWaymarks(points: readonly { x: number; z: number }[]): Way
     get left() {
       return Math.max(0, points.length - at);
     },
+    get index() {
+      return at;
+    },
     update(x, z) {
-      let passed = false;
-      while (within(x, z)) {
+      let any = false;
+      while (passed(x, z)) {
         at += 1;
-        passed = true;
+        any = true;
       }
-      return passed;
+      return any;
     },
   };
 }

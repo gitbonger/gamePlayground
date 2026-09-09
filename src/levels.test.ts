@@ -435,11 +435,18 @@ describe('what the levels aim at', () => {
   });
 
   it('lets him off the tree rather than dropping him over it', () => {
-    // The errand starts five metres above the crest he has just been standing
-    // on, and takes that height from the tree rather than restating it: move
-    // the tree and the release moves with it.
+    // The errand begins on the crest he has just been standing on, and takes
+    // its height from the tree rather than restating it: move the tree and
+    // the level moves with it.
+    //
+    // It is the mechanism that puts him there now rather than a coordinate --
+    // a level opened by a conversation begins where that conversation was
+    // held, see `releaseFor` -- so what is checked here is that the fallback
+    // these two numbers describe is still the tree, and not a point in the
+    // air beside it.
     const errand = LEVELS[1]!;
-    expect(errand.release).toBe(HOME_TREE.height + 5);
+    expect(errand.release).toBe(HOME_TREE.height);
+    expect(errand.start).toEqual(HOME_TREE.at);
 
     // Three heights, and they are three kinds of level rather than three
     // numbers somebody picked. Perched levels are not released at all, so
@@ -852,8 +859,8 @@ describe('what the levels aim at', () => {
       if (marks.length === 0) continue;
 
       const from = project(level.start[0], level.start[1], centre);
-      const away = marks.map((at) => {
-        const point = project(at[0], at[1], centre);
+      const away = marks.map((mark) => {
+        const point = project(mark.at[0], mark.at[1], centre);
         return Math.hypot(point.x - from.x, point.z - from.z);
       });
       for (let i = 1; i < away.length; i += 1) {
@@ -883,7 +890,7 @@ describe('what the levels aim at', () => {
     for (const level of marked) {
       const from = project(level.start[0], level.start[1], centre);
       const first = level.waypoints![0]!;
-      const at = project(first[0], first[1], centre);
+      const at = project(first.at[0], first.at[1], centre);
       // Ahead of the release point rather than on top of it: a mark you are
       // already standing in is one that vanishes before it has said anything.
       expect(Math.hypot(at.x - from.x, at.z - from.z), level.name).toBeGreaterThan(20);

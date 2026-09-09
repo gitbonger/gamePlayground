@@ -7,8 +7,8 @@
  * Repülj alacsonyan!` is four syllables longer than `Crows! Fly low!` and
  * arrives at the same speed the crow does.
  *
- * Drawn rather than fetched: twenty-four of these as files would be
- * twenty-four requests, and they are line art on a 24-unit grid, which is
+ * Drawn rather than fetched: a couple of dozen of these as files would be a
+ * couple of dozen requests, and they are line art on a 24-unit grid, which is
  * cheaper written down than downloaded. `currentColor` throughout, so the
  * panel's own colour reaches them and a warning icon goes amber with the
  * warning.
@@ -49,6 +49,15 @@ const INK = {
   dark: '#333a44',
   seed: '#d8c37a',
   tram: '#f2c53d',
+  // The flags, and the one place in here where a colour does not mean
+  // anything -- it *is* something. A flag drawn in the palette's amber and
+  // green is not a flag, it is a rectangle, and the whole job of this one
+  // icon is to be recognised before it is read.
+  flagRed: '#ce2939',
+  flagWhite: '#ffffff',
+  flagGreen: '#477050',
+  flagBlue: '#012169',
+  flagInk: '#1d232c',
 } as const;
 
 /** One stroke or shape of an icon. */
@@ -270,6 +279,33 @@ export const ICONS = {
     { d: 'M3.6 9.4h3.8L12 5.2v13.6l-4.6-4.2H3.6z', wash: 'bird', ink: 'bird', thin: true },
     { d: 'M15 8.8q2 3.2 0 6.4', ink: 'safe', thin: true },
     { d: 'M18 6.4q3.2 5.6 0 11.2', ink: 'safe', thin: true },
+  ],
+  /**
+   * The Hungarian flag, and the British one.
+   *
+   * For the one instruction that is deliberately not in the language the game
+   * is being played in -- see `sideNote` in `main.ts`. A player who cannot
+   * read the sentence can still read the flag, which is the entire point of
+   * putting a picture beside it.
+   */
+  flagHu: [
+    { d: 'M3 6.4h18v3.8H3z', fill: true, ink: 'flagRed' },
+    { d: 'M3 10.2h18v3.6H3z', fill: true, ink: 'flagWhite' },
+    { d: 'M3 13.8h18v3.8H3z', fill: true, ink: 'flagGreen' },
+    { d: 'M3 6.4h18v11.2H3z', ink: 'flagInk', thin: true },
+  ],
+  /** See `flagHu`. */
+  flagEn: [
+    { d: 'M3 6.4h18v11.2H3z', fill: true, ink: 'flagBlue' },
+    // The saltire, white behind red, drawn corner to corner.
+    { d: 'M3 6.4l18 11.2M21 6.4L3 17.6', ink: 'flagWhite', bold: true },
+    { d: 'M3 6.4l18 11.2M21 6.4L3 17.6', ink: 'flagRed', thin: true },
+    // And the cross over it, which is the half that says which flag it is.
+    { d: 'M10.1 6.4h3.8v11.2h-3.8z', fill: true, ink: 'flagWhite' },
+    { d: 'M3 10.1h18v3.8H3z', fill: true, ink: 'flagWhite' },
+    { d: 'M11.1 6.4h1.8v11.2h-1.8z', fill: true, ink: 'flagRed' },
+    { d: 'M3 11.1h18v1.8H3z', fill: true, ink: 'flagRed' },
+    { d: 'M3 6.4h18v11.2H3z', ink: 'flagInk', thin: true },
   ],
   /** And off. */
   voiceOff: [

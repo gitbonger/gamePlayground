@@ -101,7 +101,7 @@ export interface ObjectiveOptions {
    * Named by the level that owns it, because only the level being flown shows
    * its own -- the same arrangement the target markers have.
    */
-  gates?: { name: string; x: number; z: number; yaw: number; span: number }[];
+  gates?: { name: string; mark: number | null; x: number; z: number; yaw: number; span: number }[];
 }
 
 export interface World {
@@ -112,8 +112,16 @@ export interface World {
   collider: Collider;
   /** Everything the pigeon can be sent to, in the order it was named. */
   markers: TargetMarker[];
-  /** The painted lines, by the name of the level each belongs to. */
-  gates: { name: string; object: THREE.Object3D }[];
+  /**
+   * The painted lines, by the name of the level each belongs to.
+   *
+   * `mark` says which one it is: null for the stripe that finishes the level,
+   * and the index of the waypoint for one that is only partway along it. The
+   * two are painted the same and shown by different rules -- a finishing line
+   * is up for the whole level, and a wayline only while it is the mark being
+   * steered at.
+   */
+  gates: { name: string; mark: number | null; object: THREE.Object3D }[];
   /** Put the thrown grain where the simulation says it has got to. */
   updateSeeds(seeds: readonly { x: number; y: number; z: number }[]): void;
   /**
@@ -858,7 +866,7 @@ export function buildWorld(
   // Painted like the road markings are, and over them: this is the one flat
   // thing in the world that is not part of the city, and a stripe that a
   // tram line could cover would be a stripe you cannot trust.
-  const gates: { name: string; object: THREE.Object3D }[] = [];
+  const gates: { name: string; mark: number | null; object: THREE.Object3D }[] = [];
   for (const gate of options.gates ?? []) {
     const band = new THREE.PlaneGeometry(GATE_THICKNESS, gate.span);
     band.rotateX(-Math.PI / 2);
@@ -872,7 +880,7 @@ export function buildWorld(
     // Shown only while the level it belongs to is the one being flown.
     stripe.visible = false;
     group.add(stripe);
-    gates.push({ name: gate.name, object: stripe });
+    gates.push({ name: gate.name, mark: gate.mark, object: stripe });
   }
 
   // --- Grain ----------------------------------------------------------------
