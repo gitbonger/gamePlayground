@@ -638,11 +638,11 @@ export interface Level {
   /**
    * How many of the flock come along, when it comes along at all.
    *
-   * Only read where `escort` is on. Ten is what an errand across a park
-   * wants: company, and few enough to see the bird you are flying. The rescue
-   * wants thirty, and that is the point of it -- the story has just spent
-   * five levels alone, and what arrives is the difference between a pigeon
-   * and a great many pigeons.
+   * Only read where `escort` is on. Two is what an errand across a park
+   * wants: company, and few enough that the bird you are flying is still the
+   * one the eye goes to. The rescue wants thirty, and that is the point of it
+   * -- the story has just spent five levels alone, and what arrives is the
+   * difference between a pigeon and a great many pigeons.
    *
    * The birds are built once at the largest number any level asks for, since
    * each is a rig in the scene; this decides how many are let out.
@@ -932,8 +932,13 @@ export const LEVELS: readonly Level[] = [
     when: EVENING,
     // Company for the long crossing of the park, which is the level that
     // most needs it: half a kilometre of nothing but trees.
+    //
+    // Two of them. Ten was a squadron, and a squadron is what the rescue is
+    // -- these two are the pair who happened to be going the same way, which
+    // is what company on an errand looks like and leaves the sky over the
+    // park to the pigeon whose flight this is.
     escort: true,
-    flock: 10,
+    flock: 2,
     // Still on the branch, and he has no reason to think otherwise: this is
     // the errand, and it is a morning like any other until he gets back.
     hersKnown: true,
@@ -1001,9 +1006,10 @@ export const LEVELS: readonly Level[] = [
     health: 0.25,
     when: EVENING,
     // And on through the second half of the errand, since it is one flight
-    // in two pieces and a flock that vanished at the line would say so.
+    // in two pieces and a flock that vanished at the line would say so --
+    // the same two, and they are not recalled at the line for that reason.
     escort: true,
-    flock: 10,
+    flock: 2,
     target: { kind: 'landmark', name: PARK_PATCH.name },
     // And this is where she goes. The park is behind him, he is a kilometre
     // west with his back to the tree, and by the time he turns round she is
