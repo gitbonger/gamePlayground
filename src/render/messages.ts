@@ -87,6 +87,14 @@ export interface Moment {
    */
   sinceMark: number;
   /**
+   * How far off the way to the target he is pointing, in degrees, 0 to 180.
+   *
+   * Infinity where the level is aiming at nothing. Nought is straight at it
+   * and a hundred and eighty is straight away from it, so "more than ninety"
+   * is the plain reading: whatever he is flying towards, it is not this.
+   */
+  offCourse: number;
+  /**
    * Metres to a *marked place to land*, or Infinity where there is none.
    *
    * Not the same as `toGo`, and the difference is what two of these messages
@@ -223,6 +231,13 @@ export const TIRED = 0.3;
 export const CROW_CEILING = 20;
 /** Inside this, the flight is an approach and is talked through as one. */
 export const APPROACH = 150;
+/**
+ * How far off the way to the target counts as going the wrong way, in degrees.
+ *
+ * Ninety, which is the honest line: less than that and every metre still
+ * takes you nearer, more and none of them do.
+ */
+export const ASTRAY = 90;
 /**
  * And inside this, there is somewhere to land and it is worth saying so.
  *
@@ -531,6 +546,24 @@ export const MESSAGES: readonly Message[] = [
       !at.leaving &&
       !at.held,
     done: (at) => at.down(['SPACE']),
+  },
+  {
+    id: 'useTheMap',
+    keys: [],
+    text: { en: 'Use the mini map to find your way!', hu: 'A kis térkép segít eligazodni!' },
+    icon: 'arriving',
+    sort: 'hint',
+    once: true,
+    // Pointing further than a right angle away from where the level wants
+    // him, with a way still to go. Said once: it is a thing to learn about
+    // the screen rather than a running commentary on the heading, and a
+    // player who turns round twice does not want telling twice.
+    //
+    // Not while the target is nearly reached -- the last hundred metres of an
+    // arrival are flown in circles by everybody, and a bird lining up a
+    // landing is not lost.
+    when: (at) =>
+      aloft(at) && Number.isFinite(at.offCourse) && at.offCourse > ASTRAY && at.toGo > 100,
   },
   {
     id: 'flyToMark',

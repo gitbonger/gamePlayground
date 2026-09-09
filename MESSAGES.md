@@ -41,6 +41,9 @@ On top of that:
 | `flown` | metres flown since the level began |
 | `toGo` | metres to whatever finishes the level: a thing, or a line |
 | `landing` | metres to a **marked place to land**, or ∞ where there is none |
+| `offCourse` | degrees between the way you are pointing and the way to the target, 0–180; ∞ where the level aims at nothing |
+| `sinceMark` | seconds since the mark in front of you became the mark in front of you |
+| `onTarget` | down, and down on the thing the level was aiming at |
 | `too fast` / `too hard` | touching down right now would kill, by the landing rule |
 | `hunted` | a crow has picked him out and is coming |
 | `teaching` | the level is still explaining itself (Levels 1–4 only) |
@@ -85,6 +88,7 @@ to land, and something to land on is **in sight** at 200 m.
 | name | keys | says | shows when | goes when |
 | --- | --- | --- | --- | --- |
 | `flyToMark` | — | Fly towards the blue mark! | **teaching** levels: a mark has just come up — each one, not only the first | after 5 s |
+| `useTheMap` | — | Use the mini map to find your way! | pointing more than **90°** away from where the level wants you, with over 100 m still to go | after 5 s (once a level) |
 | `landNearArrow` | — | Land near the arrow! | something marked to land on within 200 m | the feet are down (once a level) |
 | `loseHeight` | `↑` | Lose some height | teaching, inside the approach, higher than a third of the distance left | the height is right |
 | `brakeToSlow` | `B` | Brake to slow down | teaching, inside the approach, and too fast — height or no height | no longer too fast |

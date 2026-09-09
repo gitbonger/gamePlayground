@@ -312,7 +312,12 @@ export const NOT_AT_MATYAS: Scene = {
   // the ground and wrong about the air: it starts sixty metres over that
   // square, and the player was cut from standing on the paving to hanging
   // above it. There is somewhere to go, and the somewhere is up.
-  opens: { scene: 'up off Mátyás tér' },
+  // Straight on into the next leg, from the square he is standing on. There
+  // was a two and a half second camera climb between these two, and one
+  // between the pair after them, and they are gone: a level that begins where
+  // the last one ended does not need to be *shown* where it begins. The
+  // minimap says which way to go now, which is what those shots were for.
+  opens: { level: 'Jani Pali tér' },
 };
 
 /**
@@ -339,48 +344,10 @@ export const NOT_AT_JANI: Scene = {
     { en: 'She is not here!', hu: 'Itt sincs!' },
     { en: 'Maybe on Blaha!', hu: 'Talán a Blahán!' },
   ],
-  opens: { scene: 'up off Jani Pali tér' },
-};
-
-/**
- * Off the square he has just searched, to the height the next one is flown
- * from.
- *
- * A climb, like the one out of Blaha: sixty metres straight up over the same
- * paving, so it has no arc -- an arc on a nearly vertical move is a camera
- * wandering off to one side and coming back. Nothing said over it, so it does
- * not hold; the take-off that ends the beat runs into this and this runs into
- * the level, and what the player sees is one movement.
- */
-export const UP_OFF_MATYAS: Scene = {
-  name: 'up off Mátyás tér',
-  endsOn: 'Jani Pali tér',
-  seconds: 2.5,
-  cruise: 0,
-  climbs: true,
-  opens: { level: 'Jani Pali tér' },
-};
-
-/**
- * Off the second square, to the height the next leg is flown from.
- *
- * The twin of the climb off Mátyás tér, and there for the same reason: the
- * beat leaves him standing on the paving and Népszínház starts sixty metres
- * over the same paving, so the difference is all height. Cutting between
- * those two is a player standing on a square in one frame and hanging above
- * it in the next.
- *
- * `cruise: 0` gives it no arc. An arc on a move that is almost vertical is a
- * camera wandering off to one side and coming back.
- */
-export const UP_OFF_JANI: Scene = {
-  name: 'up off Jani Pali tér',
-  endsOn: 'Népszínház',
-  seconds: 2.5,
-  cruise: 0,
-  climbs: true,
   opens: { level: 'Népszínház' },
 };
+
+
 
 /**
  * Straight up off the slab, to the height the last leg is flown from.
@@ -415,8 +382,6 @@ export const SCENES: readonly Scene[] = [
   TO_MATYAS,
   NOT_AT_MATYAS,
   NOT_AT_JANI,
-  UP_OFF_MATYAS,
-  UP_OFF_JANI,
   UP_TO_THE_ROOFS,
 ];
 

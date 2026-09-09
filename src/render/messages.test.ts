@@ -19,6 +19,7 @@ const flying = (over: Partial<Moment> = {}): Moment => ({
   noseUp: false,
   flown: 0,
   toGo: 500,
+  offCourse: 0,
   sinceMark: Infinity,
   landing: Infinity,
   perched: false,
@@ -297,5 +298,30 @@ describe('the two that were asked for by name', () => {
 
   it('does not point at a mark to a bird on the ground', () => {
     expect(shows('flyToMark', flying({ sinceMark: 0.1, perched: true }))).toBe(false);
+  });
+});
+
+describe('losing your way', () => {
+  it('points at the map when the target is behind you', () => {
+    // Ninety degrees is the honest line: less and every metre still takes you
+    // nearer, more and none of them do.
+    expect(shows('useTheMap', flying({ offCourse: 140 }))).toBe(true);
+    expect(shows('useTheMap', flying({ offCourse: 40 }))).toBe(false);
+  });
+
+  it('leaves a bird lining up a landing alone', () => {
+    // The last hundred metres of an arrival are flown in circles by
+    // everybody, and a bird turning onto finals is not lost.
+    expect(shows('useTheMap', flying({ offCourse: 140, toGo: 60 }))).toBe(false);
+  });
+
+  it('says nothing on a level that is aiming at nothing', () => {
+    expect(shows('useTheMap', flying({ offCourse: Infinity }))).toBe(false);
+  });
+
+  it('is a thing to learn rather than a commentary on the heading', () => {
+    // Once a level. A player who turns round twice does not want telling
+    // twice, and the map does not move.
+    expect(message('useTheMap').once).toBe(true);
   });
 });

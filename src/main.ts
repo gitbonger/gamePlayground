@@ -97,6 +97,8 @@ import { browserChime, createCue } from './render/cue';
 import { createVitals, type Vital } from './render/vitals';
 import { MESSAGES, NOTICE, type Moment } from './render/messages';
 import { createGauge } from './render/gauge';
+import { ARRIVED_WITHIN, endingFor, type Ending } from './finish';
+import { headingError } from './sim/autopilot';
 import { codesOf, createTipPanel, createTipStack } from './render/tips';
 import { loadProgress, saveProgress } from './progress';
 import { DEFAULT_MODE, MODES, otherMode, paramsFor, windFor, type Mode } from './sim/modes';
@@ -114,7 +116,7 @@ import { createMinimap, REACH as MINIMAP_REACH } from './render/minimap';
 import { defaultSight, sighted } from './render/sighted';
 import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
-import { buildWorld, targetFlash, type TargetMarker } from './world/city';
+import { buildWorld, targetFlash } from './world/city';
 import { peopleOn, PERSON_HEIGHT, pointOn } from './world/layout';
 import { createScatter, seedWithin, SEED_SIZE } from './world/seeds';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
@@ -1797,8 +1799,7 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // level was given rather than from wherever the bird happens to be, so that
   // arriving at the level in mid-air puts the line in the same place as
   // taking off into it.
-  const marker = objective(targetName(spec));
-  handover = handoverFor(spec, marker);
+  handover = endingFor(spec.finish);
   // Walked into rather than put down in: keep whatever the last level left,
   // unless this one needs more than that to be flyable at all.
   if (where === 'in place') bird.health = bellyOnEntry(spec, bird.health);
@@ -1815,49 +1816,9 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
  * a conversation, which is nobody's business but the conversation's, and
  * gives back nothing.
  */
-let handover: { done: () => boolean; opens: Opens } | null = null;
+let handover: Ending | null = null;
 
-/**
- * How near a level's target counts as having arrived at it, in metres.
- *
- * Half again the widest square, so landing anywhere on one of them -- or
- * beside it, on the pavement -- finishes the level. The alternative is a
- * player who has plainly got there being told they have not.
- */
-const ARRIVED_WITHIN = 22;
 
-function handoverFor(spec: Level, marker: TargetMarker | null) {
-  const ends = spec.finish;
-  // Two kinds have nothing to hand over: one you finish by walking up to
-  // somebody, and one that does not finish.
-  if (ends.kind === 'meeting' || ends.kind === 'free') return null;
-  // Eaten. There is no arrival to test, only a bird that has had enough --
-  // which it can reach standing still in one spot, and usually does.
-  if (ends.kind === 'fed') return { done: () => bird.health >= 1, opens: ends.opens };
-  if (!marker) return null;
-
-  // Arrived. On its feet, on the thing the level named -- which is the whole
-  // of what searching a square is. The reach is generous because a square is
-  // a place rather than a mark: coming down anywhere on Mátyás tér is coming
-  // down on Mátyás tér, and a rule that wanted the middle of it would be a
-  // spot landing wearing a story's clothes.
-  if (ends.kind === 'arrival') {
-    return {
-      done: () =>
-        isPerched(bird) &&
-        Math.hypot(bird.position.x - marker.position.x, bird.position.z - marker.position.z) <=
-          ARRIVED_WITHIN,
-      opens: ends.opens,
-    };
-  }
-
-  // Crossed. Square across the way in from the release point this level was
-  // given, rather than from wherever the bird happens to be, so that arriving
-  // in mid-air puts the line in the same place as taking off into it does.
-  const line = finishingLine(spec);
-  if (!line) return null;
-  return { done: () => crossed(line, bird.position.x, bird.position.z), opens: ends.opens };
-}
 
 /**
  * End the level if whatever it is waiting for has happened.
@@ -1868,7 +1829,20 @@ function handoverFor(spec: Level, marker: TargetMarker | null) {
  * this is a level rather than a checkpoint.
  */
 function handOver(): void {
-  if (!handover?.done()) return;
+  // Where the thing this level named has got to, and whether the line is
+  // behind us. Worked out here because they are facts about this world;
+  // what to make of them is `finish.ts`'s business.
+  const marker = objective(targetName(LEVELS[level] ?? LEVELS[0]!));
+  const line = LEVELS[level] ? finishingLine(LEVELS[level]!) : null;
+  const at = {
+    perched: isPerched(bird),
+    toTarget: marker
+      ? Math.hypot(bird.position.x - marker.position.x, bird.position.z - marker.position.z)
+      : Infinity,
+    belly: bird.health,
+    overTheLine: line !== null && crossed(line, bird.position.x, bird.position.z),
+  };
+  if (!handover?.done(at, TICK)) return;
   const opens = handover.opens;
 
   // Finished, whatever comes next -- and if what comes next is a scene, this
@@ -3367,6 +3341,19 @@ function frame(nowMs: number) {
   const toGo = aim
     ? Math.hypot(bird.position.x - aim.position.x, bird.position.z - aim.position.z)
     : Infinity;
+  // The one mark that is up, which on a level ending at a line is the line
+  // itself -- see `markedRoute`. Read here rather than at the panel, because
+  // two things want it: what the map draws, and which way the level wants
+  // him pointed.
+  const steering = waymarks.at;
+  // Where the level wants him, whether or not it is a thing with a marker
+  // over it. A level that ends at a line has no marker on purpose, and it is
+  // exactly those the player gets turned round on.
+  const aimingAt = aim
+    ? { x: aim.position.x, z: aim.position.z }
+    : steering
+      ? { x: steering.x, z: steering.z }
+      : null;
   // Talking the approach down, which is a command rather than a caution: the
   // level has put a target in front of you and you are near it. The two
   // verdicts come off the landing rule itself, so the panel and the ground
@@ -3394,6 +3381,12 @@ function frame(nowMs: number) {
     noseUp: telemetry.angleOfAttack > flightParams.stallAngle * 0.65,
     flown: run.stats.distance,
     toGo,
+    // How far off the way to the target he is pointing. The bearing to it
+    // against the way he is facing, folded into 0 to 180 so that "more than a
+    // right angle" is the whole of the reading.
+    offCourse: aimingAt
+      ? Math.abs(headingError(heading(bird), bearing(bird.position, aimingAt))) * (180 / Math.PI)
+      : Infinity,
     // How long the mark in front of him has been the mark in front of him.
     // Infinity once they have all been passed, which is what says there is
     // nothing to be told about.
@@ -3753,7 +3746,6 @@ function frame(nowMs: number) {
   // nothing to say which was the next step and which was the end of the
   // flight. The finishing line is the last mark on the route now -- see
   // `markedRoute` -- so it comes up when it is the thing to fly at.
-  const steering = waymarks.at;
   minimap.update({
     at: interpolatedState.position,
     heading: heading(interpolatedState),

@@ -1328,24 +1328,44 @@ describe('what the levels aim at', () => {
     }
   });
 
-  it('climbs out of a beat that ends on the ground under a level in the air', () => {
-    // A scene that says something puts the bird down and waits, and then
-    // whatever follows it has to get him to the next release. Where that
-    // release is over the same ground he is standing on, the difference is
-    // all height -- and cutting from standing on paving to hanging sixty
-    // metres above it is the seam this is here to stop.
-    for (const scene of SCENES) {
-      if (scene.says === undefined) continue;
+  it('opens the next leg over the ground the beat was said on', () => {
+    // A scene that says something puts the bird down and waits, and what
+    // follows it is taken up *in place*: the level changes under his feet and
+    // he takes off. There used to be a two and a half second camera climb in
+    // between, on the grounds that cutting from standing on paving to hanging
+    // sixty metres over it is a seam. It is -- but there is no cut now, and
+    // the minimap does what those shots were for.
+    //
+    // What has to hold instead is that the level he takes up is a leg
+    // starting from here. Its own release point is only reached by dying, and
+    // a death that put him half a mile from the square he had just left would
+    // be a checkpoint that lost the level.
+    const centre = HOME_MAP.centre as [number, number];
+    const said = SCENES.filter((scene) => scene.says !== undefined);
+    expect(said.length, 'there are some').toBeGreaterThan(0);
+
+    for (const scene of said) {
       const next = scene.opens;
-      if ('level' in next) {
-        // Straight into a level from a standing beat: only allowed where the
-        // level is not above him, or the cut is the jump described above.
-        const to = LEVELS.find((level) => level.name === next.level)!;
-        expect(to.begins, `${scene.name} hands straight to ${to.name}`).toBe('perched');
+      if (!('level' in next)) {
+        expect(SCENES.map((each) => each.name), scene.name).toContain(next.scene);
         continue;
       }
-      // Otherwise it hands to another scene, which is where the climb lives.
-      expect(SCENES.map((each) => each.name), scene.name).toContain(next.scene);
+      const to = LEVELS.find((level) => level.name === next.level)!;
+      // Where the beat is said: on the target of whichever level opens it.
+      const from = LEVELS.find((level) => {
+        const opens = 'opens' in level.finish ? level.finish.opens : undefined;
+        return opens !== undefined && 'scene' in opens && opens.scene === scene.name;
+      });
+      if (!from) continue;
+      const mark = LANDMARKS.find((each) => each.name === from.target?.name);
+      if (!mark) continue;
+
+      const spot = project(mark.at[0], mark.at[1], centre);
+      const opens = project(to.start[0], to.start[1], centre);
+      expect(
+        Math.hypot(opens.x - spot.x, opens.z - spot.z),
+        `${to.name} begins where ${scene.name} is said`,
+      ).toBeLessThan(50);
     }
   });
 
