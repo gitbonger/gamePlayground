@@ -718,13 +718,13 @@ export function createTutor(
 /**
  * How long an instruction stays up once it has arrived, in seconds.
  *
- * Three. It used to be seven, which was the right number for a corner that
+ * Five. It used to be seven, which was the right number for a corner that
  * showed one thing at a time: an instruction that was replaced the moment the
- * next one arrived had to earn its place by staying. Now that they stack, a
- * long life is what fills the screen, and three is about as long as a thing
- * has to be up to be read while flying.
+ * next one arrived had to earn its place by staying. Three was the first try
+ * once they stacked, and it is not long enough to read two sentences of
+ * Hungarian while flying a pigeon.
  */
-export const HELD = 3;
+export const HELD = 5;
 
 /**
  * How many may be up at once.

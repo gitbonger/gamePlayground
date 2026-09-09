@@ -45,8 +45,14 @@ export interface Placed {
 }
 
 export interface Waymarks {
-  /** The one showing now, or null once they have all been passed. */
-  readonly at: { x: number; z: number } | null;
+  /**
+   * The one showing now, or null once they have all been passed.
+   *
+   * The whole mark rather than its coordinate, because what is drawn for it
+   * depends on what it is: a place gets a pip on the map and a line gets a
+   * line. See `Placed.across`.
+   */
+  readonly at: Placed | null;
   /**
    * The one after it, or null when this is the last.
    *

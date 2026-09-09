@@ -56,7 +56,7 @@ import {
 import { createFlock, defaultFlockOptions, FLOCK_AHEAD, type Anchor } from './flock';
 import { createAmbient } from './ambient';
 import { createDog } from './dog';
-import { createWaymarks, type Waymarks } from './waypoints';
+import { createWaymarks, type Placed, type Waymarks } from './waypoints';
 import { createWaymark } from './render/waymark';
 import { createDogRig } from './render/dog';
 import { escortDrawn } from './render/escort';
@@ -375,6 +375,37 @@ function finishingLine(spec: Level): Line | null {
 }
 
 /**
+ * The whole route of a level, as marks in the order they are passed.
+ *
+ * The waypoints, and then the line that finishes it -- which used to be a
+ * thing apart, painted for the whole level while the marks came and went one
+ * at a time. That meant two of them on screen at once and no telling which
+ * was which: the same blue stripe, one of them the next step and the other
+ * the end of the flight, six hundred metres apart.
+ *
+ * As the last mark it simply takes its turn. Passing the one before it brings
+ * it up, exactly as passing the first brings up the second, and there is
+ * never more than one on the ground or on the map.
+ *
+ * It does not become the *rule*, and that is on purpose: crossing the line
+ * ends the level whether or not the marks before it were passed, because a
+ * bird that wandered off the route and came back over the line has finished.
+ * See `handoverFor`.
+ */
+function markedRoute(spec: Level): Placed[] {
+  // A line is worked out from the release point, exactly as a level's
+  // finishing line is, so the stripe painted on the ground and the rule that
+  // notices you crossing it are the same line.
+  const from = project(spec.start[0], spec.start[1], map.centre);
+  const marks = (spec.waypoints ?? []).map((mark) => {
+    const point = project(mark.at[0], mark.at[1], map.centre);
+    return mark.kind === 'line' ? { ...point, across: lineThrough(from, point) } : point;
+  });
+  const ending = finishingLine(spec);
+  return ending ? [...marks, { x: ending.x, z: ending.z, across: ending }] : marks;
+}
+
+/**
  * Every line to paint: the one that finishes a level, and the ones along it.
  *
  * The same stripe for both, because they are the same thing asked at two
@@ -385,7 +416,7 @@ function finishingLine(spec: Level): Line | null {
 const gates = LEVELS.flatMap((spec) => {
   // The band is modelled along its own x, so it is turned to lie along the
   // route: the same convention everything else on this map is turned in.
-  const paint = (line: Line, mark: number | null) => ({
+  const paint = (line: Line, mark: number) => ({
     name: spec.name,
     mark,
     x: line.x,
@@ -400,8 +431,10 @@ const gates = LEVELS.flatMap((spec) => {
       ? [paint(lineThrough(from, project(mark.at[0], mark.at[1], map.centre)), index)]
       : [],
   );
+  // And the one that ends the level, as the mark after the last of them --
+  // see `markedRoute`.
   const ending = finishingLine(spec);
-  return ending ? [...along, paint(ending, null)] : along;
+  return ending ? [...along, paint(ending, (spec.waypoints ?? []).length)] : along;
 });
 
 /**
@@ -1470,17 +1503,10 @@ function hint(spec: Level, on: boolean): void {
   for (const marker of world.markers) {
     marker.setActive(on && pointing && marker.name === targetName(spec));
   }
-  // Only this level's finishing line is painted. Every other one belongs to a
-  // flight that is not being flown, and a stripe across the ground that means
-  // nothing is worse than no stripe at all.
-  //
-  // The waylines are not touched here. They come and go with the mark being
-  // steered at rather than with the level, so they are turned over every
-  // frame instead -- see `paintWayline`.
-  for (const gate of world.gates) {
-    if (gate.mark === null) gate.object.visible = on && gate.name === spec.name;
-    else gate.object.visible = false;
-  }
+  // The painted lines are not touched here. Every one of them, the finishing
+  // line included, is a mark on the route now, and which one is showing is
+  // the route's business rather than the level's -- see `paintWayline`.
+  if (!on) for (const gate of world.gates) gate.object.visible = false;
 }
 
 /**
@@ -1500,7 +1526,6 @@ function hint(spec: Level, on: boolean): void {
 function paintWayline(): void {
   const here = LEVELS[level]?.name;
   for (const gate of world.gates) {
-    if (gate.mark === null) continue;
     gate.object.visible = gate.name === here && gate.mark === waymarks.index;
   }
 }
@@ -1730,19 +1755,7 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // The marks, from the first one: they are help with *this* level, so they
   // start again with it -- including after a death, when the player is most
   // likely to want them.
-  // The marks, placed, each carrying whatever passing it takes. A line's is
-  // worked out from the release point, exactly as a level's finishing line
-  // is, so the stripe painted on the ground and the rule that notices you
-  // crossing it are the same line.
-  const from = project(spec.start[0], spec.start[1], map.centre);
-  waymarks = createWaymarks(
-    (spec.waypoints ?? []).map((mark) => {
-      const point = project(mark.at[0], mark.at[1], map.centre);
-      return mark.kind === 'line'
-        ? { ...point, across: lineThrough(from, point) }
-        : point;
-    }),
-  );
+  waymarks = createWaymarks(markedRoute(spec));
   waymark.show(waymarks.at, waymarks.next);
   paintWayline();
 
@@ -3838,11 +3851,18 @@ function frame(nowMs: number) {
     // mode, since the beginner's one charges nothing for flying.
     mode.tires && !LEVELS[level]?.tireless,
   );
-  // The same three things the world is showing -- what is aimed at, the mark
-  // that is up, and the line that finishes the level -- seen from above and
-  // turned so forward is up. Read off the same places the world reads them
-  // from, so the map cannot disagree with the thing it is a map of.
-  const ending = LEVELS[level] ? finishingLine(LEVELS[level]!) : null;
+  // The same things the world is showing -- what is aimed at and the one mark
+  // that is up -- seen from above and turned so forward is up. Read off the
+  // same places the world reads them from, so the map cannot disagree with
+  // the thing it is a map of.
+  //
+  // One mark, and it is drawn as whatever it is: a place gets a pip and a
+  // line gets a line. The map used to draw the level's finishing line for the
+  // whole level as well, which put two blue stripes on the panel at once with
+  // nothing to say which was the next step and which was the end of the
+  // flight. The finishing line is the last mark on the route now -- see
+  // `markedRoute` -- so it comes up when it is the thing to fly at.
+  const steering = waymarks.at;
   minimap.update({
     at: interpolatedState.position,
     heading: heading(interpolatedState),
@@ -3853,12 +3873,12 @@ function frame(nowMs: number) {
     // stripe is painted on the ground nine hundred metres away, behind a
     // building. So the map points at the line's own crossing point, which is
     // the spot the level is asking you to fly through.
-    target: aim
-      ? { x: aim.position.x, z: aim.position.z }
-      : ending
-        ? { x: ending.x, z: ending.z }
-        : null,
-    mark: waymarks.at,
+    // Whatever finishes the level, which is not always a thing with a marker
+    // over it. A level that ends at a line has no target to point at on
+    // purpose -- there is nothing to land on -- and on those the route's own
+    // marks are what the map has to say instead.
+    target: aim ? { x: aim.position.x, z: aim.position.z } : null,
+    mark: steering && !steering.across ? { x: steering.x, z: steering.z } : null,
     // Whatever rolling stock is near enough to be on the panel. Filtered by
     // the head of each rake rather than by every vehicle: a hundred and
     // twenty-five trains is a hundred and twenty-five distance checks a
@@ -3907,7 +3927,7 @@ function frame(nowMs: number) {
         )
       : [],
     now: clock,
-    line: ending,
+    line: steering?.across ?? null,
   });
   renderer.render(scene, camera);
   // Then the arrows, on a fresh depth buffer so the world cannot cover them.

@@ -183,3 +183,33 @@ describe('a mark that is a line rather than a place', () => {
     expect(mixed.at).toBeNull();
   });
 });
+
+describe('the route with its finish on the end of it', () => {
+  // What `markedRoute` builds: the waypoints, and then the line that ends the
+  // level. The point of putting it there is that only one thing is ever up.
+  const from = { x: 0, z: 0 };
+  const at = (x: number) => ({ x, z: 0, across: lineThrough(from, { x, z: 0 }) });
+
+  it('brings the finish up only once the marks before it are passed', () => {
+    // The map used to draw the finishing line for the whole level while the
+    // marks came and went, which put two blue stripes on the panel with
+    // nothing to say which was the next step and which was the end.
+    const route = createWaymarks([at(100), at(200), at(600)]);
+    expect(route.at).toEqual(at(100));
+    route.update(150, 0);
+    expect(route.at).toEqual(at(200));
+    route.update(250, 0);
+    expect(route.at).toEqual(at(600));
+  });
+
+  it('has exactly one thing to show at every point along it', () => {
+    const route = createWaymarks([at(100), at(200), at(600)]);
+    for (let x = 0; x <= 700; x += 10) {
+      route.update(x, 0);
+      // Either a mark or nothing, never two.
+      expect([0, 1]).toContain(route.at === null ? 0 : 1);
+    }
+    // And nothing at all once the finish is behind you.
+    expect(route.at).toBeNull();
+  });
+});
