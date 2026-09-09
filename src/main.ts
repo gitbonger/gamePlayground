@@ -70,6 +70,7 @@ import {
   dialogueOf,
   cagedIn,
   LEVELS,
+  meetsSomewhereFixed,
   metBy,
   PINK,
   sceneNamed,
@@ -861,8 +862,12 @@ function releaseFor(spec: Level): { at: Vec3; heading: number; perched: boolean 
   // So the mechanism does it instead, for all five: the level begins standing
   // where the conversation that opened it was held. Nothing is special-cased,
   // and nothing has to be kept in step with a landmark that moves.
+  //
+  // Only where that conversation happens somewhere that stays put. One of
+  // the five is held on the deck of a moving goods wagon, and a wagon is not
+  // a place: see `meetsSomewhereFixed`.
   const before = handedFrom(spec.name);
-  const walked = before ? opposite(before) : null;
+  const walked = before && meetsSomewhereFixed(before) ? opposite(before) : null;
   if (walked) return { at: walked.at, heading: bearing(walked.at, aim), perched: true };
 
   return {

@@ -495,6 +495,22 @@ export const waitingIn = (level: Level): Standing | undefined => {
 export const dialogueOf = (level: Level): Turn | undefined =>
   level.finish.kind === 'meeting' ? level.finish.dialogue : undefined;
 
+/**
+ * Whether the conversation that ends this level happens somewhere that stays
+ * put.
+ *
+ * Asked by the rule that begins a level where the one before it ended: a
+ * branch, a roof and a patch of concrete are all still there tomorrow, and
+ * the deck of a goods wagon is not. Played straight through it makes no
+ * difference -- the hand-over does not move the bird at all -- but a level
+ * *picked out of the menu* has to be put somewhere, and putting it on a train
+ * that has since run three kilometres up the line puts it inside a moving
+ * wagon. Which is fatal, and was: the eleventh level opened with the bird
+ * dead on the deck and "mind the trains" in the corner.
+ */
+export const meetsSomewhereFixed = (level: Level): boolean =>
+  waitingIn(level)?.on.kind === 'landmark';
+
 /** What this one hands over to without being asked, if it does. */
 /**
  * Where she is caged on this level, or nothing if she is not.

@@ -15,6 +15,7 @@ import {
   NOT_AT_MATYAS,
   LEVELS,
   characterNamed,
+  meetsSomewhereFixed,
   metBy,
   cagedIn,
   opensOf,
@@ -1673,5 +1674,37 @@ describe('what the map is allowed to say about her', () => {
     const loft = named('The Loft');
     expect(loft.finish.kind).toBe('meeting');
     expect(loft.finish.kind === 'meeting' && loft.finish.who).toBe(PINK.name);
+  });
+});
+
+describe('where a level begins when it is picked out of the menu', () => {
+  it('knows which conversations happen somewhere that stays put', () => {
+    // A level opened by a conversation begins where that conversation was
+    // held -- which works for a branch, a roof and a patch of concrete, and
+    // does not work for the deck of a goods wagon. The train has run three
+    // kilometres up the line by the time anybody picks the level, and the
+    // bird was being put down inside it: the eleventh level opened with the
+    // hero dead and "mind the trains" in the corner.
+    const nest = LEVELS.find((level) => level.name === 'Nest')!;
+    const yard = LEVELS.find((level) => level.name === 'Keleti')!;
+    expect(meetsSomewhereFixed(nest), 'a branch stays where it is').toBe(true);
+    expect(meetsSomewhereFixed(yard), 'a wagon does not').toBe(false);
+  });
+
+  it('says no for a level nobody is waiting on', () => {
+    // Most of them. A level that ends at a line has nowhere for anybody to
+    // stand, so there is no spot to begin the next one at either.
+    const crossing = LEVELS.find((level) => level.finish.kind === 'crossing')!;
+    expect(meetsSomewhereFixed(crossing)).toBe(false);
+  });
+
+  it('leaves every level that a conversation opens with somewhere to begin', () => {
+    // Either the conversation happened somewhere fixed and the level begins
+    // there, or it did not and the level falls back to its own release point
+    // -- which every level has, and which is why this cannot strand one.
+    for (const level of LEVELS) {
+      expect(level.start, level.name).toHaveLength(2);
+      expect(level.release, level.name).toBeGreaterThan(0);
+    }
   });
 });
