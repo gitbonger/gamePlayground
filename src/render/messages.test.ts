@@ -19,8 +19,10 @@ const flying = (over: Partial<Moment> = {}): Moment => ({
   noseUp: false,
   flown: 0,
   toGo: 500,
+  sinceMark: Infinity,
   landing: Infinity,
   perched: false,
+  onTarget: false,
   crashed: false,
   blocked: false,
   tooFast: false,
@@ -187,17 +189,22 @@ describe('the approach, now that they stack', () => {
   const arriving = (over: Partial<Moment>) =>
     flying({ landing: 100, toGo: 100, altitude: 20, ...over });
 
-  it('asks for one thing at a time on an ordinary approach', () => {
-    // They are allowed to stack. What keeps them from stacking is that each
-    // has a clause holding it out of the others' way -- the height comes
-    // first, then the speed, then the flare.
+  it('asks for the brake whenever the arrival would be too fast', () => {
+    // Height or no height. It used to wait until the height was right, which
+    // kept the screen tidy and meant that a bird coming in high *and* fast --
+    // which is most of them, and the ones that die -- was told about the
+    // height and never about the brake.
     const high = arriving({ altitude: 60, tooFast: true });
-    expect(shows('loseHeight', high)).toBe(true);
-    expect(shows('brakeToSlow', high)).toBe(false);
+    expect(shows('loseHeight', high), 'and the height as well').toBe(true);
+    expect(shows('brakeToSlow', high)).toBe(true);
 
     const settled = arriving({ altitude: 20, tooFast: true });
     expect(shows('loseHeight', settled)).toBe(false);
     expect(shows('brakeToSlow', settled)).toBe(true);
+  });
+
+  it('says nothing about the brake when the speed is already right', () => {
+    expect(shows('brakeToSlow', arriving({ altitude: 20, tooFast: false }))).toBe(false);
   });
 
   it('does not ask for a flare while the bird is still too fast', () => {
@@ -243,5 +250,52 @@ describe('a bird that is not flying is not given flying advice', () => {
     for (const id of ['flap', 'pullUp', 'flare']) expect(shows(id, wreck), id).toBe(false);
     // The one thing there is to say is which key starts again.
     expect(shows('restart', wreck)).toBe(true);
+  });
+});
+
+describe('the two that were asked for by name', () => {
+  it('tells a bird that has landed nowhere in particular to go again', () => {
+    // A player learning to fly lands by accident a great deal, and a bird
+    // standing in a park with no idea the game is waiting for it is the
+    // commonest way a first flight simply stops.
+    const stranded = flying({ perched: true, onTarget: false, airspeed: 0 });
+    expect(shows('takeOffAgain', stranded)).toBe(true);
+  });
+
+  it('says nothing of the sort when the landing was the point', () => {
+    expect(shows('takeOffAgain', flying({ perched: true, onTarget: true }))).toBe(false);
+  });
+
+  it('leaves a conversation alone', () => {
+    // Standing on a branch talking is not being stranded, and the take-off
+    // out of a conversation is somebody else's instruction.
+    for (const over of [{ talking: true }, { leaving: true }, { held: true }]) {
+      expect(shows('takeOffAgain', flying({ perched: true, ...over })), JSON.stringify(over)).toBe(
+        false,
+      );
+    }
+  });
+
+  it('does not nag a player the game has stopped explaining itself to', () => {
+    expect(shows('takeOffAgain', flying({ perched: true, teaching: false }))).toBe(false);
+  });
+
+  it('points at each new mark as it comes up', () => {
+    // Once a mark rather than once a level: the marks are a route, and the
+    // second is as much a direction as the first was.
+    expect(shows('flyToMark', flying({ sinceMark: 0.1 }))).toBe(true);
+    // And then it is simply the thing in front of you.
+    expect(shows('flyToMark', flying({ sinceMark: 4 }))).toBe(false);
+    // Until the next one comes up.
+    expect(shows('flyToMark', flying({ sinceMark: 0 }))).toBe(true);
+    expect(message('flyToMark').once, 'not once a level').toBeUndefined();
+  });
+
+  it('says nothing about marks once they have all been passed', () => {
+    expect(shows('flyToMark', flying({ sinceMark: Infinity }))).toBe(false);
+  });
+
+  it('does not point at a mark to a bird on the ground', () => {
+    expect(shows('flyToMark', flying({ sinceMark: 0.1, perched: true }))).toBe(false);
   });
 });

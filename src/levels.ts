@@ -513,6 +513,21 @@ export const meetsSomewhereFixed = (level: Level): boolean =>
 
 /** What this one hands over to without being asked, if it does. */
 /**
+ * Whether this is the level he finds her on.
+ *
+ * The first one that both ends by meeting her and has her on the trapper's
+ * roof -- which is one level, and is the hinge of the whole story. Read off
+ * the levels rather than named, so that inserting one before it moves the
+ * hinge with it.
+ */
+const findsHer = (level: Level): boolean => {
+  const hers = standingOf(level, PINK.name);
+  return (
+    metBy(level) === PINK.name && hers?.on.kind === 'landmark' && hers.on.name === LOFT.name
+  );
+};
+
+/**
  * Where she is caged on this level, or nothing if she is not.
  *
  * A rule about the story rather than about drawing, which is why it is here:
@@ -521,13 +536,36 @@ export const meetsSomewhereFixed = (level: Level): boolean =>
  * the first two levels of the game -- she is on the branch at home then, and
  * nobody has taken anything yet.
  *
- * The trapper's roof is the only place she is in one. She is put there from
- * the level after the errand, which is the story: taken while he was away.
+ * The trapper's roof is the only place she is in one -- and not before he
+ * gets there. She is written into the cast of every level from the errand
+ * onwards, because that is where the story puts her, and a cage standing on
+ * that roof from the third level is five levels of search with the answer
+ * sitting in plain sight: fly over the wrong roof on the fourth and the game
+ * is over as a story. So it is there from the level he finds her on, and the
+ * search is a search.
  */
 export const cagedIn = (level: Level): Standing | undefined => {
   const hers = standingOf(level, PINK.name);
   if (!hers || hers.on.kind !== 'landmark' || hers.on.name !== LOFT.name) return undefined;
+  const found = LEVELS.findIndex(findsHer);
+  const here = LEVELS.indexOf(level);
+  if (found >= 0 && here >= 0 && here < found) return undefined;
   return hers;
+};
+
+/**
+ * Whether she is to be kept off this level's roof altogether.
+ *
+ * The other half of `cagedIn`. She is in the cast of every level from the
+ * errand onwards, and on the ones before he finds her the cage is not shown
+ * -- so she would be a pink pigeon standing loose on the trapper's roof,
+ * which gives the search away exactly as the cage would.
+ */
+export const hersHidden = (level: Level): boolean => {
+  const hers = standingOf(level, PINK.name);
+  return (
+    hers?.on.kind === 'landmark' && hers.on.name === LOFT.name && cagedIn(level) === undefined
+  );
 };
 
 export const opensOf = (level: Level): Opens | undefined =>

@@ -25,6 +25,7 @@ import {
   standingOf,
   targetName,
   waitingIn,
+  hersHidden,
 } from './levels';
 import { HOME_TREE, LANDMARKS, LOFT } from './landmarks';
 import { nestOn, penthouseOf, peopleOn, plantTerrace, pointOn, terraceOf } from './world/layout';
@@ -1388,10 +1389,15 @@ describe('what the levels aim at', () => {
     expect(onTheTree, 'at home to begin with').toEqual(['Nest', 'Temető']);
     for (const name of onTheTree) expect(caged, `no cage on the nest`).not.toContain(name);
 
-    // And caged for every level she spends on the trapper's roof, which is
-    // the whole of the middle of the story.
-    expect(caged.length).toBeGreaterThan(8);
-    expect(caged).toContain('The rescue');
+    // And caged from the level he finds her on to the level he gets her out
+    // of it, which is the last third of the story. Not before: see `cagedIn`.
+    expect(caged, 'from finding her to freeing her').toEqual([
+      'The Loft',
+      'Fiumei út',
+      'Keleti',
+      'Coming on strong',
+      'The rescue',
+    ]);
 
     // She is not caged on the level after, because she is flying it.
     expect(caged).not.toContain('Everafter');
@@ -1705,6 +1711,38 @@ describe('where a level begins when it is picked out of the menu', () => {
     for (const level of LEVELS) {
       expect(level.start, level.name).toHaveLength(2);
       expect(level.release, level.name).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('keeping the ending out of sight until it is earned', () => {
+  const named = (name: string) => LEVELS.find((level) => level.name === name)!;
+
+  it('puts no cage on the roof while he is still looking for her', () => {
+    // She is written into the cast of every level from the errand onwards,
+    // because that is where the story has put her. A cage standing on the
+    // trapper's roof from the third level is five levels of search with the
+    // answer sitting in plain sight: fly over the wrong roof on the fourth
+    // and the game is over as a story.
+    for (const name of ['Teleki tér', 'Mátyás tér', 'Jani Pali tér', 'Népszínház', 'Blaha']) {
+      expect(cagedIn(named(name)), name).toBeUndefined();
+      expect(hersHidden(named(name)), `${name}: nor her`).toBe(true);
+    }
+  });
+
+  it('puts it there on the level about finding her, and leaves it', () => {
+    for (const name of ['The Loft', 'Fiumei út', 'Keleti', 'Coming on strong', 'The rescue']) {
+      expect(cagedIn(named(name)), name).toBeDefined();
+      expect(hersHidden(named(name)), `${name}: and her in it`).toBe(false);
+    }
+  });
+
+  it('never puts one on the branch at home', () => {
+    // The first version of this rule was "wherever she is", which was a trap
+    // on the nest before anybody had taken anything.
+    for (const name of ['Nest', 'Temető']) {
+      expect(cagedIn(named(name)), name).toBeUndefined();
+      expect(hersHidden(named(name)), `${name}: she is simply there`).toBe(false);
     }
   });
 });

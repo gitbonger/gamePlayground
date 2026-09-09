@@ -71,6 +71,7 @@ import {
   dialogueOf,
   cagedIn,
   LEVELS,
+  hersHidden,
   meetsSomewhereFixed,
   metBy,
   PINK,
@@ -1259,6 +1260,16 @@ let rescue: ReturnType<typeof beginRescue> | null = null;
  * go on looking at is the place they burst in.
  */
 let rescueAt: Vec3 | null = null;
+
+/**
+ * When the mark being flown at last changed, on the world's own clock.
+ *
+ * So that reaching one can be said out loud. A waypoint coming up is an
+ * event -- it happens, and then it is simply the thing in front of you -- and
+ * an instruction about it has to be given on the event rather than for as
+ * long as the mark is there.
+ */
+let markedAt = -Infinity;
 /**
  * A rig each for them, built once and reused.
  *
@@ -1404,7 +1415,12 @@ function stageCast(spec: Level): void {
   }
 
   for (const member of residents) {
-    const spot = standingOf(spec, member.who.name);
+    // She is in the cast of every level from the errand onwards, because that
+    // is where the story has put her -- but she is not to be *found* until
+    // the level about finding her. A pink pigeon standing on the trapper's
+    // roof is the same spoiler the cage is, so she goes with it.
+    const hidden = member.who.name === PINK.name && hersHidden(spec);
+    const spot = hidden ? undefined : standingOf(spec, member.who.name);
     const stood = spot ? standingSpot(spot) : null;
     member.here = stood !== null;
     member.glowing = 0;
@@ -1759,6 +1775,7 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // start again with it -- including after a death, when the player is most
   // likely to want them.
   waymarks = createWaymarks(markedRoute(spec));
+  markedAt = clock;
   waymark.show(waymarks.at, waymarks.next);
   paintWayline();
 
@@ -3249,6 +3266,7 @@ function frame(nowMs: number) {
     for (const hound of dogs) hound.update(TICK);
     for (const crowd of crowds) crowd.update(TICK, solid, wind);
     if (waymarks.update(bird.position.x, bird.position.z)) {
+      markedAt = clock;
       waymark.show(waymarks.at, waymarks.next);
       paintWayline();
     }
@@ -3376,12 +3394,20 @@ function frame(nowMs: number) {
     noseUp: telemetry.angleOfAttack > flightParams.stallAngle * 0.65,
     flown: run.stats.distance,
     toGo,
+    // How long the mark in front of him has been the mark in front of him.
+    // Infinity once they have all been passed, which is what says there is
+    // nothing to be told about.
+    sinceMark: waymarks.at ? clock - markedAt : Infinity,
     // Only where there is something marked to put down on. A level that ends
     // at a line has nothing to land on, so nothing should be talking anybody
     // down -- and a bird sinking towards a marked roof is doing as it was
     // asked, so it should not be told it is in trouble.
     landing: aim ? toGo : Infinity,
     perched: isPerched(bird),
+    // Down on the thing the level was aiming at, rather than down somewhere.
+    // The same reach the level itself is finished by, so the panel and the
+    // level cannot disagree about whether you have arrived.
+    onTarget: isPerched(bird) && toGo <= ARRIVED_WITHIN,
     crashed: hasCrashed(bird),
     blocked: onFoot.blocked,
     // The landing rule's own verdicts rather than thresholds restated here,
@@ -3742,7 +3768,18 @@ function frame(nowMs: number) {
     // over it. A level that ends at a line has no target to point at on
     // purpose -- there is nothing to land on -- and on those the route's own
     // marks are what the map has to say instead.
-    target: aim ? { x: aim.position.x, z: aim.position.z } : null,
+    // Whatever finishes the level, which is not always a thing with a marker
+    // over it. A level that ends at a line has no marker on purpose -- there
+    // is nothing to land on -- and on those it is the line's own crossing
+    // point that gets pointed at, so the panel's rim arrow says which way to
+    // fly. Without it those levels said nothing at all until the line came
+    // inside the panel's three hundred metres, which on Fiumei út is most of
+    // the way there.
+    target: aim
+      ? { x: aim.position.x, z: aim.position.z }
+      : steering?.across
+        ? { x: steering.x, z: steering.z }
+        : null,
     mark: steering && !steering.across ? { x: steering.x, z: steering.z } : null,
     // Whatever rolling stock is near enough to be on the panel. Filtered by
     // the head of each rake rather than by every vehicle: a hundred and

@@ -196,7 +196,13 @@ export function createTipStack(held = HELD, most = STACKED): TipStack {
         if (already) {
           // The same thing, still true. It keeps the place it has had rather
           // than jumping to the bottom of the stack every frame.
-          already.offered = now;
+          //
+          // Except where it is said once. Those are events rather than states
+          // -- "you have flown a hundred and fifty metres" goes on being true
+          // for the rest of the level -- so refreshing them would pin them to
+          // the screen for good. Every distance-triggered lesson in the game
+          // did exactly that: given, and then never taken away.
+          if (!message.once) already.offered = now;
           continue;
         }
         // Said once a level, and it has been said.
@@ -204,8 +210,12 @@ export function createTipStack(held = HELD, most = STACKED): TipStack {
         if (message.once) given.add(message.id);
         up.push({ message, arrived: now, offered: now });
       }
-      // Gone once it has had its time, unless it is still true.
-      up = up.filter((each) => now - each.arrived < held || each.offered >= now);
+      // Gone once it has had its time, unless it is still true. How long that
+      // is is the message's own where it says so: a line naming the place you
+      // are arriving at wants longer on screen than a key to press.
+      up = up.filter(
+        (each) => now - each.arrived < (each.message.holds ?? held) || each.offered >= now,
+      );
       // And never more than a screenful: the oldest goes first, which is the
       // one the player has had the longest to read.
       if (up.length > most) up = up.slice(up.length - most);

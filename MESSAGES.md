@@ -20,7 +20,12 @@ notice. Pressing the key a message names is how somebody says they understood.
 
 On top of that:
 
-- A message stays **5 seconds**, and longer if it is still true.
+- A message stays **5 seconds**, and longer if it is still true. One can ask
+  for its own time instead: `nearingTeleki` takes 6.
+- A **once a level** message is an *event*, not a state. "You have flown a
+  hundred and fifty metres" goes on being true for the rest of the level, so
+  these are shown once and then age out on the clock rather than being held
+  up by a condition that never becomes false again.
 - **Three** at most on screen; a fourth pushes the oldest off.
 - **once a level** means it is said once per flight — a death restarts the
   level and says it again.
@@ -56,6 +61,7 @@ to land, and something to land on is **in sight** at 200 m.
 | `answer` | — | Press a number key to respond! | somebody is waiting for an answer | the reply is given |
 | `takeOff` | `SPACE` | Take off! | finished talking, or held on a beat | `SPACE` is pressed |
 | `walkRound` | `←` `→` | Turn and walk round it | on foot and walked into something | the way is clear |
+| `takeOffAgain` | `SPACE` | Take off again! | **teaching** levels: down, and not down on the thing the level was aiming at | `SPACE` is pressed |
 | `offerHungarian` | `TAB` | Magyar nyelvért nyomd meg a TAB-ot | playing in English, first 10 s of Level 1 | — (once a level) |
 | `offerEnglish` | `TAB` | Press TAB for English | playing in Hungarian, first 10 s of Level 1 | — (once a level) |
 
@@ -78,9 +84,10 @@ to land, and something to land on is **in sight** at 200 m.
 
 | name | keys | says | shows when | goes when |
 | --- | --- | --- | --- | --- |
+| `flyToMark` | — | Fly towards the blue mark! | **teaching** levels: a mark has just come up — each one, not only the first | after 5 s |
 | `landNearArrow` | — | Land near the arrow! | something marked to land on within 200 m | the feet are down (once a level) |
 | `loseHeight` | `↑` | Lose some height | teaching, inside the approach, higher than a third of the distance left | the height is right |
-| `brakeToSlow` | `B` | Brake to slow down | teaching, inside the approach, height already right, and too fast | no longer too fast |
+| `brakeToSlow` | `B` | Brake to slow down | teaching, inside the approach, and too fast — height or no height | no longer too fast |
 | `beatToSoften` | `SPACE` | Beat to soften it | teaching, inside the approach, below 12 m and coming down too hard | no longer too hard |
 | `flare` | `↓` | Pull up! | teaching, inside the approach, below 6 m and not too fast | the feet are down |
 
@@ -91,7 +98,7 @@ to land, and something to land on is **in sight** at 200 m.
 | `tryRight` | Temető | `→` | Try right! | 80 m flown | `→` is pressed |
 | `tryLeft` | Temető | `←` | Try left! | 120 m flown | `←` is pressed |
 | `trees` | Teleki tér | — | Fly through trees. Avoid buildings and vehicles. | 30 m flown | — |
-| `nearingTeleki` | Teleki tér | — | Approaching Teleki tér | 150 m flown | — |
+| `nearingTeleki` | Teleki tér | — | Approaching Teleki tér | 150 m flown | after **6 s** |
 | `seeds` | Teleki tér | — | Collect some seeds! | the feet are down | — |
 | `keepFast` | Blaha | — | Keep fast! | 150 m flown | — |
 | `flyHigh` | The Loft | — | Fly above 150! | 10 m flown | — |
@@ -125,7 +132,14 @@ All of the per-level ones are **once a level**.
 - **`flap` and `pullUp` no longer stop after Level 4.** They are about flying
   into the ground, which is not a tutorial topic. `Try the brakes!` does stop,
   as you said.
-- **The approach coaching now stacks** rather than picking one. Each of the
-  four has a clause keeping it out of the others' way — `brakeToSlow` waits
-  until the height is right, `flare` waits until the speed is — so two at once
-  should be uncommon rather than impossible.
+- **The approach coaching stacks** rather than picking one. `flare` still
+  waits until the speed is right — flaring fast is how a bird arrives fast --
+  but `brakeToSlow` no longer waits for the height. Coming in high *and* fast
+  is most arrivals and all the fatal ones, and it used to be told about the
+  height and never about the brake.
+- **Level 9 (Fiumei út) had nothing to fly at.** It ends at a line and a line
+  has no marker, so once the minimap stopped pointing at the finish there was
+  nothing on screen until the stripe came inside the panel's 300 m — which on
+  that level is most of the way. The map points at the line's own crossing
+  point again, which is Level 10's spawn point, exactly as the level data
+  already said.

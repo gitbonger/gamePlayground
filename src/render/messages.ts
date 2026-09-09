@@ -78,6 +78,15 @@ export interface Moment {
   /** Metres to whatever finishes the level: a thing, or a line. */
   toGo: number;
   /**
+   * How long the mark in front of him has been the mark in front of him.
+   *
+   * Infinity once they have all been passed. A waypoint coming up is an
+   * *event* -- it happens, and after that it is simply the thing in front of
+   * you -- so an instruction about it is given on the event and then held for
+   * as long as any other, rather than sitting on the screen for the whole leg.
+   */
+  sinceMark: number;
+  /**
    * Metres to a *marked place to land*, or Infinity where there is none.
    *
    * Not the same as `toGo`, and the difference is what two of these messages
@@ -89,6 +98,14 @@ export interface Moment {
 
   // --- The bird ------------------------------------------------------------
   perched: boolean;
+  /**
+   * Down, and down on the thing the level was aiming at.
+   *
+   * The same reach the level is finished by, so the panel and the level
+   * cannot disagree about whether the bird has arrived. False for a level
+   * that ends at a line, where landing is never arriving.
+   */
+  onTarget: boolean;
   crashed: boolean;
   /** Walked into something on foot. */
   blocked: boolean;
@@ -163,6 +180,13 @@ export interface Message {
    * level, and a player who died is exactly the one who wants it again.
    */
   once?: boolean;
+  /**
+   * How long it stays up, in seconds, where the usual five is wrong for it.
+   *
+   * A sentence naming the place you are arriving at wants reading; a key to
+   * press wants acting on. Left out, it is `HELD` like everything else.
+   */
+  holds?: number;
   /** Whether it applies to this moment. */
   when(at: Moment): boolean;
   /**
@@ -445,10 +469,13 @@ export const MESSAGES: readonly Message[] = [
     icon: 'brake',
     sort: 'survival',
     spoken: true,
-    // Once the height is right, which is what keeps this off the screen while
-    // `loseHeight` is on it: they are two stages of one approach and the
-    // player can only be in one of them.
-    when: (at) => arriving(at) && at.altitude <= at.landing / 3 && at.tooFast,
+    // Whenever the arrival would be too fast, height or no height. It used to
+    // wait until the height was right, which kept the screen tidy and meant
+    // that a bird coming in high *and* fast -- which is most of them, and the
+    // ones that die -- was told about the height and never about the brake.
+    // Both at once is two instructions; being killed by the one that was not
+    // given is worse.
+    when: (at) => arriving(at) && at.tooFast,
     done: (at) => !at.tooFast,
   },
   {
@@ -479,6 +506,43 @@ export const MESSAGES: readonly Message[] = [
     // Only once the speed is right. Flaring fast is how a bird arrives fast.
     when: (at) => arriving(at) && at.altitude < 6 && !at.tooFast,
     done: (at) => at.perched,
+  },
+
+  {
+    id: 'takeOffAgain',
+    keys: ['SPACE'],
+    text: { en: 'Take off again!', hu: 'Szállj fel újra!' },
+    icon: 'takeOff',
+    sort: 'story',
+    // Down, and down somewhere that is not the place the level asked for.
+    // A player learning to fly lands by accident a great deal, and a bird
+    // standing in a park with no idea that the game is waiting for it is the
+    // commonest way a first flight simply stops.
+    //
+    // Only while the game is still explaining itself: by the fifth level,
+    // standing in a field and wondering why nothing is happening is a
+    // question the player can answer.
+    when: (at) =>
+      at.teaching &&
+      at.perched &&
+      !at.onTarget &&
+      !at.crashed &&
+      !at.talking &&
+      !at.leaving &&
+      !at.held,
+    done: (at) => at.down(['SPACE']),
+  },
+  {
+    id: 'flyToMark',
+    keys: [],
+    text: { en: 'Fly towards the blue mark!', hu: 'Repülj a kék jel felé!' },
+    icon: 'arriving',
+    sort: 'hint',
+    // Said each time one comes up rather than once a level: the marks are a
+    // route, and the second is as much a direction as the first was. Given on
+    // the moment it changes -- see `sinceMark` -- because after that it is
+    // simply the thing in front of you.
+    when: (at) => at.teaching && aloft(at) && at.sinceMark < 1,
   },
 
   // --- What each level has to say for itself -------------------------------
@@ -530,6 +594,10 @@ export const MESSAGES: readonly Message[] = [
     sort: 'story',
     on: ['Teleki tér'],
     once: true,
+    // A sentence rather than an instruction, and the only one on the route
+    // that is purely the story. Six seconds: long enough to be read at the
+    // speed this level is flown at.
+    holds: 6,
     when: (at) => at.flown >= 150,
   },
   {
