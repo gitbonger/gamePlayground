@@ -33,8 +33,13 @@ const INK = {
   bird: '#dfe6ef',
   wing: '#9fb0c6',
   beak: '#e8a24b',
-  crow: '#20242b',
-  crowEdge: '#4a5261',
+  // Dark, but not as dark as it was. These are drawn over the city now
+  // rather than on a card -- the panel behind them is gone -- and a
+  // near-black bird over a shadowed roof is a bird nobody can see. The fill
+  // still reads as black beside the pale one; the outline is what carries the
+  // silhouette when there is nothing behind it.
+  crow: '#2b313b',
+  crowEdge: '#96a1b2',
   warn: '#e8a24b',
   danger: '#e0533f',
   safe: '#7fe0a8',

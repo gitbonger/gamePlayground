@@ -447,73 +447,101 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 18px 10px 12px;
-  border: 1px solid rgba(242, 245, 248, 0.14);
-  border-radius: 12px;
-  /* Thin, because it now sits over the part of the screen the player is
-     flying through rather than over the floor. The blur is what keeps it
-     readable at this transparency: without it a pale roof behind the words
-     takes them away entirely. */
-  background: rgba(12, 18, 26, 0.5);
-  backdrop-filter: blur(7px);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
   pointer-events: none;
 }
 
-/* And what kind of instruction it is, in the colour of the thing it is about.
+/* No card at all: the words and the picture, and a halo to hold them up.
 
-   Red for the ones that end the flight if they are ignored, green for the
-   game talking, and the plain panel for everything else. Tinted rather than
-   filled: the words have to stay the words, and a red card with white text on
-   it is a warning dialog rather than an instruction. */
-.tip-survival {
-  border-color: rgba(224, 83, 63, 0.45);
-  background: rgba(46, 14, 12, 0.5);
+   A panel is a rectangle of one colour laid over a city of every colour, and
+   whatever colour is chosen it is wrong somewhere -- dark over a shadowed
+   street, pale against the sky. What works everywhere is the thing itself
+   with a dark glow round it, which is how a subtitle survives being burnt
+   into a film nobody has seen.
+
+   Two layers, and both are needed. The tight one is opaque and does the
+   reading: it is the difference between white text and white text on a white
+   roof. The wide one is soft and coloured, and it is what says which of the
+   three kinds this is -- see `Tip.sort` -- now that there is no panel to tint. */
+.tip-text {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #f4f7fb;
+  /* Stroked *under* the glyph rather than over it, which is what
+     `paint-order` is for: a three-pixel stroke painted on top eats the
+     counters out of an `e` at this size. */
+  paint-order: stroke fill;
+  -webkit-text-stroke: 3px rgba(8, 11, 15, 0.72);
+  text-shadow: 0 0 14px rgba(8, 11, 15, 0.95), 0 2px 5px rgba(8, 11, 15, 0.9);
 }
 
-.tip-story {
-  border-color: rgba(127, 224, 168, 0.35);
-  background: rgba(12, 34, 26, 0.5);
+.tip-survival .tip-text {
+  text-shadow:
+    0 0 14px rgba(8, 11, 15, 0.95),
+    0 2px 5px rgba(8, 11, 15, 0.9),
+    0 0 22px rgba(224, 83, 63, 0.85);
+}
+
+.tip-story .tip-text {
+  text-shadow:
+    0 0 14px rgba(8, 11, 15, 0.95),
+    0 2px 5px rgba(8, 11, 15, 0.9),
+    0 0 22px rgba(127, 224, 168, 0.7);
 }
 
 /* The picture that goes with the instruction, on the left.
 
-   A hundred and twenty across. It went thirty to sixty when the drawings
-   gained colour and detail, and sixty to this because the panel has moved up
-   into the flight: it is read in the corner of the eye now rather than looked
-   at, and in the corner of the eye a picture beats a word.
+   Sixty across: it went to a hundred and twenty when it had a card behind it
+   and back to this once the card went, because a drawing floating over a city
+   is a different thing from a drawing on a panel -- at that size it was the
+   view.
+
+   The halo is a drop shadow rather than a stroke, because these are strokes
+   already: an outline round an outline is a smudge. Same two layers as the
+   words, and the same job -- the tight dark one so the lines survive a pale
+   roof, the wide coloured one so the kind is legible before the words are.
 
    `fill: none` and the panel's colour are the defaults, not the rule: a mark
    says its own colour when it has one, and most of them do. */
 .tip-icon {
   flex: none;
-  width: 120px;
-  height: 120px;
+  width: 60px;
+  height: 60px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
+  filter: drop-shadow(0 0 2px rgba(8, 11, 15, 0.95)) drop-shadow(0 1px 4px rgba(8, 11, 15, 0.9));
 }
 
-/* A picture of the key, so the text never has to say "press". */
+.tip-survival .tip-icon {
+  filter: drop-shadow(0 0 2px rgba(8, 11, 15, 0.95)) drop-shadow(0 0 12px rgba(224, 83, 63, 0.8));
+}
+
+.tip-story .tip-icon {
+  filter: drop-shadow(0 0 2px rgba(8, 11, 15, 0.95)) drop-shadow(0 0 12px rgba(127, 224, 168, 0.65));
+}
+
+/* A picture of the key, so the text never has to say "press".
+
+   This one keeps a box, because a box is what it is a picture of -- but the
+   box is solid now rather than a tint of the panel it used to sit on, since
+   there is no panel. Same halo as everything else. */
 .tip-key {
   display: inline-block;
   min-width: 30px;
   padding: 5px 9px;
-  border: 1px solid rgba(242, 245, 248, 0.3);
+  border: 1px solid rgba(242, 245, 248, 0.5);
   border-bottom-width: 3px;
   border-radius: 6px;
-  background: rgba(242, 245, 248, 0.1);
-  font-size: 12px;
+  background: rgba(8, 11, 15, 0.72);
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-align: center;
   text-transform: uppercase;
-}
-
-.tip-text {
-  font-size: 16px;
+  box-shadow: 0 0 12px rgba(8, 11, 15, 0.9);
 }
 
 /* --- Dialogue ------------------------------------------------------------ */
