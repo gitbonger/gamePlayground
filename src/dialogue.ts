@@ -5,11 +5,14 @@
  * what you might say back, and what they say next depends on which you chose.
  * One reply or several; the branch ends when there is nothing left to say.
  *
- * The script here is a placeholder and is the same at the end of every level.
- * It is written as data so that replacing it is writing different data.
+ * The words themselves are not here. They are in `DIALOGUE.md`, which is the
+ * source rather than a description of one -- see `script.ts`. What this file
+ * holds is the shape they are read into and the rules for walking it: how a
+ * reply is taken, when a conversation is over, and what it hands to.
  */
 
 import type { Words } from './i18n';
+import { conversation } from './script';
 
 /**
  * The level an ending hands over, by name.
@@ -167,149 +170,15 @@ export function reply(exchange: Exchange, choice: number): Exchange {
 }
 
 /**
- * The placeholder, used at the end of every level until there is a story.
+ * The conversations, by name.
  *
- * Both branches end after one exchange, which is the shape the real ones will
- * have too even when they are longer: they speak, you choose, they answer.
+ * The words are in `DIALOGUE.md` and so are the notes about why each one is
+ * shaped as it is -- see `script.ts`. What is left here is the name each is
+ * known by, so that a level reaching for one is reaching for a constant and
+ * a typo is a build failure rather than a level that cannot be finished.
  */
-/**
- * The first thing anyone says in the game: the mate on the home tree, the egg
- * under her, and the errand that is the reason he leaves at all.
- *
- * The level it belongs to is won the moment it starts, so this carries the
- * whole of it. One branch agrees and ends; the other offers to swap places,
- * is turned down, and ends on his word -- which is the first thing in the
- * game that shows a reply can go somewhere rather than merely be chosen.
- */
-export const HEADING_OUT: Turn = {
-  them: {
-    en: 'I am starving. Could you get some food from Teleki tér?',
-    hu: 'Éhen halok. Hoznál kaját a Teleki térről?',
-  },
-  you: [
-    {
-      text: { en: 'Yes, sure!', hu: 'Persze, megyek!' },
-      then: { them: { en: 'See you!', hu: 'Szia!' }, opens: 'Temető' },
-    },
-    {
-      text: {
-        en: 'I would watch the egg, while you go!',
-        hu: 'Inkább én ülök a tojáson, menj te!',
-      },
-      then: {
-        them: { en: "I'd rather stay", hu: 'Inkább maradok' },
-        you: [{ text: { en: 'Okay.', hu: 'Jól van.' }, opens: 'Temető' }],
-      },
-    },
-  ],
-};
-
-/**
- * Through the bars, at the end of the search.
- *
- * The hinge of the whole story and it is two lines, because it is not a
- * conversation -- it is the moment he finds her, and neither of them has
- * anything to work out. She says what happened and he says what he is going
- * to do about it, and then he leaves to do it.
- *
- * He can reach her here, unlike at the end: the cage is between them and it
- * is *meant* to be. Standing next to somebody you cannot get to is the point
- * of the level.
- */
-export const CAUGHT: Turn = {
-  them: { en: 'The trapper got me!', hu: 'Elkapott a madarász!' },
-  you: [
-    {
-      text: { en: 'Wait, I will bring some help!', hu: 'Várj, hozok segítséget!' },
-      opens: 'Fiumei út',
-    },
-  ],
-};
-
-/**
- * The one out west, and the first news of the story since the empty nest.
- *
- * Five levels of looking end here. He has asked at three squares and found
- * nobody, and what he gets is not his mate -- it is a direction: somebody
- * takes birds, and he is on the top of a big house.
- *
- * No branches. Everything before this offers the player a choice of reply
- * because the choice is the beat; here the beat is being told something, and
- * a fork would be offering to not be told it. So each turn has one thing to
- * say and saying it is what moves on.
- */
-export const THE_TRAPPER: Turn = {
-  them: { en: 'Hey mate!', hu: 'Szia, haver!' },
-  you: [
-    {
-      text: { en: 'I am looking for my girl', hu: 'A páromat keresem' },
-      then: {
-        them: { en: 'Good luck with that!', hu: 'Sok szerencsét hozzá!' },
-        you: [
-          {
-            text: {
-              en: 'She has gone missing while I was away!',
-              hu: 'Eltűnt, amíg oda voltam!',
-            },
-            then: {
-              them: {
-                en:
-                  'There is a crazy person, a trapper, captures birds! ' +
-                  'On the top of a big house! Go look there!',
-                hu:
-                  'Van itt egy őrült, egy madarász, madarakat fogdos! ' +
-                  'Egy nagy ház tetején! Nézz körül ott!',
-              },
-              you: [
-                { text: { en: 'I go quick!', hu: 'Rohanok!' }, opens: 'up to the roofs' },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-};
-
-/**
- * The ask, on the roof of a moving wagon.
- *
- * The shortest conversation in the game and the one the story has been going
- * towards: he has found the birds, and what he needs from them is that they
- * come. Three lines, no branches, and the middle one is the whole plot said
- * out loud for the first time.
- */
-export const THE_ASK: Turn = {
-  them: { en: 'Eh?', hu: 'Na?' },
-  you: [
-    {
-      text: {
-        en: 'You need to help me, a crazy person kidnapped my girl!',
-        hu: 'Segítsetek, egy őrült elrabolta a páromat!',
-      },
-      then: { them: { en: "Let's go!", hu: 'Gyerünk!' }, opens: 'Coming on strong' },
-    },
-  ],
-};
-
-/**
- * On the roof, with the bars on the floor around them.
- *
- * The shortest one in the game after the ask, and it is meant to be: the
- * thing that had to happen has happened, and the beat is that they are both
- * still here. Anything longer would be the game explaining its own ending.
- *
- * It cannot be reached until the cage is open -- see the rescue -- so by the
- * time either of them says anything the player has watched thirty birds walk
- * up to it and take it apart.
- */
-export const SAVED: Turn = {
-  them: { en: 'You saved me!', hu: 'Megmentettél!' },
-  you: [
-    {
-      text: { en: 'I am so happy you are alive!', hu: 'Úgy örülök, hogy élsz!' },
-      opens: 'Everafter',
-    },
-  ],
-};
-
+export const HEADING_OUT = conversation('Heading out');
+export const THE_TRAPPER = conversation('The trapper');
+export const CAUGHT = conversation('Caught');
+export const THE_ASK = conversation('The ask');
+export const SAVED = conversation('Saved');

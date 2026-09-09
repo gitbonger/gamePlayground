@@ -13,6 +13,7 @@
 
 import type { Words } from './i18n';
 import { CAUGHT, HEADING_OUT, SAVED, THE_ASK, THE_TRAPPER, type Turn } from './dialogue';
+import { alone } from './script';
 import {
   HOME_TREE,
   JANI_SQUARE,
@@ -236,6 +237,7 @@ export interface Scene {
  */
 export const HOMECOMING: Scene = {
   name: 'flying home',
+  says: alone('flying home'),
   endsOn: 'Nest',
   seconds: 5,
   cruise: 60,
@@ -243,10 +245,6 @@ export const HOMECOMING: Scene = {
   // the hero says anything without somebody to say it to, and it is what
   // turns the empty nest into an errand -- he is not going for help, he is
   // going to look, and the looking is what the next few levels are.
-  says: [
-    { en: 'OMG! Where did she go?', hu: 'Jaj ne! Hová tűnt?' },
-    { en: 'Maybe she is on Mátyás tér.', hu: 'Talán a Mátyás téren van.' },
-  ],
   opens: { scene: 'flying to Mátyás tér' },
 };
 
@@ -270,7 +268,7 @@ export const BELLY_FULL: Scene = {
   // Nowhere to go and no arc to get there by: this happens where he is.
   seconds: 0,
   cruise: 0,
-  says: [{ en: 'My belly is full, time to fly home!', hu: 'Tele a begyem, irány haza!' }],
+  says: alone('a full belly'),
   opens: { scene: HOMECOMING.name },
 };
 
@@ -300,12 +298,9 @@ export const TO_MATYAS: Scene = {
  */
 export const NOT_AT_MATYAS: Scene = {
   name: 'nobody at Mátyás tér',
+  says: alone('nobody at Mátyás tér'),
   seconds: 0,
   cruise: 0,
-  says: [
-    { en: 'She is not here.', hu: 'Nincs itt.' },
-    { en: 'Maybe on Jani Pali tér.', hu: 'Talán a Jani Pali téren.' },
-  ],
   // Into the climb rather than into the level. It used to go straight on --
   // "the next one starts over the square he is standing on, so a camera
   // taking him there would be a camera going nowhere" -- which was true about
@@ -338,12 +333,9 @@ export const NOT_AT_MATYAS: Scene = {
  */
 export const NOT_AT_JANI: Scene = {
   name: 'nobody at Jani Pali tér',
+  says: alone('nobody at Jani Pali tér'),
   seconds: 0,
   cruise: 0,
-  says: [
-    { en: 'She is not here!', hu: 'Itt sincs!' },
-    { en: 'Maybe on Blaha!', hu: 'Talán a Blahán!' },
-  ],
   opens: { level: 'Népszínház' },
 };
 
