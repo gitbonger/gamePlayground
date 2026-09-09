@@ -76,7 +76,22 @@ export const defaultWatchParams: WatchParams = {
 };
 
 export interface ChaseCamera {
-  update(state: BirdState, params: CameraParams, dt: number): void;
+  /**
+   * Follow the bird from the boom.
+   *
+   * `riding` says the bird is standing on something rather than flying, and
+   * what it buys is a stand-off that does not depend on how fast the ground
+   * is going. The easing here is what makes flight feel like flight -- the
+   * camera lags acceleration on purpose -- but lag against a *perch* is not a
+   * feel, it is an error: an eased camera trails a subject moving steadily by
+   * about `speed x halfLife / ln 2`, so a pigeon standing on a tram at ten
+   * metres a second was framed eleven metres back, and closed to three the
+   * moment it took a step, because a walking bird eases six times faster than
+   * a standing one. Riding shifts the camera by however far the bird was
+   * carried before any easing, which leaves the easing only the gap it is
+   * actually for.
+   */
+  update(state: BirdState, params: CameraParams, dt: number, riding?: boolean): void;
   /**
    * Frame two birds together, easing from wherever the camera is.
    *
@@ -177,6 +192,9 @@ export function createChaseCamera(camera: THREE.PerspectiveCamera): ChaseCamera 
   /** Where the pair was last frame, so the shot can be carried along with it. */
   const carried = new THREE.Vector3();
   let carrying = false;
+  /** And where the bird was, for the same reason on the boom. */
+  const rode = new THREE.Vector3();
+  let riding = false;
 
   function computeIdeal(state: BirdState, params: CameraParams) {
     birdPos.set(state.position.x, state.position.y, state.position.z);
@@ -210,6 +228,8 @@ export function createChaseCamera(camera: THREE.PerspectiveCamera): ChaseCamera 
 
   function snap(state: BirdState, params: CameraParams) {
     computeIdeal(state, params);
+    rode.copy(birdPos);
+    riding = false;
     position.copy(desiredPos);
     target.copy(desiredTarget);
     camera.position.copy(position);
@@ -220,14 +240,27 @@ export function createChaseCamera(camera: THREE.PerspectiveCamera): ChaseCamera 
     initialised = true;
   }
 
-  function update(state: BirdState, params: CameraParams, dt: number) {
+  function update(state: BirdState, params: CameraParams, dt: number, onSomething = false) {
     carrying = false;
     if (!initialised) {
       snap(state, params);
+      riding = onSomething;
       return;
     }
 
     computeIdeal(state, params);
+
+    // Carried along with the perch before any easing -- see `update` on
+    // `ChaseCamera`. Only from the second frame of standing on something: the
+    // frame the bird lands, the distance it travelled to get there is a
+    // distance it flew, and shifting the camera by it would throw the camera
+    // the length of the approach.
+    if (onSomething && riding) {
+      position.add(birdPos).sub(rode);
+      target.add(birdPos).sub(rode);
+    }
+    rode.copy(birdPos);
+    riding = onSomething;
 
     position.lerp(desiredPos, smoothing(params.positionHalfLife, dt));
     target.lerp(desiredTarget, smoothing(params.targetHalfLife, dt));
@@ -246,6 +279,9 @@ export function createChaseCamera(camera: THREE.PerspectiveCamera): ChaseCamera 
   }
 
   function watch(a: Vec3, b: Vec3, params: WatchParams, dt: number) {
+    // Whatever the boom was riding is not this shot's business, and a stale
+    // shift would be applied against a camera that has since been moved.
+    riding = false;
     const ideal = twoShot(a, b, position, params);
 
     // Carried along with the pair before any easing.

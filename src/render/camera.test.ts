@@ -224,3 +224,90 @@ describe('holding the two-shot on a pair that is moving', () => {
     }
   });
 });
+
+describe('following a bird that is standing on something', () => {
+  const DT = 1 / 60;
+
+  /** The perched shot, as `perchedCamera` in the game builds it. */
+  const perched = (walking: boolean) => ({
+    ...defaultCameraParams,
+    distance: 1.4,
+    height: 0.35,
+    lookAhead: walking ? 2.2 : 0.3,
+    rollFollow: 0,
+    positionHalfLife: walking ? 0.12 : 0.7,
+    baseFov: 55,
+    fovGain: 0,
+  });
+
+  /**
+   * Stand a bird on something moving at `speed`, and report how far behind
+   * the camera settles.
+   *
+   * Facing -Z and travelling -Z, which is a pigeon riding a tram forwards.
+   * The bird does not fly anywhere: every metre it covers is a metre it was
+   * carried, which is the whole of what this is about.
+   */
+  function standOff(walking: boolean, speed: number, riding: boolean, seconds = 6) {
+    const camera = new THREE.PerspectiveCamera(55, 16 / 9, 0.35, 12000);
+    const chase = createChaseCamera(camera);
+    const params = perched(walking);
+    const bird = createBird(vec(0, 3.3, 0), 0, 0);
+    chase.snap(bird, params);
+
+    for (let t = 0; t < seconds; t += DT) {
+      bird.position = vec(bird.position.x, bird.position.y, bird.position.z - speed * DT);
+      chase.update(bird, params, DT, riding);
+    }
+    return Math.hypot(
+      camera.position.x - bird.position.x,
+      camera.position.y - bird.position.y,
+      camera.position.z - bird.position.z,
+    );
+  }
+
+  it('keeps its distance however fast the perch is going', () => {
+    // A tram does ten metres a second. An eased camera trails a subject
+    // moving that fast by about `speed x halfLife / ln 2`, which for a bird
+    // standing still on the roof is eleven metres back rather than one and a
+    // half -- and the tram is not something the camera should be lagging at
+    // all, because the bird is not going anywhere relative to it.
+    for (const speed of [0, 5, 10]) {
+      expect(standOff(false, speed, true), `${speed} m/s`).toBeCloseTo(1.44, 1);
+      expect(standOff(true, speed, true), `${speed} m/s walking`).toBeCloseTo(1.44, 1);
+    }
+  });
+
+  it('does not lurch when the bird stops walking on a moving perch', () => {
+    // The complaint this came from, and it is the two half-lives meeting the
+    // tram: a walking bird eases six times faster than a standing one, so
+    // taking a step hauled the camera in by eight metres and stopping let it
+    // fall back out again. On the ground the same switch is worth nothing at
+    // all, which is why it was only ever noticed on a tram.
+    const moving = standOff(true, 10, true) - standOff(false, 10, true);
+    expect(Math.abs(moving)).toBeLessThan(0.1);
+  });
+
+  it('leaves the lag alone for a bird that is actually flying', () => {
+    // The easing is what makes flight feel like flight. Riding is for a perch
+    // and only for a perch, so a bird under its own power is followed exactly
+    // as it always was.
+    expect(standOff(false, 10, false)).toBeGreaterThan(5);
+  });
+
+  it('does not throw the camera on the frame the bird lands', () => {
+    // The first frame of standing on something, the distance the bird just
+    // covered is a distance it flew. Carried by it, the camera would be
+    // thrown the length of the approach.
+    const camera = new THREE.PerspectiveCamera(55, 16 / 9, 0.35, 12000);
+    const chase = createChaseCamera(camera);
+    const bird = createBird(vec(0, 30, 0), 20, 0);
+    for (let t = 0; t < 2; t += DT) {
+      bird.position = vec(bird.position.x, bird.position.y, bird.position.z - 20 * DT);
+      chase.update(bird, defaultCameraParams, DT);
+    }
+    const before = { x: camera.position.x, z: camera.position.z };
+    chase.update(bird, perched(false), DT, true);
+    expect(Math.hypot(camera.position.x - before.x, camera.position.z - before.z)).toBeLessThan(1);
+  });
+});

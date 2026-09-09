@@ -3668,7 +3668,10 @@ function frame(nowMs: number) {
       frameTime,
     );
   } else {
-    chase.update(interpolatedState, activeCamera, frameTime);
+    // Riding whatever it is standing on, if it is standing on anything. A
+    // perch that moves -- a tram, a wagon -- is not something the camera
+    // should be easing against: see `ChaseCamera.update`.
+    chase.update(interpolatedState, activeCamera, frameTime, isPerched(bird));
   }
 
   // Keep the shadow frustum centred on the bird rather than on the origin.
