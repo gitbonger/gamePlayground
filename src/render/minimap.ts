@@ -94,6 +94,20 @@ const STOCK: Record<'engine' | 'wagon' | 'carriage' | 'tram', string> = {
   engine: '#a8382c',
 };
 
+/**
+ * What anything meaning "go here" is drawn in.
+ *
+ * One colour for all of it -- the target, the line that finishes the level,
+ * and the waymark -- and it is the waymark's own blue, which is what the
+ * column in the world already is. The target used to be red and the line
+ * yellow, and yellow is what a tram is: forty of them are on this panel.
+ *
+ * The target and the waymark share it on purpose. They are the same
+ * instruction. What tells them apart is size and shape: the target is bigger
+ * and becomes an arrow at the rim, because it is the one you must not lose.
+ */
+const HEADING_INK = '#54e0ff';
+
 /** The stop names: small, and in the pale grey-yellow a tram is. */
 const STOP_TEXT = 9;
 const STOP_INK = '#d8d2b4';
@@ -368,7 +382,7 @@ export function createMinimap(
         ctx.restore();
       }
 
-      // The finishing line, in the yellow it is painted on the ground.
+      // The finishing line, in the blue it is painted on the ground.
       if (view.line) {
         // The line runs square to the way towards the target, so its own
         // direction is that turned a quarter.
@@ -381,7 +395,7 @@ export function createMinimap(
           view.line.x + view.line.uz * REACH * 2,
           view.line.z - view.line.ux * REACH * 2,
         );
-        ctx.strokeStyle = 'rgba(233, 196, 58, 0.95)';
+        ctx.strokeStyle = HEADING_INK;
         ctx.lineWidth = 2.4;
         ctx.beginPath();
         ctx.moveTo(back.x, back.y);
@@ -511,7 +525,7 @@ export function createMinimap(
 
       // The waymark showing now, if there is one: help, in the colour the
       // column on the ground is.
-      if (view.mark) pip(ctx, to(view.mark.x, view.mark.z), middle, '#54e0ff', 3);
+      if (view.mark) pip(ctx, to(view.mark.x, view.mark.z), middle, HEADING_INK, 3);
 
       // And what the level is aimed at, which is the point of the whole
       // thing. Held at the rim when it is off the map, pointing at it: a
@@ -523,13 +537,13 @@ export function createMinimap(
         const away = Math.hypot(dx, dy);
         const edge = middle - 9;
         if (away <= edge) {
-          pip(ctx, spot, middle, '#e0533f', 4.5);
+          pip(ctx, spot, middle, HEADING_INK, 4.5);
         } else {
           const at = { x: middle + (dx / away) * edge, y: middle + (dy / away) * edge };
           ctx.save();
           ctx.translate(at.x, at.y);
           ctx.rotate(Math.atan2(dy, dx) + Math.PI / 2);
-          ctx.fillStyle = '#e0533f';
+          ctx.fillStyle = HEADING_INK;
           ctx.beginPath();
           ctx.moveTo(0, -7);
           ctx.lineTo(5, 5);

@@ -1355,7 +1355,13 @@ function createMarker(
   // Drawn in its own pass over a cleared depth buffer, so it needs no tricks
   // to stay in front: there is simply nothing else in the pass with it.
   const arrowMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffd21f,
+    // The waymark's own blue. Everything in this game that says "go here"
+    // wears it now -- the arrow, the line on the ground, and the column that
+    // marks a waypoint -- and yellow has been given to the trams, which is
+    // what a tram is. Before this the arrow was yellow and so was the finish
+    // stripe and so were forty trams, which is three different things asking
+    // for the same glance.
+    color: HEADING_COLOR,
     fog: false,
     transparent: true,
   });
@@ -1895,7 +1901,15 @@ const GATE_ORDER = 6;
 /** How deep the band is along the flight, in metres. */
 const GATE_THICKNESS = 8;
 /** Road-marking yellow, which is what it is. */
-const GATE_COLOR = 0xe8c53d;
+/**
+ * What the game paints anything meaning "this way" or "this is it".
+ *
+ * The waymark column's blue, taken as the one colour for destinations: see
+ * the arrow material. Yellow used to do this job and yellow is what a tram
+ * is -- and there are forty of those.
+ */
+const HEADING_COLOR = 0x54e0ff;
+const GATE_COLOR = HEADING_COLOR;
 
 /**
  * Mark a material as a ground decal: drawn in its order, over whatever was
