@@ -56,11 +56,15 @@ export interface Voice {
  */
 const REPEAT_AFTER = 8;
 
-export function createVoice(speaker: Speaker, repeatAfter = REPEAT_AFTER): Voice {
+export function createVoice(
+  speaker: Speaker,
+  repeatAfter = REPEAT_AFTER,
+  startsOn = true,
+): Voice {
   /** When each phrase was last said. */
   const said = new Map<string, number>();
   let showing: string | null = null;
-  let on = true;
+  let on = startsOn;
 
   return {
     update(tip, now) {

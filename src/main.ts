@@ -92,6 +92,7 @@ import { createDialoguePanel, speechColour } from './render/dialogue';
 import { browserSpeaker, createVoice } from './render/voice';
 import { browserTone, createAlarm } from './render/alarm';
 import { browserKit, createAmbience, type Source } from './render/ambience';
+import { browserChime, createCue } from './render/cue';
 import { createVitals, type Vital } from './render/vitals';
 import {
   approachFor,
@@ -1955,7 +1956,16 @@ const vitals = createVitals(overlay);
  * attention for, and speech arrives without being looked at. V turns it off,
  * for the two of us who will get tired of it first.
  */
-const voice = createVoice(browserSpeaker(window.speechSynthesis));
+/**
+ * The voice, off to begin with.
+ *
+ * The instructions have a picture and a note of their own now -- see
+ * `Tip.sort` -- and between those and the crow's two tones there is plenty
+ * being said without one reading the words out as well. `V` turns it on for
+ * anybody who wants it, and it announces itself when it does.
+ */
+const voice = createVoice(browserSpeaker(window.speechSynthesis), undefined, false);
+const cue = createCue(browserChime());
 const alarm = createAlarm(browserTone());
 const ambience = createAmbience(browserKit());
 
@@ -2710,7 +2720,26 @@ const LOCKED_ON: Tip = {
   beep: true,
 };
 
+/** What the corner last said, so a note sounds on the change and not on the frame. */
+let announced: string | null = null;
+
 function command(): Tip | null {
+  // The flight is over badly. The one instruction that has to be there
+  // whatever else is happening, and it goes in the corner because that is
+  // where a player looks for a key -- it used to be a line at the bottom of
+  // the ending panel in the top left, which is neither where the keys are nor
+  // where the eye is.
+  //
+  // A crash, not any ending: a landing is an ending too, and the thing to
+  // press after a good one is the take-off, which is two lines below.
+  if (hasCrashed(bird)) {
+    return {
+      keys: ['R'],
+      text: { en: 'to restart', hu: 'az újrakezdéshez' },
+      icon: 'takeOff',
+      sort: 'story',
+    };
+  }
   // A setting confirming itself outranks everything for a moment, because
   // the player has just pressed a key and is owed an answer about it.
   if (voiceNote && clock - voiceNote.at < NOTICE)
@@ -3213,6 +3242,12 @@ function frame(nowMs: number) {
           input.anyDown,
         ));
   tipPanel.show(saying);
+  // A note when the instruction changes, saying what kind it is: see `Tip.sort`.
+  // Compared here rather than inside the panel, because a sound is not
+  // drawing -- and the panel is asked what to show sixty times a second.
+  const words = saying ? read(saying.text) : null;
+  if (words !== null && words !== announced) cue.sound(saying?.sort ?? 'hint');
+  announced = words;
   // Only the critical ones are said aloud. A voice that reads every
   // instruction is a voice that gets turned off, and then it is not there for
   // the one that mattered.

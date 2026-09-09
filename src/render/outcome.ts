@@ -94,7 +94,7 @@ export function createOutcomePanel(container: HTMLElement): OutcomePanel {
     <div class="outcome-card">
       <h1 data-field="title"></h1>
       <p class="outcome-detail" data-field="detail"></p>
-      <p class="outcome-hint" data-field="again"></p>
+
     </div>
   `;
   container.appendChild(root);
@@ -113,12 +113,8 @@ export function createOutcomePanel(container: HTMLElement): OutcomePanel {
     const copy = OUTCOMES[ending.cause ?? 'landed'];
     field('title').textContent = say(copy.title);
     field('detail').textContent = read(copy.detail(ending));
-    // The key is a picture of the key; the words round it are words.
-    field('again').replaceChildren(
-      document.createTextNode(read({ en: 'press ', hu: 'nyomj ' })),
-      Object.assign(document.createElement('b'), { textContent: 'R' }),
-      document.createTextNode(read({ en: ' to fly again', hu: '-t az újrakezdéshez' })),
-    );
+    // How to fly again is not said here any more. It is a key, and keys are
+    // in the corner under the bird with the rest of them -- see `command`.
   }
   onLanguageChange(() => {
     if (showing) write(showing);

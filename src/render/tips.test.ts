@@ -306,22 +306,25 @@ describe('the cautions, which watch the flight', () => {
     expect(cautionFor(true, { ...fine, noseUp: true, climb: -1, altitude: 40 })).toBeNull();
   });
 
-  it('keeps the stall for everyone and the lessons for the taught', () => {
-    // A pigeon spends half its life low, slow and tired on purpose, so those
-    // three stop once the game stops teaching. Nobody stalls on purpose.
-    const stalled = { ...fine, stalled: true };
+  it('keeps them all for the taught and none for the rest', () => {
+    // A pigeon spends half its life low, slow and tired on purpose, so these
+    // stop once the game stops teaching. There is nothing left that is shown
+    // to everybody: the stall warning was the one, and it is gone -- see
+    // `CAUTIONS`.
     const struggling = { ...fine, altitude: 5, climb: -1, airspeed: 4, stamina: 0.1 };
-    expect(cautionFor(false, stalled)?.text.en).toBe('Nose down!');
     expect(cautionFor(false, struggling)).toBeNull();
     expect(cautionFor(true, struggling)).not.toBeNull();
+    expect(CAUTIONS.some((caution) => caution.always)).toBe(false);
   });
 
-  it('puts the stall before everything, because it is already happening', () => {
-    // The others are about to be a problem. A stall is one: the wing has
-    // stopped working, and nothing else is worth trying until it works again.
-    expect(cautionFor(true, { ...fine, altitude: 5, airspeed: 4, stamina: 0.1, stalled: true })?.text.en).toBe(
-      'Nose down!',
-    );
+  it('says nothing about a stall', () => {
+    // It fired whenever the wing was past its angle, which on a pigeon being
+    // flown properly is most of a hard turn -- and a warning that goes off
+    // while you are doing the right thing teaches you to ignore warnings.
+    // The recovery is unchanged; what has gone is the caption on it.
+    const stalled = { ...fine, stalled: true };
+    expect(cautionFor(true, stalled)).toBeNull();
+    expect(cautionFor(false, stalled)).toBeNull();
   });
 
   it('draws every one of them with a key that does something', () => {

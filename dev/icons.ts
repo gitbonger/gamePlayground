@@ -30,17 +30,25 @@ strip.style.cssText = 'position:relative;padding:8px 0 40px;display:flex;flex-di
 document.body.appendChild(strip);
 
 const shown = [
+  // One of each kind first, so the three colours can be compared, then the
+  // real ones.
+  ...(['survival', 'story', 'hint'] as const).map((sort) => ({
+    keys: ['B'],
+    text: { en: `a ${sort} instruction`, hu: '' },
+    icon: 'crow' as const,
+    sort,
+  })),
   ...Object.values(COURSES).flat(),
   ...CAUTIONS,
 ];
 for (const tip of shown) {
   const holder = document.createElement('div');
-  holder.style.cssText = 'position:relative;height:56px;width:100%';
+  holder.style.cssText = 'position:relative;height:150px;width:100%';
   strip.appendChild(holder);
   const panel = createTipPanel(holder);
   panel.show(tip);
   // Out of the fixed corner and into the row, so they can be seen at once.
   const el = holder.querySelector('.tip') as HTMLElement;
   el.style.position = 'absolute';
-  el.style.bottom = '6px';
+  el.style.bottom = '10px';
 }
