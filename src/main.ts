@@ -2633,6 +2633,36 @@ function banner(): string | null {
   return null;
 }
 
+/**
+ * How hard to turn to end up facing a place, as a walk control.
+ *
+ * Driven through the walk model's own turn rather than by writing the
+ * orientation, so the bird turns the way it turns when the player does it:
+ * same rate, same footwork, same everything. Written straight into the
+ * quaternion it would snap, and a bird that snaps round to face somebody is a
+ * bird nobody believes is standing there.
+ *
+ * Full rate until it is nearly there and then exactly enough to arrive, which
+ * is what the divide by the tick's own turn is doing -- so it stops on the
+ * bearing rather than hunting about it.
+ *
+ * Facing nought is -Z and forward for a heading is `(-sin, -cos)`, so the
+ * heading that looks at an offset is `atan2(-dx, -dz)`.
+ */
+function turningTo(at: Vec3): number {
+  const dx = at.x - bird.position.x;
+  const dz = at.z - bird.position.z;
+  if (Math.hypot(dx, dz) < 0.05) return 0;
+  const want = Math.atan2(-dx, -dz);
+  // The short way round: turning three hundred degrees to save sixty is the
+  // other thing a naive difference does.
+  let off = want - heading(bird);
+  while (off > Math.PI) off -= Math.PI * 2;
+  while (off < -Math.PI) off += Math.PI * 2;
+  const most = flightParams.walkTurnRate * TICK;
+  return Math.max(-1, Math.min(1, off / most));
+}
+
 /** Whether the conversation still wants something said before you go. */
 const midSentence = (): boolean => talkingTo !== null && talk !== null && !isOver(talk);
 
@@ -2913,7 +2943,7 @@ function frame(nowMs: number) {
       doing,
     );
     walkControls.forward = allowed.forward;
-    walkControls.turn = allowed.turn;
+    walkControls.turn = talkingTo ? turningTo(talkingTo.state.position) : allowed.turn;
     walkControls.launch = allowed.launch;
     const wasDown = isPerched(bird);
     onFoot = walk(bird, walkControls, flightParams, TICK, solid);
@@ -3241,7 +3271,10 @@ function frame(nowMs: number) {
           frameTime,
           input.anyDown,
         ));
-  tipPanel.show(saying);
+  // Over the conversation card when there is one. Its height is asked for
+  // rather than guessed at: the four-line exchange at the loft is twice the
+  // two-line one on the branch, and the instruction has to clear both.
+  tipPanel.show(saying, talkPanel.height());
   // A note when the instruction changes, saying what kind it is: see `Tip.sort`.
   // Compared here rather than inside the panel, because a sound is not
   // drawing -- and the panel is asked what to show sixty times a second.

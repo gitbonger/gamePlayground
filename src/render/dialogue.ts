@@ -80,6 +80,15 @@ export interface DialoguePanel {
    * which is where the rest of them are going.
    */
   show(exchange: Exchange | null, voices?: Voices): void;
+  /**
+   * How tall the card is right now, in pixels, or nought when there is none.
+   *
+   * Asked rather than assumed, because it is not a fixed number: the card
+   * grows with the conversation, and the four-line one at the loft is twice
+   * the two-line one on the branch. Whatever has to sit clear of it needs the
+   * real figure -- see `TipPanel.show`.
+   */
+  height(): number;
   dispose(): void;
 }
 
@@ -130,6 +139,9 @@ export function createDialoguePanel(container: HTMLElement): DialoguePanel {
   }
 
   return {
+    height() {
+      return root.hidden ? 0 : (root.firstElementChild?.getBoundingClientRect().height ?? 0);
+    },
     show(exchange, voices) {
       root.hidden = exchange === null;
       if (exchange) draw(exchange, voices);

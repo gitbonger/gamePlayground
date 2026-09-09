@@ -661,8 +661,16 @@ export function createTutor(
 }
 
 export interface TipPanel {
-  /** Show a tip, or pass null to take the panel away. */
-  show(tip: Tip | null): void;
+  /**
+   * Show a tip, or pass null to take the panel away.
+   *
+   * `clearOf` is how many pixels of something else are stacked at the bottom
+   * of the screen -- the conversation card, in practice -- and the panel
+   * lifts itself over them. Passed in rather than looked up, because a panel
+   * that goes hunting through the page for another panel is two panels that
+   * cannot be moved independently.
+   */
+  show(tip: Tip | null, clearOf?: number): void;
   dispose(): void;
 }
 
@@ -676,7 +684,10 @@ export function createTipPanel(container: HTMLElement): TipPanel {
   let showing: string | null = null;
 
   return {
-    show(tip) {
+    show(tip, clearOf = 0) {
+      // Lifted over whatever is standing at the bottom. Nought puts it back
+      // where the stylesheet asks for it, which is under the bird.
+      root.style.marginBottom = clearOf > 0 ? `${clearOf + 18}px` : '';
       // The words rather than the tip, so the same instruction in a language
       // that has just been swapped counts as a different thing to show.
       const wanted = tip ? `${tip.icon ?? ''} ${tip.keys.join('+')} ${read(tip.text)}` : null;
