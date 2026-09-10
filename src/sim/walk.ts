@@ -372,6 +372,10 @@ export function takeOff(state: BirdState, p: FlightParams): void {
   state.angularVelocity = vec(0, 0, 0);
   state.ending = null;
   state.restingOn = null;
+  // Taking off, and not yet flying. Until it climbs clear of here the bird
+  // cannot crash, only land -- see `BirdState.leaving`, which is the whole
+  // reason a fluffed hop off a roof is survivable.
+  state.leaving = { at: state.age, height: state.position.y };
 }
 
 /**

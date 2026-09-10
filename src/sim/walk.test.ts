@@ -7,6 +7,7 @@ import {
   neutralWalk,
   stanceOf,
   standStill,
+  takeOff,
   faceTurn,
   turnToFace,
   walk,
@@ -780,5 +781,48 @@ describe('turning to look at somebody', () => {
       turnToFace(bird, at, p, TICK);
       expect(heading(bird), `${at.x},${at.z}`).toBeCloseTo(wanted, 6);
     }
+  });
+});
+
+describe('a take-off that does not work out', () => {
+  /**
+   * Take off from `height` metres up, flap for `flapFor` seconds and then do
+   * nothing, which is the panic this is about.
+   */
+  function fluffed(height: number, flapFor = 0) {
+    const bird = landed(vec(0, STANDING + height, 0));
+    takeOff(bird, p);
+    // No collider: the roof is not under him once he has left it, which is
+    // the case being asked about -- he goes over the parapet.
+    for (let t = 0; t < 30 && !bird.ending; t += TICK) {
+      step(bird, { ...neutralControls(), flap: t < flapFor }, p, TICK);
+    }
+    return bird;
+  }
+
+  it('puts him down rather than killing him, however high he started', () => {
+    // The arithmetic that makes this necessary: he leaves at `launchSpeed`
+    // and may only touch down at `landingSpeed`, and the first is the larger.
+    expect(p.launchSpeed).toBeGreaterThan(p.landingSpeed);
+    for (const height of [0, 5, 15, 31]) {
+      const bird = fluffed(height);
+      expect(bird.ending?.kind, `${height}m`).toBe('landed');
+      // And it really was a bad arrival, not a tidy one that would have been
+      // survivable anyway -- off the loft he hits the street at nearly twice
+      // the speed a landing is allowed.
+      if (height >= 15) expect(bird.ending!.speed).toBeGreaterThan(p.landingSpeed);
+    }
+  });
+
+  it('hands the ordinary rules back once he has actually flown', () => {
+    // A second of flapping climbs him clear of the hop, and from there on a
+    // bird that flies into the ground has flown into the ground.
+    const bird = fluffed(0, 1);
+    expect(bird.ending?.kind).toBe('crashed');
+  });
+
+  it('is over as soon as he is on his feet again', () => {
+    const bird = fluffed(5);
+    expect(bird.leaving).toBeNull();
   });
 });

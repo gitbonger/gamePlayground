@@ -457,6 +457,24 @@ export interface BirdState {
   /** Seconds since launch. Drives anything that has to evolve in time. */
   age: number;
   /**
+   * A take-off that has not become flight yet: when it began and how high it
+   * began. Null the rest of the time, which is to say whenever the bird is
+   * either properly flying or on its feet.
+   *
+   * It exists because a take-off can kill you by arithmetic. A standing bird
+   * leaves at `launchSpeed` and may only touch down again at `landingSpeed`,
+   * and the first of those is the larger -- so a hop that does not turn into
+   * flight is fatal however it ends, and flapping harder only makes the
+   * arrival faster. Off the loft terrace, thirty-one metres up, that is every
+   * take-off that is not immediately followed by pulling up.
+   *
+   * Which is not what happens to pigeons. A bird that fluffs a take-off comes
+   * down and stands there. So while this is set the bird cannot crash -- it
+   * can only land -- and it stays set until the take-off has plainly worked:
+   * see `CLIMBED` and `TAKING_OFF`.
+   */
+  leaving: { at: number; height: number } | null;
+  /**
    * Set once the flight is over, cleanly or otherwise. The bird is inert while
    * this is non-null; the caller decides when to launch a new one.
    */
@@ -512,6 +530,9 @@ export function createBird(
     flapPhase: 0,
     stridePhase: 0,
     age: 0,
+    // Launched into the air rather than off its feet: there is no take-off
+    // here to be still in the middle of.
+    leaving: null,
     ending: null,
     restingOn: null,
   };
@@ -705,6 +726,17 @@ export function step(
   //
   // A crashed one does not. That is the whole difference between the two
   // endings, and it is the reason this is not simply outside the test.
+  // Has the take-off become flight? Asked before this tick's physics, so that
+  // a bird which climbed clear last tick is judged as a flying one if it hits
+  // something in this one.
+  if (
+    state.leaving &&
+    (state.position.y > state.leaving.height + CLIMBED ||
+      state.age - state.leaving.at > TAKING_OFF)
+  ) {
+    state.leaving = null;
+  }
+
   if (state.ending) {
     if (state.ending.kind === 'landed') recover(state, p, dt);
     return telemetryFor(state, p, 0, 0, 0, p.stallAngle, zeroWork(), vec(0, 0, 0));
@@ -902,6 +934,34 @@ export function step(
  */
 export const ROOF_NORMAL = 0.5;
 
+/**
+ * How far above where it left the bird has to get before the take-off counts
+ * as flight, in metres.
+ *
+ * Has to clear the hop itself, and the hop is bigger than it sounds: the
+ * launch is eleven metres a second at a fifth of a turn up, and measured off
+ * a flat roof with no input at all it peaks 2.1 metres above the tiles --
+ * 2.4 with three seconds of flapping, which is barely more, because a wing
+ * beating at a standstill mostly makes speed rather than height. Two metres
+ * was tried and did nothing at all: every hop crossed it at the top of its
+ * arc and handed the ordinary rules back before the bird came down.
+ *
+ * Five, then. Above that the bird is going up because it is flying.
+ */
+const CLIMBED = 5;
+
+/**
+ * The longest a take-off is allowed to still be one, in seconds.
+ *
+ * A backstop rather than the rule -- what actually ends the grace is
+ * climbing. This only stops a bird that skims away below the height it left
+ * from carrying its take-off across the district with it. Ten, because the
+ * case it has to cover is the loft: thirty-one metres up, and a bird that
+ * fluffs the take-off there is over the parapet and takes seven and a half
+ * seconds to reach the street.
+ */
+const TAKING_OFF = 10;
+
 /** Ground contact, then telemetry. Shared by every path out of `step`. */
 function finish(
   state: BirdState,
@@ -951,6 +1011,8 @@ function settle(
   state.position = at;
   state.restingOn = carrier;
   state.ending = touchdown(state, p);
+  // Down is down: whether that hop worked or not, it is finished with.
+  state.leaving = null;
   work.collision -= kinetic(state.velocity, p);
   state.velocity = vec(0, 0, 0);
   state.angularVelocity = vec(0, 0, 0);
@@ -982,13 +1044,18 @@ export function landingReadiness(state: BirdState, p: FlightParams): LandingRead
 function touchdown(state: BirdState, p: FlightParams): Ending {
   const r = landingReadiness(state, p);
 
-  const cause: CrashCause | null = !r.sinkOk
-    ? 'hard-impact'
-    : !r.speedOk
-      ? 'too-fast'
-      : !r.bankOk
-        ? 'not-level'
-        : null;
+  // A take-off that never became flight cannot kill you, wherever it puts you
+  // down. See `BirdState.leaving`: the bird leaves the ground faster than it
+  // is allowed to touch it, so without this every fluffed hop is fatal.
+  const cause: CrashCause | null = state.leaving
+    ? null
+    : !r.sinkOk
+      ? 'hard-impact'
+      : !r.speedOk
+        ? 'too-fast'
+        : !r.bankOk
+          ? 'not-level'
+          : null;
 
   return {
     kind: cause ? 'crashed' : 'landed',
