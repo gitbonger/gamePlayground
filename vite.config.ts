@@ -14,6 +14,11 @@ export default defineConfig({
    * and bundled -- so there is no second place this has to agree with.
    */
   base: './',
+  /**
+   * MIDI is not on Vite's list of things that are assets, so without this a
+   * `?url` import of one is a module Vite tries to parse as JavaScript.
+   */
+  assetsInclude: ['**/*.mid'],
   server: { port: 5183 },
   build: { target: 'es2022', sourcemap: true },
   test: {

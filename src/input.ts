@@ -68,6 +68,8 @@ export interface InputSource {
   consumeReset(): boolean;
   /** True on the press that turns the spoken instructions on or off. */
   consumeVoice(): boolean;
+  /** True on the press that turns the music on or off. */
+  consumeMusic(): boolean;
   /** Whether Tab was pressed since last asked: swap the language. */
   consumeLanguage(): boolean;
   /**
@@ -129,6 +131,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
   let launchRequested = false;
   let menuRequested = false;
   let voiceRequested = false;
+  let musicRequested = false;
   let languageRequested = false;
   let stepped = 0;
   let confirmed = false;
@@ -155,6 +158,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     held.add(e.code);
     if (e.code === 'KeyR') resetRequested = true;
     if (e.code === 'KeyV') voiceRequested = true;
+    if (e.code === 'KeyM') musicRequested = true;
     if (anyHeld(BINDINGS.flap)) launchRequested = true;
     if (e.code === 'KeyL') menuRequested = true;
     // The language, on the key that means "the other one" everywhere else.
@@ -211,6 +215,12 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     return requested;
   }
 
+  function consumeMusic() {
+    const requested = musicRequested;
+    musicRequested = false;
+    return requested;
+  }
+
   function consumeLanguage() {
     const requested = languageRequested;
     languageRequested = false;
@@ -263,6 +273,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     update,
     consumeReset,
     consumeVoice,
+    consumeMusic,
     consumeLanguage,
     consumeLaunch,
     consumeMenu,

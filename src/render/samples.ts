@@ -16,6 +16,7 @@
  * rather than a game that is silent for six seconds.
  */
 
+import { audio, audioIfOpen, closeAudio } from './audio';
 import type { Kit, Noise } from './ambience';
 
 /**
@@ -74,22 +75,6 @@ const TRIM: Record<Noise, number> = {
  */
 const WANDER = 0.06;
 
-/**
- * One audio context for the recordings, made on the first noise.
- *
- * Same reason as everywhere else here: a context built before anybody has
- * touched the keyboard is a suspended one, and browsers hold it against the
- * page. The bed below shares it rather than opening a second, because two
- * contexts is two hardware streams for one city.
- */
-let shared: AudioContext | null = null;
-
-function context(): AudioContext {
-  shared ??= new AudioContext();
-  void shared.resume();
-  return shared;
-}
-
 export function sampledKit(fallback: Kit, volume = 0.5): Kit {
   const folders = sortIntoFolders(FILES);
   /** Decoded and ready. Empty until the fetches land. */
@@ -122,8 +107,8 @@ export function sampledKit(fallback: Kit, volume = 0.5): Kit {
 
   return {
     play(noise, level, pan) {
-      const audio = context();
-      load(audio);
+      const ctx = audio();
+      load(ctx);
 
       const clips = ready.get(noise);
       if (!clips || clips.length === 0) {
@@ -142,21 +127,20 @@ export function sampledKit(fallback: Kit, volume = 0.5): Kit {
       const clip = clips[which];
       if (!clip) return;
 
-      const source = audio.createBufferSource();
+      const source = ctx.createBufferSource();
       source.buffer = clip;
       source.playbackRate.value = 1 + (Math.random() * 2 - 1) * WANDER;
 
-      const place = audio.createStereoPanner();
+      const place = ctx.createStereoPanner();
       place.pan.value = pan * 0.8;
-      const out = audio.createGain();
+      const out = ctx.createGain();
       out.gain.value = level * volume * (TRIM[noise] ?? 1);
 
-      source.connect(out).connect(place).connect(audio.destination);
+      source.connect(out).connect(place).connect(ctx.destination);
       source.start();
     },
     close() {
-      void shared?.close();
-      shared = null;
+      closeAudio();
       ready.clear();
       loading = false;
       fallback.close();
@@ -217,24 +201,24 @@ export function cityBed(volume = 0.3): Bed {
       // Only ever rides a context something else has already opened, which is
       // how it avoids being the thing that asks for audio before the player
       // has touched a key.
-      const audio = shared;
-      if (!audio) return;
+      const ctx = audioIfOpen();
+      if (!ctx) return;
 
       if (!started) {
         started = true;
-        gain = audio.createGain();
+        gain = ctx.createGain();
         gain.gain.value = 0;
-        gain.connect(audio.destination);
+        gain.connect(ctx.destination);
         // Which street, decided once a session. Two recordings of the same
         // Sunday afternoon, and hearing the other one on the next flight is
         // most of what stops forty seconds of traffic becoming furniture.
         const street = urls[Math.floor(Math.random() * urls.length)] ?? urls[0]!;
         void fetch(street)
           .then((r) => r.arrayBuffer())
-          .then((bytes) => audio.decodeAudioData(bytes))
+          .then((bytes) => ctx.decodeAudioData(bytes))
           .then((buffer) => {
             if (!gain) return;
-            const source = audio.createBufferSource();
+            const source = ctx.createBufferSource();
             source.buffer = buffer;
             source.loop = true;
             // In at a random point, so that starting the game twice is not
@@ -247,7 +231,7 @@ export function cityBed(volume = 0.3): Bed {
 
       // Half a second to get anywhere, which is slow enough to be a descent
       // and fast enough to follow a dive.
-      gain?.gain.setTargetAtTime(want, audio.currentTime, 0.5);
+      gain?.gain.setTargetAtTime(want, ctx.currentTime, 0.5);
     },
     close() {
       gain?.disconnect();

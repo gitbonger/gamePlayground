@@ -94,6 +94,7 @@ import { browserSpeaker, createVoice } from './render/voice';
 import { browserTone, createAlarm } from './render/alarm';
 import { browserKit, createAmbience, type Source } from './render/ambience';
 import { cityBed, sampledKit } from './render/samples';
+import { createMusic } from './render/music';
 import { browserChime, createCue } from './render/cue';
 import { createVitals, type Vital } from './render/vitals';
 import { MESSAGES, NOTICE, type Moment } from './render/messages';
@@ -2098,6 +2099,22 @@ const ambience = createAmbience(sampledKit(browserKit()));
  * with the first bark rather than asking for sound of its own accord.
  */
 const city = cityBed();
+/**
+ * The score, off in the corner until somebody asks for it with M.
+ *
+ * Off by default because music is the one part of a soundtrack a player may
+ * simply not want, and because this is new: a piece is a few kilobytes of
+ * MIDI played through oscillators, which is either exactly the right register
+ * for a game that looks like this or is not, and that is not a judgement to
+ * make on somebody else's behalf.
+ *
+ * What it is here to show is the thing the format is for. There is no
+ * crossfading between two recordings going on below -- the piece is a score
+ * until the moment it is played, so the crows get their own one and it
+ * arrives when they do.
+ */
+const music = createMusic();
+let musicOn = false;
 
 /**
  * How often the list of things that could make a noise is gathered, in
@@ -3029,6 +3046,10 @@ function frame(nowMs: number) {
     // every other message's, in `MESSAGES`.
     voiceNote = { said: voice.toggle() ? 'on' : 'off', at: clock };
   }
+  if (input.consumeMusic()) {
+    musicOn = !musicOn;
+    if (!musicOn) music.stop();
+  }
   // Leaving a finished conversation starts the next level rather than taking
   // off from this one, so the key is taken here before the flight model can
   // have it -- and while there is still something to say it is taken and
@@ -3476,6 +3497,14 @@ function frame(nowMs: number) {
   }
   ambience.hear(clock, interpolatedState.position, heading(interpolatedState), audible);
   city.hear(interpolatedState.position.y, true);
+  // And which piece. Asked every frame with whatever the situation is; the
+  // player only acts on a change, so this is the whole of the level-aware
+  // half of it for now.
+  if (musicOn) {
+    music.play(
+      moment.hunted ? 'crows' : LEVELS[level]?.finish.kind === 'free' ? 'home' : 'rooftops',
+    );
+  }
   world.updateSmoke(allPuffs, camera.quaternion);
   // The thrown grain, and the grain riding on the freight train. One list,
   // one instanced mesh: the seeds on the wagons are worked out from where the
