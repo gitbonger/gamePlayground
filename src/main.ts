@@ -93,6 +93,7 @@ import { createDialoguePanel, speechColour } from './render/dialogue';
 import { browserSpeaker, createVoice } from './render/voice';
 import { browserTone, createAlarm } from './render/alarm';
 import { browserKit, createAmbience, type Source } from './render/ambience';
+import { cityBed, sampledKit } from './render/samples';
 import { browserChime, createCue } from './render/cue';
 import { createVitals, type Vital } from './render/vitals';
 import { MESSAGES, NOTICE, type Moment } from './render/messages';
@@ -2090,7 +2091,13 @@ const vitals = createVitals(overlay);
 const voice = createVoice(browserSpeaker(window.speechSynthesis), undefined, false);
 const cue = createCue(browserChime());
 const alarm = createAlarm(browserTone());
-const ambience = createAmbience(browserKit());
+const ambience = createAmbience(sampledKit(browserKit()));
+/**
+ * The floor of traffic under everything, which gets louder as the bird comes
+ * down. Rides the same audio context the noises above opened, so it starts
+ * with the first bark rather than asking for sound of its own accord.
+ */
+const city = cityBed();
 
 /**
  * How often the list of things that could make a noise is gathered, in
@@ -3468,6 +3475,7 @@ function frame(nowMs: number) {
     heardAt = clock;
   }
   ambience.hear(clock, interpolatedState.position, heading(interpolatedState), audible);
+  city.hear(interpolatedState.position.y, true);
   world.updateSmoke(allPuffs, camera.quaternion);
   // The thrown grain, and the grain riding on the freight train. One list,
   // one instanced mesh: the seeds on the wagons are worked out from where the

@@ -2,3 +2,6 @@ node_modules/
 dist/
 *.local
 .DS_Store
+
+# Downloaded originals for scripts/make-sounds.py; the cut clips are checked in.
+.sound-cache/

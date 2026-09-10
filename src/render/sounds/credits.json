@@ -1,0 +1,194 @@
+[
+ {
+  "file": "bark/bark-1.mp3",
+  "from": "Perro labrador ladrando 02.ogg",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3APerro_labrador_ladrando_02.ogg"
+ },
+ {
+  "file": "bark/bark-2.mp3",
+  "from": "Perro labrador ladrando 01.ogg",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3APerro_labrador_ladrando_01.ogg"
+ },
+ {
+  "file": "bark/bark-3.mp3",
+  "from": "Barking of a dog 2.ogg",
+  "lic": "CC BY-SA 3.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ABarking_of_a_dog_2.ogg"
+ },
+ {
+  "file": "bark/bark-4.mp3",
+  "from": "Barking dog in Rome.ogg",
+  "lic": "CC BY-SA 3.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ABarking_dog_in_Rome.ogg"
+ },
+ {
+  "file": "bark/bark-5.mp3",
+  "from": "Barking dog in Rome.ogg",
+  "lic": "CC BY-SA 3.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ABarking_dog_in_Rome.ogg"
+ },
+ {
+  "file": "bark/bark-6.mp3",
+  "from": "Barking of a dog 2.ogg",
+  "lic": "CC BY-SA 3.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ABarking_of_a_dog_2.ogg"
+ },
+ {
+  "file": "bell/bell-1.mp3",
+  "from": "Sydney tram 18 - 2016-02-14.ogg",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ASydney_tram_18_-_2016-02-14.ogg"
+ },
+ {
+  "file": "bell/bell-2.mp3",
+  "from": "Sydney tram 18 - 2016-02-14.ogg",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ASydney_tram_18_-_2016-02-14.ogg"
+ },
+ {
+  "file": "bell/bell-3.mp3",
+  "from": "Melbourne trams - 2018-09-15 - Andy Mabbett.oga",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AMelbourne_trams_-_2018-09-15_-_Andy_Mabbett.oga"
+ },
+ {
+  "file": "bell/bell-4.mp3",
+  "from": "Tram sound in Lyon, France.ogg",
+  "lic": "CC BY 3.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ATram_sound_in_Lyon%2C_France.ogg"
+ },
+ {
+  "file": "bell/bell-5.mp3",
+  "from": "Melbourne trams - 2018-09-15 - Andy Mabbett.oga",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AMelbourne_trams_-_2018-09-15_-_Andy_Mabbett.oga"
+ },
+ {
+  "file": "bell/bell-6.mp3",
+  "from": "Tram sound in Lyon, France.ogg",
+  "lic": "CC BY 3.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ATram_sound_in_Lyon%2C_France.ogg"
+ },
+ {
+  "file": "caw/caw-1.mp3",
+  "from": "Corvus cornix - Hooded Crow XC405788.mp3",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ACorvus_cornix_-_Hooded_Crow_XC405788.mp3"
+ },
+ {
+  "file": "caw/caw-2.mp3",
+  "from": "Hooded Crow (Corvus cornix) - Bærum, Norway 2021-04-03.mp3",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AHooded_Crow_%28Corvus_cornix%29_-_B%C3%A6rum%2C_Norway_2021-04-03.mp3"
+ },
+ {
+  "file": "caw/caw-3.mp3",
+  "from": "Corvus cornix - Hooded Crow XC405788.mp3",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ACorvus_cornix_-_Hooded_Crow_XC405788.mp3"
+ },
+ {
+  "file": "caw/caw-4.mp3",
+  "from": "Corvus cornix.ogg",
+  "lic": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File%3ACorvus_cornix.ogg"
+ },
+ {
+  "file": "caw/caw-5.mp3",
+  "from": "Hooded Crow (Corvus cornix) - Bærum, Norway 2021-04-03.mp3",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AHooded_Crow_%28Corvus_cornix%29_-_B%C3%A6rum%2C_Norway_2021-04-03.mp3"
+ },
+ {
+  "file": "caw/caw-6.mp3",
+  "from": "Corvus cornix.ogg",
+  "lic": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File%3ACorvus_cornix.ogg"
+ },
+ {
+  "file": "coo/coo-1.mp3",
+  "from": "Dove cooing.ogg",
+  "lic": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File%3ADove_cooing.ogg"
+ },
+ {
+  "file": "coo/coo-2.mp3",
+  "from": "Columba livia - Rock Dove XC541143.mp3",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AColumba_livia_-_Rock_Dove_XC541143.mp3"
+ },
+ {
+  "file": "coo/coo-3.mp3",
+  "from": "20200321 125634 Pigeons.ogg",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3A20200321_125634_Pigeons.ogg"
+ },
+ {
+  "file": "coo/coo-4.mp3",
+  "from": "Columba livia - Rock Dove XC539061.mp3",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AColumba_livia_-_Rock_Dove_XC539061.mp3"
+ },
+ {
+  "file": "coo/coo-5.mp3",
+  "from": "Columba livia - Rock Dove XC541143.mp3",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AColumba_livia_-_Rock_Dove_XC541143.mp3"
+ },
+ {
+  "file": "coo/coo-6.mp3",
+  "from": "Dove cooing.ogg",
+  "lic": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File%3ADove_cooing.ogg"
+ },
+ {
+  "file": "screech/screech-1.mp3",
+  "from": "Tram sound in Lyon, France.ogg",
+  "lic": "CC BY 3.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ATram_sound_in_Lyon%2C_France.ogg"
+ },
+ {
+  "file": "screech/screech-2.mp3",
+  "from": "Tram sound in Lyon, France.ogg",
+  "lic": "CC BY 3.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ATram_sound_in_Lyon%2C_France.ogg"
+ },
+ {
+  "file": "screech/screech-3.mp3",
+  "from": "Sydney tram 18 - 2016-02-14.ogg",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ASydney_tram_18_-_2016-02-14.ogg"
+ },
+ {
+  "file": "screech/screech-4.mp3",
+  "from": "Sydney tram 18 - 2016-02-14.ogg",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ASydney_tram_18_-_2016-02-14.ogg"
+ },
+ {
+  "file": "screech/screech-5.mp3",
+  "from": "Melbourne trams - 2018-09-15 - Andy Mabbett.oga",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AMelbourne_trams_-_2018-09-15_-_Andy_Mabbett.oga"
+ },
+ {
+  "file": "screech/screech-6.mp3",
+  "from": "Melbourne trams - 2018-09-15 - Andy Mabbett.oga",
+  "lic": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AMelbourne_trams_-_2018-09-15_-_Andy_Mabbett.oga"
+ },
+ {
+  "file": "street/street-1.mp3",
+  "from": "Sunday in the city street noise1.ogg",
+  "lic": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File%3ASunday_in_the_city_street_noise1.ogg"
+ },
+ {
+  "file": "street/street-2.mp3",
+  "from": "Sunday in the city street noise3.ogg",
+  "lic": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File%3ASunday_in_the_city_street_noise3.ogg"
+ }
+]

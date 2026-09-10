@@ -38,3 +38,10 @@ weigh. Then give the numbers and a recommendation.
 - `src/render/messages.ts` — the instruction conditions in code.
 - `scripts/start-manualtest.sh` — the play server, which does not reload
   under you. Started by hand, not by Claude.
+- `src/render/sounds/` — the recorded noises, one folder per kind. The folder
+  is the list: delete a file and the game stops making that sound, drop one in
+  and it starts. `CREDITS.md` in there says where each came from and under
+  what licence, and has to stay with them.
+- `scripts/make-sounds.py` — fetches the recordings from Wikimedia Commons and
+  cuts the clips. Only run when you want different noises; the output is
+  checked in. Audition what it produced at `dev/clips.html`.
