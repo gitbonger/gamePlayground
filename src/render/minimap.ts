@@ -107,6 +107,15 @@ const STOCK: Record<'engine' | 'wagon' | 'carriage' | 'tram', string> = {
  * and becomes an arrow at the rim, because it is the one you must not lose.
  */
 const HEADING_INK = '#54e0ff';
+/**
+ * How big the two things worth flying at are drawn, in pixels.
+ *
+ * They share a colour on purpose -- they are the same instruction, "go this
+ * way" -- so size is the whole of what tells them apart, at the rim as well
+ * as on the panel.
+ */
+const MARK_SIZE = 3;
+const TARGET_SIZE = 4.5;
 
 /** The stop names: small, and in the pale grey-yellow a tram is. */
 const STOP_TEXT = 9;
@@ -524,35 +533,17 @@ export function createMinimap(
       }
 
       // The waymark showing now, if there is one: help, in the colour the
-      // column on the ground is.
-      if (view.mark) pip(ctx, to(view.mark.x, view.mark.z), middle, HEADING_INK, 3);
+      // column on the ground is. Held at the rim when it is off the panel,
+      // exactly as the target is -- a mark three hundred metres away is one
+      // you have flown past or turned away from, which is the moment it has
+      // something to say. It used to be a plain dot, so it simply left the
+      // panel and the map went quiet on a level whose whole route is marks.
+      if (view.mark) point(ctx, to(view.mark.x, view.mark.z), middle, MARK_SIZE);
 
       // And what the level is aimed at, which is the point of the whole
-      // thing. Held at the rim when it is off the map, pointing at it: a
-      // target you cannot see is exactly the case this exists for.
-      if (view.target) {
-        const spot = to(view.target.x, view.target.z);
-        const dx = spot.x - middle;
-        const dy = spot.y - middle;
-        const away = Math.hypot(dx, dy);
-        const edge = middle - 9;
-        if (away <= edge) {
-          pip(ctx, spot, middle, HEADING_INK, 4.5);
-        } else {
-          const at = { x: middle + (dx / away) * edge, y: middle + (dy / away) * edge };
-          ctx.save();
-          ctx.translate(at.x, at.y);
-          ctx.rotate(Math.atan2(dy, dx) + Math.PI / 2);
-          ctx.fillStyle = HEADING_INK;
-          ctx.beginPath();
-          ctx.moveTo(0, -7);
-          ctx.lineTo(5, 5);
-          ctx.lineTo(-5, 5);
-          ctx.closePath();
-          ctx.fill();
-          ctx.restore();
-        }
-      }
+      // thing. Bigger, which is what tells the two apart: they are the same
+      // colour on purpose, being the same instruction.
+      if (view.target) point(ctx, to(view.target.x, view.target.z), middle, TARGET_SIZE);
 
       // The bird, at the middle, pointing up because the map is turned rather
       // than the bird.
@@ -572,6 +563,69 @@ export function createMinimap(
 }
 
 /** A dot, with a dark ring so it reads against a street. */
+/**
+ * Where something being pointed at is drawn, and whether it is at the rim.
+ *
+ * The panel is a circle three hundred and twenty metres wide, and the things
+ * worth flying at are routinely further off than that. Drawn where they
+ * really are they land outside the circle and are not seen at all, which is
+ * the same as not drawing them -- and a map that goes blank exactly when you
+ * have lost your way is a map for people who have not.
+ *
+ * So a thing beyond the rim is held *on* the rim, and drawn as an arrow
+ * pointing out at it rather than as a dot sitting on it: a dot on the edge
+ * says "here", and the one thing that is certainly not true is that it is
+ * there.
+ *
+ * Pure, and separate from the drawing, because this is the part with a rule
+ * in it -- and a rule about a circle is easy to get subtly wrong and
+ * impossible to check by eye.
+ */
+export function heldOnPanel(
+  spot: { x: number; y: number },
+  middle: number,
+  size: number,
+): { at: { x: number; y: number }; turn: number | null } {
+  const dx = spot.x - middle;
+  const dy = spot.y - middle;
+  const away = Math.hypot(dx, dy);
+  // Far enough in that the arrow is drawn inside the panel rather than half
+  // over its edge.
+  const edge = middle - size - 4;
+  if (away <= edge) return { at: spot, turn: null };
+  return {
+    at: { x: middle + (dx / away) * edge, y: middle + (dy / away) * edge },
+    // Pointing out along the way to it. The arrow is drawn nose-up, so this
+    // is the angle from up rather than from along.
+    turn: Math.atan2(dy, dx) + Math.PI / 2,
+  };
+}
+
+/** Draw one: a dot where it is, or an arrow at the rim pointing at it. */
+function point(
+  ctx: CanvasRenderingContext2D,
+  spot: { x: number; y: number },
+  middle: number,
+  size: number,
+): void {
+  const held = heldOnPanel(spot, middle, size);
+  if (held.turn === null) {
+    pip(ctx, held.at, middle, HEADING_INK, size);
+    return;
+  }
+  ctx.save();
+  ctx.translate(held.at.x, held.at.y);
+  ctx.rotate(held.turn);
+  ctx.fillStyle = HEADING_INK;
+  ctx.beginPath();
+  ctx.moveTo(0, -size * 1.55);
+  ctx.lineTo(size * 1.1, size * 1.1);
+  ctx.lineTo(-size * 1.1, size * 1.1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 function pip(
   ctx: CanvasRenderingContext2D,
   at: { x: number; y: number },

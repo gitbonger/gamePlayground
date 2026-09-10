@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { namedStops, onPanel } from './minimap';
+import { heldOnPanel, namedStops, onPanel } from './minimap';
 import { shortStop } from '../world/layout';
 
 /** A panel 100 across, showing 200 m each way. */
@@ -245,5 +245,64 @@ describe('naming the tram stops', () => {
     // slash is the third word, and the trailing punctuation goes with it.
     expect(shortStop('Wesselényi utca / Erzsébet körút')).toBe('Wesselényi utca');
     expect(shortStop('Teleki László tér')).toBe('Teleki László tér');
+  });
+});
+
+describe('holding a mark on the panel when it is off it', () => {
+  // The panel is 296 across, so its middle is 148 and its rim is that less
+  // the room the arrow needs.
+  const MIDDLE = 148;
+  const SIZE = 3;
+
+  it('leaves something on the panel where it is', () => {
+    const spot = { x: MIDDLE + 20, y: MIDDLE - 40 };
+    expect(heldOnPanel(spot, MIDDLE, SIZE)).toEqual({ at: spot, turn: null });
+  });
+
+  it('holds something off the panel on the rim', () => {
+    // Where the waypoint on the sixth level goes the moment you turn away
+    // from it. It used to be drawn at its real place, which is outside the
+    // circle -- so the map simply went quiet on a level whose whole route is
+    // marks, at the exact moment somebody had lost their way.
+    const held = heldOnPanel({ x: MIDDLE + 900, y: MIDDLE }, MIDDLE, SIZE);
+    expect(held.turn, 'drawn as an arrow, not a dot').not.toBeNull();
+    const out = Math.hypot(held.at.x - MIDDLE, held.at.y - MIDDLE);
+    expect(out, 'on the rim').toBeCloseTo(MIDDLE - SIZE - 4, 6);
+  });
+
+  it('points the arrow out at the thing', () => {
+    // The arrow is drawn nose-up, so the turn is the angle from up. Due east
+    // of the bird is a quarter turn clockwise.
+    const east = heldOnPanel({ x: MIDDLE + 900, y: MIDDLE }, MIDDLE, SIZE);
+    expect(east.turn!).toBeCloseTo(Math.PI / 2, 6);
+    // And straight ahead -- up the panel -- is no turn at all.
+    const ahead = heldOnPanel({ x: MIDDLE, y: MIDDLE - 900 }, MIDDLE, SIZE);
+    expect(ahead.turn!).toBeCloseTo(0, 6);
+  });
+
+  it('keeps it on the way to the thing, not merely somewhere on the rim', () => {
+    // Held along the line from the bird to it, so the arrow is *where* you
+    // would look as well as pointing the way you would go.
+    const held = heldOnPanel({ x: MIDDLE + 600, y: MIDDLE - 600 }, MIDDLE, SIZE);
+    expect(held.at.x - MIDDLE).toBeCloseTo(-(held.at.y - MIDDLE), 6);
+    expect(held.at.x).toBeGreaterThan(MIDDLE);
+  });
+
+  it('gives the bigger thing more room, so the rim tells them apart too', () => {
+    // The mark and the target share a colour on purpose -- they are the same
+    // instruction -- so size is the whole of what separates them, and it has
+    // to survive being held at the edge.
+    const far = { x: MIDDLE + 900, y: MIDDLE };
+    const mark = heldOnPanel(far, MIDDLE, 3);
+    const target = heldOnPanel(far, MIDDLE, 4.5);
+    expect(Math.hypot(target.at.x - MIDDLE, target.at.y - MIDDLE)).toBeLessThan(
+      Math.hypot(mark.at.x - MIDDLE, mark.at.y - MIDDLE),
+    );
+  });
+
+  it('does not fall over when the thing is under the bird', () => {
+    // Nought away, and normalising a zero-length vector is not a direction.
+    const on = { x: MIDDLE, y: MIDDLE };
+    expect(heldOnPanel(on, MIDDLE, SIZE)).toEqual({ at: on, turn: null });
   });
 });
