@@ -1433,9 +1433,9 @@ export const LEVELS: readonly Level[] = [
     // The two towers on Nagyvárad tér, and nothing to do but fly at them.
     //
     // Another place rather than another task, like `Andrássy`: no target, no
-    // line and no finish. What it has instead is a thing on the horizon -- a
-    // hundred metres of building, three times the height of anything between
-    // here and there -- and the level is let go facing it.
+    // line and no finish. What it has instead is a thing on the horizon -- two
+    // hundred metres of building, twice the height he is let go at -- and the
+    // level is let go facing it.
     name: 'Elméleti Tömb',
     // Over the south of the district, a hundred metres up and a kilometre
     // short of the towers.
