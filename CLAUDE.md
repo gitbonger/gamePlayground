@@ -34,6 +34,9 @@ weigh. Then give the numbers and a recommendation.
 - `MESSAGES.md` — the instructions the panel shows, and the conditions each
   appears and disappears under. A specification; the code follows it, and a
   test fails if the two stop naming the same messages.
+- `MUSIC.md` — what puts the music at each intensity, 1 to 5, and what each
+  intensity does to it. A specification like `MESSAGES.md`: the code is
+  `src/render/intensity.ts`, and a test keeps the two naming the same things.
 - `src/finish.ts` — what ends each kind of level.
 - `src/render/messages.ts` — the instruction conditions in code.
 - `scripts/start-manualtest.sh` — the play server, which does not reload

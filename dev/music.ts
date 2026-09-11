@@ -27,6 +27,22 @@ for (const name of [...pieces(), null]) {
   keys.appendChild(button);
 }
 
+// And the five intensities, so the difference between cruising and being
+// hunted can be heard without flying anywhere.
+keys.appendChild(document.createElement('br'));
+const levels: HTMLButtonElement[] = [];
+for (const level of [1, 2, 3, 4, 5] as const) {
+  const button = document.createElement('button');
+  button.textContent = `intensity ${level}`;
+  button.classList.toggle('on', level === 1);
+  button.addEventListener('click', () => {
+    music.intensity(level);
+    for (const each of levels) each.classList.toggle('on', each === button);
+  });
+  levels.push(button);
+  keys.appendChild(button);
+}
+
 // What the parser made of each file, which is the half of this that can be
 // checked without ears.
 void Promise.all(
@@ -55,3 +71,17 @@ setInterval(() => {
   bar.style.width = `${Math.min(100, peak * 140)}%`;
   bar.dataset.peak = peak.toFixed(3);
 }, 100);
+
+// The raw level, sampled fast and kept, so a beat can be found in it -- which
+// is how the tempo can be checked by something that cannot tap its foot.
+const rms: number[] = [];
+setInterval(() => {
+  if (!meter) return;
+  const data = new Float32Array(512);
+  meter.getFloatTimeDomainData(data);
+  let sum = 0;
+  for (const sample of data) sum += sample * sample;
+  rms.push(Math.sqrt(sum / data.length));
+  if (rms.length > 400) rms.shift();
+  bar.dataset.rms = rms.map((v) => v.toFixed(4)).join(',');
+}, 20);

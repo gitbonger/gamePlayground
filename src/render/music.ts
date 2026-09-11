@@ -15,6 +15,7 @@
  */
 
 import { audio, noiseBuffer } from './audio';
+import type { Intensity } from './intensity';
 import { readSong, type Note, type Song } from './midi';
 
 /**
@@ -165,6 +166,34 @@ function makeRoom(ctx: AudioContext, seconds = 1.9, decay = 3.2): AudioBuffer {
   return room;
 }
 
+/**
+ * What each intensity does to the music: how fast it is played and how loud.
+ * `MUSIC.md` has the same table, in words.
+ *
+ * A first try, and deliberately a blunt one. The same piece taken a quarter
+ * faster and played louder is a long way short of a score that knows what is
+ * happening -- but it is the half that needs no new notes, and it says
+ * whether following the game is worth doing before anybody writes a note of
+ * the other half.
+ */
+const FEEL: Record<Intensity, { tempo: number; volume: number }> = {
+  1: { tempo: 0.85, volume: 0.55 },
+  2: { tempo: 0.95, volume: 0.7 },
+  3: { tempo: 1, volume: 0.82 },
+  4: { tempo: 1.12, volume: 0.92 },
+  5: { tempo: 1.25, volume: 1 },
+};
+
+/**
+ * Seconds the tempo takes to get most of the way to a new one.
+ *
+ * A jump in tempo is a stumble -- every player can hear a beat arrive early
+ * -- so it is glided. Two seconds is quick enough that the crows locking on
+ * is heard at once as the music leaning forward, and slow enough that it
+ * leans rather than lurches.
+ */
+const TEMPO_GLIDE = 2;
+
 /** How far ahead notes are handed to the audio clock, in seconds. */
 const LOOKAHEAD = 0.4;
 /** How often the scheduler wakes up. Well inside the lookahead. */
@@ -183,6 +212,8 @@ export interface Music {
   play(name: string | null): void;
   /** How loud, 0 to 1, ramped. For ducking under a warning. */
   level(loud: number): void;
+  /** How much is going on; see `FEEL`. Called every frame, acted on as it changes. */
+  intensity(now: Intensity): void;
   stop(): void;
   readonly playing: string | null;
 }
@@ -202,26 +233,46 @@ export function createMusic(
   let wet: GainNode | null = null;
   let room: ConvolverNode | null = null;
 
-  /** The piece being played, and the machinery keeping it going. */
+  /**
+   * The piece being played, and where in it the playhead is.
+   *
+   * The playhead is kept as an anchor -- a moment on the audio clock, and how
+   * far into the piece it was then -- plus a rate. That is what lets the
+   * tempo change halfway through a bar: moving to a new rate is re-anchoring
+   * at *now* and going on from there at the new speed, and every note still
+   * to come is placed off that.
+   */
   let now: {
     name: string;
     song: Song;
     out: GainNode;
-    /** Context time that the current time round the piece started at. */
-    from: number;
-    /** How far down the note list this loop has been scheduled. */
+    /** Seconds into the piece, counting every time round, at `clock`. */
+    heard: number;
+    /** The audio clock's time when the playhead was at `heard`. */
+    clock: number;
+    /** How many times round, which is how far into the piece note 0 is now. */
+    lap: number;
+    /** How far down the note list this lap has been scheduled. */
     next: number;
   } | null = null;
   let wanted: string | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
   let loud = 1;
+  /** Seconds of piece per second of clock, and what it is gliding towards. */
+  let rate = FEEL[1].tempo;
+  let feel = FEEL[1];
+  let lastFill = 0;
+
+  const gainNow = () => volume * loud * feel.volume;
+  /** Where in the piece the playhead is, or will be, at clock time `t`. */
+  const heardAt = (t: number) => (now ? now.heard + (t - now.clock) * rate : 0);
 
   function build(): AudioContext {
     const made = audio();
     if (ctx !== made || !master) {
       ctx = made;
       master = made.createGain();
-      master.gain.value = volume * loud;
+      master.gain.value = gainNow();
       room = made.createConvolver();
       room.buffer = makeRoom(made);
       wet = made.createGain();
@@ -322,19 +373,35 @@ export function createMusic(
   /** Hand the audio clock everything that starts in the next `LOOKAHEAD`. */
   function fill(): void {
     if (!now || !ctx) return;
-    const until = ctx.currentTime + LOOKAHEAD;
+    const clockNow = ctx.currentTime;
+
+    // Glide the tempo, re-anchoring first so the change starts from here
+    // rather than rewriting where the playhead has already been.
+    const since = lastFill ? Math.min(0.5, clockNow - lastFill) : 0;
+    lastFill = clockNow;
+    if (since > 0 && Math.abs(feel.tempo - rate) > 1e-4) {
+      now.heard = heardAt(clockNow);
+      now.clock = clockNow;
+      rate += (feel.tempo - rate) * (1 - Math.exp(-since / (TEMPO_GLIDE / 3)));
+    }
+
+    const until = heardAt(clockNow + LOOKAHEAD);
     for (;;) {
       const note = now.song.notes[now.next];
-      if (note && now.from + note.at < until) {
-        sound(now.from + note.at, note, now.out);
+      const start = note ? now.lap * now.song.length + note.at : Infinity;
+      if (note && start < until) {
+        const at = Math.max(clockNow, now.clock + (start - now.heard) / rate);
+        // Held for as long as it lasts at this tempo: a pad written for a bar
+        // is a bar long however fast the bar is going.
+        sound(at, { ...note, length: note.length / rate }, now.out);
         now.next += 1;
         continue;
       }
       if (note) return;
       // Round again. The loop point is the piece's length rather than its
       // last note-off, so a bar that ends in silence keeps its silence.
-      if (now.from + now.song.length >= until) return;
-      now.from += now.song.length;
+      if ((now.lap + 1) * now.song.length >= until) return;
+      now.lap += 1;
       now.next = 0;
     }
   }
@@ -347,7 +414,7 @@ export function createMusic(
     out.connect(master!);
     // A beat's grace before the first note, so that a piece started from a
     // key press does not begin in the middle of the press.
-    now = { name, song, out, from: made.currentTime + 0.15, next: 0 };
+    now = { name, song, out, heard: 0, clock: made.currentTime + 0.15, lap: 0, next: 0 };
     fill();
     timer ??= setInterval(fill, EVERY);
   }
@@ -391,7 +458,16 @@ export function createMusic(
     },
     level(next) {
       loud = Math.max(0, Math.min(1, next));
-      if (ctx && master) master.gain.setTargetAtTime(volume * loud, ctx.currentTime, 0.3);
+      if (ctx && master) master.gain.setTargetAtTime(gainNow(), ctx.currentTime, 0.3);
+    },
+    intensity(level) {
+      const next = FEEL[level];
+      if (next === feel) return;
+      feel = next;
+      // Louder quickly and quieter slowly: danger arrives, and relief is
+      // something you notice has happened.
+      const up = next.volume > (master?.gain.value ?? 0) / Math.max(1e-6, volume * loud);
+      if (ctx && master) master.gain.setTargetAtTime(gainNow(), ctx.currentTime, up ? 0.35 : 1.5);
     },
     stop() {
       wanted = null;

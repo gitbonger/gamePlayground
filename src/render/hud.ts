@@ -8,6 +8,12 @@ import type { BirdState, FlightTelemetry } from '../sim/flight';
 import { rateText, speedText } from './units';
 
 export interface Hud {
+  /**
+   * What the music is doing -- its intensity and why -- or null with it off.
+   * A development readout, like the coordinates: it is how "the music got
+   * frantic over a park" becomes a rule that can be found and changed.
+   */
+  music(text: string | null): void;
   update(
     state: BirdState,
     telemetry: FlightTelemetry,
@@ -68,6 +74,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
       </div>
     </div>
     <div class="hud-warning" data-field="warning"></div>
+    <div class="hud-music" data-field="music"></div>
     <div class="hud-where" data-field="where"></div>
     <div class="hud-fps"><span data-field="fps">0</span> fps</div>
     <div class="hud-credit" data-field="credit"></div>
@@ -85,6 +92,7 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
   const healthEl = field('health');
   const warningEl = field('warning');
   const fpsEl = field('fps');
+  const musicEl = field('music');
   const whereEl = field('where');
   // Map data licences generally require the credit to stay on screen.
   field('credit').textContent = credit;
@@ -173,7 +181,12 @@ export function createHud(container: HTMLElement, credit = ''): Hud {
     fpsEl.textContent = fps.toFixed(0);
   }
 
+  function music(text: string | null) {
+    musicEl.textContent = text ?? '';
+  }
+
   return {
+    music,
     update,
     dispose() {
       root.remove();

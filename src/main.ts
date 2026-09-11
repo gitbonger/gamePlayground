@@ -95,6 +95,7 @@ import { browserTone, createAlarm } from './render/alarm';
 import { browserKit, createAmbience, type Source } from './render/ambience';
 import { cityBed, sampledKit } from './render/samples';
 import { createMusic } from './render/music';
+import { intensityOf, type Situation } from './render/intensity';
 import { browserChime, createCue } from './render/cue';
 import { createVitals, type Vital } from './render/vitals';
 import { MESSAGES, NOTICE, type Moment } from './render/messages';
@@ -2207,6 +2208,40 @@ function listen(): Source[] {
   return near_;
 }
 /**
+ * What the music needs to know about the moment, read off the game.
+ *
+ * Its own small reading rather than more fields on `moment`, because the
+ * music wants a couple of things the panel has no use for -- how far off the
+ * nearest crow is, how many birds are up -- and the panel's list is long
+ * enough already.
+ */
+function situation(lockedOn: boolean): Situation {
+  const at = bird.position;
+  let crow: number | null = null;
+  if (hunted) {
+    for (const member of crows?.members ?? []) {
+      if (member.down > 0) continue;
+      const p = member.state.position;
+      const away = Math.hypot(p.x - at.x, p.y - at.y, p.z - at.z);
+      if (crow === null || away < crow) crow = away;
+    }
+  }
+  return {
+    aloft: bird.ending === null,
+    airspeed: telemetry.airspeed,
+    climb: bird.velocity.y,
+    altitude: at.y,
+    stamina: bird.stamina,
+    health: bird.health,
+    flock: escorted ? flock.members.filter((member) => member.down <= 0).length : 0,
+    crow,
+    lockedOn,
+    falling: bird.ending?.kind === 'crashed' && !bird.ending.settled,
+    rescuing: rescue !== null,
+  };
+}
+
+/**
  * Whether the game is still teaching.
  *
  * On for now, and it turns itself off nowhere: which level has earned the
@@ -3504,6 +3539,13 @@ function frame(nowMs: number) {
     music.play(
       moment.hunted ? 'crows' : LEVELS[level]?.finish.kind === 'free' ? 'home' : 'rooftops',
     );
+    // And how hard to play it, which is the part that follows the game. See
+    // `MUSIC.md` for what puts it at each level.
+    const rung = intensityOf(situation(moment.hunted));
+    music.intensity(rung.level);
+    hud.music(`♪ ${music.playing ?? '…'}  ${rung.level} · ${rung.id}`);
+  } else {
+    hud.music(null);
   }
   world.updateSmoke(allPuffs, camera.quaternion);
   // The thrown grain, and the grain riding on the freight train. One list,

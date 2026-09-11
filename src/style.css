@@ -230,6 +230,18 @@ body {
   color: var(--dim);
 }
 
+/* What the music thinks is going on, while it is on. Above the coordinates,
+   in the same dim development voice. */
+.hud-music {
+  position: absolute;
+  right: 16px;
+  bottom: 62px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+}
+
 .hud-credit {
   position: absolute;
   right: 16px;
