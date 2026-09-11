@@ -1429,4 +1429,26 @@ export const LEVELS: readonly Level[] = [
     cast: [],
     finish: { kind: 'free' },
   },
+  {
+    // The two towers on Nagyvárad tér, and nothing to do but fly at them.
+    //
+    // Another place rather than another task, like `Andrássy`: no target, no
+    // line and no finish. What it has instead is a thing on the horizon -- a
+    // hundred metres of building, three times the height of anything between
+    // here and there -- and the level is let go facing it.
+    name: 'Elméleti Tömb',
+    // Over the south of the district, a hundred metres up and a kilometre
+    // short of the towers.
+    start: [47.486124, 19.084255],
+    // The southern tower. See `THEORY_SOUTH`.
+    facing: [47.478866, 19.091005],
+    release: 100,
+    health: 1,
+    when: EVENING,
+    escort: false,
+    tireless: true,
+    teaches: false,
+    cast: [],
+    finish: { kind: 'free' },
+  },
 ];

@@ -307,6 +307,45 @@ export const PETROL_STATION: LandmarkSpec = {
   },
 };
 
+/**
+ * The two towers of the Elméleti Tömb, on Nagyvárad tér.
+ *
+ * A hundred metres each, which is three times anything else in the game and
+ * the point of them: the fifteenth level is let go a kilometre off and
+ * pointed at the southern one, and they are what there is to fly at.
+ *
+ * Both stand a little past the southern edge of the map -- thirty and a
+ * hundred and forty metres beyond the last street that was fetched -- so they
+ * rise off bare ground rather than out of the city. Bringing them inside would
+ * mean fetching a bigger slice of Budapest, and every level would pay for that.
+ *
+ * Plain boxes, a hundred and eighteen metres apart. Thirty by twenty-two is a
+ * guess at a slab tower rather than a survey of these ones. Both are turned to
+ * run along the avenue beside them, which is what a building does and is also
+ * what keeps the northern one off the pavement: square to the compass, its
+ * corner stood two metres into it.
+ */
+const THEORY_YAW = 0.55;
+export const THEORY_SOUTH: LandmarkSpec = {
+  name: 'Elméleti Tömb South',
+  at: [47.478866, 19.091005],
+  width: 30,
+  depth: 22,
+  height: 100,
+  yaw: THEORY_YAW,
+  margin: 6,
+};
+
+export const THEORY_NORTH: LandmarkSpec = {
+  name: 'Elméleti Tömb North',
+  at: [47.479825, 19.091677],
+  width: 30,
+  depth: 22,
+  height: 100,
+  yaw: THEORY_YAW,
+  margin: 6,
+};
+
 export const LANDMARKS: readonly LandmarkSpec[] = [
   HOME_TREE,
   LOFT,
@@ -315,4 +354,6 @@ export const LANDMARKS: readonly LandmarkSpec[] = [
   PETROL_STATION,
   MATYAS_SQUARE,
   JANI_SQUARE,
+  THEORY_SOUTH,
+  THEORY_NORTH,
 ];

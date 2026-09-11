@@ -492,6 +492,7 @@ describe('what the levels aim at', () => {
       'Coming on strong',
       'Everafter',
       'Andrássy',
+      'Elméleti Tömb',
     ]);
     for (const level of dropped) expect(level.release, level.name).toBeGreaterThanOrEqual(100);
 
@@ -1017,7 +1018,12 @@ describe('what the levels aim at', () => {
     // out is a failure, and a level you cannot fail is not a level you should
     // be able to fail at by running down a bar.
     const free = LEVELS.filter((level) => level.tireless);
-    expect(free.map((level) => level.name)).toEqual(['The Loft', 'Everafter', 'Andrássy']);
+    expect(free.map((level) => level.name)).toEqual([
+      'The Loft',
+      'Everafter',
+      'Andrássy',
+      'Elméleti Tömb',
+    ]);
     for (const level of free.slice(1)) expect(level.finish.kind, level.name).toBe('free');
     // And every level with nothing to finish has it, not just some of them.
     for (const level of LEVELS) {
@@ -1161,6 +1167,7 @@ describe('what the levels aim at', () => {
     expect(LEVELS.filter((level) => !level.target).map((level) => level.name)).toEqual([
       'Everafter',
       'Andrássy',
+      'Elméleti Tömb',
     ]);
   });
 
@@ -1242,6 +1249,7 @@ describe('what the levels aim at', () => {
     expect(LEVELS.filter((level) => level.facing).map((level) => level.name)).toEqual([
       'Everafter',
       'Andrássy',
+      'Elméleti Tömb',
     ]);
   });
 
