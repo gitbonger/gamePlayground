@@ -2215,6 +2215,41 @@ function listen(): Source[] {
  * nearest crow is, how many birds are up -- and the panel's list is long
  * enough already.
  */
+/** Scratch for putting the level's end through the camera. */
+const onScreen = new THREE.Vector3();
+/** The finishing line of the level it was worked out for, kept per level. */
+let endingLine: { level: number; at: { x: number; z: number } | null } | null = null;
+
+/**
+ * Metres to whatever ends the level, if it is on screen now.
+ *
+ * On screen is the camera's own frustum, which is honest about the arrows:
+ * those are drawn in a pass of their own over everything, so a marker behind
+ * a block of flats is still in view, and so it counts. A line has no marker
+ * and is judged by its middle, on the ground.
+ */
+function targetOnScreen(): number | null {
+  const here = LEVELS[level];
+  if (!here) return null;
+  const marker = activeMarker();
+  if (marker) {
+    onScreen.copy(marker.position);
+  } else if (here.finish.kind === 'crossing') {
+    if (endingLine?.level !== level) {
+      const line = finishingLine(here);
+      endingLine = { level, at: line ? { x: line.x, z: line.z } : null };
+    }
+    if (!endingLine.at) return null;
+    onScreen.set(endingLine.at.x, 0, endingLine.at.z);
+  } else {
+    return null;
+  }
+  const away = onScreen.distanceTo(bird.position);
+  onScreen.project(camera);
+  const inView = onScreen.z < 1 && Math.abs(onScreen.x) <= 1 && Math.abs(onScreen.y) <= 1;
+  return inView ? away : null;
+}
+
 function situation(lockedOn: boolean): Situation {
   const at = bird.position;
   let crow: number | null = null;
@@ -2238,6 +2273,7 @@ function situation(lockedOn: boolean): Situation {
     lockedOn,
     falling: bird.ending?.kind === 'crashed' && !bird.ending.settled,
     rescuing: rescue !== null,
+    target: targetOnScreen(),
   };
 }
 

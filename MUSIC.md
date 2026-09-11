@@ -43,6 +43,9 @@ For now the intensity sets two things: **how fast** the piece is played and
 
 - **fast** — speed above 80 km/h.
 - **diving** — coming down faster than 7 m/s.
+- **targetInSight** — the thing that ends the level is on screen and within
+  500 m: the marked roof, bird or patch, or the finishing line. Waypoints
+  along the way do not count.
 
 ## 1 — flying around
 

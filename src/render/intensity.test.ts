@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { CROWS_NEAR, FAST, intensityOf, RUNGS, type Situation } from './intensity';
+import { CROWS_NEAR, FAST, intensityOf, RUNGS, TARGET_SEEN, type Situation } from './intensity';
 
 /** Cruising along, with nothing about. */
 const calm = (over: Partial<Situation> = {}): Situation => ({
@@ -15,6 +15,7 @@ const calm = (over: Partial<Situation> = {}): Situation => ({
   lockedOn: false,
   falling: false,
   rescuing: false,
+  target: null,
   ...over,
 });
 
@@ -25,6 +26,12 @@ describe('how much is going on', () => {
     expect(intensityOf(calm({ flock: 11 })).level).toBe(3);
     expect(intensityOf(calm({ crow: CROWS_NEAR - 1 })).level).toBe(4);
     expect(intensityOf(calm({ crow: 40, lockedOn: true })).level).toBe(5);
+  });
+
+  it('perks up when the end of the level comes into view, and not before', () => {
+    expect(intensityOf(calm({ target: TARGET_SEEN - 1 })).id).toBe('targetInSight');
+    // In range but off screen is `null`, so this is the far-off case only.
+    expect(intensityOf(calm({ target: TARGET_SEEN + 1 })).level).toBe(1);
   });
 
   it('takes the loudest thing that is true, not the first one thought of', () => {

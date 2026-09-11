@@ -37,6 +37,11 @@ export interface Situation {
   falling: boolean;
   /** The flock at work on the cage, which is the story's climax. */
   rescuing: boolean;
+  /**
+   * Metres to whatever ends the level, when it is on screen; null when it is
+   * off screen, or there is nothing to end the level at all.
+   */
+  target: number | null;
 }
 
 export type Intensity = 1 | 2 | 3 | 4 | 5;
@@ -68,6 +73,16 @@ export const LOW = 25;
 export const SPENT = 0.2;
 /** Hurt enough that one more hit is the last. */
 export const HURT = 0.35;
+/**
+ * Near enough to the level's end, with it in view, that the flight has
+ * become an arrival.
+ *
+ * Five hundred metres is a guess, and is the number to change if the music
+ * perks up too early or too late. Past the two hundred at which the panel
+ * says "land near the arrow", on purpose: the music should notice the end
+ * coming before the instructions do.
+ */
+export const TARGET_SEEN = 500;
 
 export const RUNGS: readonly Rung[] = [
   // --- Five: something is trying to kill him ------------------------------
@@ -87,6 +102,11 @@ export const RUNGS: readonly Rung[] = [
   // --- Two: some intensity --------------------------------------------------
   { id: 'fast', level: 2, applies: (s) => s.aloft && s.airspeed > FAST },
   { id: 'diving', level: 2, applies: (s) => s.aloft && s.climb < DIVING },
+  {
+    id: 'targetInSight',
+    level: 2,
+    applies: (s) => s.aloft && s.target !== null && s.target <= TARGET_SEEN,
+  },
 
   // --- One: flying around, and everything else ------------------------------
   { id: 'calm', level: 1, applies: () => true },
