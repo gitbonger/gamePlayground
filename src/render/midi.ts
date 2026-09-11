@@ -245,7 +245,13 @@ export function readSong(bytes: ArrayBuffer | Uint8Array): Song {
   notes.sort((a, b) => a.at - b.at);
   return {
     notes,
-    length: notes.reduce((end, note) => Math.max(end, note.at + note.length), 0),
+    // To whichever is later: the last note's end, or the last thing in the
+    // file at all. A tune that ends on a rest is still a bar long, and a file
+    // that marks its own end is saying where the loop goes.
+    length: Math.max(
+      notes.reduce((end, note) => Math.max(end, note.at + note.length), 0),
+      seconds(last),
+    ),
     bpm: 60 / ((tempos[0]?.usPerBeat ?? DEFAULT_US_PER_BEAT) / 1e6),
   };
 }

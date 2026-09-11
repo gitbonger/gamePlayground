@@ -1,0 +1,15 @@
+X:1
+T:Rooftops
+% The ordinary flight: a polka, in G, and in no hurry. Two parts, each
+% played twice, which is how nearly every folk dance is built.
+%%melody 21
+%%bass 58
+%%chords 24
+M:2/4
+L:1/8
+Q:1/4=108
+K:G
+|: "G" GB dB | "G" gd BG | "C" ce ge | "G" dB G2 |
+   "D" FA dA | "D" FA dc | "G" BG "D" AF | "G" G2 G2 :|
+|: "C" e2 ef | "G" g2 d2 | "C" e2 ef | "G" g4 |
+   "C" ec "G" dB | "Am" cA "G" BG | "D" A2 d2 | "G" G4 :|

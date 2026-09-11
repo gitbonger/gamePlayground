@@ -48,8 +48,9 @@ weigh. Then give the numbers and a recommendation.
 - `scripts/make-sounds.py` — fetches the recordings from Wikimedia Commons and
   cuts the clips. Only run when you want different noises; the output is
   checked in. Audition what it produced at `dev/clips.html`.
-- `src/render/music/` — the score, as MIDI. A few kilobytes a piece, played
-  through oscillators by `src/render/music.ts`; there is no recording and no
-  soundfont. The notes are written out by hand in `scripts/make-music.py` —
-  edit them there and run it. `dev/music.html` plays them. In the game it is
-  off until M.
+- `music/*.abc` — the tunes, in ABC (plain-text folk notation; abcnotation.com
+  has thousands to paste in). Only the melody and chord symbols are written;
+  `scripts/make-music.py` adds the bass and chords and writes the MIDI into
+  `src/render/music/`, which is what the game plays through oscillators in
+  `src/render/music.ts`. Run the script after editing a tune.
+  `dev/music.html` plays them. In the game it is off until M.

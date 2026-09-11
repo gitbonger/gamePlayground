@@ -1,0 +1,15 @@
+X:3
+T:Home
+% After it: a waltz, in F, for a level that has already got where it was
+% going.
+%%melody 73
+%%bass 32
+%%chords 24
+M:3/4
+L:1/4
+Q:1/4=100
+K:F
+|: "F" A2 c | "F" f2 e | "C" d c B | "F" A3 |
+   "Bb" B2 d | "F" c2 A | "C" G A B | "F" A3 :|
+|: "Bb" d2 f | "F" c2 A | "C" G2 c | "F" A3 |
+   "Bb" d2 f | "F" c2 A | "C" G E G | "F" F3 :|

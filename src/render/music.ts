@@ -76,9 +76,12 @@ const FAMILIES: { upTo: number; patch: Patch }[] = [
   // Piano, and tuned percussion.
   { upTo: 15, patch: { wave: 'triangle', detune: 0, attack: 0.005, decay: 1.4,
                        sustain: 0.05, release: 0.3, brightness: 7, gain: 0.9 } },
-  // Organ: no decay at all, which is what an organ is.
-  { upTo: 23, patch: { wave: 'square', detune: 4, attack: 0.02, decay: 0.1,
-                       sustain: 0.85, release: 0.12, brightness: 5, gain: 0.5 } },
+  // Organ and accordion: no decay at all, which is what both are. Detuned
+  // wider than anything else here on purpose -- an accordion's reeds are
+  // tuned a few cents apart so that they beat, and that shimmer is most of
+  // why it sounds cheerful rather than like a test tone.
+  { upTo: 23, patch: { wave: 'square', detune: 10, attack: 0.02, decay: 0.1,
+                       sustain: 0.85, release: 0.12, brightness: 4.5, gain: 0.5 } },
   // Guitar.
   { upTo: 31, patch: { wave: 'sawtooth', detune: 6, attack: 0.005, decay: 0.7,
                        sustain: 0.12, release: 0.25, brightness: 4, gain: 0.7 } },

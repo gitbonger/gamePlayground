@@ -1,0 +1,16 @@
+X:2
+T:Crows
+% Being hunted: a reel, in D, and fast. Still a dance and still in a major
+% key -- the danger is in the pace, not in the mood.
+%%melody 21
+%%bass 58
+%%chords 24
+%%drums on
+M:4/4
+L:1/8
+Q:1/4=132
+K:D
+|: "D" dfaf dfaf | "G" gbgb "D" afdf | "D" dfaf dfaf | "A" gece "A" A2 ce |
+   "D" dfaf dfaf | "G" gbgb "D" afdf | "G" gfed "A" cABc | "D" d2 f2 d4 :|
+|: "D" a2 fa "G" gbag | "D" f2 df "A" ecAc | "D" a2 fa "G" gbag | "A" fdec "D" d4 |
+   "D" a2 fa "G" gbag | "D" f2 df "A" ecAc | "G" BdcB "A" Acec | "D" d2 f2 d4 :|

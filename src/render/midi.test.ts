@@ -22,17 +22,19 @@ describe('reading a MIDI file', () => {
   });
 
   it('gets the tempo off the file rather than assuming one', () => {
-    expect(song('rooftops').bpm).toBeCloseTo(92, 0);
-    expect(song('crows').bpm).toBeCloseTo(148, 0);
-    expect(song('home').bpm).toBeCloseTo(76, 0);
+    expect(song('rooftops').bpm).toBeCloseTo(108, 0);
+    expect(song('crows').bpm).toBeCloseTo(132, 0);
+    expect(song('home').bpm).toBeCloseTo(100, 0);
   });
 
-  it('puts eight bars of four at the tempo written on them', () => {
-    // The arithmetic the whole file is for: thirty-two beats at 92 to the
-    // minute is twenty and a bit seconds, and if ticks-per-beat or the tempo
-    // were being read wrongly this is where it would show.
-    expect(song('rooftops').length).toBeCloseTo((32 * 60) / 92, 1);
-    expect(song('crows').length).toBeCloseTo((32 * 60) / 148, 1);
+  it('is exactly as long as the tune, repeats and all', () => {
+    // The arithmetic the whole file is for. Each tune is two parts of eight
+    // bars, each part played twice: thirty-two bars. In 2/4 at 108 that is
+    // sixty-four beats, 35.6 seconds -- and if ticks-per-beat, the tempo or
+    // the repeats were being read wrongly, this is where it would show.
+    expect(song('rooftops').length).toBeCloseTo((64 * 60) / 108, 2);
+    expect(song('crows').length).toBeCloseTo((128 * 60) / 132, 2);
+    expect(song('home').length).toBeCloseTo((96 * 60) / 100, 2);
   });
 
   it('keeps the parts on their own channels, drums on ten', () => {
@@ -46,7 +48,7 @@ describe('reading a MIDI file', () => {
   it('carries the instrument each note was played with', () => {
     const rooftops = song('rooftops');
     const melody = rooftops.notes.filter((n) => n.channel === 0);
-    expect(melody.every((n) => n.program === 73)).toBe(true);
+    expect(melody.every((n) => n.program === 21)).toBe(true);
   });
 
   it('refuses a file that is not one', () => {
