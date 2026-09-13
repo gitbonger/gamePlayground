@@ -3593,6 +3593,7 @@ function frame(nowMs: number) {
     hud.music(null);
   }
   world.updateSmoke(allPuffs, camera.quaternion);
+  world.updateWater(clock);
   // The thrown grain, and the grain riding on the freight train. One list,
   // one instanced mesh: the seeds on the wagons are worked out from where the
   // wagons now are, which is why they cannot simply be placed once.

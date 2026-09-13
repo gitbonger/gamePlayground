@@ -9,6 +9,9 @@
  *
  *   /dev/look.html?x=318&y=3.5&z=-30&tx=300&ty=7&tz=-120
  *
+ * `t` is the time in seconds for anything that moves on a clock, like the
+ * ripples on the water.
+ *
  * `x,y,z` is where the camera stands and `tx,ty,tz` what it looks at, both in
  * local metres -- the coordinates everything in `src/world` is in, with north
  * at -Z. The default is Kerepesi ut where it crosses the throat of Keleti,
@@ -82,6 +85,9 @@ renderer.render(scene, camera);
 // left alone they are all stacked at the origin, and a draw-call count of a
 // heap of trams at nought says nothing about a city with trams in it.
 world.updateTrains(full.trains ?? []);
+// And the water's clock, from `t` in seconds, so that two stills a moment
+// apart show whether it moves.
+world.updateWater(n('t', 0));
 renderer.render(scene, camera);
 
 (window as unknown as { __look: unknown }).__look = { renderer, scene, camera, world, layout: full };

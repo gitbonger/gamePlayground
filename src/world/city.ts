@@ -159,6 +159,14 @@ export interface World {
    */
   updateSmoke(puffs: readonly Puff[], viewer: THREE.Quaternion): void;
   /**
+   * Move the ripples on the water on to this moment, in seconds.
+   *
+   * One number handed to the shader. The water is not simulated -- nothing
+   * floats on it and nothing lands in it -- so it only has to look like it is
+   * moving, and a clock is all that takes.
+   */
+  updateWater(seconds: number): void;
+  /**
    * Marker arrows, to be drawn in a pass of their own after the world.
    *
    * Kept out of `group` on purpose. Drawing them last with the depth test off
@@ -1355,6 +1363,9 @@ export function buildWorld(
     setWaiting: (platforms) => setWaiting(platforms),
     updateTrains,
     updateSmoke,
+    updateWater: (seconds) => {
+      waterTime.value = seconds;
+    },
     dispose() {
       for (const d of disposables) d.dispose();
     },
@@ -2016,15 +2027,86 @@ function buildAreas(
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.computeVertexNormals();
-    return {
-      geometry,
-      material: new THREE.MeshLambertMaterial({
-        color: AREA_COLORS[kind],
-        // Rings can wind either way; a ground patch should show regardless.
-        side: THREE.DoubleSide,
-      }),
-    };
+    const material = new THREE.MeshLambertMaterial({
+      color: AREA_COLORS[kind],
+      // Rings can wind either way; a ground patch should show regardless.
+      side: THREE.DoubleSide,
+    });
+    return { geometry, material: kind === 'water' ? rippling(material) : material };
   });
+}
+
+/**
+ * The clock the water's ripples run on, shared by every water surface.
+ *
+ * Module-level because the material is made in `buildAreas` and the time is
+ * set from the frame loop, and a uniform is an object both can hold.
+ */
+const waterTime = { value: 0 };
+
+/**
+ * Water that moves: ripples drifting across it and the odd glint.
+ *
+ * In the style of everything else, which is flat colour rather than shading:
+ * the ripples are bands with hard edges rather than smooth highlights -- a
+ * lighter streak along each crest and a darker one in each trough -- from two
+ * sets of waves bent by a slow swell, so the pattern wanders rather than
+ * visibly repeating. The glints are a sparse grid of points that
+ * each flash for a moment on their own clock.
+ *
+ * All of it fades out with distance, measured the way the windows are, by
+ * how many metres of water one pixel covers: past a few metres a pixel, a
+ * ripple is smaller than a pixel and would only shimmer. From a hundred
+ * metres up over a pond you see it move; from across the city it is just
+ * water.
+ */
+function rippling(material: THREE.MeshLambertMaterial): THREE.MeshLambertMaterial {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uWaterTime = waterTime;
+    shader.vertexShader = `varying vec3 vWaterPos;\n${shader.vertexShader}`.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+      vWaterPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
+    );
+    shader.fragmentShader = `uniform float uWaterTime;\nvarying vec3 vWaterPos;\n${shader.fragmentShader}`.replace(
+      '#include <color_fragment>',
+      `#include <color_fragment>
+      {
+        vec2 p = vWaterPos.xz;
+        float t = uWaterTime;
+        // Metres of water under one pixel. Detail goes before it can alias.
+        float spread = max(fwidth(p.x), fwidth(p.y));
+        float near = 1.0 - smoothstep(0.6, 1.8, spread);
+
+        // One set of ripple lines, bent by two swells of different sizes so
+        // they wander, and broken into lengths by slow patches that fade them
+        // in and out. Not two sets crossing: waves that cross add up to a
+        // lattice, and a lattice reads as polka dots however it is tilted.
+        vec2 q = p
+          + 4.0 * vec2(sin(p.y * 0.070 + t * 0.35), sin(p.x * 0.060 - t * 0.25))
+          + 1.5 * vec2(sin(p.y * 0.230 - t * 0.80), sin(p.x * 0.190 + t * 0.70));
+        float lines = sin(dot(q, vec2(0.96, 0.28)) * 1.10 + t * 1.4);
+        float patches = 0.5 * sin(dot(q, vec2(-0.28, 0.96)) * 0.21 + t * 0.30)
+                      + 0.5 * sin(dot(q, vec2(0.60, 0.80)) * 0.37 - t * 0.50);
+        float wave = lines * (0.55 + 0.45 * patches);
+        float soft = fwidth(wave) + 0.02;
+        float crest = smoothstep(0.72 - soft, 0.72 + soft, wave);
+        float trough = 1.0 - smoothstep(-0.70 - soft, -0.70 + soft, wave);
+        diffuseColor.rgb *= 1.0 - 0.08 * trough * near;
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.60, 0.76, 0.88), crest * 0.24 * near);
+
+        // Glints: one candidate every four metres, each on its own clock and
+        // lit for a few per cent of it.
+        vec2 cell = floor(p / 4.0);
+        float seed = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+        float lit = step(0.96, fract(seed * 13.0 + t * (0.25 + seed * 0.35)));
+        vec2 inCell = fract(p / 4.0) - 0.5 + (seed - 0.5) * 0.5;
+        float spot = 1.0 - smoothstep(0.05, 0.09 + soft, length(inCell));
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.97, 1.0), lit * spot * near * 0.85);
+      }`,
+    );
+  };
+  return material;
 }
 
 /**
