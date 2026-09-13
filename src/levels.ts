@@ -763,6 +763,15 @@ export interface Level {
    */
   flockScattered?: boolean;
   /**
+   * Whether the people standing about can be heard: every so often one of
+   * them near the bird asks for a cigarette. See the `cigi` noise.
+   *
+   * Only where a level is about a square full of people, rather than on
+   * every level with anybody in it -- a city where every bystander is after
+   * a cigarette is a joke told too often.
+   */
+  voices?: boolean;
+  /**
    * Who is standing where, for as long as this level is being flown.
    *
    * Applied every time the level begins -- picked from the menu, restarted
@@ -1076,6 +1085,8 @@ export const LEVELS: readonly Level[] = [
     // shape the searching has -- a run of hops round a district, each one
     // beginning where the last one gave up.
     name: 'Jani Pali tér',
+    // Somebody on the square is after a cigarette -- see `voices`.
+    voices: true,
     // Past the point the game explains itself -- see `teaches`.
     teaches: false,
     // Straight up off Mátyás tér, which is where the last level left him
@@ -1148,6 +1159,8 @@ export const LEVELS: readonly Level[] = [
     // before this one ends by flying through a line, and this one picks the
     // bird up on it.
     name: 'Blaha',
+    // Somebody on the square is after a cigarette -- see `voices`.
+    voices: true,
     // Still under them. This is the one flown low and straight to get out
     // from underneath, so a level with the sky empty would be a level with
     // nothing to fly low for.

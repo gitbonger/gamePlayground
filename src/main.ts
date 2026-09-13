@@ -2167,6 +2167,22 @@ function listen(): Source[] {
     }
   }
 
+  // People, on the two levels where they speak -- see `Level.voices`. The
+  // crowds standing on the squares, and whoever is waiting for a tram.
+  if (LEVELS[level]?.voices) {
+    for (const person of layout.people) {
+      if (within(person.x, person.z)) {
+        near_.push({ noise: 'cigi', x: person.x, y: person.base + PERSON_HEIGHT, z: person.z });
+      }
+    }
+    for (const stop of layout.platforms ?? []) {
+      if (!within(stop.x, stop.z)) continue;
+      for (const each of stop.waiting) {
+        near_.push({ noise: 'cigi', x: each.person.x, y: stop.height + PERSON_HEIGHT, z: each.person.z });
+      }
+    }
+  }
+
   // Pigeons: the crowds on the squares, and the flock when it is out. Not the
   // hero -- a bird does not startle itself.
   for (const crowd of crowds) {

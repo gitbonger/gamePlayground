@@ -62,6 +62,7 @@ const TRIM: Record<Noise, number> = {
   caw: 0.8,
   bell: 1,
   screech: 0.7,
+  cigi: 1,
 };
 
 /**

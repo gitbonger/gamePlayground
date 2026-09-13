@@ -43,3 +43,10 @@ Cut, levelled and faded at the edges; otherwise unaltered.
 
 - **street-1.mp3** -- [Sunday in the city street noise1.ogg](https://commons.wikimedia.org/wiki/File%3ASunday_in_the_city_street_noise1.ogg), Public domain
 - **street-2.mp3** -- [Sunday in the city street noise3.ogg](https://commons.wikimedia.org/wiki/File%3ASunday_in_the_city_street_noise3.ogg), Public domain
+
+<!-- Everything below this line is added by hand, and kept on a rerun. -->
+
+## cigi
+
+- **cigi.mp3** -- supplied for the game rather than taken from Commons, and
+  used as it came. `scripts/make-sounds.py` neither cuts it nor deletes it.

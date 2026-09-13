@@ -328,7 +328,10 @@ def main():
             print(f"  {kind:8} {src['title'][:44]:44} {kept} usable")
 
     print('\nWriting...')
-    for folder in os.listdir(DEST) if os.path.isdir(DEST) else []:
+    # Only the folders this script fills. Anything else in there -- a sound
+    # somebody made or recorded and dropped in by hand -- is theirs, and a
+    # rerun of this must not delete it.
+    for folder in [*KINDS, 'street']:
         at = os.path.join(DEST, folder)
         if os.path.isdir(at):
             for f in os.listdir(at):
@@ -365,7 +368,16 @@ def main():
     print(f'\n{len(credits)} files, {total // 1024}KB in {DEST}')
 
 
+HAND = '<!-- Everything below this line is added by hand, and kept on a rerun. -->'
+
+
 def write_credits(credits):
+    path = os.path.join(DEST, 'CREDITS.md')
+    kept = ''
+    if os.path.exists(path):
+        existing = open(path, encoding='utf-8').read()
+        if HAND in existing:
+            kept = existing[existing.index(HAND):]
     lines = [
         '# Where the sounds came from', '',
         'Every file in these folders was cut out of a freely licensed recording on',
@@ -385,7 +397,7 @@ def write_credits(credits):
         for (title, lic, page), files in together.items():
             lines.append(f"- **{', '.join(files)}** -- [{title}]({page}), {lic}")
         lines.append('')
-    open(os.path.join(DEST, 'CREDITS.md'), 'w').write('\n'.join(lines))
+    open(path, 'w', encoding='utf-8').write('\n'.join(lines) + ('\n' + kept if kept else ''))
 
 
 if __name__ == '__main__':

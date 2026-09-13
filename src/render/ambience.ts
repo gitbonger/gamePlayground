@@ -19,7 +19,7 @@
  * occasionally says something -- which is what a district sounds like.
  */
 
-export type Noise = 'bark' | 'coo' | 'caw' | 'bell' | 'screech';
+export type Noise = 'bark' | 'coo' | 'caw' | 'bell' | 'screech' | 'cigi';
 
 /** Something that can make a noise, and where it is. */
 export interface Source {
@@ -53,6 +53,10 @@ const NOISES: Record<Noise, { reach: number; apart: number; chance: number }> = 
   caw: { reach: 120, apart: 5, chance: 0.6 },
   bell: { reach: 150, apart: 14, chance: 0.5 },
   screech: { reach: 200, apart: 18, chance: 0.45 },
+  // Somebody on the square asking for a cigarette. A voice does not carry
+  // like a bell, and the same sentence twice in a minute is a recording
+  // rather than a person, so it is short-reaching and rare.
+  cigi: { reach: 60, apart: 25, chance: 0.4 },
 };
 
 /**
@@ -83,7 +87,7 @@ const TOGETHER = 4;
  * out twelve caws and three coos, because the caw's cooldown is shorter than
  * the gap between sounds and it therefore won nearly every opportunity.
  */
-const ORDER: readonly Noise[] = ['caw', 'screech', 'bell', 'bark', 'coo'];
+const ORDER: readonly Noise[] = ['caw', 'screech', 'bell', 'bark', 'coo', 'cigi'];
 
 export interface Ambience {
   /**
@@ -285,6 +289,10 @@ export function browserKit(volume = 0.5): Kit {
           tone('sine', 1568, 1568, 0, 1.1, 0.3);
           tone('sine', 2349, 2349, 0, 0.55, 0.16);
           tone('sine', 3136, 3136, 0, 0.25, 0.08);
+          break;
+        case 'cigi':
+          // A voice, which no oscillator is going to say. Until the recording
+          // has loaded there is simply nobody asking.
           break;
         case 'screech':
           // Steel on steel round a curve: a narrow band of noise wandering
