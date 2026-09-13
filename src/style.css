@@ -256,6 +256,11 @@ body {
 .menu {
   position: absolute;
   inset: 0;
+  /* The overlay ignores the mouse so the HUD never blocks the canvas; the list
+     is the one screen on it that is clicked, so it takes the mouse back --
+     the rows as well as the mode switch. Only while it is up: hidden, it is
+     not there to catch anything. */
+  pointer-events: auto;
   display: grid;
   place-items: center;
   background: rgba(6, 10, 15, 0.55);

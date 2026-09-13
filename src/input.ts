@@ -98,6 +98,12 @@ export interface InputSource {
    * repeats it, and a list that moved one row per frame would be unusable.
    */
   consumeStep(): number;
+  /**
+   * Left and right arrow presses since last asked, left negative. For the
+   * level list's mode switch; the same arrows roll the bird while held, which
+   * is a different question asked of `controls`.
+   */
+  consumeSide(): number;
   /** Whether the highlighted thing has been chosen since last asked. */
   consumeConfirm(): boolean;
   /** Whether whatever is open has been asked to go away since last asked. */
@@ -137,6 +143,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
   let boostRequested = false;
   let languageRequested = false;
   let stepped = 0;
+  let sided = 0;
   let confirmed = false;
   let dismissed = false;
   const digits: number[] = [];
@@ -181,6 +188,8 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     // unreachable from the keyboard altogether.
     if (e.code === 'ArrowUp') stepped -= 1;
     if (e.code === 'ArrowDown') stepped += 1;
+    if (e.code === 'ArrowLeft') sided -= 1;
+    if (e.code === 'ArrowRight') sided += 1;
     if (e.code === 'Enter' || e.code === 'NumpadEnter') confirmed = true;
     // The key everybody presses to get out of a thing, and the one this game
     // did not read: the level list opened with L and closed with L, which is
@@ -262,6 +271,12 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     return moved;
   }
 
+  function consumeSide() {
+    const moved = sided;
+    sided = 0;
+    return moved;
+  }
+
   function consumeConfirm() {
     const requested = confirmed;
     confirmed = false;
@@ -291,6 +306,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     consumeMenu,
     consumeDigit,
     consumeStep,
+    consumeSide,
     consumeConfirm,
     consumeDismiss,
     anyDown,

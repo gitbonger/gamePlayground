@@ -67,10 +67,10 @@ export const PHRASES = {
   // --- The level menu -------------------------------------------------------
   menuTitle: { en: 'Levels', hu: 'Pályák' },
   menuPlaying: { en: 'playing', hu: 'itt tartasz' },
-  menuSwitch: { en: 'switch', hu: 'válts' },
+  menuSwitch: { en: '← → switch', hu: '← → válts' },
   menuHow: {
-    en: 'number or ↑↓ and Enter to fly it, or click. ESC or L to close',
-    hu: 'szám vagy ↑↓ és Enter a repüléshez, vagy kattints. ESC vagy L a bezáráshoz',
+    en: 'number or ↑↓ and Enter to fly it, or click. ← → switches mode. ESC or L to close',
+    hu: 'szám vagy ↑↓ és Enter a repüléshez, vagy kattints. ← → vált módot. ESC vagy L a bezáráshoz',
   },
 
   // --- Endings --------------------------------------------------------------

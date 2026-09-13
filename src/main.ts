@@ -2984,6 +2984,13 @@ function frame(nowMs: number) {
   // while the menu is shut, where the same keys are the pitch and roll of a
   // bird -- `move` and `confirm` both refuse while it is closed.
   menu.move(input.consumeStep());
+  // Left or right switches the mode while the list is up -- there are two, so
+  // either way is the other one. Asked every frame so a press made in flight
+  // is spent rather than saved up for the next time the list opens.
+  if (input.consumeSide() !== 0 && menu.open) {
+    switchMode(otherMode(mode));
+    menu.showMode(level, mode);
+  }
   if (input.consumeConfirm()) {
     const picked = menu.confirm();
     if (picked !== null) playLevel(picked);
