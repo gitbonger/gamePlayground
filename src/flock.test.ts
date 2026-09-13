@@ -1736,3 +1736,48 @@ describe('holding station on the leader', () => {
     }
   });
 });
+
+describe('keeping up with a fast leader', () => {
+  /** A leader flying straight on at `speed`; the flock as the game sets it up. */
+  function behindALeader(speed: number, seconds: number, over: Partial<typeof defaultFlockOptions> = {}) {
+    let leader = { x: 0, y: 100, z: 0, heading: 0, speed, climb: 0 };
+    const flock = createFlock(5, () => leader, {
+      ...defaultFlockOptions,
+      count: 30,
+      ahead: 30,
+      spawn: { kind: 'above', away: 12 },
+      ...over,
+    });
+    for (let t = 0; t < seconds; t += 1 / 60) {
+      leader = { ...leader, z: leader.z - speed * (1 / 60) };
+      flock.update(1 / 60, undefined, calm, true);
+    }
+    const up = flock.members.filter((member) => member.down <= 0);
+    const ahead = up.filter((member) => member.state.position.z < leader.z);
+    return { up: up.length, ahead: ahead.length };
+  }
+
+  it('stays in front of a leader doing eighty kilometres an hour', () => {
+    // Where it used to fall apart: at 22 m/s with ordinary wings, the whole
+    // flock ended up behind him, which is behind the camera.
+    const { up, ahead } = behindALeader(22, 40);
+    expect(up).toBe(30);
+    expect(ahead).toBeGreaterThan(25);
+  });
+
+  it('keeps the ball of targets wholly in front of him, whatever it is asked for', () => {
+    // A ball bigger than the distance it is moved forward would reach back
+    // over the leader. Every target it hands out has to be ahead of him.
+    let leader = { x: 0, y: 100, z: 0, heading: 0, speed: 0, climb: 0 };
+    const flock = createFlock(5, () => leader, { ...defaultFlockOptions, count: 20, ahead: 30 });
+    flock.wheel({ radius: 40, ahead: 10 });
+    for (let t = 0; t < 30; t += 1 / 60) {
+      leader = { ...leader };
+      flock.update(1 / 60, undefined, calm, true);
+      for (const member of flock.members) {
+        if (member.down > 0 || !member.aiming) continue;
+        expect(-member.aiming.z, 'north of the leader, which is in front').toBeGreaterThan(0);
+      }
+    }
+  });
+});

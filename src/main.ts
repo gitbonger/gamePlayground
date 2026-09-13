@@ -942,6 +942,10 @@ const FLOCK_MOST = Math.max(...LEVELS.map((spec) => spec.flock ?? 0), PIGEON_MOR
 const flock = createFlock(PIGEON_MORPHS.length, () => leaderOf(bird), {
   ...defaultFlockOptions,
   count: FLOCK_MOST,
+  // Let out over him at his own speed rather than behind him at a pigeon's:
+  // see `Spawn`. Behind a player diving at speed, the old way kept them out
+  // of shot for the first twenty seconds of a level.
+  spawn: { kind: 'above', away: 12 },
   // The anchor is the bird itself. Where the flock *wheels* is thirty metres
   // in front of him and that is the flock's own business -- handed a
   // pre-shifted anchor it also moved the loft they are let out of, which is

@@ -68,6 +68,17 @@ export type Spawn =
    * spends its first seconds turning round in front of the camera.
    */
   | { kind: 'behind'; away: number }
+  /**
+   * Over whatever it is flying around, going the same way at the same speed.
+   *
+   * Above rather than behind for a leader that is quick. Let out behind at an
+   * ordinary pigeon's pace, a bird behind a diving player spends its first
+   * twenty seconds catching up out of shot -- measured: not one of them in
+   * view by then at 26 m/s. Above, it starts beside him in everything but
+   * height, and above the frame the chase camera looks along, so it still
+   * does not appear out of nothing in front of anybody.
+   */
+  | { kind: 'above'; away: number }
   /** Nowhere. Once it is down it stays down, and the flock thins out. */
   | { kind: 'gone' }
   /**
@@ -295,7 +306,40 @@ const LANDING_BEAT = 3;
  */
 const MISSED_BY = 2;
 
-const CRUISE_CEILING = 30;
+const CRUISE_CEILING = 38;
+
+/**
+ * How much harder a bird that has fallen behind the ball beats its wings.
+ *
+ * The flock is scenery, and scenery may cheat. With ordinary wings it fell
+ * apart between 21 and 22 m/s -- measured with thirty birds behind a leader
+ * flying straight on, none of them in shot at 24 -- which is a player diving
+ * at eighty kilometres an hour, which on the eleventh level, let go at a
+ * hundred metres, is most players. At 2.2 times the thrust the flock holds up
+ * to 30 m/s: about twenty of thirty in shot.
+ *
+ * Only behind, not all the time. Strong wings everywhere kept them at speed
+ * and cost them at a cruise, where they overshot the ball and wheeled out of
+ * shot instead.
+ */
+const CATCH_UP = 2.2;
+
+/**
+ * The leader's speed below which nobody needs help keeping up, in m/s.
+ *
+ * Ordinary wings hold the flock together to about twenty. Below this one,
+ * "behind the ball" is just a bird partway round a turn -- and a slow or
+ * standing leader has his flock wheeling right round him, so strong wings
+ * there only threw them wide.
+ */
+const OUTPACED = 17;
+
+/**
+ * How far clear of the leader the near edge of the ball is kept, in metres.
+ * See `wheel`: the ball of targets is wholly in front of him, with this to
+ * spare, whatever size a level makes it.
+ */
+export const CLEAR_OF_LEADER = 5;
 
 /**
  * How much a bird has in hand, in m/s, to hold its place with.
@@ -694,6 +738,15 @@ export function createFlock(
         };
 
   /**
+   * How far in front of the middle of the ball this bird is, along the
+   * leader's heading, in metres. Negative behind it.
+   */
+  const leadOf = (where: Vec3, at: Anchor): number => {
+    const centre = wheelAbout(at);
+    return (where.x - centre.x) * Math.sin(at.heading) - (where.z - centre.z) * Math.cos(at.heading);
+  };
+
+  /**
    * How fast this bird should be flying to hold its place.
    *
    * Measured along the leader's own heading, from the middle of the ball --
@@ -701,9 +754,7 @@ export function createFlock(
    * be and may be thirty metres in front of him.
    */
   const stationSpeed = (where: Vec3, at: Anchor): number => {
-    const centre = wheelAbout(at);
-    const lead =
-      (where.x - centre.x) * Math.sin(at.heading) - (where.z - centre.z) * Math.cos(at.heading);
+    const lead = leadOf(where, at);
     const trim = Math.max(
       -CRUISE_SURPLUS,
       Math.min(CRUISE_SURPLUS, -lead * STATION_KEEPING),
@@ -747,7 +798,10 @@ export function createFlock(
   };
 
   /** Where this bird comes back, and which way it is pointed when it does. */
-  const appears = (pilot: Pilot, at: Anchor): { where: Vec3; facing: number } | null => {
+  const appears = (
+    pilot: Pilot,
+    at: Anchor,
+  ): { where: Vec3; facing: number; speed?: number } | null => {
     const spawn = options.spawn;
     if (spawn.kind === 'gone') return null;
 
@@ -755,6 +809,14 @@ export function createFlock(
       return {
         where: vec(spawn.x, Math.max(spawn.y, options.minAltitude), spawn.z),
         facing: rand() * Math.PI * 2,
+      };
+    }
+
+    if (spawn.kind === 'above') {
+      return {
+        where: vec(at.x, Math.max(at.y + spawn.away, options.minAltitude), at.z),
+        facing: at.heading,
+        speed: at.speed,
       };
     }
 
@@ -797,7 +859,10 @@ export function createFlock(
       return;
     }
 
-    pilot.member.state = createBird(from.where, 12 + rand() * 4, from.facing);
+    // At the leader's pace where the spawn says so, and never slower than a
+    // pigeon can fly: a bird let out at a standstill falls out of the sky.
+    const speed = Math.max(12, from.speed ?? 0) + rand() * 4;
+    pilot.member.state = createBird(from.where, speed, from.facing);
     pilot.member.down = 0;
     pilot.memory.beating = true;
     // Placed from the anchor -- behind the leader, out of shot -- and aimed
@@ -850,6 +915,10 @@ export function createFlock(
     letting = true,
   ) {
     const at = around();
+    // Made per update rather than once, because the flight parameters are a
+    // live object the debug panel edits, and a copy taken at creation would
+    // stop following it.
+    const catchingUp: FlightParams = { ...flight, flapThrust: flight.flapThrust * CATCH_UP };
     // The landing speed for a flock coming down. A flying one is set bird by
     // bird instead -- see `stationSpeed` -- because it depends on where that
     // bird has got to.
@@ -1059,7 +1128,12 @@ export function createFlock(
       // bird is.
       flying.cruiseSpeed = stationSpeed(member.state.position, at);
       steer(member.state, member.aiming, pilot.memory, pilot.controls, flying);
-      step(member.state, pilot.controls, flight, dt, collider, wind);
+      // Given stronger wings while it is behind the ball, and only then. See
+      // `CATCH_UP`: an ordinary pigeon cannot keep up with a player diving at
+      // eighty kilometres an hour, and a flock that falls behind is a flock
+      // nobody sees.
+      const behind = at.speed > OUTPACED && leadOf(member.state.position, at) < -ball.radius;
+      step(member.state, pilot.controls, behind ? catchingUp : flight, dt, collider, wind);
       // The flock does not eat. The belly is the hero's problem: it is the
       // reason to go and find grain, and there is no grain in a level for
       // these ones to find. A scenery bird with an empty belly stops
@@ -1145,7 +1219,14 @@ export function createFlock(
   };
 
   const wheel = (to: { radius: number; ahead: number }) => {
-    ball = { radius: Math.max(0, to.radius), ahead: to.ahead };
+    const radius = Math.max(0, to.radius);
+    // Wholly in front of him, whatever a level asks for. A ball that reaches
+    // back over the leader has targets behind him, and a bird behind him is
+    // behind the camera. Only for a ball that is moved forward at all: one
+    // centred on its anchor, like the crows' over a roof, is centred on
+    // purpose.
+    const ahead = to.ahead > 0 ? Math.max(to.ahead, radius + CLEAR_OF_LEADER) : to.ahead;
+    ball = { radius, ahead };
   };
 
   return {

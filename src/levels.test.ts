@@ -39,7 +39,7 @@ import { indexStreets, type Road } from './world/streets';
 import { footprintSamples } from './world/areas';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
 import { ROOFLINE } from './world/heights';
-import { defaultFlockOptions, FLOCK_AHEAD } from './flock';
+import { CLEAR_OF_LEADER, defaultFlockOptions, FLOCK_AHEAD } from './flock';
 import type { MapData } from './world/streets';
 import { MESSAGES } from './render/messages';
 
@@ -1213,6 +1213,16 @@ describe('what the levels aim at', () => {
     expect(EVERAFTER.flockAhead).toBe(FLOCK_AHEAD / 2);
     // In front of him, not behind: the camera is behind him.
     expect(EVERAFTER.flockAhead!).toBeGreaterThan(0);
+  });
+
+  it('keeps every level’s flock ball wholly in front of the hero', () => {
+    // As written, before the flock's own clamp has anything to do: a ball
+    // that reached back over him would put targets behind the camera.
+    for (const level of LEVELS.filter((each) => each.escort)) {
+      const radius = level.flockBall ?? defaultFlockOptions.radius;
+      const ahead = level.flockAhead ?? FLOCK_AHEAD;
+      expect(ahead - radius, level.name).toBeGreaterThanOrEqual(CLEAR_OF_LEADER);
+    }
   });
 
   it('leaves every other level on the flock’s own numbers', () => {
