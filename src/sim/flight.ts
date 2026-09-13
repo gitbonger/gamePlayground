@@ -1113,6 +1113,33 @@ export const birdEnergy = (state: BirdState, p: FlightParams): EnergyState =>
   energyOf(state.velocity, state.position.y - p.groundHeight, p.mass, p.gravity);
 
 /** True while the bird is resting on the ground after a clean landing. */
+/**
+ * The speed one wingbeat adds at a cruise, in m/s.
+ *
+ * Worked out from the wing rather than written down, so that retuning the
+ * flap retunes this with it: the thrust, times the downstroke's share of a
+ * beat (a half-sine that is only ever pushing, which averages one over pi),
+ * times the beat-rate factor, over one beat's duration, over the mass. With
+ * the default wing that is about 0.83.
+ */
+export function speedPerBeat(p: FlightParams): number {
+  const rate = (p.flapFrequency / Math.max(p.flapReferenceRate, 1e-6)) ** 2;
+  return (p.flapThrust * (1 / Math.PI) * rate) / Math.max(p.flapFrequency, 1e-6) / p.mass;
+}
+
+/**
+ * A burst of speed straight along the nose, worth `beats` wingbeats at once.
+ *
+ * Hidden -- on X, and nowhere on screen. Free, too: no stamina, no belly. It
+ * does nothing to a bird that is not flying, because a bird standing on a
+ * roof shot forward at fifty kilometres an hour is a bird thrown off it.
+ */
+export function boost(state: BirdState, p: FlightParams, beats = 20): void {
+  if (state.ending) return;
+  const forward = rotate(state.orientation, vec(0, 0, -1));
+  state.velocity = add(state.velocity, scale(forward, speedPerBeat(p) * beats));
+}
+
 export const isPerched = (state: BirdState): boolean => state.ending?.kind === 'landed';
 
 /** True once the flight has ended badly and the run is over. */

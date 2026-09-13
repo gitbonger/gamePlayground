@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  boost,
   caught,
   bankAngle,
   createBird,
@@ -11,6 +12,7 @@ import {
   landingReadiness,
   liftCoefficient,
   neutralControls,
+  speedPerBeat,
   step,
   type BirdState,
   type Controls,
@@ -1455,5 +1457,36 @@ describe('getting your wind back on the ground', () => {
     // than from what was offered.
     const bird = stand(standing('landed', { stamina: 1, health: 1 }), 5);
     expect(bird.health).toBe(1);
+  });
+});
+
+describe('the hidden boost', () => {
+  it('adds twenty wingbeats of speed along the nose, at once', () => {
+    const bird = createBird(vec(0, 60, 0), 14, 0);
+    boost(bird, defaultParams);
+    // Facing north, which is -z.
+    expect(-bird.velocity.z).toBeCloseTo(14 + 20 * speedPerBeat(defaultParams), 6);
+    // The whole push of twenty beats, with nothing taken back. Twenty beats
+    // actually flapped take 3.6 seconds, in which drag and the climb they
+    // cause keep most of it: measured, they end 5.3 m/s faster than gliding
+    // and 12 m higher, where this adds 16.5 m/s on the spot.
+    expect(speedPerBeat(defaultParams)).toBeGreaterThan(0.6);
+    expect(speedPerBeat(defaultParams)).toBeLessThan(1.1);
+  });
+
+  it('does nothing to a bird that is not flying', () => {
+    const bird = createBird(vec(0, 0.2, 0), 0, 0);
+    bird.velocity = vec(0, 0, 0);
+    bird.ending = {
+      kind: 'landed',
+      cause: null,
+      settled: true,
+      speed: 0,
+      sink: 0,
+      bank: 0,
+      position: bird.position,
+    };
+    boost(bird, defaultParams);
+    expect(bird.velocity).toEqual(vec(0, 0, 0));
   });
 });

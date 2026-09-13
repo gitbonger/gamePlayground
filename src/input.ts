@@ -70,6 +70,8 @@ export interface InputSource {
   consumeVoice(): boolean;
   /** True on the press that turns the music on or off. */
   consumeMusic(): boolean;
+  /** True on the press of the hidden speed boost. */
+  consumeBoost(): boolean;
   /** Whether Tab was pressed since last asked: swap the language. */
   consumeLanguage(): boolean;
   /**
@@ -132,6 +134,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
   let menuRequested = false;
   let voiceRequested = false;
   let musicRequested = false;
+  let boostRequested = false;
   let languageRequested = false;
   let stepped = 0;
   let confirmed = false;
@@ -159,6 +162,8 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     if (e.code === 'KeyR') resetRequested = true;
     if (e.code === 'KeyV') voiceRequested = true;
     if (e.code === 'KeyM') musicRequested = true;
+    // Not on any list of keys, on purpose: see `boost`.
+    if (e.code === 'KeyX') boostRequested = true;
     if (anyHeld(BINDINGS.flap)) launchRequested = true;
     if (e.code === 'KeyL') menuRequested = true;
     // The language, on the key that means "the other one" everywhere else.
@@ -221,6 +226,12 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     return requested;
   }
 
+  function consumeBoost() {
+    const requested = boostRequested;
+    boostRequested = false;
+    return requested;
+  }
+
   function consumeLanguage() {
     const requested = languageRequested;
     languageRequested = false;
@@ -274,6 +285,7 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     consumeReset,
     consumeVoice,
     consumeMusic,
+    consumeBoost,
     consumeLanguage,
     consumeLaunch,
     consumeMenu,

@@ -17,6 +17,7 @@ import * as THREE from 'three';
 
 
 import {
+  boost,
   createBird,
   defaultParams,
   caught,
@@ -3124,6 +3125,8 @@ function frame(nowMs: number) {
     // every other message's, in `MESSAGES`.
     voiceNote = { said: voice.toggle() ? 'on' : 'off', at: clock };
   }
+  // Hidden: twenty wingbeats' worth of speed at once. See `boost`.
+  if (input.consumeBoost()) boost(bird, flightParams);
   if (input.consumeMusic()) {
     musicOn = !musicOn;
     if (!musicOn) music.stop();
