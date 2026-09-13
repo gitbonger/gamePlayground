@@ -509,6 +509,18 @@ export interface Flock {
    */
   scramble(from: readonly Vec3[]): void;
   /**
+   * Put every bird that is coming into the air at once, each at a place the
+   * flock would send it next.
+   *
+   * The places come from exactly the code that picks where a bird flies to --
+   * a point in the ball of targets in front of the leader, taken as it is
+   * now rather than three seconds on -- so the flock
+   * starts where it would have ended up, rather than trickling out and
+   * catching up. From then on nothing is different: each bird is aimed at a
+   * fresh point in the ball and gets on with it.
+   */
+  scatter(): void;
+  /**
    * Bring them down around a point on the ground, and leave them there.
    *
    * The other end of `scramble`, and the other thing a flock has to be able
@@ -762,18 +774,24 @@ export function createFlock(
     return Math.min(CRUISE_CEILING, Math.max(CRUISE_FLOOR, at.speed + trim));
   };
 
-  /** Somewhere near the leader to make for, chosen fresh each time. */
-  const target = (at: Anchor): Waypoint => {
+  /**
+   * Somewhere near the leader to make for, chosen fresh each time.
+   *
+   * `seconds` is how far ahead in time the ball is taken: see below. A bird
+   * put somewhere, rather than sent, is put in the ball as it is now -- see
+   * `scatter`.
+   */
+  const target = (at: Anchor, seconds = LOOKAHEAD): Waypoint => {
     // Centred on where the leader will be, not where they are. Aiming at a
     // point somebody is standing on is pure pursuit, and pure pursuit always
     // arrives behind them: by the time the bird gets there the leader has
     // moved on, so the flock spends the whole run trailing out of shot. This
     // is the one thing that puts a pigeon in front of the camera.
-    const lead = at.speed * LOOKAHEAD;
+    const lead = at.speed * seconds;
     at = {
       ...at,
       x: at.x + Math.sin(at.heading) * lead,
-      y: at.y + at.climb * LOOKAHEAD,
+      y: at.y + at.climb * seconds,
       z: at.z - Math.cos(at.heading) * lead,
     };
     // Cube-rooted so the points fill the ball evenly rather than bunching at
@@ -1214,6 +1232,32 @@ export function createFlock(
     });
   };
 
+  const scatter = () => {
+    const at = around();
+    const ahead = wheelAbout(at);
+    pilots.forEach((pilot, i) => {
+      if (i >= wanted) return;
+      // The ball where it is now, not where it will be. The bird's next
+      // target is picked the ordinary way, three seconds on, which puts it in
+      // front of the bird; put it in that ball instead and half its targets
+      // are behind it, it turns round to reach them, and a pigeon cannot turn
+      // inside thirty metres -- the whole flock was eighty behind him in ten
+      // seconds.
+      const place = target(ahead, 0);
+      pilot.member.state = createBird(
+        vec(place.x, place.altitude, place.z),
+        // Going his way at his pace, as a bird that had been flying with him
+        // would be -- and never slower than a pigeon can stay up at.
+        Math.max(12, at.speed) + rand() * 4,
+        at.heading,
+      );
+      pilot.member.down = 0;
+      pilot.member.hunting = false;
+      pilot.memory.beating = true;
+      aim(pilot, ahead);
+    });
+  };
+
   const only = (many: number) => {
     wanted = Math.max(0, Math.min(pilots.length, Math.floor(many)));
   };
@@ -1236,6 +1280,7 @@ export function createFlock(
     touching,
     only,
     wheel,
+    scatter,
     scramble,
     land,
   };

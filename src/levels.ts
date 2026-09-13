@@ -754,6 +754,15 @@ export interface Level {
    */
   flockAtOnce?: boolean;
   /**
+   * Whether a restart puts the whole flock straight into its ball of targets.
+   *
+   * Only a restart -- a death, the reset key, the menu -- and never a level
+   * walked into from the one before, which brings its flock with it. Let out
+   * one a second from over the hero, a flock of thirty behind a player who
+   * dives off the start is a flock he does not see for twenty seconds.
+   */
+  flockScattered?: boolean;
+  /**
    * Who is standing where, for as long as this level is being flown.
    *
    * Applied every time the level begins -- picked from the menu, restarted
@@ -1301,6 +1310,9 @@ export const LEVELS: readonly Level[] = [
     // Thirty. Ten is company on an errand; this is the flock as the point of
     // the level rather than as scenery around the edge of it.
     flock: 30,
+    // And all of them there at once on a restart, rather than let out one a
+    // second behind a player who has just been put back at a hundred metres.
+    flockScattered: true,
     // The loft, a hundred and fifty metres beyond the line and on almost the
     // same bearing -- 224 against the line's 227 -- so what the arrow points
     // at and where the flight is going are the same way. It is not this

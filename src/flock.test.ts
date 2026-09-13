@@ -1781,3 +1781,43 @@ describe('keeping up with a fast leader', () => {
     }
   });
 });
+
+describe('starting a flock already in its ball', () => {
+  it('puts every bird up at once, each inside the ball in front of the leader', () => {
+    const speed = 14;
+    const leader = { x: 0, y: 100, z: 0, heading: 0, speed, climb: 0 };
+    const flock = createFlock(5, () => leader, { ...defaultFlockOptions, count: 30, ahead: 30 });
+    flock.only(30);
+    flock.recall();
+    flock.scatter();
+
+    const up = flock.members.filter((member) => member.down <= 0);
+    expect(up).toHaveLength(30);
+    // The ball the targets are picked in, moved forward by `ahead`, and taken
+    // as it is now rather than three seconds on -- with the default radius.
+    const centreZ = -30;
+    for (const member of up) {
+      const at = member.state.position;
+      const away = Math.hypot(at.x, at.y - 100, at.z - centreZ);
+      expect(away).toBeLessThanOrEqual(defaultFlockOptions.radius + 1e-6);
+      expect(-at.z, 'in front of him').toBeGreaterThan(0);
+    }
+    // And not all in the same place, which a flock dealt one point would be.
+    expect(new Set(up.map((member) => member.state.position.x.toFixed(2))).size).toBeGreaterThan(20);
+  });
+
+  it('carries on as a flock afterwards, still in front of him', () => {
+    // Put in the ball three seconds on, half of each bird's next targets were
+    // behind it, and the whole flock turned round to reach them.
+    let leader = { x: 0, y: 100, z: 0, heading: 0, speed: 14, climb: 0 };
+    const flock = createFlock(5, () => leader, { ...defaultFlockOptions, count: 30, ahead: 30 });
+    flock.only(30);
+    flock.scatter();
+    for (let t = 0; t < 20; t += 1 / 60) {
+      leader = { ...leader, z: leader.z - 14 / 60 };
+      flock.update(1 / 60, undefined, calm, true);
+    }
+    const ahead = flock.members.filter((m) => m.down <= 0 && m.state.position.z < leader.z);
+    expect(ahead.length).toBeGreaterThan(20);
+  });
+});

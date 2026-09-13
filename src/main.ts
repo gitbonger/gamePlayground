@@ -1811,6 +1811,9 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // unless this one needs more than that to be flyable at all.
   if (where === 'in place') bird.health = bellyOnEntry(spec, bird.health);
   if (where === 'released') respawn();
+  // After the bird is back at the start, because the ball is measured from
+  // him: done before, it would be in front of wherever he died.
+  if (spec.escort && spec.flockScattered && where === 'released') flock.scatter();
 }
 
 /**
