@@ -346,7 +346,8 @@ export function beginRescue(spec: Rescuing): Rescue {
 
         // A bird that kept walking would push into the cage and shuffle
         // against it, which reads as being stuck rather than as being there.
-        helper.controls.forward = helper.doing === 'going' ? 1 : 0;
+        // And once the cage has gone, nobody is going anywhere.
+        helper.controls.forward = helper.doing === 'going' && health > 0 ? 1 : 0;
         helper.controls.turn = 0;
         helper.controls.launch = false;
         walk(helper.state, helper.controls, spec.flight, dt, collider);
@@ -356,7 +357,10 @@ export function beginRescue(spec: Rescuing): Rescue {
         // so it stops the moment they get there; at work it is wound on by
         // the clock instead, at walking pace -- feet going and head bobbing
         // on the spot, which is a bird worrying at something.
-        if (helper.doing === 'working' && spec.flight.walkStride > 0) {
+        //
+        // Until the cage gives way. Then there is nothing left to worry at,
+        // and they stand still and watch it go.
+        if (helper.doing === 'working' && health > 0 && spec.flight.walkStride > 0) {
           const phase =
             helper.state.stridePhase + (spec.flight.walkSpeed * dt) / spec.flight.walkStride;
           helper.state.stridePhase = phase - Math.floor(phase);

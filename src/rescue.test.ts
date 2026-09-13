@@ -128,7 +128,11 @@ describe('the thirty who came to help', () => {
     // Standing dead still at the bars reads as waiting. Working at them is
     // the walk on the spot: the stride turning over, the bird going nowhere.
     const rescue = staged();
-    run(rescue, 30);
+    // Until somebody is at it, and while the cage is still there to be at.
+    for (let t = 0; t < 60 && !rescue.helpers.some((h) => h.doing === 'working'); t += DT) {
+      rescue.update(DT);
+    }
+    expect(rescue.broken, 'still standing').toBe(false);
     const before = rescue.helpers
       .filter((helper) => helper.doing === 'working')
       .map((helper) => ({
@@ -143,6 +147,17 @@ describe('the thirty who came to help', () => {
       expect(helper.state.stridePhase).not.toBeCloseTo(phase, 3);
       expect(Math.hypot(helper.state.position.x - x, helper.state.position.z - z)).toBeLessThan(0.01);
     }
+  });
+
+  it('stills their feet once the cage has given way', () => {
+    const rescue = staged();
+    for (let t = 0; t < 600 && !rescue.broken; t += 1 / 60) rescue.update(1 / 60);
+    expect(rescue.broken, 'broken within ten minutes').toBe(true);
+    const phases = rescue.helpers.map((helper) => helper.state.stridePhase);
+    run(rescue, 1);
+    rescue.helpers.forEach((helper, i) => {
+      expect(helper.state.stridePhase, `bird ${i}`).toBeCloseTo(phases[i]!, 6);
+    });
   });
 
   it('breaks the cage when it has been worked at, not when a timer runs out', () => {
