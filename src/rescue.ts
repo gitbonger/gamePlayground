@@ -346,6 +346,17 @@ export function beginRescue(spec: Rescuing): Rescue {
         helper.controls.turn = 0;
         helper.controls.launch = false;
         walk(helper.state, helper.controls, spec.flight, dt, collider);
+
+        // But one that stands dead still at the cage reads as waiting, not as
+        // taking it apart. The stride is normally wound on by ground covered,
+        // so it stops the moment they get there; at work it is wound on by
+        // the clock instead, at walking pace -- feet going and head bobbing
+        // on the spot, which is a bird worrying at something.
+        if (helper.doing === 'working' && spec.flight.walkStride > 0) {
+          const phase =
+            helper.state.stridePhase + (spec.flight.walkSpeed * dt) / spec.flight.walkStride;
+          helper.state.stridePhase = phase - Math.floor(phase);
+        }
       }
     },
   };

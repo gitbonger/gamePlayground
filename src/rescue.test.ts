@@ -124,6 +124,27 @@ describe('the thirty who came to help', () => {
     }
   });
 
+  it('keeps their feet going at the cage, without moving them', () => {
+    // Standing dead still at the bars reads as waiting. Working at them is
+    // the walk on the spot: the stride turning over, the bird going nowhere.
+    const rescue = staged();
+    run(rescue, 30);
+    const before = rescue.helpers
+      .filter((helper) => helper.doing === 'working')
+      .map((helper) => ({
+        helper,
+        phase: helper.state.stridePhase,
+        x: helper.state.position.x,
+        z: helper.state.position.z,
+      }));
+    expect(before.length, 'some of them at work').toBeGreaterThan(0);
+    run(rescue, 0.05);
+    for (const { helper, phase, x, z } of before) {
+      expect(helper.state.stridePhase).not.toBeCloseTo(phase, 3);
+      expect(Math.hypot(helper.state.position.x - x, helper.state.position.z - z)).toBeLessThan(0.01);
+    }
+  });
+
   it('breaks the cage when it has been worked at, not when a timer runs out', () => {
     // It used to come apart five seconds after they appeared, on a clock that
     // knew nothing about whether anybody had reached it. Now every go at it
