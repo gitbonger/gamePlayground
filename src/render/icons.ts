@@ -232,6 +232,25 @@ export const ICONS = {
     { d: 'M16.4 7.6l2.8-4.6 2.8 4.6z', fill: true, ink: 'safe' },
     GROUND,
   ],
+  /**
+   * Rolled over near the ground: a bird seen from behind, tipped, with the
+   * level line it should be on and an arrow rolling it back onto it.
+   */
+  keepLevel: [
+    { d: 'M2.6 11.4h18.8', ink: 'safe', thin: true },
+    ...(
+      [
+        // Both wings, spread, and the body between them, from behind.
+        { d: 'M2.8 12.2q4.6-2.4 9.2-1.2 4.6-1.2 9.2 1.2-4.6.8-9.2.6-4.6.2-9.2-.6z', wash: 'wing', ink: 'wing', thin: true },
+        { d: 'M12 8.8a1.7 2.4 0 100 4.8 1.7 2.4 0 000-4.8z', wash: 'bird', ink: 'bird', thin: true },
+        { d: 'M11.1 13.2l.9 2.4.9-2.4z', fill: true, ink: 'bird' },
+      ] as Mark[]
+    ).map((mark) => ({ ...mark, turn: 'rotate(-28 12 11.4)' })),
+    // The roll back: round from the raised wing tip, down onto the line.
+    { d: 'M18.6 4.6q3.6 2.4 3 6', ink: 'warn', thin: true },
+    { d: 'M20.2 10.2l1.4 2.6 1.4-2.8z', fill: true, ink: 'warn' },
+    GROUND,
+  ],
   /** Out of puff: the bar the HUD shows, nearly empty. */
   tired: [
     { d: 'M3.2 9.2h14.6v5.6H3.2z', wash: 'dark', ink: 'metal', thin: true },

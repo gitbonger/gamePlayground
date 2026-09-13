@@ -1,7 +1,8 @@
 /** Every icon on one page, at the size they are drawn and larger. */
 import { drawIcon, ICONS, type IconName } from '../src/render/icons';
 
-import { CAUTIONS, COURSES, createTipPanel } from '../src/render/tips';
+import { createTipPanel } from '../src/render/tips';
+import { MESSAGES } from '../src/render/messages';
 import { startLanguage } from '../src/i18n';
 
 startLanguage(null, ['en']);
@@ -30,23 +31,22 @@ strip.style.cssText = 'position:relative;padding:8px 0 40px;display:flex;flex-di
 document.body.appendChild(strip);
 
 const shown = [
-  // One of each kind first, so the three colours can be compared, then the
-  // real ones.
+  // One of each kind first, so the three colours can be compared, then every
+  // real instruction in the game.
   ...(['survival', 'story', 'hint'] as const).map((sort) => ({
     keys: ['B'],
     text: { en: `a ${sort} instruction`, hu: '' },
     icon: 'crow' as const,
     sort,
   })),
-  ...Object.values(COURSES).flat(),
-  ...CAUTIONS,
+  ...MESSAGES,
 ];
 for (const tip of shown) {
   const holder = document.createElement('div');
-  holder.style.cssText = 'position:relative;height:150px;width:100%';
+  holder.style.cssText = 'position:relative;height:90px;width:100%';
   strip.appendChild(holder);
   const panel = createTipPanel(holder);
-  panel.show(tip);
+  panel.show([tip]);
   // Out of the fixed corner and into the row, so they can be seen at once.
   const el = holder.querySelector('.tip') as HTMLElement;
   el.style.position = 'absolute';

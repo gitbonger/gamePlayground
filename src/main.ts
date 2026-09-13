@@ -3396,6 +3396,7 @@ function frame(nowMs: number) {
     // anywhere to land, neither of these is asked.
     tooFast: settling !== null && !settling.speedOk,
     tooHard: settling !== null && !settling.sinkOk,
+    notLevel: !landingReadiness(bird, flightParams).bankOk,
     hunted:
       hunted &&
       bird.ending === null &&

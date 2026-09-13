@@ -131,6 +131,12 @@ export interface Moment {
   tooFast: boolean;
   /** And coming down too hard to put down, by the same rule. */
   tooHard: boolean;
+  /**
+   * Banked further over than a touchdown allows: land at this roll and he
+   * dies. Asked everywhere, not only near somewhere to land -- the ground is
+   * under him wherever he is.
+   */
+  notLevel: boolean;
 
   // --- What is happening to it ---------------------------------------------
   /** A crow has picked him out and is coming. */
@@ -261,6 +267,9 @@ const CROW_STREETS = ['Népszínház', 'Blaha'] as const;
  * was being told to lose height to, in the middle of a conversation.
  */
 const aloft = (at: Moment): boolean => !at.perched && !at.crashed;
+
+/** Below this many metres, a bird rolled past the landing limit is told to level out. */
+export const LEVEL_BELOW = 10;
 
 /**
  * Whether the bird is sinking towards trouble rather than towards a landing.
@@ -404,6 +413,18 @@ export const MESSAGES: readonly Message[] = [
     // told to pull out of it is the game arguing with itself.
     when: (at) => fallingShort(at) && (at.tooFast || at.tooHard),
     done: (at) => at.down(['↓']),
+  },
+  {
+    id: 'keepLevel',
+    keys: ['←', '→'],
+    text: { en: 'Keep level!', hu: 'Tartsd vízszintesen!' },
+    icon: 'keepLevel',
+    sort: 'survival',
+    spoken: true,
+    // Near the ground and rolled over past what a landing survives. Every
+    // time it is true and for as long as it is: it can kill, and there is
+    // nothing to have learnt once.
+    when: (at) => aloft(at) && at.altitude < LEVEL_BELOW && at.notLevel,
   },
   {
     id: 'brakes',

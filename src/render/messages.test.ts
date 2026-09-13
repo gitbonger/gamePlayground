@@ -28,6 +28,7 @@ const flying = (over: Partial<Moment> = {}): Moment => ({
   blocked: false,
   tooFast: false,
   tooHard: false,
+  notLevel: false,
   hunted: false,
   answering: false,
   leaving: false,
@@ -321,5 +322,23 @@ describe('losing your way', () => {
     // Once a level. A player who turns round twice does not want telling
     // twice, and the map does not move.
     expect(message('useTheMap').once).toBe(true);
+  });
+});
+
+describe('keeping level near the ground', () => {
+  it('says so below ten metres, rolled past what a landing survives', () => {
+    expect(shows('keepLevel', flying({ altitude: 6, notLevel: true }))).toBe(true);
+  });
+
+  it('says nothing higher up, level, or on the ground', () => {
+    expect(shows('keepLevel', flying({ altitude: 14, notLevel: true }))).toBe(false);
+    expect(shows('keepLevel', flying({ altitude: 6, notLevel: false }))).toBe(false);
+    expect(shows('keepLevel', flying({ altitude: 0, notLevel: true, perched: true }))).toBe(false);
+  });
+
+  it('is not a once-only lesson', () => {
+    const keep = MESSAGES.find((m) => m.id === 'keepLevel')!;
+    expect(keep.once).toBeFalsy();
+    expect(keep.spoken).toBe(true);
   });
 });

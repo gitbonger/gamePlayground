@@ -74,6 +74,7 @@ to land, and something to land on is **in sight** at 200 m.
 | --- | --- | --- | --- | --- |
 | `flap` | `SPACE` | Keep flapping! | airspeed below **slow** with nowhere to land within 150 m; **or** nose already up, below **low**, sinking, and nowhere to land | `SPACE` is pressed |
 | `pullUp` | `↓` | Pull up! | below **low**, sinking, nowhere to land within 150 m, **and** an arrival right now would kill | `↓` is pressed |
+| `keepLevel` | `←` `→` | Keep level! | below **10 m**, in the air, and banked past what a touchdown survives — landing at this roll would kill | he levels out (every time it is true, not once) |
 | `brakes` | `B` | Try the brakes! | **teaching** levels only, and stamina below **tired** | `B` is pressed (once a level) |
 
 ## The crows
