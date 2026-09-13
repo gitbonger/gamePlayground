@@ -22,6 +22,8 @@ import homeMap from '../src/world/data/home.json';
 import { buildLayoutFromMap, defaultMapWorldOptions } from '../src/world/from-map';
 import { buildWorld } from '../src/world/city';
 import type { MapData } from '../src/world/streets';
+import { LANDMARKS } from '../src/landmarks';
+import { project } from '../src/world/geo';
 
 const map = homeMap as unknown as MapData;
 // The same world the game builds, trams and all -- otherwise a count of what
@@ -29,6 +31,13 @@ const map = homeMap as unknown as MapData;
 const yard = { x: -400, z: -180 };
 const full = buildLayoutFromMap(map, {
   ...defaultMapWorldOptions,
+  // The described buildings too, placed as the game places them, so that one
+  // that has just been added can be looked at here.
+  landmarks: LANDMARKS.map((landmark) => {
+    const at = project(landmark.at[0], landmark.at[1], map.centre);
+    const { at: _degrees, ...rest } = landmark;
+    return { ...rest, x: at.x, z: at.z };
+  }),
   trains: [
     { near: yard, cars: 12 },
     { near: yard, cars: 6, stock: 'carriage', speed: 16, runsOut: true },

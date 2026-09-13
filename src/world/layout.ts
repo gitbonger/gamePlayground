@@ -10,6 +10,7 @@ import type { Rail, Road } from './streets';
 import type { Bridge } from './bridges';
 import type { Train } from './train';
 import type { Area } from './areas';
+import type { Part } from './model';
 
 /** Small deterministic PRNG, so the same seed always builds the same city. */
 function mulberry32(seed: number): () => number {
@@ -192,6 +193,15 @@ export interface Landmark {
    * things standing on it, rather than one solid thing filling it.
    */
   station?: Station;
+  /**
+   * Drawn and made solid from a list of parts, if it has one.
+   *
+   * For the buildings that have to look like themselves -- see
+   * `src/world/model.ts`. The footprint, height and margin still say what
+   * ground it takes and where its marker hangs; the parts say what stands on
+   * that ground.
+   */
+  model?: readonly Part[];
   /** What is planted on the terrace, if anything. */
   planting?: Planting;
   /** Anybody standing on the terrace. */

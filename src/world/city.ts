@@ -10,6 +10,7 @@
  */
 
 import * as THREE from 'three';
+import { buildModel } from '../render/building';
 import { merged, painted } from '../render/painted';
 
 import { createColliderField, type Box, type Collider } from '../sim/collision';
@@ -586,6 +587,32 @@ export function buildWorld(
 
     if (landmark.canopy) {
       markers.push(growTree(landmark, group, disposables, overlay));
+      continue;
+    }
+
+    if (landmark.model) {
+      // Described part by part: one coloured geometry, with windows painted
+      // on its walls like every other building's.
+      const geometry = buildModel(landmark.model);
+      const material = withWindows(
+        new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
+      );
+      disposables.push(geometry, material);
+      const building = new THREE.Mesh(geometry, material);
+      building.position.set(landmark.x, 0, landmark.z);
+      building.rotation.y = landmark.yaw ?? 0;
+      building.castShadow = true;
+      building.receiveShadow = true;
+      group.add(building);
+      markers.push(
+        createMarker(
+          landmark.name,
+          material,
+          new THREE.Vector3(landmark.x, landmark.height, landmark.z),
+          disposables,
+          overlay,
+        ),
+      );
       continue;
     }
 

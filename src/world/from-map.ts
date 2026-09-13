@@ -14,6 +14,7 @@
  * middle, which is also where the gardens go.
  */
 
+import { partBoxes } from './model';
 import { aabb, turnedBox, type Box } from '../sim/collision';
 import {
   bakedPlans,
@@ -614,6 +615,12 @@ export function buildLayoutFromMap(
       boxes.push(
         turnedBox(parked.x, parked.z, CAR.length, CAR.height, CAR.width, turn + car.facing),
       );
+      continue;
+    }
+
+    // Described part by part: solid as its parts are, and nothing else.
+    if (landmark.model) {
+      boxes.push(...partBoxes(landmark, landmark.model));
       continue;
     }
 

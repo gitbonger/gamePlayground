@@ -13,6 +13,7 @@
  * point.
  */
 import type { Landmark, Standing } from './world/layout';
+import { KELETI_PARTS } from './buildings/keleti';
 
 /**
  * A described thing, in degrees, before it is projected into local metres.
@@ -346,6 +347,31 @@ export const THEORY_NORTH: LandmarkSpec = {
   margin: 6,
 };
 
+/**
+ * Keleti pályaudvar, built part by part rather than generated: see
+ * `src/buildings/keleti.ts` for what it is made of and why.
+ *
+ * Placed on the middle of the outline OpenStreetMap has for the station,
+ * which is thirty-five metres from the point it was first pinned at -- that
+ * point is on the northern wing. Taking the ground it does is also what stops
+ * the generated blocks being built where it stands.
+ */
+export const KELETI: LandmarkSpec = {
+  name: 'Keleti pályaudvar',
+  at: [47.500431, 19.083963],
+  width: 181,
+  // The outline's full width is 103, but its north-west corner is cut back
+  // round the corner of Baross tér; a rectangle that wide stands five metres
+  // into the road there.
+  depth: 97,
+  // The ridge of the shed. The towers go a little higher; this is where the
+  // marker hangs, over the middle of the roof.
+  height: 36,
+  yaw: 0,
+  margin: 4,
+  model: KELETI_PARTS,
+};
+
 export const LANDMARKS: readonly LandmarkSpec[] = [
   HOME_TREE,
   LOFT,
@@ -356,4 +382,5 @@ export const LANDMARKS: readonly LandmarkSpec[] = [
   JANI_SQUARE,
   THEORY_SOUTH,
   THEORY_NORTH,
+  KELETI,
 ];
