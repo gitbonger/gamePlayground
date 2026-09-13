@@ -469,9 +469,10 @@ export interface BirdState {
    * take-off that is not immediately followed by pulling up.
    *
    * Which is not what happens to pigeons. A bird that fluffs a take-off comes
-   * down and stands there. So while this is set the bird cannot crash -- it
-   * can only land -- and it stays set until the take-off has plainly worked:
-   * see `CLIMBED` and `TAKING_OFF`.
+   * down and stands there. So while this is set the bird cannot crash -- not
+   * onto a roof and not into a wall; it can only land, or bump -- and it
+   * stays set until the take-off has plainly worked: see `CLIMBED` and
+   * `TAKING_OFF`. Being hit by a train still kills.
    */
   leaving: { at: number; height: number } | null;
   /**
@@ -877,7 +878,12 @@ export function step(
       // this world is masonry -- see `Box.soft`. It still overrides nothing
       // about being *run over*: a soft thing travelling at you is a different
       // question from a soft thing you flew into.
-      if (struck || (impact >= p.crashSpeed && !hit.soft)) {
+      // And a bird still taking off cannot fly itself to death either, for
+      // the reason it cannot land itself to death: see `BirdState.leaving`.
+      // A fluffed hop off the loft goes straight into the trapper standing
+      // beside the cage, and that is a bump, not a death. Being run over is
+      // not forgiven -- that was never the take-off's fault.
+      if (struck || (impact >= p.crashSpeed && !hit.soft && !state.leaving)) {
         // Read the arrival before the velocity is spent on it, or the report
         // is of a bird that hit a wall at nothing.
         const arrival = {

@@ -821,6 +821,22 @@ describe('a take-off that does not work out', () => {
     expect(bird.ending?.kind).toBe('crashed');
   });
 
+  it('bumps him off something in the way rather than killing him', () => {
+    // The end of the rescue: standing by the cage, facing it, and the trapper
+    // a few metres further on. A hop with a little flap in it reaches him at
+    // more than the speed a wall kills at.
+    const bird = landed(vec(0, STANDING, 0));
+    takeOff(bird, p);
+    const wall = createColliderField([aabb(-2, 0, -9, 2, 4, -8)]);
+    let fastest = 0;
+    for (let t = 0; t < 6 && !bird.ending; t += TICK) {
+      step(bird, { ...neutralControls(), flap: t < 0.6 }, p, TICK, wall);
+      fastest = Math.max(fastest, Math.hypot(bird.velocity.x, bird.velocity.y, bird.velocity.z));
+    }
+    expect(fastest, 'fast enough that a wall would kill').toBeGreaterThan(p.crashSpeed);
+    expect(bird.ending?.kind).not.toBe('crashed');
+  });
+
   it('is over as soon as he is on his feet again', () => {
     const bird = fluffed(5);
     expect(bird.leaving).toBeNull();
