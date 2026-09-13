@@ -27,6 +27,8 @@ import { buildWorld } from '../src/world/city';
 import type { MapData } from '../src/world/streets';
 import { LANDMARKS } from '../src/landmarks';
 import { project } from '../src/world/geo';
+import { buildCarGraph, createTraffic } from '../src/world/cars';
+import { createCarMeshes } from '../src/render/cars';
 
 const map = homeMap as unknown as MapData;
 // The same world the game builds, trams and all -- otherwise a count of what
@@ -88,6 +90,16 @@ world.updateTrains(full.trains ?? []);
 // And the water's clock, from `t` in seconds, so that two stills a moment
 // apart show whether it moves.
 world.updateWater(n('t', 0));
+// And the cars, driven for `drive` seconds round where the camera is looking
+// first, so they are spread along the roads rather than where they were put.
+{
+  const looking = { x: n('tx', 298), z: n('tz', -72) };
+  const traffic = createTraffic(buildCarGraph(full.roads ?? []), 300, looking);
+  for (let t = 0; t < n('drive', 40); t += 1 / 30) traffic.update(1 / 30, looking);
+  const cars = createCarMeshes(300);
+  cars.update(traffic.cars);
+  scene.add(cars.object);
+}
 renderer.render(scene, camera);
 
 (window as unknown as { __look: unknown }).__look = { renderer, scene, camera, world, layout: full };

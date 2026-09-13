@@ -95,6 +95,8 @@ import { browserTone, createAlarm } from './render/alarm';
 import { browserKit, createAmbience, type Source } from './render/ambience';
 import { cityBed, sampledKit } from './render/samples';
 import { createMusic } from './render/music';
+import { buildCarGraph, CAR_LENGTH, createTraffic } from './world/cars';
+import { createCarMeshes } from './render/cars';
 import { intensityOf, type Situation } from './render/intensity';
 import { browserChime, createCue } from './render/cue';
 import { createVitals, type Vital } from './render/vitals';
@@ -899,6 +901,21 @@ let start = releaseFor(LEVELS[level] ?? LEVELS[0]!);
 
 let bird: BirdState = createBird(start.at, start.perched ? 0 : SPAWN_SPEED, start.heading);
 if (start.perched) standStill(bird);
+
+/**
+ * How many cars are on the roads round the bird at once.
+ *
+ * A fixed number kept within about four hundred metres of him rather than a
+ * city's worth -- see `createTraffic`. A hundred and sixty measured at about
+ * sixty microseconds an update, and fifteen minutes of it at three places
+ * left no car stuck; three hundred is what makes a street near him look used.
+ */
+const CARS = 300;
+const traffic = createTraffic(buildCarGraph(layout.roads ?? map.roads), CARS, start.at);
+const carMeshes = createCarMeshes(CARS);
+scene.add(carMeshes.object);
+/** Only the cars this near the bird are solid: nothing further can be touched this tick. */
+const CARS_SOLID_WITHIN = 40;
 let telemetry: FlightTelemetry = step(bird, input.controls, flightParams, TICK);
 /** What the bird did on its feet this tick, when it was on them. */
 let onFoot: WalkTelemetry = { grounded: false, travelled: 0, blocked: false };
@@ -2586,6 +2603,18 @@ function moveTrains(dt: number) {
   // laid into that grid once and never touched, and this one comes and goes
   // with the level.
   if (cageBox) fields.push(createColliderField([cageBox]));
+  // The cars near him, as things to bump into rather than things that kill:
+  // soft, and not moving as far as the collider knows. Being run over by a
+  // tram is a death; a car is not, yet.
+  const cars: ReturnType<typeof turnedBox>[] = [];
+  for (const car of traffic.cars) {
+    if (Math.abs(car.x - bird.position.x) > CARS_SOLID_WITHIN) continue;
+    if (Math.abs(car.z - bird.position.z) > CARS_SOLID_WITHIN) continue;
+    const box = turnedBox(car.x, car.z, CAR_LENGTH, 1.7, 1.8, car.yaw);
+    box.soft = true;
+    cars.push(box);
+  }
+  if (cars.length) fields.push(createColliderField(cars));
   rememberWhereTrainsWere();
   // Where everything is, once, before anything moves -- so that every train
   // this tick is looking at the same world rather than at one that has been
@@ -3334,6 +3363,11 @@ function frame(nowMs: number) {
       near[index] ? { ...train, vehicles: drawnVehicles[index]! } : train,
     ),
   );
+  // And the cars, moved on by the frame rather than by the tick: they are
+  // scenery, and a frame's worth of movement drawn once is smoother than one
+  // to three ticks' worth drawn unevenly.
+  traffic.update(frameTime, bird.position);
+  carMeshes.update(traffic.cars);
   // Somebody talking, or somebody talking to himself. The second is the same
   // panel in the same place: a monologue is a conversation with one speaker,
   // so it is shown as one, in his own colour, with nothing to say back.
