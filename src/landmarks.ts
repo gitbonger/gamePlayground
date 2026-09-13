@@ -31,10 +31,12 @@ export interface LandmarkSpec extends Omit<Landmark, 'x' | 'z'> {
 /**
  * A block of flats built round a garden, eight storeys and a set-back top.
  *
- * Built part by part -- see `src/buildings/loft.ts` -- as a square ring with
- * a courtyard all the way down the middle. It stands where the old slab
- * stood, which is where the levels that come here were laid out round, and it
- * is thirty-one metres to the roof, which is what they were balanced for.
+ * Built part by part -- see `src/buildings/loft.ts` -- as a ring with a
+ * courtyard all the way down the middle, on OpenStreetMap's outline for the
+ * corner block of Kun utca and Alföldi utca: 72 metres down the one, 65 down
+ * the other, and turned to stand square to both. That is twenty-six metres
+ * from where the old slab stood. Thirty-one metres to the roof, which is what
+ * the levels that come here were balanced for.
  *
  * The roof is game furniture: the trapper and his cage are on its south-east
  * corner, and `deck` says so. Everything that used to hang off the middle of
@@ -43,11 +45,14 @@ export interface LandmarkSpec extends Omit<Landmark, 'x' | 'z'> {
  */
 export const LOFT: LandmarkSpec = {
   name: 'The Loft',
-  at: [47.495294, 19.081901],
-  width: 64,
-  depth: 64,
+  // Forty centimetres in from both streets off the outline itself, which has
+  // the corner standing in the pavement.
+  at: [47.495134, 19.081643],
+  width: 71.7,
+  depth: 65,
   height: 31,
-  yaw: 0,
+  // Along Alföldi utca.
+  yaw: 0.3624,
   margin: 6,
   model: LOFT_PARTS,
   deck: LOFT_DECK,

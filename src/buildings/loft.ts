@@ -11,8 +11,11 @@
  * at, what the rescue gathers on, and where she is let out. The rest of the
  * ring is somewhere to land and walk round to it.
  *
- * `along` is west (-) to east (+) and `across` north (-) to south (+), from
- * the middle of the courtyard.
+ * A corner house, on Kun utca and Alföldi utca, and turned to stand square
+ * to both. `along` runs down Alföldi utca, roughly west (-) to east (+), and
+ * `across` down Kun utca, roughly north (-) to south (+), both from the middle
+ * of the courtyard. The corner on the two streets is the south-west one; the
+ * cage is on the opposite side of the south arm, at the south-east.
  */
 
 import type { Part } from '../world/model';
@@ -25,8 +28,12 @@ const LAWN = 0x6f9a52;
 const LEAVES = 0x4f7d3a;
 const TRUNK = 0x5d4630;
 
-/** Half the outside of the ring, and half the courtyard. */
-const OUTER = 32;
+/**
+ * Half the outside of the ring, along Alföldi utca and along Kun utca, and
+ * half the courtyard. The outside is OpenStreetMap's outline for the block.
+ */
+const ALONG = 35.85;
+const ACROSS = 32.5;
 const INNER = 13;
 /** The main walls' height, and the set-back storey's on top of it. */
 const MAIN = 27.8;
@@ -36,33 +43,35 @@ const SET_BACK = 2.5;
 /** The roof slab laid on each top, thin enough to read as a coping. */
 const SLAB = 0.15;
 
-/** The middle of an arm, the length of it, and how wide it is. */
-const arm = OUTER - (OUTER - INNER) / 2;
-const width = OUTER - INNER;
-const upperOuter = OUTER - SET_BACK;
-const upperInner = INNER + SET_BACK;
-const upperArm = upperOuter - (upperOuter - upperInner) / 2;
-const upperWidth = upperOuter - upperInner;
+/** The top storey's outside and inside. */
+const UPPER_ALONG = ALONG - SET_BACK;
+const UPPER_ACROSS = ACROSS - SET_BACK;
+const UPPER_INNER = INNER + SET_BACK;
+/** The middle of the top storey's arms: the east one along, the south one across. */
+const EAST_ARM = (UPPER_ALONG + UPPER_INNER) / 2;
+const SOUTH_ARM = (UPPER_ACROSS + UPPER_INNER) / 2;
 
 /**
- * A square ring as four boxes: the north and south arms the full width, the
- * east and west arms between them -- so no two faces lie in the same place
- * and fight over the pixels.
+ * A rectangular ring as four boxes: the north and south arms the full
+ * length, the east and west arms between them -- so no two faces lie in the
+ * same place and fight over the pixels.
  */
 function ring(
-  half: number,
-  armMiddle: number,
-  armWidth: number,
+  along: number,
+  across: number,
+  inner: number,
   base: number,
   height: number,
   colour: number,
 ): Part[] {
-  const across = half * 2 - armWidth * 2;
+  const northSouth = across - inner;
+  const eastWest = along - inner;
+  const middle = (outer: number) => (outer + inner) / 2;
   return [
-    { shape: 'box', along: 0, across: -armMiddle, length: half * 2, width: armWidth, base, height, colour },
-    { shape: 'box', along: 0, across: armMiddle, length: half * 2, width: armWidth, base, height, colour },
-    { shape: 'box', along: -armMiddle, across: 0, length: armWidth, width: across, base, height, colour },
-    { shape: 'box', along: armMiddle, across: 0, length: armWidth, width: across, base, height, colour },
+    { shape: 'box', along: 0, across: -middle(across), length: along * 2, width: northSouth, base, height, colour },
+    { shape: 'box', along: 0, across: middle(across), length: along * 2, width: northSouth, base, height, colour },
+    { shape: 'box', along: -middle(along), across: 0, length: eastWest, width: inner * 2, base, height, colour },
+    { shape: 'box', along: middle(along), across: 0, length: eastWest, width: inner * 2, base, height, colour },
   ];
 }
 
@@ -81,21 +90,21 @@ const panels = (along: number, across: number, length: number, width: number): P
 
 export const LOFT_PARTS: readonly Part[] = [
   // The eight storeys, and the ledge round the top of them.
-  ...ring(OUTER, arm, width, 0, MAIN, WALL),
-  ...ring(OUTER - 0.1, arm, width - 0.2, MAIN, SLAB, ROOF),
+  ...ring(ALONG, ACROSS, INNER, 0, MAIN, WALL),
+  ...ring(ALONG - 0.1, ACROSS - 0.1, INNER + 0.1, MAIN, SLAB, ROOF),
   // The set-back storey, and the roof on it. Its top is thirty-one metres,
   // which is the height every level that comes here was balanced for.
-  ...ring(upperOuter, upperArm, upperWidth, MAIN, STOREY, UPPER),
-  ...ring(upperOuter - 0.1, upperArm, upperWidth - 0.2, MAIN + STOREY, SLAB, ROOF),
+  ...ring(UPPER_ALONG, UPPER_ACROSS, UPPER_INNER, MAIN, STOREY, UPPER),
+  ...ring(UPPER_ALONG - 0.1, UPPER_ACROSS - 0.1, UPPER_INNER + 0.1, MAIN + STOREY, SLAB, ROOF),
 
   // Solar panels in long rows, on the north and west arms and the north half
   // of the east one. Not the south arm, whose east end is where the cage
   // stands. Too low to trip over, and not solid: the roof is for walking on.
-  panels(0, -upperArm - 2.5, 38, 3),
-  panels(0, -upperArm + 2.5, 38, 3),
-  panels(-upperArm - 2.5, 0, 3, 30),
-  panels(-upperArm + 2.5, 0, 3, 30),
-  panels(upperArm, -8, 3, 20),
+  panels(0, -SOUTH_ARM - 2.5, 40, 3),
+  panels(0, -SOUTH_ARM + 2.5, 40, 3),
+  panels(-EAST_ARM - 2.5, 0, 3, 30),
+  panels(-EAST_ARM + 2.5, 0, 3, 30),
+  panels(EAST_ARM, -8, 3, 20),
 
   // The garden at the bottom of the hole: a lawn, bushes, and two trees that
   // reach a third of the way up. None of it solid -- it is scenery down a
@@ -116,8 +125,8 @@ export const LOFT_PARTS: readonly Part[] = [
  * the cage, her spot and the trapper are placed from.
  */
 export const LOFT_DECK = {
-  along: upperArm,
-  across: upperArm,
-  width: upperWidth,
-  depth: upperWidth,
+  along: EAST_ARM,
+  across: SOUTH_ARM,
+  width: UPPER_ALONG - UPPER_INNER,
+  depth: UPPER_ACROSS - UPPER_INNER,
 };

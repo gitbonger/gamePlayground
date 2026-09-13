@@ -73,6 +73,28 @@ const names = (line: string, place: string): boolean =>
 const flatten = (words: string) =>
   words.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
+/**
+ * Whether a point stands on one of the loft's roof boxes, with `inset` to
+ * spare. Compared in the building's own frame, because its boxes are turned
+ * with it and their bounds are the bounds before turning.
+ */
+function onLoftRoof(here: { x: number; z: number; yaw?: number }, x: number, z: number, inset: number) {
+  const yaw = here.yaw ?? 0;
+  const boxes = partBoxes(here, LOFT.model!).filter((box) => Math.abs(box.maxY - LOFT.height) < 0.01);
+  return boxes.some((box) => {
+    const cx = (box.minX + box.maxX) / 2;
+    const cz = (box.minZ + box.maxZ) / 2;
+    const dx = x - cx;
+    const dz = z - cz;
+    const along = dx * Math.cos(yaw) - dz * Math.sin(yaw);
+    const across = dx * Math.sin(yaw) + dz * Math.cos(yaw);
+    return (
+      Math.abs(along) <= (box.maxX - box.minX) / 2 - inset &&
+      Math.abs(across) <= (box.maxZ - box.minZ) / 2 - inset
+    );
+  });
+}
+
 describe('what the levels aim at', () => {
   it('names a described thing that exists', () => {
     // The whole reason a level says "The Loft" rather than a coordinate is
@@ -115,8 +137,7 @@ describe('what the levels aim at', () => {
     const deck = topOf(here);
     const roofs = partBoxes(here, LOFT.model!).filter((box) => Math.abs(box.maxY - LOFT.height) < 0.01);
     expect(roofs.length, 'a roof at the height the levels were balanced for').toBeGreaterThan(0);
-    const onRoof = (x: number, z: number) =>
-      roofs.some((box) => x > box.minX + 1 && x < box.maxX - 1 && z > box.minZ + 1 && z < box.maxZ - 1);
+    const onRoof = (x: number, z: number) => onLoftRoof(here, x, z, 1);
 
     const standing = LEVELS.flatMap((level) =>
       level.cast.filter((spot) => spot.on.kind === 'landmark' && spot.on.name === LOFT.name),
@@ -128,7 +149,9 @@ describe('what the levels aim at', () => {
     ];
     for (const spot of spots) {
       expect(onRoof(spot.x, spot.z), spot.who).toBe(true);
-      // South-east is east of the middle and, with north at -z, south of it.
+      // South-east of the middle: east of it and, with north at -z, south.
+      // The building is turned, so this is the corner and not a quadrant --
+      // which is the claim, and all the levels need.
       expect(spot.x, spot.who).toBeGreaterThan(0);
       expect(spot.z, spot.who).toBeGreaterThan(0);
     }
@@ -139,14 +162,10 @@ describe('what the levels aim at', () => {
     // over the courtyard is a bird put down on thin air thirty metres up.
     const here = { ...LOFT, x: 0, z: 0 };
     const deck = topOf(here);
-    const roofs = partBoxes(here, LOFT.model!).filter((box) => Math.abs(box.maxY - LOFT.height) < 0.01);
     for (const along of [-0.45, 0, 0.45]) {
       for (const across of [-0.45, 0, 0.45]) {
         const at = pointOn(deck, along * deck.width, across * deck.depth);
-        const covered = roofs.some(
-          (box) => at.x >= box.minX && at.x <= box.maxX && at.z >= box.minZ && at.z <= box.maxZ,
-        );
-        expect(covered, `${at.x.toFixed(1)}, ${at.z.toFixed(1)}`).toBe(true);
+        expect(onLoftRoof(here, at.x, at.z, 0), `${at.x.toFixed(1)}, ${at.z.toFixed(1)}`).toBe(true);
       }
     }
   });

@@ -235,8 +235,12 @@ export function beginRescue(spec: Rescuing): Rescue {
     const on = spot(i);
     const cos = Math.cos(spec.terrace.yaw);
     const sin = Math.sin(spec.terrace.yaw);
-    let x = spec.terrace.x + on.along * cos - on.across * sin;
-    let z = spec.terrace.z + on.along * sin + on.across * cos;
+    // Turned the way `pointOn` turns things, which is the way the deck, the
+    // cage and the building itself are turned. It used to be the other way
+    // round, which made no difference for as long as the loft stood square to
+    // the compass and put half of them over the courtyard once it did not.
+    let x = spec.terrace.x + on.along * cos + on.across * sin;
+    let z = spec.terrace.z - on.along * sin + on.across * cos;
 
     // Nobody starts on top of the cage. Pushed straight out from it rather
     // than re-rolled, so the grid keeps its shape and the ring round the cage
