@@ -31,9 +31,7 @@ const flying = (over: Partial<Moment> = {}): Moment => ({
   hunted: false,
   answering: false,
   leaving: false,
-  held: false,
   talking: false,
-  watching: false,
   down: () => false,
   voice: null,
   speaking: 'en',
@@ -270,7 +268,7 @@ describe('the two that were asked for by name', () => {
   it('leaves a conversation alone', () => {
     // Standing on a branch talking is not being stranded, and the take-off
     // out of a conversation is somebody else's instruction.
-    for (const over of [{ talking: true }, { leaving: true }, { held: true }]) {
+    for (const over of [{ talking: true }, { leaving: true }]) {
       expect(shows('takeOffAgain', flying({ perched: true, ...over })), JSON.stringify(over)).toBe(
         false,
       );

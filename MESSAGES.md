@@ -62,7 +62,7 @@ to land, and something to land on is **in sight** at 200 m.
 | `voiceOn` | `V` | Voice on | the voice was just switched on | after 2 s |
 | `voiceOff` | `V` | Voice off | the voice was just switched off | after 2 s |
 | `answer` | — | Press a number key to respond! | somebody is waiting for an answer | the reply is given |
-| `takeOff` | `SPACE` | Take off! | finished talking, or held on a beat | `SPACE` is pressed |
+| `takeOff` | `SPACE` | Take off! | standing, with a conversation just over or a line said to nobody still on screen | `SPACE` is pressed |
 | `walkRound` | `←` `→` | Turn and walk round it | on foot and walked into something | the way is clear |
 | `takeOffAgain` | `SPACE` | Take off again! | **teaching** levels: down, and not down on the thing the level was aiming at | `SPACE` is pressed |
 | `offerHungarian` | `TAB` | Magyar nyelvért nyomd meg a TAB-ot | playing in English, first 10 s of Level 1 | — (once a level) |

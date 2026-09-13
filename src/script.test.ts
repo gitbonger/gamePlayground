@@ -69,7 +69,7 @@ describe('reading the script out of the file', () => {
       'There is a crazy person, a trapper, captures birds! On the top of a big house! Go look there!',
       'I go quick!',
     ]);
-    expect(done.opens).toBe('up to the roofs');
+    expect(done.opens).toBe('The Loft');
   });
 
   it('reads both languages off one line', () => {

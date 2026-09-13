@@ -9,6 +9,7 @@ import {
   say,
   setLanguage,
   startLanguage,
+  type Words,
 } from './i18n';
 import * as THREE from 'three';
 /**
@@ -26,7 +27,6 @@ import {
   heading,
   landingReadiness,
   isPerched,
-  neutralControls,
   step,
   type BirdState,
   type FlightTelemetry,
@@ -61,7 +61,6 @@ import { createDogRig } from './render/dog';
 import { escortDrawn } from './render/escort';
 import { cageSolid, createCage } from './render/cage';
 import { beginRescue } from './rescue';
-import { createFlyover, type Flyover, type Framing } from './cutscene';
 import {
   bellyOnEntry,
   CHARACTERS,
@@ -673,6 +672,8 @@ const NOTE_SECONDS = 5;
  * until one of them walks away or takes off.
  */
 let talkingTo: Resident | null = null;
+/** Whether the conversation under way holds him until it is over. */
+let talkLocked = false;
 
 // All of the above is declared here rather than beside the code that uses it
 // because `playLevel` runs at module scope, and a `let` read before its own
@@ -1791,6 +1792,13 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
 
   finished = false;
   talk = null;
+  talkLocked = false;
+  // A scene or a conversation's last words carry over a hand-over, which is
+  // them handing over; a level started afresh starts without either.
+  if (where === 'released') {
+    monologue = null;
+    closing = null;
+  }
   started = spec.name;
   startedAt = clock;
   talkingTo = null;
@@ -1862,29 +1870,9 @@ function handOver(): void {
   if (here) hint(here, false);
   handover = null;
 
-  // A level opening another level takes it up where the bird is, in the air,
-  // at the speed it was already going. A level opening a scene hands over to
-  // the camera. Both are `follow`'s business, except for that one difference,
-  // which is why the level case is written out here.
-  if ('scene' in opens) {
-    follow(opens);
-    return;
-  }
-  const next = LEVELS.findIndex((spec) => spec.name === opens.level);
-  if (next < 0) return;
-  playLevel(next, 'in place');
+  // The next level where the bird is, or a scene said where he stands.
+  follow(opens);
 }
-
-/**
- * The scene being played, while the game has the controls.
- *
- * Null almost always, and while it is not, the player is an audience: the
- * keys do nothing, the instruction panel is empty, and the bird is flown by
- * the autopilot. What is kept alongside the flight is where it ends, worked
- * out when it starts rather than when it finishes -- the closing shot is a
- * place in the world and it does not depend on how the flying went.
- */
-let cutscene: { play: Flyover; scene: Scene; ends: ReturnType<typeof releaseFor> } | null = null;
 
 /**
  * The shot a bird on its feet is filmed in: close, low, and level.
@@ -1910,140 +1898,91 @@ function perchedCamera(walking: boolean) {
   };
 }
 
-/** Take the camera off the bird and fly it home. */
-function beginScene(scene: Scene): void {
-  // A beat where the bird already is: no move, nothing placed, the world
-  // stopped and somebody saying something. He is standing on the square he
-  // has just landed on, and that is the shot.
-  if (scene.endsOn === undefined) {
-    holdOn(scene);
-    return;
-  }
-
-  const closing = LEVELS.find((spec) => spec.name === scene.endsOn);
-  if (!closing) return;
-
-  // Where the level it closes on begins, which is a branch eighteen metres up
-  // with somebody standing opposite. The same call the game makes to put the
-  // player there, so the shot cannot drift from the one they remember: move
-  // the tree and the closing shot moves with it.
-  const ends = releaseFor(closing);
-  const from: Framing = {
-    eye: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-    // Where the camera is looking, not where the bird is. The boom aims a way
-    // past the bird, so framing the bird itself would turn the camera on the
-    // first frame of the scene.
-    look: chase.aim(),
-  };
-
-  // And where the camera has to get to, asked of the camera rather than
-  // worked out again here: a stand-in bird is put in the closing shot, the
-  // chase camera is snapped onto it, and where it lands is the answer. Two
-  // calculations of one shot would be one too many, and the arithmetic of a
-  // boom is exactly the sort that goes quietly out of step.
-  const stand = createBird(ends.at, ends.perched ? 0 : SPAWN_SPEED, ends.heading);
-  if (ends.perched) standStill(stand);
-  // Filmed the way that level would be filmed: the close, low shot for a bird
-  // put down on a branch, the ordinary chase for one released into the air.
-  // A scene that ends over a street is handing the controls back in flight,
-  // and framing that like a perch would be a cut on the first frame.
-  chase.snap(stand, ends.perched ? { ...cameraParams, ...perchedCamera(false) } : cameraParams);
-  const to: Framing = {
-    eye: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-    // And the same at the far end, which is where the seam was. The eye asked
-    // the camera and the aim did not: the scene closed looking at the bird
-    // and the chase camera then took over looking a good way past it, so
-    // every scene in the game ended on a flick. Two calculations of one shot
-    // were one too many, and this was the one that was doing it by hand.
-    look: chase.aim(),
-  };
-
-  cutscene = {
-    scene,
-    ends,
-    play: createFlyover(from, to, { seconds: scene.seconds, arc: scene.cruise }),
-  };
-
-  talk = null;
-  talkingTo = null;
-}
-
-/** Put the bird in the closing shot, and let the player have it back. */
-function endScene(): void {
-  if (!cutscene) return;
-  const { ends, scene } = cutscene;
-  cutscene = null;
-
-  // Nothing to say: the beat is the movement itself, so it runs straight on
-  // into whatever it opens and the player never stops flying. What follows
-  // places the bird -- a level released into the air puts him at its own
-  // start -- so there is nothing to put down here.
-  if (scene.says === undefined) {
-    follow(scene.opens);
-    return;
-  }
-
-  // Otherwise it holds. He is simply there: nothing flew him, the camera
-  // went, and the point of the shot is where the player now is -- the same
-  // spot, the same heading, the same camera as the morning he left, and
-  // nobody opposite him.
-  const home = createBird(ends.at, ends.perched ? 0 : SPAWN_SPEED, ends.heading);
-  home.health = bird.health;
-  home.stamina = bird.stamina;
-  bird = home;
-  if (ends.perched) standStill(bird);
-  previousPosition = { ...bird.position };
-  previousOrientation = { ...bird.orientation };
-
-  holdOn(scene);
-  // Cut rather than swung: the camera is sixty metres up and the closing shot
-  // is a metre and a half behind a standing bird, and easing between those
-  // two is a long fairground ride. Taken at the end of the frame, once the
-  // perched shot has actually been worked out -- snapping here would snap to
-  // whatever the camera wanted while it was still flying.
-  cutTo = true;
-}
-
-/** Stop the world on a line, and wait for it to be read. */
-function holdOn(scene: Scene): void {
-  waiting = scene;
-  talk = alone(...(scene.says ?? []));
-  // The readouts, told about the bird that is actually standing there. No
-  // ticks run while a beat is held, so the panel would otherwise be showing
-  // the airspeed and climb of the last frame flown -- fifty-seven km/h on a
-  // pigeon sitting on a branch. Stepping a landed bird touches nothing and
-  // reads back zeroes, which is the truth about it.
-  telemetry = step(bird, neutralControls(), flightParams, 0);
-  outcome.hide();
-}
+/**
+ * A scene being said: its lines are up, and when they have been up long
+ * enough to read, it hands on to what it opens.
+ *
+ * The world does not wait for it. Null the rest of the time.
+ */
+let monologue: { scene: Scene; until: number } | null = null;
 
 /**
- * A beat the player is being held on, with a line and nothing to do but read.
- *
- * The one moment in the game where the bird is standing somewhere, the world
- * has stopped, and the take-off key means "go on" rather than "fly". Null the
- * rest of the time.
+ * The last lines of a conversation that has just handed over, kept on screen
+ * a little longer. The next level is already under way by then -- it starts
+ * the moment the last word is said -- so this is only the words, left where
+ * they can still be read. Null once they have gone.
  */
-let waiting: Scene | null = null;
+let closing: { talk: Exchange; until: number } | null = null;
 
-/** Take up whatever a finished scene hands over to. */
+/**
+ * How long some lines take to read, in seconds: a little over a second a
+ * line and a little more for a long one, taken from whichever language is
+ * longer so that swapping mid-line does not cut it short.
+ */
+const readingTime = (lines: readonly Words[]): number =>
+  lines.reduce(
+    (total, line) => total + Math.max(2.2, 0.8 + Math.max(line.en.length, line.hu.length) * 0.06),
+    0,
+  );
+
+/** Take up whatever a finished level, conversation or scene hands on to. */
 function follow(opens: Opens): void {
   if ('scene' in opens) {
     const next = sceneNamed(opens.scene);
     if (next) beginScene(next);
     return;
   }
+  // Where he is: the next level begins under his feet, or under his wings.
   const at = LEVELS.findIndex((spec) => spec.name === opens.level);
-  if (at >= 0) playLevel(at);
+  if (at >= 0) playLevel(at, 'in place');
 }
 
-/** The player has read it: on with the story. */
-function goOn(): void {
-  if (!waiting) return;
-  const scene = waiting;
-  waiting = null;
+/** Put him where a scene says, say what it says, and wait while it is read. */
+function beginScene(scene: Scene): void {
+  if (scene.placesAt !== undefined) {
+    const spot = LEVELS.find((spec) => spec.name === scene.placesAt);
+    if (spot) {
+      // Simply there, on the level's own start: the same spot and heading as
+      // the morning he left. The camera cuts rather than flies.
+      const ends = releaseFor(spot);
+      const moved = createBird(ends.at, ends.perched ? 0 : SPAWN_SPEED, ends.heading);
+      moved.health = bird.health;
+      moved.stamina = bird.stamina;
+      bird = moved;
+      if (ends.perched) standStill(bird);
+      previousPosition = { ...bird.position };
+      previousOrientation = { ...bird.orientation };
+      cutTo = true;
+    }
+  }
+  if (!scene.says?.length) {
+    follow(scene.opens);
+    return;
+  }
+  talk = alone(...scene.says);
+  monologue = { scene, until: clock + readingTime(scene.says) };
+}
+
+/** Once a scene's lines have been up long enough, on to what it opens. */
+function sayOn(): void {
+  if (!monologue || clock < monologue.until) return;
+  const { scene } = monologue;
+  monologue = null;
   talk = null;
   follow(scene.opens);
+}
+
+/**
+ * The moment a conversation has nothing left to say, what it handed over
+ * begins -- no key, no waiting. He is free again, and what he does next is
+ * the next level's.
+ */
+function talkedOut(): void {
+  if (!talk || monologue || !finished || !isOver(talk)) return;
+  const opens = opened();
+  if (!opens) return;
+  closing = { talk, until: clock + readingTime(talk.said.slice(-2).map((line) => line.text)) };
+  follow(opens);
 }
 
 /** Whether the camera should jump to the shot rather than ease into it. */
@@ -2935,6 +2874,7 @@ function reachLevel(): void {
   const said = here ? dialogueOf(here) : undefined;
   if (said && here && talkingTo?.who.name === metBy(here) && !finished) {
     finished = true;
+    talkLocked = here.finish.kind === 'meeting' && here.finish.locked === true;
     // Arrived: the directions come down. What is left on screen is the two of
     // them standing on a roof, which is the shot.
     hint(here, false);
@@ -2960,72 +2900,17 @@ function banner(): string | null {
   // Nothing while there is still something to say. The conversation has the
   // screen and its own line about which key does what; two of them
   // contradicting each other is worse than one.
-  if (talk && talkingTo && !isOver(talk)) return null;
-
-  const here = LEVELS[level]?.name;
-  if (finished && talkingTo) {
-    // Two ways on, and they ask for different things. Handed a level where
-    // you stand, the key is a take-off and the flying is yours to do; handed
-    // one the ordinary way, the key is the journey.
-    const handed = openedName();
-    const done = read({ en: 'complete', hu: 'megvan' });
-    if (handed) {
-      return read({
-        en: `${here} ${done} — SPACE to take off for ${handed}`,
-        hu: `${here} ${done} — SPACE, és irány ${handed}`,
-      });
-    }
-    const next = LEVELS[level + 1]?.name;
-    return next
-      ? read({
-          en: `${here} ${done} — SPACE to fly on to ${next}`,
-          hu: `${here} ${done} — SPACE, és tovább ${next} felé`,
-        })
-      : `${here} ${done}`;
-  }
-  // Nothing at all while the game is flying: an audience is not being told
-  // which key to press.
-  if (cutscene) return null;
-  // Held on a beat: the words are the conversation panel's, and the key is
-  // the instruction panel's. The banner has nothing to add.
-  if (waiting) return null;
+  if (talk && !isOver(talk)) return null;
   if (started && clock - startedAt <= NOTE_SECONDS) return `${say('nowFlying')} — ${started}`;
   return null;
 }
 
 
-/** Whether the conversation still wants something said before you go. */
-const midSentence = (): boolean => talkingTo !== null && talk !== null && !isOver(talk);
+/** Whether the conversation still wants an answer. */
+const midSentence = (): boolean => talk !== null && !isOver(talk);
 
-function flyOn(): boolean {
-  if (!finished || !talkingTo || midSentence()) return false;
-
-  // A conversation that named a level hands it over where you stand: the
-  // level changes, the bird does not move, and the key is not spent -- it
-  // goes on to the flight model as the ordinary take-off it looks like. That
-  // is the whole of it. There is no in-between state and nothing new for the
-  // rest of the game to know about: by the time the wings open, this is
-  // simply the next level, being flown from wherever the last one ended.
-  const handed = opened();
-  if (handed && 'scene' in handed) {
-    // A shot rather than a take-off. The key is spent on starting it -- the
-    // wings must not also open, because there is no bird to open them: the
-    // camera goes on its own and the hero is put down at the far end.
-    follow(handed);
-    return true;
-  }
-  if (handed) {
-    playLevel(
-      LEVELS.findIndex((spec) => spec.name === handed.level),
-      'in place',
-    );
-    return false;
-  }
-
-  if (level + 1 >= LEVELS.length) return false;
-  playLevel(level + 1);
-  return true;
-}
+/** Whether he is being held where he stands until the conversation is done. */
+const lockedNow = (): boolean => talkLocked && midSentence();
 
 /**
  * What the conversation on screen has handed over to, or null.
@@ -3041,14 +2926,6 @@ function opened(): Opens | null {
   if (name === undefined) return null;
   if (sceneNamed(name)) return { scene: name };
   return LEVELS.some((spec) => spec.name === name) ? { level: name } : null;
-}
-
-/** And what to call it, for the banner that says which key to press. */
-function openedName(): string | null {
-  const opens = opened();
-  if (!opens) return null;
-  if ('level' in opens) return opens.level;
-  return sceneNamed(opens.scene)?.endsOn ?? null;
 }
 
 /**
@@ -3147,33 +3024,17 @@ function frame(nowMs: number) {
     musicOn = !musicOn;
     if (!musicOn) music.stop();
   }
-  // Leaving a finished conversation starts the next level rather than taking
-  // off from this one, so the key is taken here before the flight model can
-  // have it -- and while there is still something to say it is taken and
-  // dropped, because flying off mid-sentence is not an answer either.
-  if (cutscene) {
-    // One key, and it is the one already in their hand: the take-off. Taken
-    // as an edge rather than a held key, so cutting the scene short does not
-    // also launch the bird off the branch it has just been placed on.
-    if (input.consumeLaunch()) cutscene.play.cut();
-  } else if (waiting) {
-    // The same key, meaning the same thing it always means: he is leaving.
-    // What follows happens to be a camera rather than a wingbeat.
-    if (input.consumeLaunch()) goOn();
-  } else if (input.consumeLaunch() && !midSentence()) launchPending = !flyOn();
+  // The take-off, and nothing else: a conversation that has finished has
+  // already handed over, and nothing in the game waits for a key any more.
+  if (input.consumeLaunch()) launchPending = true;
 
   // Alive rather than flying: a walking bird is not flying, and being run
   // over while on foot is still a death that has to raise the panel.
   const wasAlive = !hasCrashed(bird);
 
-  // The world holds still while the camera is away. Nothing is simulated at
-  // all: no ticks, so the trams stop where they are, the flock hangs in the
-  // air and the bird stands in the grain until it is picked up and put on its
-  // branch. It is five seconds, and a frozen city is a great deal easier to
-  // believe than a pigeon flying itself across one.
-  if (cutscene) {
-    if (!cutscene.play.update(frameTime)) endScene();
-  } else if (!waiting) accumulator += frameTime;
+  // The world never stops: not for a conversation, not for a line said to
+  // nobody. Both happen while the city carries on.
+  accumulator += frameTime;
 
   let ticked = false;
   while (accumulator >= TICK) {
@@ -3185,10 +3046,9 @@ function frame(nowMs: number) {
     // on its feet and `step` ignores one whose flight has ended, so which of
     // the two does anything is decided by the bird's own state rather than by
     // a flag kept alongside it.
-    // Filtered by what the bird is doing. Talking takes the movement away and
-    // leaves the wing, so the only way out of a conversation is to fly out of
-    // it -- which is a thing you do on purpose.
-    const doing = stanceOf(bird, talkingTo !== null);
+    // Filtered by what the bird is doing. A conversation that holds him takes
+    // everything away until it is over; any other leaves him free.
+    const doing = stanceOf(bird, lockedNow());
     const allowed = asStance(
       { forward: input.walk.forward, turn: input.walk.turn, launch: launchPending },
       doing,
@@ -3201,7 +3061,7 @@ function frame(nowMs: number) {
     // the story, at the cage. He has just flown across the district for it
     // and the birds are coming down behind him; standing with his back to it
     // is the one thing he would not be doing.
-    walkControls.turn = talkingTo
+    walkControls.turn = talkingTo && lockedNow()
       ? faceTurn(bird, talkingTo.state.position, flightParams, TICK)
       : rescueAt
         ? faceTurn(bird, rescueAt, flightParams, TICK)
@@ -3378,6 +3238,8 @@ function frame(nowMs: number) {
     // whole time it is eating.
     if (!hasCrashed(bird)) handOver();
     reachLevel();
+    talkedOut();
+    sayOn();
     // Somebody you have walked up to looks at you.
     if (talkingTo) turnToFace(talkingTo.state, bird.position, flightParams, TICK);
     accumulator -= TICK;
@@ -3414,7 +3276,7 @@ function frame(nowMs: number) {
   interpolatedState.restingOn = bird.restingOn;
   interpolatedState.stridePhase = bird.stridePhase;
 
-  const stance = stanceOf(bird, talkingTo !== null);
+  const stance = stanceOf(bird, lockedNow());
   // Read off the same controls the flight model was given, so the wings show
   // what the bird was actually told rather than what the keyboard says: a
   // dead bird takes no input, and its wings are not held in any shape.
@@ -3455,10 +3317,8 @@ function frame(nowMs: number) {
   // Somebody talking, or somebody talking to himself. The second is the same
   // panel in the same place: a monologue is a conversation with one speaker,
   // so it is shown as one, in his own colour, with nothing to say back.
-  talkPanel.show(
-    talkingTo || waiting ? talk : null,
-    { them: talkingTo?.voice ?? hero, you: hero },
-  );
+  if (closing && clock >= closing.until) closing = null;
+  talkPanel.show(talk ?? closing?.talk ?? null, { them: talkingTo?.voice ?? hero, you: hero });
   // The tutor is asked every frame whether or not anything is showing, so its
   // own clock runs; a state tip takes the corner while it has something to
   // say, because what to do now outranks what to learn.
@@ -3541,10 +3401,10 @@ function frame(nowMs: number) {
       bird.ending === null &&
       (crows?.members ?? []).some((crow) => crow.hunting && crow.down <= 0),
     answering: midSentence(),
-    leaving: finished && talkingTo !== null && !midSentence(),
-    held: waiting !== null,
+    // Standing with a conversation just over or a line to himself up: the
+    // next level is already his, and it starts with taking off.
+    leaving: (closing !== null || monologue !== null) && isPerched(bird),
     talking: talkingTo !== null,
-    watching: cutscene !== null,
     // Named as the panel draws them, and turned into keyboard codes by the
     // one mapping that also draws the caps: see `codesOf`.
     down: (keys) => input.anyDown(codesOf(keys)),
@@ -3552,14 +3412,8 @@ function frame(nowMs: number) {
     speaking: languageNow(),
   };
 
-  // An audience is not told which key to press, and a beat that is being held
-  // is the story talking -- so the only thing offered over one is the key
-  // that leaves it. Everything else judges itself: see `MESSAGES`.
-  const saying = tipStack.update(
-    moment.watching ? [] : moment.held ? MESSAGES.filter((m) => m.id === 'takeOff') : MESSAGES,
-    moment,
-    clock,
-  );
+  // Every message judges for itself whether it applies: see `MESSAGES`.
+  const saying = tipStack.update(MESSAGES, moment, clock);
   // Over the conversation card when there is one. Its height is asked for
   // rather than guessed at: the four-line exchange at the loft is twice the
   // two-line one on the branch, and the instruction has to clear both.
@@ -3828,19 +3682,10 @@ function frame(nowMs: number) {
   // Standing with somebody is a different shot: off the boom and to one
   // side, holding both of them. It eases from wherever the chase camera had
   // got to and back again, because it is the same camera.
-  if (cutscene) {
-    // Driven by hand, and the only time anything but the chase camera moves
-    // it. Levelled, because the boom banks with the bird and a scene inherits
-    // whatever roll it was left in mid-turn -- which reads as the whole city
-    // being tilted rather than as the camera being tilted.
-    const { eye, look } = cutscene.play.framing;
-    camera.position.set(eye.x, eye.y, eye.z);
-    camera.up.set(0, 1, 0);
-    camera.lookAt(look.x, look.y, look.z);
-  } else if (cutTo) {
+  if (cutTo) {
     chase.snap(bird, activeCamera);
     cutTo = false;
-  } else if (talkingTo) {
+  } else if (talkingTo && lockedNow()) {
     chase.watch(interpolatedState.position, talkingTo.state.position, watchParams, frameTime);
   } else if (dyingAttitude && bird.ending?.settled === false) {
     // Following a body that is tumbling, so the camera is handed the attitude

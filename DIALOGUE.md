@@ -73,7 +73,7 @@ fork would be offering to not be told it.
       - you: She has gone missing while I was away! | Eltűnt, amíg oda voltam!
         - them: There is a crazy person, a trapper, captures birds! On the top of a big house! Go look there! | Van itt egy őrült, egy madarász, madarakat fogdos! Egy nagy ház tetején! Nézz körül ott!
           - you: I go quick! | Rohanok!
-            - opens: up to the roofs
+            - opens: The Loft
 
 ## Caught
 

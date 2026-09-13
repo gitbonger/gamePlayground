@@ -146,236 +146,105 @@ export interface Standing {
 /**
  * What a level that finishes by itself hands over to.
  *
- * Two things it can be, and they are not the same kind of thing at all: the
- * next level, which the player flies, or a scene, which the game flies while
- * the player watches. It was a bare level name until there was a scene to
- * name, and a bare name would have meant two namespaces sharing one string.
+ * The next level, which is taken up where the bird is, or a scene -- a few
+ * lines the hero says to himself, and then whatever the scene hands on to.
+ * It was a bare level name until there was a scene to name, and a bare name
+ * would have meant two namespaces sharing one string.
  */
 export type Opens = { level: string } | { scene: string };
 
 /**
- * A stretch the game plays rather than the player.
+ * A beat between two levels: a few lines he says to himself.
  *
- * The one so far is the flight home from Teleki tér: nine hundred metres of
- * park he has already flown twice, ending on the branch he left in the first
- * level -- the same spot, the same heading, the same shot -- with nobody
- * standing opposite him.
+ * The world does not stop for it. Nothing in this game stops the world any
+ * more -- there used to be camera flights between levels, which froze
+ * everything while the camera went, and beats that froze everything until
+ * SPACE was pressed. Both are gone: the lines are put up, the city carries
+ * on, he can walk about or fly off while they are on screen, and when they
+ * have been up long enough to read, the scene hands on to what it opens.
  *
- * It is described here with the levels because it is the story between two of
- * them, and because everything it needs is already written down: where it
- * ends is a level, and a level knows where it starts.
+ * The one thing a scene can still do to the world is put him somewhere.
+ * The flight home from Teleki tér used to be a camera carrying him across the
+ * park; now he is simply put on the branch and the camera follows, and what
+ * he says, he says there.
  */
 export interface Scene {
   name: string;
   /**
-   * The level whose opening shot this closes on, if the camera goes anywhere.
+   * Where he is put before anything is said: the start of this level.
    *
-   * Stated as a level rather than as a place, so the shot cannot drift from
-   * the one the player remembers: move the home tree and both move together.
-   *
-   * Left out for a beat that happens where the bird already is -- a line said
-   * standing on the square he has just landed on. Then there is no move and
-   * nothing is placed: the world simply stops and somebody says something.
+   * A level rather than a place, so it cannot drift from the spot the player
+   * remembers -- move the home tree and both move together. Left out for a
+   * beat said where he already is, which is all of them but one.
    */
-  endsOn?: string;
-  /** How long the camera takes to get there, in seconds. */
-  seconds: number;
-  /** How high it arcs over the city on the way, in metres. */
-  cruise: number;
+  placesAt?: string;
   /**
-   * Whether the shot goes up rather than across.
+   * What he says, to nobody.
    *
-   * Almost none of them do. A scene is normally a flight between two birds
-   * standing on things -- both ends near the ground, the city in between --
-   * and the only thing holding the camera over the roofs is `cruise`, which
-   * is why an arc is otherwise required.
-   *
-   * A climb has no such problem and cannot satisfy that rule: an arc on a
-   * move which is nearly vertical is a camera wandering off to one side and
-   * coming back. Said here rather than worked out, because what decides it is
-   * how far the shot travels *horizontally*, and a scene knows where it ends
-   * but not where it begins -- that is wherever the thing before it left the
-   * bird.
-   */
-  climbs?: boolean;
-  /**
-   * What he says over the closing shot, if anything: a monologue.
-   *
-   * Lines rather than a line, because a monologue is a conversation with one
-   * speaker -- it is shown in the same panel, in his own colour, as though he
-   * were talking to somebody, which is what he is doing except that nobody is
-   * there. That is also the whole of the beat: a man alone on a branch saying
-   * where he is going next.
-   *
-   * Saying something is what makes a scene *hold*: lines the player has not
-   * read yet are worth waiting for, so a scene with them puts the bird down
-   * in the closing shot and waits for the take-off key, and a scene without
-   * any runs straight on into whatever it opens. That is one field doing the
-   * work of two, and it is the right one -- there is no such thing as a beat
-   * with nothing to say.
+   * Shown in the conversation panel, in his own colour, as a conversation
+   * with one speaker, for as long as it takes to read.
    */
   says?: readonly Words[];
-  /**
-   * What follows it: the next scene, or the level it hands over to.
-   *
-   * The same `Opens` a level's finish uses, so a chapter can be told as a
-   * flight, a beat and another flight without any of the three knowing it is
-   * in a chain.
-   */
+  /** What follows it: the next scene, or the level it hands over to. */
   opens: Opens;
 }
 
 /**
  * Home, to an empty branch.
  *
- * Five seconds for nine hundred metres, which is nothing like flying and is
- * not meant to be: the camera is not the bird, it is the thing that tells the
- * player where they now are. Sixty metres over the top, because both ends of
- * the move are near the ground -- a bird standing on concrete and a bird
- * standing on a branch -- and the straight line between them runs through
- * most of the eighth district.
+ * Put on the branch he left in the first level -- the same spot, the same
+ * heading -- with nobody standing opposite him, and what he says is the
+ * first thing he says without somebody to say it to. It is what turns the
+ * empty nest into an errand: he is going to look, and the looking is what the
+ * next few levels are. They start from here, and the minimap says which way.
  */
 export const HOMECOMING: Scene = {
   name: 'flying home',
+  placesAt: 'Nest',
   says: alone('flying home'),
-  endsOn: 'Nest',
-  seconds: 5,
-  cruise: 60,
-  // Said to nobody, on the branch, over an empty nest. It is the first time
-  // the hero says anything without somebody to say it to, and it is what
-  // turns the empty nest into an errand -- he is not going for help, he is
-  // going to look, and the looking is what the next few levels are.
-  opens: { scene: 'flying to Mátyás tér' },
+  opens: { level: 'Mátyás tér' },
 };
 
 /**
- * The belly is full, said standing on the concrete.
+ * The belly is full, said standing on the concrete he has just eaten off.
  *
- * No `endsOn`, so the camera stays where it is and he says it on the slab he
- * has just eaten off -- the same shape as the beat on Mátyás tér, and the
- * same reason. Level three used to end by cutting straight from the last seed
- * to a nine-hundred-metre flight home, which is the game answering a question
- * the player had not been told was being asked: nothing said the errand was
- * done, so the camera leaving looked like the camera taking over.
- *
- * A monologue rather than a conversation, because there is nobody on Teleki
- * tér to have one with. The panel already draws one -- a monologue is a
- * conversation with one speaker, shown in his own colour with nothing to say
- * back -- and this is the second of them.
+ * Level three used to end by cutting straight from the last seed to a flight
+ * home, which is the game answering a question the player had not been told
+ * was being asked. This says the errand is done before he is taken home.
  */
 export const BELLY_FULL: Scene = {
   name: 'a full belly',
-  // Nowhere to go and no arc to get there by: this happens where he is.
-  seconds: 0,
-  cruise: 0,
   says: alone('a full belly'),
   opens: { scene: HOMECOMING.name },
 };
 
 /**
- * Off to the eighth district to look.
- *
- * Nothing to say, so it does not hold: the take-off that ends the beat at the
- * nest runs straight into this, and this runs straight into the level. What
- * the player sees is one movement -- he leaves the tree, the city goes past,
- * and he is over Népszínház utca with the controls back.
- */
-export const TO_MATYAS: Scene = {
-  name: 'flying to Mátyás tér',
-  endsOn: 'Mátyás tér',
-  seconds: 4,
-  cruise: 60,
-  opens: { level: 'Mátyás tér' },
-};
-
-/**
  * The first square, and she is not on it.
  *
- * A beat with nowhere to go: no `endsOn`, so the camera stays where it is and
- * the hero says it standing on the square he has just come down on. The
- * search is going to be a run of these, and the shape of one is: fly there,
- * land, find nothing, name the next place.
+ * Said standing on the square he has just come down on. The search is a run
+ * of these -- fly there, land, find nothing, name the next place -- and the
+ * next leg starts from where he is.
  */
 export const NOT_AT_MATYAS: Scene = {
   name: 'nobody at Mátyás tér',
   says: alone('nobody at Mátyás tér'),
-  seconds: 0,
-  cruise: 0,
-  // Into the climb rather than into the level. It used to go straight on --
-  // "the next one starts over the square he is standing on, so a camera
-  // taking him there would be a camera going nowhere" -- which was true about
-  // the ground and wrong about the air: it starts sixty metres over that
-  // square, and the player was cut from standing on the paving to hanging
-  // above it. There is somewhere to go, and the somewhere is up.
-  // Straight on into the next leg, from the square he is standing on. There
-  // was a two and a half second camera climb between these two, and one
-  // between the pair after them, and they are gone: a level that begins where
-  // the last one ended does not need to be *shown* where it begins. The
-  // minimap says which way to go now, which is what those shots were for.
   opens: { level: 'Jani Pali tér' },
 };
 
 /**
  * The second square, and she is not on that one either.
  *
- * The same shape as the beat on Mátyás tér and for the same reason: no
- * `endsOn`, so the camera stays where it is and he says it standing on the
- * square he has just come down on. The search is a run of these -- fly there,
- * land, find nothing, name the next place -- and a search with the naming
- * left out of the middle of it is a player being moved along without being
- * told why.
- *
  * Blaha rather than Népszínház, which is the level that actually comes next.
- * Népszínház is not a place he is looking for her on, it is the street he
- * takes to get to Blaha: the level is finished by crossing a line partway
- * down it. Naming the street would be naming the route rather than the
- * errand.
+ * Népszínház is the street he takes to get to Blaha: naming it would be
+ * naming the route rather than the errand.
  */
 export const NOT_AT_JANI: Scene = {
   name: 'nobody at Jani Pali tér',
   says: alone('nobody at Jani Pali tér'),
-  seconds: 0,
-  cruise: 0,
   opens: { level: 'Népszínház' },
 };
 
-
-
-/**
- * Straight up off the slab, to the height the last leg is flown from.
- *
- * The only scene in the game that goes nowhere. Every other one carries the
- * bird across the city and the camera arcs over the roofs to say so; this one
- * ends sixty-one metres from where it starts and a hundred and fifty metres
- * above it, so what it is is a climb. `cruise: 0` gives it no arc at all --
- * an arc on a move that is almost vertical is a camera wandering off to one
- * side and coming back.
- *
- * It belongs to Blaha rather than to the loft, which is why it is here and
- * not a taller release: the beat is *he has just been told where to go*, and
- * the shot is him getting the height to go there. Three seconds, because the
- * climb is the punctuation and not the scene.
- *
- * Nothing said over it, so it does not hold -- the words were the
- * conversation's, and this runs straight on into the level.
- */
-export const UP_TO_THE_ROOFS: Scene = {
-  name: 'up to the roofs',
-  endsOn: 'The Loft',
-  seconds: 3,
-  cruise: 0,
-  climbs: true,
-  opens: { level: 'The Loft' },
-};
-
-export const SCENES: readonly Scene[] = [
-  BELLY_FULL,
-  HOMECOMING,
-  TO_MATYAS,
-  NOT_AT_MATYAS,
-  NOT_AT_JANI,
-  UP_TO_THE_ROOFS,
-];
+export const SCENES: readonly Scene[] = [BELLY_FULL, HOMECOMING, NOT_AT_MATYAS, NOT_AT_JANI];
 
 export const sceneNamed = (name: string): Scene | undefined =>
   SCENES.find((scene) => scene.name === name);
@@ -388,7 +257,18 @@ export type Finish =
    * which is also what puts them there. A level cannot be finished by meeting
    * somebody who is not in it.
    */
-  | { kind: 'meeting'; who: string; dialogue: Turn }
+  | {
+      kind: 'meeting';
+      who: string;
+      dialogue: Turn;
+      /**
+       * Whether he is held where he stands until it is finished: no walking
+       * off, no taking off. Otherwise he is free to wander, and the
+       * conversation goes with him -- the panel stays up and he can answer
+       * from anywhere.
+       */
+      locked?: boolean;
+    }
   /**
    * Cross a line drawn square across the route, through a named point.
    *
@@ -928,7 +808,7 @@ export const LEVELS: readonly Level[] = [
     // The pink one, and the only bird in the game wearing her colours. She
     // stands beside the nest rather than on it.
     cast: [{ who: PINK.name, on: { kind: 'landmark', name: HOME_TREE.name }, along: -0.4, across: 0.08 }],
-    finish: { kind: 'meeting', who: PINK.name, dialogue: HEADING_OUT },
+    finish: { kind: 'meeting', who: PINK.name, dialogue: HEADING_OUT, locked: true },
     begins: 'perched',
   },
   {
@@ -1234,7 +1114,7 @@ export const LEVELS: readonly Level[] = [
     // stranger with his mate three metres away behind bars -- the wrong bird
     // to be walked up to at the moment the search ends.
     cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 }],
-    finish: { kind: 'meeting', who: PINK.name, dialogue: CAUGHT },
+    finish: { kind: 'meeting', who: PINK.name, dialogue: CAUGHT, locked: true },
   },
   {
     // Out along Fiumei út, over the roofs, looking for the big house.
@@ -1302,7 +1182,7 @@ export const LEVELS: readonly Level[] = [
       { who: 'White', on: { kind: 'wagon', name: 'The middle wagon', train: 0, car: 'middle' }, along: 2.5, across: 0 },
       { who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 },
     ],
-    finish: { kind: 'meeting', who: 'White', dialogue: THE_ASK },
+    finish: { kind: 'meeting', who: 'White', dialogue: THE_ASK, locked: true },
   },
   {
     // The turn, and the first level in the game flown with a crowd behind
@@ -1379,7 +1259,7 @@ export const LEVELS: readonly Level[] = [
     // be met on the roof and finding somebody else there would be the level
     // handing the ending to a stranger.
     cast: [{ who: PINK.name, on: { kind: 'landmark', name: LOFT.name }, along: 2.6, across: 0 }],
-    finish: { kind: 'meeting', who: PINK.name, dialogue: SAVED },
+    finish: { kind: 'meeting', who: PINK.name, dialogue: SAVED, locked: true },
   },
   {
     // After it. The story is over, the map is still there, and this is the

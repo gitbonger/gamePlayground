@@ -643,45 +643,21 @@ describe('what the levels aim at', () => {
     }
   });
 
-  it('ends every scene on the opening shot of a level that exists', () => {
-    // A scene closes on the place a level begins -- the same call the game
-    // makes to put the player there -- so that the shot cannot drift from the
-    // one the player remembers. Which only works while the level is real.
+  it('puts him only at the start of a level that exists, and says something every time', () => {
+    // A scene can put him somewhere -- the start of the level it names, the
+    // same call the game makes to put the player there, so the spot cannot
+    // drift from the one they remember. Which only works while the level is
+    // real. And a scene with nothing to say is nothing at all now that there
+    // is no camera flight for it to be.
     const levels = new Set(LEVELS.map((level) => level.name));
     for (const scene of SCENES) {
-      // A beat that happens where the bird is standing goes nowhere and takes
-      // no time: no level to close on, and nothing to fly over.
-      if (scene.endsOn === undefined) {
-        expect(scene.seconds, scene.name).toBe(0);
-        // And it must have something to say, or it is a scene that stops the
-        // world for no reason and hands straight on.
-        expect(scene.says, scene.name).toBeDefined();
-        continue;
-      }
-      expect(levels, scene.name).toContain(scene.endsOn);
-      // Long enough to read as going somewhere, short enough to sit through.
-      expect(scene.seconds, scene.name).toBeGreaterThan(1);
-      expect(scene.seconds, scene.name).toBeLessThan(15);
-
-      // And passing over the city rather than through it: a scene that
-      // crosses it has to arc above what is built on it, since both ends are
-      // near the ground and the arc is the only thing holding the camera up.
-      //
-      // Unless it climbs, which is a different move and says so. That one
-      // cannot arc -- an arc on a nearly vertical shot is a camera wandering
-      // off to one side and coming back -- and does not need to, having no
-      // city to cross. It is declared rather than detected because what
-      // settles it is the horizontal distance, and a scene knows where it
-      // ends but not where it starts.
-      if (scene.climbs) {
-        // Then it had better be going somewhere worth climbing to.
-        const to = LEVELS.find((level) => level.name === scene.endsOn)!;
-        expect(to.release, scene.name).toBeGreaterThan(ROOFLINE);
-        expect(scene.cruise, scene.name).toBe(0);
-      } else {
-        expect(scene.cruise, scene.name).toBeGreaterThan(ROOFLINE);
-      }
+      if (scene.placesAt !== undefined) expect(levels, scene.name).toContain(scene.placesAt);
+      expect(scene.says?.length, scene.name).toBeGreaterThan(0);
     }
+    // One of them moves him, and it is the homecoming.
+    expect(SCENES.filter((scene) => scene.placesAt).map((scene) => scene.name)).toEqual([
+      HOMECOMING.name,
+    ]);
   });
 
   it('runs every scene into something, and lets a chain of them end at a level', () => {
@@ -708,23 +684,11 @@ describe('what the levels aim at', () => {
     }
   });
 
-  it('holds only the scenes that have something to say', () => {
-    // Saying something is what makes a scene wait for the player, so the two
-    // have to be one decision rather than two fields that can disagree. The
-    // homecoming has a line and holds; the flight into town has none and runs
-    // straight into the level, so what the player sees is one movement.
-    const holds = SCENES.filter((scene) => scene.says !== undefined);
-    expect(holds.map((scene) => scene.name)).toEqual([
-      BELLY_FULL.name,
-      HOMECOMING.name,
-      NOT_AT_MATYAS.name,
-      NOT_AT_JANI.name,
-    ]);
-    // And every line of it is a line: a monologue with an empty one in it is
-    // a blank row in the panel.
-    for (const scene of holds) {
-      // In both languages, so a line nobody translated is caught here rather
-      // than by playing the whole story in Hungarian.
+  it('gives every line of every scene both languages', () => {
+    // A monologue with an empty line in it is a blank row in the panel, and
+    // one nobody translated is caught here rather than by playing the whole
+    // story in Hungarian.
+    for (const scene of SCENES) {
       for (const line of scene.says!) {
         expect(line.en.length, scene.name).toBeGreaterThan(0);
         expect(line.hu.length, scene.name).toBeGreaterThan(0);
@@ -749,7 +713,7 @@ describe('what the levels aim at', () => {
       expect(beat, level.name).toBeDefined();
       // Which holds, and says where he is going next.
       expect(beat.says, beat.name).toBeDefined();
-      expect(beat.endsOn, `${beat.name} happens where he is standing`).toBeUndefined();
+      expect(beat.placesAt, `${beat.name} happens where he is standing`).toBeUndefined();
       // In both languages. A place name is the same in either -- Mátyás tér
       // is Mátyás tér -- so a Hungarian line that lost it is a Hungarian
       // player told to go somewhere without being told where.
@@ -772,18 +736,18 @@ describe('what the levels aim at', () => {
     }
   });
 
-  it('says the errand is done before the camera takes it over', () => {
+  it('says the errand is done before he is taken home', () => {
     // Level three ended by cutting from the last seed straight into a nine
     // hundred metre flight home, which is the game answering a question the
     // player was never told was being asked: nothing said the errand was
     // finished, so the camera leaving looked like the camera taking over.
     //
-    // No `endsOn`, so it happens where he is standing -- the same shape as
-    // the beat on Mátyás tér, and the same reason.
+    // Nowhere to put him, so it happens where he is standing -- the same
+    // shape as the beat on Mátyás tér, and the same reason.
     const eating = LEVELS.find((level) => level.finish.kind === 'fed')!;
     expect(eating.name).toBe('Teleki tér');
     expect(eating.finish).toEqual({ kind: 'fed', opens: { scene: BELLY_FULL.name } });
-    expect(BELLY_FULL.endsOn).toBeUndefined();
+    expect(BELLY_FULL.placesAt).toBeUndefined();
     expect(BELLY_FULL.says).toHaveLength(1);
     // And it hands on to the flight home rather than ending the story.
     expect(BELLY_FULL.opens).toEqual({ scene: HOMECOMING.name });
@@ -1071,7 +1035,7 @@ describe('what the levels aim at', () => {
     // player standing on the slab with nothing left to say and nowhere to go.
     const ways = handovers(said!);
     expect(ways.length).toBeGreaterThan(0);
-    for (const way of ways) expect(SCENES.map((scene) => scene.name)).toContain(way);
+    for (const way of ways) expect(way).toBe('The Loft');
   });
 
   it('teaches its lessons to a level that exists', () => {

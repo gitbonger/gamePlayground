@@ -552,7 +552,7 @@ describe('meeting another pigeon', () => {
   });
 });
 
-describe('the three stances', () => {
+describe('the stances', () => {
   it('names what a bird is doing', () => {
     const flying = createBird(vec(0, 50, 0), 14, 0);
     expect(stanceOf(flying, false)).toBe('flying');
@@ -561,7 +561,7 @@ describe('the three stances', () => {
 
     const down = landed();
     expect(stanceOf(down, false)).toBe('walking');
-    expect(stanceOf(down, true)).toBe('talking');
+    expect(stanceOf(down, true)).toBe('locked');
   });
 
   it('says a crashed bird is dead, whoever it is standing next to', () => {
@@ -579,17 +579,11 @@ describe('the three stances', () => {
     expect(asStance(held, 'walking')).toEqual(held);
   });
 
-  it('takes the movement off somebody in conversation, and leaves the wing', () => {
-    // The point of it being a mode. You walked up to them deliberately, and
-    // shuffling a foot sideways should not end the conversation by accident.
-    // Flying out of it is a thing you do on purpose, so that stays.
+  it('holds a locked bird where it stands, wing and all', () => {
+    // Held until the conversation is over is held: not a step, not a turn,
+    // and not a take-off either -- one it could fly out of would not be.
     const held = { forward: 1, turn: -1, launch: true };
-    expect(asStance(held, 'talking')).toEqual({ forward: 0, turn: 0, launch: true });
-    expect(asStance({ ...held, launch: false }, 'talking')).toEqual({
-      forward: 0,
-      turn: 0,
-      launch: false,
-    });
+    expect(asStance(held, 'locked')).toEqual({ forward: 0, turn: 0, launch: false });
   });
 
   it('gives a flying or dead bird nothing on foot at all', () => {
@@ -610,7 +604,7 @@ describe('the three stances', () => {
     // corpse spread them to brake, and holding tuck folded them away.
     const held = { ...neutralControls(), flap: true, brake: true, tuck: true, pitch: 1 };
     expect(asFlight(held, 'dead')).toEqual(neutralControls());
-    for (const stance of ['flying', 'walking', 'talking'] as const) {
+    for (const stance of ['flying', 'walking', 'locked'] as const) {
       expect(asFlight(held, stance), stance).toBe(held);
     }
   });
@@ -629,9 +623,16 @@ describe('the three stances', () => {
     expect(isPerched(bird)).toBe(true);
   });
 
-  it('but can still be flown out of', () => {
+  it('nor flown out of', () => {
+    // Held until it is over is held.
     const bird = landed();
     walk(bird, asStance({ forward: 0, turn: 0, launch: true }, stanceOf(bird, true)), p, TICK);
+    expect(bird.ending?.kind).toBe('landed');
+  });
+
+  it('but a bird not held walks and flies as it likes', () => {
+    const bird = landed();
+    walk(bird, asStance({ forward: 0, turn: 0, launch: true }, stanceOf(bird, false)), p, TICK);
     expect(bird.ending).toBeNull();
     expect(bird.velocity.y).toBeGreaterThan(1);
   });

@@ -41,12 +41,11 @@ import {
 /**
  * What a bird is doing, which is what the controls mean.
  *
- * Three of them and not two. Flying and walking were always distinct enough
- * to be separate models; standing talking to somebody is a third, and the
- * thing that makes it one rather than a variety of walking is that the player
- * cannot move at all. You walked up to somebody deliberately -- being able to
- * shuffle a foot sideways and end the conversation by accident is not the
- * behaviour of somebody having one.
+ * Flying and walking are the two models. Locked is standing where it is put,
+ * with nothing let through at all: the few conversations that hold him until
+ * they are finished -- the first one, on the branch, is the plain case.
+ * Talking is not a stance of its own any more. Most conversations leave him
+ * free to walk about or fly off, and the conversation goes with him.
  *
  * The fourth is the one that does nothing, and it is a stance rather than the
  * absence of one. A dead bird is not a bird between states: it has a pose of
@@ -55,18 +54,19 @@ import {
  * All of that has to be asked about somewhere, and `null` is not a thing you
  * can ask questions of.
  */
-export type Stance = 'flying' | 'walking' | 'talking' | 'dead';
+export type Stance = 'flying' | 'walking' | 'locked' | 'dead';
 
 /**
- * Which of the three a bird is in.
+ * Which of them a bird is in.
  *
- * `met` rather than a search for who: whether there is anybody to talk to is
- * a question about the world, and this only needs the answer.
+ * `locked` rather than a search for why: whether something is holding him is
+ * a question about the story, and this only needs the answer. It holds a bird
+ * on its feet; one in the air is flying whatever is being said.
  */
-export function stanceOf(state: BirdState, met: boolean): Stance {
+export function stanceOf(state: BirdState, locked: boolean): Stance {
   if (state.ending === null) return 'flying';
   if (state.ending.kind !== 'landed') return 'dead';
-  return met ? 'talking' : 'walking';
+  return locked ? 'locked' : 'walking';
 }
 
 export interface WalkControls {
@@ -83,13 +83,12 @@ export const neutralWalk = (): WalkControls => ({ forward: 0, turn: 0, launch: f
 /**
  * The controls as the bird's stance lets them through.
  *
- * Talking takes the movement away and leaves the wing: a conversation you
- * cannot walk out of but can fly out of is one you leave on purpose. Being
- * dead takes everything.
+ * Walking lets everything through. Locked and dead let nothing through -- not
+ * even the wing, because a bird held until the conversation is over is held,
+ * and one it could simply fly out of is not.
  */
 export function asStance(controls: WalkControls, stance: Stance): WalkControls {
-  if (stance === 'walking') return controls;
-  return { forward: 0, turn: 0, launch: stance === 'talking' && controls.launch };
+  return stance === 'walking' ? controls : neutralWalk();
 }
 
 /**

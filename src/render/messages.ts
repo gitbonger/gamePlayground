@@ -139,14 +139,13 @@ export interface Moment {
   // --- The story -----------------------------------------------------------
   /** Somebody is waiting for an answer, with the replies on screen. */
   answering: boolean;
-  /** Finished talking, and the next thing is to go. */
+  /**
+   * Standing, with a conversation just over or a line said to nobody still on
+   * screen: the next level has begun, and it begins with taking off.
+   */
   leaving: boolean;
-  /** A beat is being held: the world is stopped on a line. */
-  held: boolean;
   /** Standing with somebody, whether or not there is anything left to say. */
   talking: boolean;
-  /** The camera has the shot and the player is an audience. */
-  watching: boolean;
 
   // --- The player ----------------------------------------------------------
   /**
@@ -328,7 +327,7 @@ export const MESSAGES: readonly Message[] = [
     spoken: true,
     // Leaving a conversation and leaving a beat are the same act: he has
     // finished talking and he is going.
-    when: (at) => at.leaving || at.held,
+    when: (at) => at.leaving,
     done: (at) => at.down(['SPACE']),
   },
   {
@@ -543,8 +542,7 @@ export const MESSAGES: readonly Message[] = [
       !at.onTarget &&
       !at.crashed &&
       !at.talking &&
-      !at.leaving &&
-      !at.held,
+      !at.leaving,
     done: (at) => at.down(['SPACE']),
   },
   {
