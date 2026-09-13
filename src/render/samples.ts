@@ -63,6 +63,7 @@ const TRIM: Record<Noise, number> = {
   bell: 1,
   screech: 0.7,
   cigi: 1,
+  jegyeket: 1,
 };
 
 /**

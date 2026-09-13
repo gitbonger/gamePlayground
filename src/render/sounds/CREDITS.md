@@ -50,3 +50,8 @@ Cut, levelled and faded at the edges; otherwise unaltered.
 
 - **cigi.mp3** -- supplied for the game rather than taken from Commons, and
   used as it came. `scripts/make-sounds.py` neither cuts it nor deletes it.
+
+## jegyeket
+
+- **jegyeket.mp3** -- supplied for the game, like `cigi.mp3`, and used as it
+  came.

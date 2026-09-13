@@ -19,7 +19,7 @@
  * occasionally says something -- which is what a district sounds like.
  */
 
-export type Noise = 'bark' | 'coo' | 'caw' | 'bell' | 'screech' | 'cigi';
+export type Noise = 'bark' | 'coo' | 'caw' | 'bell' | 'screech' | 'cigi' | 'jegyeket';
 
 /** Something that can make a noise, and where it is. */
 export interface Source {
@@ -57,6 +57,9 @@ const NOISES: Record<Noise, { reach: number; apart: number; chance: number }> = 
   // like a bell, and the same sentence twice in a minute is a recording
   // rather than a person, so it is short-reaching and rare.
   cigi: { reach: 60, apart: 25, chance: 0.4 },
+  // The inspector on a tram, asking for tickets. A voice through a tram's
+  // doors carries less far than one on a square, and is rarer still.
+  jegyeket: { reach: 45, apart: 30, chance: 0.4 },
 };
 
 /**
@@ -87,7 +90,7 @@ const TOGETHER = 4;
  * out twelve caws and three coos, because the caw's cooldown is shorter than
  * the gap between sounds and it therefore won nearly every opportunity.
  */
-const ORDER: readonly Noise[] = ['caw', 'screech', 'bell', 'bark', 'coo', 'cigi'];
+const ORDER: readonly Noise[] = ['caw', 'screech', 'bell', 'bark', 'coo', 'cigi', 'jegyeket'];
 
 export interface Ambience {
   /**
@@ -291,6 +294,7 @@ export function browserKit(volume = 0.5): Kit {
           tone('sine', 3136, 3136, 0, 0.25, 0.08);
           break;
         case 'cigi':
+        case 'jegyeket':
           // A voice, which no oscillator is going to say. Until the recording
           // has loaded there is simply nobody asking.
           break;

@@ -2075,6 +2075,8 @@ let musicOn = false;
 const LISTEN_EVERY = 1 / 5;
 /** How far out anything is worth gathering at all, in metres. */
 const EARSHOT = 150;
+/** The height below which the inspector on a tram can be heard, in metres. */
+const TICKETS_BELOW = 20;
 let heardAt = -1;
 let audible: Source[] = [];
 
@@ -2151,8 +2153,19 @@ function listen(): Source[] {
   // curve, so they are two different noises off the same list -- and only
   // from a rake that is near enough to have been laid out this tick, which is
   // the same three hundred metres the collider uses.
+  // The inspector on a tram asking for tickets, heard only from down among
+  // the traffic: a voice through a tram's doors is not something a bird at
+  // roof height hears. Standing at a stop as well as moving -- that is when
+  // people get on.
+  const amongTheTrams = from.y < TICKETS_BELOW;
   layout.trains.forEach((train, index) => {
     if (!near[index]) return;
+    if (amongTheTrams && train.stock === 'tram') {
+      const car = train.vehicles[Math.floor(train.vehicles.length / 2)];
+      if (car && within(car.x, car.z)) {
+        near_.push({ noise: 'jegyeket', x: car.x, y: stockTop(train.stock) / 2, z: car.z });
+      }
+    }
     // Standing still makes neither noise: a bell is rung on pulling away and
     // a wheel squeals under load.
     if (train.held > 0 || train.waited > 0) return;
