@@ -206,6 +206,8 @@ export interface Car {
   speed: number;
   /** The ways on after this edge, as far as it has looked. */
   route: { edge: number; forward: boolean }[];
+  /** The edge it came off, for the curve round the corner it has just taken. */
+  came: { edge: number; forward: boolean } | null;
   /** The crossing it holds, if it holds one. */
   holding: number | null;
   /** Seconds it has been waiting at the crossing in front of it. */
@@ -230,24 +232,125 @@ export interface Traffic {
 /** How far out of the car's lane it sits from the centreline: the right-hand half. */
 const laneOffset = (edge: CarEdge) => Math.min(edge.width / 4, 3.2);
 
-/** Where along the edge's own points `s` is, in the direction of travel. */
-function place(edge: CarEdge, forward: boolean, s: number): { x: number; z: number; dx: number; dz: number } {
-  const d = Math.max(0, Math.min(edge.length, forward ? s : edge.length - s));
-  let i = 1;
-  while (i < edge.along.length - 1 && edge.along[i]! < d) i += 1;
-  const p0 = edge.points[i - 1]!;
-  const p1 = edge.points[i]!;
-  const span = edge.along[i]! - edge.along[i - 1]! || 1;
-  const t = (d - edge.along[i - 1]!) / span;
-  let dx = (p1[0] - p0[0]) / span;
-  let dz = (p1[1] - p0[1]) / span;
-  if (!forward) {
-    dx = -dx;
-    dz = -dz;
+/**
+ * How far either side of a corner the curve through it starts, in metres.
+ *
+ * A road outline is straight lines meeting at points, and a car following it
+ * exactly swung round at each point in one frame -- and, because its lane is
+ * measured off to the side of the way it faces, jumped sideways across the
+ * road as it did. Instead each corner is cut with a curve that begins this
+ * far before the point and ends this far after it, so a car drives an arc
+ * through a junction. Seven metres is a street corner taken at a crawl; a
+ * short stretch of road gets less, half of it, so two curves never overlap.
+ */
+const TURN = 7;
+
+/** A leg of a route, as its centreline points in the order it is driven. */
+function driven(edge: CarEdge, forward: boolean): [number, number][] {
+  return forward ? edge.points : [...edge.points].reverse();
+}
+
+/**
+ * Where a car is and which way it faces: `s` metres into `edge`, having come
+ * off `before` and going on to `after`.
+ *
+ * Only the drawing and the collider see this. The traffic rules work in
+ * metres along edges and never ask where the curves are -- so the jams are
+ * exactly as they were, and only what they look like changes.
+ */
+function place(
+  edge: CarEdge,
+  forward: boolean,
+  s: number,
+  before: { edge: CarEdge; forward: boolean } | null,
+  after: { edge: CarEdge; forward: boolean } | null,
+): { x: number; z: number; dx: number; dz: number } {
+  const points = driven(edge, forward);
+  const d = Math.max(0, Math.min(edge.length, s));
+  // Which straight it is on, in the order it is driven.
+  let i = 0;
+  let into = d;
+  const lengthOf = (a: [number, number], b: [number, number]) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+  while (i < points.length - 2 && into > lengthOf(points[i]!, points[i + 1]!)) {
+    into -= lengthOf(points[i]!, points[i + 1]!);
+    i += 1;
   }
-  // The right-hand side of the way it is going: facing north, right is east.
+  const p0 = points[i]!;
+  const p1 = points[i + 1]!;
+  const span = lengthOf(p0, p1) || 1;
+  const dir = { x: (p1[0] - p0[0]) / span, z: (p1[1] - p0[1]) / span };
   const off = laneOffset(edge);
-  return { x: p0[0] + (p1[0] - p0[0]) * t - dz * off, z: p0[1] + (p1[1] - p0[1]) * t + dx * off, dx, dz };
+
+  /** The straight before this one, or after, with the lane it is driven in. */
+  const beside = (which: 'before' | 'after') => {
+    if (which === 'after') {
+      if (i + 2 < points.length) return { from: p1, to: points[i + 2]!, off };
+      if (!after) return null;
+      const on = driven(after.edge, after.forward);
+      return { from: p1, to: on[1]!, off: laneOffset(after.edge) };
+    }
+    if (i > 0) return { from: points[i - 1]!, to: p0, off };
+    if (!before) return null;
+    const on = driven(before.edge, before.forward);
+    return { from: on[on.length - 2]!, to: p0, off: laneOffset(before.edge) };
+  };
+
+  /** A point along the corner at `v`, from `a` through `corner` to `b`, `t` 0..1. */
+  const curve = (
+    a: { x: number; z: number },
+    corner: [number, number],
+    b: { x: number; z: number },
+    t: number,
+    offA: number,
+    offB: number,
+  ) => {
+    const u = 1 - t;
+    const x = u * u * a.x + 2 * u * t * corner[0] + t * t * b.x;
+    const z = u * u * a.z + 2 * u * t * corner[1] + t * t * b.z;
+    let dx = 2 * u * (corner[0] - a.x) + 2 * t * (b.x - corner[0]);
+    let dz = 2 * u * (corner[1] - a.z) + 2 * t * (b.z - corner[1]);
+    const size = Math.hypot(dx, dz) || 1;
+    dx /= size;
+    dz /= size;
+    const lane = offA + (offB - offA) * t;
+    // The right-hand side of the way it is going: facing north, right is east.
+    return { x: x - dz * lane, z: z + dx * lane, dx, dz };
+  };
+
+  /** Whether a corner is worth curving: not a turn back the way it came. */
+  const turnable = (ax: number, az: number, bx: number, bz: number) => ax * bx + az * bz > -0.85;
+
+  // Coming up to the corner at the end of this straight.
+  const next = beside('after');
+  if (next) {
+    const nextSpan = lengthOf(next.from, next.to) || 1;
+    const nd = { x: (next.to[0] - next.from[0]) / nextSpan, z: (next.to[1] - next.from[1]) / nextSpan };
+    const r = Math.min(TURN, span / 2, nextSpan / 2);
+    if (span - into < r && turnable(dir.x, dir.z, nd.x, nd.z)) {
+      const a = { x: p1[0] - dir.x * r, z: p1[1] - dir.z * r };
+      const b = { x: p1[0] + nd.x * r, z: p1[1] + nd.z * r };
+      return curve(a, p1, b, 0.5 * (into - (span - r)) / r, off, next.off);
+    }
+  }
+  // Just round the corner at the start of it.
+  const last = beside('before');
+  if (last) {
+    const lastSpan = lengthOf(last.from, last.to) || 1;
+    const ld = { x: (last.to[0] - last.from[0]) / lastSpan, z: (last.to[1] - last.from[1]) / lastSpan };
+    const r = Math.min(TURN, span / 2, lastSpan / 2);
+    if (into < r && turnable(ld.x, ld.z, dir.x, dir.z)) {
+      const a = { x: p0[0] - ld.x * r, z: p0[1] - ld.z * r };
+      const b = { x: p0[0] + dir.x * r, z: p0[1] + dir.z * r };
+      return curve(a, p0, b, 0.5 + (0.5 * into) / r, last.off, off);
+    }
+  }
+
+  return {
+    x: p0[0] + dir.x * into - dir.z * off,
+    z: p0[1] + dir.z * into + dir.x * off,
+    dx: dir.x,
+    dz: dir.z,
+  };
 }
 
 const COLOURS = [0xb23a32, 0x2f5d8a, 0xd9d6cf, 0x2b2e33, 0x7a8288, 0x3e6b44, 0xc8a13a, 0x8a4f7d];
@@ -306,7 +409,9 @@ export function createTraffic(
   };
 
   const locate = (car: Car) => {
-    const at = place(graph.edges[car.edge]!, car.forward, car.s);
+    const leg = (of: { edge: number; forward: boolean } | null | undefined) =>
+      of ? { edge: graph.edges[of.edge]!, forward: of.forward } : null;
+    const at = place(graph.edges[car.edge]!, car.forward, car.s, leg(car.came), leg(car.route[0]));
     car.x = at.x;
     car.z = at.z;
     car.yaw = Math.atan2(-at.dz, at.dx);
@@ -342,7 +447,7 @@ export function createTraffic(
       const others = lanes.get(lane(id, forward)) ?? [];
       if (others.some((other) => Math.abs(other.s - s) < CAR_LENGTH + GAP * 2)) continue;
       release(car);
-      Object.assign(car, { edge: id, forward, s, speed: edge.speed * 0.6, route: [], waiting: 0, still: 0 });
+      Object.assign(car, { edge: id, forward, s, speed: edge.speed * 0.6, route: [], came: null, waiting: 0, still: 0 });
       locate(car);
       others.push(car);
       others.sort((p, q) => p.s - q.s);
@@ -353,7 +458,7 @@ export function createTraffic(
 
   for (let i = 0; i < count; i += 1) {
     cars.push({
-      id: i, edge: 0, forward: true, s: 0, speed: 0, route: [], holding: null, waiting: 0,
+      id: i, edge: 0, forward: true, s: 0, speed: 0, route: [], came: null, holding: null, waiting: 0,
       still: 0, colour: COLOURS[i % COLOURS.length]!, x: 0, z: 0, yaw: 0,
     });
   }
@@ -436,6 +541,7 @@ export function createTraffic(
         while (car.s >= graph.edges[car.edge]!.length) {
           const next = car.route.shift() ?? onFrom(car.edge, car.forward);
           car.s -= graph.edges[car.edge]!.length;
+          car.came = { edge: car.edge, forward: car.forward };
           car.edge = next.edge;
           car.forward = next.forward;
         }

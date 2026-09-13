@@ -69,3 +69,42 @@ describe('the cars', () => {
     expect(car.z > 0).toBe(east);
   });
 });
+
+describe('turning', () => {
+  it('drives round a corner rather than swinging round it in one frame', () => {
+    // Two ways meeting at a right angle, one car going round.
+    const graph = buildCarGraph([
+      { kind: 'residential', width: 8, points: [[0, 0], [200, 0]] },
+      { kind: 'residential', width: 8, points: [[200, 0], [200, 200]] },
+    ]);
+    const traffic = createTraffic(graph, 1, { x: 200, z: 0 }, seeded(5), 10000, [0, 10000]);
+    const car = traffic.cars[0]!;
+    // Put it at the start of the first way, heading for the corner.
+    Object.assign(car, { edge: 0, forward: true, s: 20, speed: 8, route: [], came: null });
+    // One update to put it where it was just told to be: before that, where
+    // it is drawn is still wherever it was first set down.
+    traffic.update(1 / 60, { x: 200, z: 0 });
+    let yaw = car.yaw;
+    let x = car.x;
+    let z = car.z;
+    let turnPerFrame = 0;
+    let stepPerFrame = 0;
+    let turned = 0;
+    for (let frame = 0; frame < 60 * 40; frame += 1) {
+      traffic.update(1 / 60, { x: 200, z: 0 });
+      let dyaw = car.yaw - yaw;
+      dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+      turnPerFrame = Math.max(turnPerFrame, Math.abs(dyaw));
+      stepPerFrame = Math.max(stepPerFrame, Math.hypot(car.x - x, car.z - z));
+      turned += dyaw;
+      yaw = car.yaw;
+      x = car.x;
+      z = car.z;
+    }
+    // It did go round -- a quarter turn at least -- and never by more than a
+    // few degrees in one frame, nor jumped across the road.
+    expect(Math.abs(turned)).toBeGreaterThan(Math.PI / 2 - 0.05);
+    expect(turnPerFrame).toBeLessThan(0.1);
+    expect(stepPerFrame).toBeLessThan(0.4);
+  });
+});
