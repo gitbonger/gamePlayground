@@ -24,6 +24,7 @@ import {
   SHELTER,
   type Platform,
   terraceOf,
+  topOf,
   type Building,
   type CityLayout,
   type Landmark,
@@ -604,11 +605,15 @@ export function buildWorld(
       building.castShadow = true;
       building.receiveShadow = true;
       group.add(building);
+      // Over its deck if it names one, which for a building round a courtyard
+      // is the difference between pointing at the roof and pointing down a
+      // hole.
+      const aim = topOf(landmark);
       markers.push(
         createMarker(
           landmark.name,
           material,
-          new THREE.Vector3(landmark.x, landmark.height, landmark.z),
+          new THREE.Vector3(aim.x, aim.top, aim.z),
           disposables,
           overlay,
         ),

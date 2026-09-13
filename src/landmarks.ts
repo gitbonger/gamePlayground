@@ -14,6 +14,7 @@
  */
 import type { Landmark, Standing } from './world/layout';
 import { KELETI_PARTS } from './buildings/keleti';
+import { LOFT_DECK, LOFT_PARTS } from './buildings/loft';
 
 /**
  * A described thing, in degrees, before it is projected into local metres.
@@ -28,55 +29,32 @@ export interface LandmarkSpec extends Omit<Landmark, 'x' | 'z'> {
 }
 
 /**
- * A large block of flats, standing in its own ground.
+ * A block of flats built round a garden, eight storeys and a set-back top.
  *
- * Ninety metres by forty-two and thirty-one to the terrace, which makes it
- * about three times the plan of the buildings around it without being taller
- * than it already was -- a slab you can pick out of a roofline from a
- * kilometre by its footprint rather than by its height.
+ * Built part by part -- see `src/buildings/loft.ts` -- as a square ring with
+ * a courtyard all the way down the middle. It stands where the old slab
+ * stood, which is where the levels that come here were laid out round, and it
+ * is thirty-one metres to the roof, which is what they were balanced for.
  *
- * Half of it is one storey higher: a penthouse, whose windows look out over
- * the flat half, which is a terrace planted with bushes in two long rows. The
- * terrace is what the level asks you to land on -- not the top of the
- * penthouse -- and the turn puts it on the near side, so the half you are
- * aiming at is the half you meet first instead of being hidden behind the
- * taller one on every approach.
- *
- * The coordinate is not quite the one the terrace was first pinned at. That
- * point is thirteen metres from the kerb, which was room enough for a thirty
- * metre building and is not room for a ninety metre one; this is the same
- * block, moved far enough in that the walls stand clear of the streets rather
- * than across them.
+ * The roof is game furniture: the trapper and his cage are on its south-east
+ * corner, and `deck` says so. Everything that used to hang off the middle of
+ * the terrace -- the marker, her spot, the trapper, the rescue -- now hangs
+ * off that corner.
  */
 export const LOFT: LandmarkSpec = {
   name: 'The Loft',
   at: [47.495294, 19.081901],
-  width: 90,
-  depth: 42,
-  // The terrace. The penthouse stands three and a bit above this.
+  width: 64,
+  depth: 64,
   height: 31,
-  // Turned to face the way the pigeon comes in, which is now from the west:
-  // the level before it ends at a line out on the open ground, and a
-  // checkpoint puts the next level's start on that line. Left facing east the
-  // penthouse stood between the approach and the terrace, so the thing you
-  // are aiming at was hidden until the last second.
   yaw: 0,
-  margin: 9,
-  penthouse: { cover: 0.5, rise: 3.2 },
-  // Longer rows for a longer terrace: the spacing within a row is what makes
-  // it read as a hedge rather than as a line of separate shrubs.
-  planting: { rows: 2, perRow: 16, radius: 0.7 },
-  // The trapper, standing over the cage he put her in.
-  //
-  // He used to be at the far parapet looking out over the city, which was
-  // scenery: a person on a roof to give the roof a size. He is a character
-  // now, and a character stands where the thing he did is -- a metre and a
-  // half off the cage, close enough to be plainly with it and far enough that
-  // a pigeon can land between the two of them.
-  //
-  // The cage is where she is, which is `along: 2.6, across: 0` in this
-  // building's own frame; this is beside it, on the side away from the
-  // approach.
+  margin: 6,
+  model: LOFT_PARTS,
+  deck: LOFT_DECK,
+  // The trapper, standing over the cage he put her in: a metre and a half off
+  // it, close enough to be plainly with it and far enough that a pigeon can
+  // land between the two of them. The cage is where she is, `along: 2.6,
+  // across: 0` from the middle of the deck; this is beside it.
   people: [{ along: 2.6, across: -1.7, facing: Math.PI / 2 }],
 };
 

@@ -120,7 +120,7 @@ import { defaultSight, sighted } from './render/sighted';
 import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
 import { buildWorld, targetFlash } from './world/city';
-import { peopleOn, PERSON_HEIGHT, pointOn } from './world/layout';
+import { peopleOn, PERSON_HEIGHT, pointOn, topOf } from './world/layout';
 import { createScatter, seedWithin, SEED_SIZE } from './world/seeds';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
 import {
@@ -3231,12 +3231,14 @@ function frame(nowMs: number) {
       flock.only(0);
       const roof = layout.landmarks.find((mark) => mark.name === targetName(LEVELS[level]!));
       rescue = beginRescue({
-        // The whole terrace, so they arrive at the far corners and walk in.
-        // Falling back to a patch round the hero if the level is not aimed at
-        // a described thing, which this one is and always will be -- but a
-        // crash here would be a crash at the end of the game.
+        // The patch of roof the story is told on, so they arrive round its
+        // edges and walk in -- the deck rather than the whole building, which
+        // round a courtyard is mostly a hole. Falling back to a patch round the
+        // hero if the level is not aimed at a described thing, which this one
+        // is and always will be -- but a crash here would be a crash at the
+        // end of the game.
         terrace: roof
-          ? { x: roof.x, z: roof.z, width: roof.width, depth: roof.depth, yaw: roof.yaw ?? 0 }
+          ? (({ x, z, width, depth, yaw }) => ({ x, z, width, depth, yaw }))(topOf(roof))
           : { x: bird.position.x, z: bird.position.z, width: 20, depth: 20, yaw: 0 },
         cage: { x: (cageBox.minX + cageBox.maxX) / 2, z: (cageBox.minZ + cageBox.maxZ) / 2 },
         ground: bird.position.y,

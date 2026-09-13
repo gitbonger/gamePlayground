@@ -28,7 +28,8 @@ import {
   hersHidden,
 } from './levels';
 import { HOME_TREE, LANDMARKS, LOFT } from './landmarks';
-import { nestOn, penthouseOf, peopleOn, plantTerrace, pointOn, terraceOf } from './world/layout';
+import { nestOn, peopleOn, pointOn, topOf } from './world/layout';
+import { partBoxes } from './world/model';
 import { CHARACTER_MORPHS, HERO_MORPH, PIGEON_MORPHS, PINK_MORPH } from './render/bird';
 import { MEET_RADIUS } from './sim/walk';
 import { begin, isOver, reply, type Turn } from './dialogue';
@@ -105,54 +106,49 @@ describe('what the levels aim at', () => {
     expect(LOFT.height).toBeGreaterThan(ROOFLINE + 5);
   });
 
-  it('stands the loft\'s pigeon on the terrace, clear of the planting', () => {
-    // The level is won by walking up to it, so where it stands has to be
-    // somewhere a bird can be. It is placed relative to the marker, which
-    // hangs over the middle of the terrace, and along the building's own axes
-    // rather than the world's -- so this holds however the loft is turned.
-    // Everybody who is ever cast on it, rather than one of them: Pink moves
-    // up here for the second half of the story, and a second bird on the
-    // terrace is a second chance to be standing in a planter.
+  it('stands everybody on the loft on its roof, at the south-east corner', () => {
+    // The level is won by walking up to her, so where she stands has to be
+    // somewhere a bird can be -- and on a building round a courtyard, the
+    // middle of it is a hole. Placed off the deck, along the building's own
+    // axes. Everybody who is ever cast there, and the trapper beside them.
     const here = { ...LOFT, x: 0, z: 0 };
-    const terrace = terraceOf(here)!;
+    const deck = topOf(here);
+    const roofs = partBoxes(here, LOFT.model!).filter((box) => Math.abs(box.maxY - LOFT.height) < 0.01);
+    expect(roofs.length, 'a roof at the height the levels were balanced for').toBeGreaterThan(0);
+    const onRoof = (x: number, z: number) =>
+      roofs.some((box) => x > box.minX + 1 && x < box.maxX - 1 && z > box.minZ + 1 && z < box.maxZ - 1);
+
     const standing = LEVELS.flatMap((level) =>
       level.cast.filter((spot) => spot.on.kind === 'landmark' && spot.on.name === LOFT.name),
     );
     expect(standing.length).toBeGreaterThan(1);
-
-    for (const waiting of standing) {
-    const person = pointOn(terrace, waiting.along, waiting.across);
-
-    // On the terrace: measured back in the terrace's own frame, because the
-    // terrace is turned too.
-    const dx = person.x - terrace.x;
-    const dz = person.z - terrace.z;
-    const along = dx * Math.cos(terrace.yaw) - dz * Math.sin(terrace.yaw);
-    const across = dx * Math.sin(terrace.yaw) + dz * Math.cos(terrace.yaw);
-    expect(Math.abs(along), waiting.who).toBeLessThan(terrace.width / 2);
-    expect(Math.abs(across), waiting.who).toBeLessThan(terrace.depth / 2);
-
-    // And not inside a bush, with room to walk round it: a pigeon is about a
-    // fifth of a metre across.
-    for (const bush of plantTerrace(here)) {
-      const gap = Math.hypot(person.x - bush.x, person.z - bush.z) - bush.radius;
-      expect(gap, `${bush.x.toFixed(1)}, ${bush.z.toFixed(1)}`).toBeGreaterThan(0.5);
-    }
+    const spots = [
+      ...standing.map((spot) => ({ who: spot.who, ...pointOn(deck, spot.along, spot.across) })),
+      ...peopleOn(here).map((person) => ({ who: 'the trapper', x: person.x, z: person.z })),
+    ];
+    for (const spot of spots) {
+      expect(onRoof(spot.x, spot.z), spot.who).toBe(true);
+      // South-east is east of the middle and, with north at -z, south of it.
+      expect(spot.x, spot.who).toBeGreaterThan(0);
+      expect(spot.z, spot.who).toBeGreaterThan(0);
     }
   });
 
-  it('turns the loft to face the way the pigeon comes in', () => {
-    // The terrace is the target. Behind the penthouse it would be hidden on
-    // every approach until the last second.
-    const level = LEVELS.find((l) => l.target?.name === LOFT.name)!;
-    const centre = HOME_MAP.centre as [number, number];
-    const loft = project(LOFT.at[0], LOFT.at[1], centre);
-    const start = project(level.start[0], level.start[1], centre);
-
-    const terrace = terraceOf({ ...LOFT, ...loft })!;
-    const penthouse = penthouseOf({ ...LOFT, ...loft })!;
-    const away = (at: { x: number; z: number }) => Math.hypot(at.x - start.x, at.z - start.z);
-    expect(away(terrace)).toBeLessThan(away(penthouse));
+  it('keeps the whole of the loft\'s deck on the roof, where the rescue lands', () => {
+    // Thirty birds are spread over it at the end of the story. Any part of it
+    // over the courtyard is a bird put down on thin air thirty metres up.
+    const here = { ...LOFT, x: 0, z: 0 };
+    const deck = topOf(here);
+    const roofs = partBoxes(here, LOFT.model!).filter((box) => Math.abs(box.maxY - LOFT.height) < 0.01);
+    for (const along of [-0.45, 0, 0.45]) {
+      for (const across of [-0.45, 0, 0.45]) {
+        const at = pointOn(deck, along * deck.width, across * deck.depth);
+        const covered = roofs.some(
+          (box) => at.x >= box.minX && at.x <= box.maxX && at.z >= box.minZ && at.z <= box.maxZ,
+        );
+        expect(covered, `${at.x.toFixed(1)}, ${at.z.toFixed(1)}`).toBe(true);
+      }
+    }
   });
 
   it('stands every described thing clear of the streets', () => {

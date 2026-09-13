@@ -38,8 +38,9 @@ weigh. Then give the numbers and a recommendation.
   intensity does to it. A specification like `MESSAGES.md`: the code is
   `src/render/intensity.ts`, and a test keeps the two naming the same things.
 - `src/buildings/` — the few real buildings modelled by hand, one file each
-  (`keleti.ts`), as a list of parts: boxes, gable and hipped roofs, arched
-  windows. The kit is `src/world/model.ts`; the parts are both drawn and made
+  (`keleti.ts`, `loft.ts`), as a list of parts: boxes, gable and hipped roofs,
+  arched windows. A building whose roof matters to the story (the Loft) also
+  names a `deck` — the patch of roof the marker, the cast and the rescue use. The kit is `src/world/model.ts`; the parts are both drawn and made
   solid from the same list. Hook one up as a landmark in `src/landmarks.ts`,
   and it clears the generated city off its footprint. Look at it with
   `dev/look.html?x=..&y=..&z=..&tx=..&ty=..&tz=..` (local metres, north is -z).

@@ -202,6 +202,16 @@ export interface Landmark {
    * that ground.
    */
   model?: readonly Part[];
+  /**
+   * The patch of the top the story is told on, for a described building.
+   *
+   * A building with a hole in the middle has no single flat top to hang a
+   * marker over or stand somebody on, so it says which part of its roof is
+   * meant: in its own frame, like the parts. Everything that would otherwise
+   * use the middle of the top uses this -- the marker, whoever stands there,
+   * the rescue. See `topOf`.
+   */
+  deck?: { along: number; across: number; width: number; depth: number };
   /** What is planted on the terrace, if anything. */
   planting?: Planting;
   /** Anybody standing on the terrace. */
@@ -474,6 +484,15 @@ export function nestOn(landmark: Landmark): Nest | null {
  * having to grow a penthouse first.
  */
 export function topOf(landmark: Landmark): Tier {
+  if (landmark.deck) {
+    return {
+      ...pointOn(landmark, landmark.deck.along, landmark.deck.across),
+      width: landmark.deck.width,
+      depth: landmark.deck.depth,
+      top: landmark.height,
+      yaw: landmark.yaw ?? 0,
+    };
+  }
   return (
     terraceOf(landmark) ?? {
       x: landmark.x,
