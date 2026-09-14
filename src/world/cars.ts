@@ -12,10 +12,11 @@
  * - **Keep your distance.** A car slows for whatever is ahead of it in its
  *   own lane -- on this edge, or at the start of the one it is turning into
  *   -- and stops short of it.
- * - **One at a time through a junction.** A node where three or more ways
- *   meet can be held by one car. A car arriving at a junction somebody else
- *   holds waits at the edge of the crossing road; it takes the junction when
- *   it is free and lets go once it is clear of it on the far side.
+ * - **One approach at a time through a junction.** A node where three or more
+ *   ways meet gives green to one lane coming into it: the lane of whoever has
+ *   waited longest. Every car on that lane may go, one behind the other, until
+ *   the lane is empty or its time is up; everybody else waits at the edge of
+ *   the crossing road. The next lane gets green once the crossing is empty.
  *
  * There are no traffic lights, no priorities and no one-way streets -- the
  * map has no one-way data, so every road is driven both ways. And there is
@@ -57,24 +58,34 @@ const CLEAR_OF_JUNCTION = CAR_LENGTH + 4;
  * The rules above are not proof against gridlock: four cars round a block can
  * each be waiting for the next. Letting one through out of turn was tried and
  * was worse, two cars standing in the middle of a crossing each blocking the
- * other. A car taken away where nobody is watching is simply gone.
+ * other. A car taken away where nobody is watching is simply gone. Fifty
+ * seconds, because a red at a busy crossing can be most of a minute.
  */
-const STUCK = 25;
+const STUCK = 50;
 /** How near the bird a stuck car is left where it is, in metres. */
 const IN_SIGHT = 150;
+/**
+ * The longest one approach keeps the green, in seconds, and how far back from
+ * the stop line a car on it still counts as coming -- a green nobody within
+ * this is going to use goes out early.
+ */
+const GREEN = 12;
+const KEEPS_GREEN = 25;
+/** A green nobody has gone through for this long, in seconds, goes out. */
+const STALLED = 4;
 
 export interface CarNode {
   x: number;
   z: number;
   /** The edges that meet here. */
   edges: number[];
-  /** Three or more roads: somewhere only one car may be at a time. */
+  /** Three or more roads: somewhere only one approach may go at a time. */
   junction: boolean;
   /** How far back from the node a waiting car's middle stands: clear of the crossing road. */
   stopShort: number;
   /**
    * Which crossing it belongs to, or -1 if it is not one. Junctions a short
-   * link apart are one crossing: see `JOIN`.
+   * link apart are one crossing: see `joins`.
    */
   crossing: number;
 }
@@ -371,8 +382,14 @@ export function createTraffic(
   back: readonly [number, number] = [220, 440],
 ): Traffic {
   const cars: Car[] = [];
-  /** Who holds each crossing. */
-  const holders: (number | null)[] = new Array(graph.crossings).fill(null);
+  /** How many cars are in each crossing. */
+  const inside: number[] = new Array(graph.crossings).fill(0);
+  /** Which approach lane each crossing has given green to, and when. */
+  const green: (string | null)[] = new Array(graph.crossings).fill(null);
+  const greenSince: number[] = new Array(graph.crossings).fill(0);
+  /** When a car last went into each crossing. */
+  const lastIn: number[] = new Array(graph.crossings).fill(0);
+  let now = 0;
   const lane = (edge: number, forward: boolean) => `${edge}:${forward ? 1 : 0}`;
   const startOf = (edge: number, forward: boolean) =>
     forward ? graph.edges[edge]!.a : graph.edges[edge]!.b;
@@ -404,7 +421,7 @@ export function createTraffic(
   };
 
   const release = (car: Car) => {
-    if (car.holding !== null && holders[car.holding] === car.id) holders[car.holding] = null;
+    if (car.holding !== null) inside[car.holding] -= 1;
     car.holding = null;
   };
 
@@ -472,6 +489,7 @@ export function createTraffic(
     cars,
     graph,
     update(dt, near) {
+      now += dt;
       const lanes = lanesNow();
 
       // What each car can see: how far it may go before the car in front of it,
@@ -484,13 +502,17 @@ export function createTraffic(
         let travelled = graph.edges[car.edge]!.length - car.s;
         let crossing: { id: number; at: number; stop: number } | null = null;
         let node = endOf(car.edge, car.forward);
+        let into = lane(car.edge, car.forward);
+        let approach = '';
 
         for (const leg of car.route) {
           if (travelled > LOOK) break;
           const here = graph.nodes[node]!;
           if (!crossing && here.crossing >= 0 && here.crossing !== car.holding) {
             crossing = { id: here.crossing, at: travelled, stop: travelled - here.stopShort };
+            approach = into;
           }
+          into = lane(leg.edge, leg.forward);
           const first = lanes.get(lane(leg.edge, leg.forward))?.find((other) => other !== car);
           if (first && gap === Infinity) gap = travelled + first.s - CAR_LENGTH - GAP;
           travelled += graph.edges[leg.edge]!.length;
@@ -500,31 +522,66 @@ export function createTraffic(
         // beyond: otherwise taking the crossing would be standing in the middle
         // of it.
         const clear = crossing !== null && gap > crossing.at + CAR_LENGTH;
-        return { gap, crossing, clear };
+        return { gap, crossing, clear, approach };
       });
 
-      // Each free crossing goes to whoever has waited longest of those who can
-      // go through it now.
-      const best = new Map<number, number>();
-      cars.forEach((car, i) => {
-        const seen = sight[i]!;
-        if (!seen.crossing || !seen.clear || seen.crossing.stop > 12) return;
-        if (holders[seen.crossing.id] !== null) return;
-        const current = best.get(seen.crossing.id);
-        if (current === undefined || car.waiting > cars[current]!.waiting) best.set(seen.crossing.id, i);
+      // Who is coming up to each crossing, and which of them could go now.
+      const coming = new Map<number, number[]>();
+      sight.forEach((seen, i) => {
+        if (!seen.crossing || seen.crossing.stop > KEEPS_GREEN) return;
+        const list = coming.get(seen.crossing.id);
+        if (list) list.push(i);
+        else coming.set(seen.crossing.id, [i]);
       });
-      for (const [crossing, i] of best) {
-        const car = cars[i]!;
-        release(car);
-        holders[crossing] = car.id;
-        car.holding = crossing;
-        car.waiting = 0;
+      const canGo = (i: number) => sight[i]!.clear && sight[i]!.crossing!.stop <= 12;
+
+      for (const [crossing, list] of coming) {
+        // The green goes out when its time is up, when nobody is left coming
+        // on that approach, or when nobody on it has gone for a while -- the
+        // way out is blocked, and they have had their turn.
+        const lit = green[crossing];
+        if (lit !== null) {
+          const onIt = list.filter((i) => sight[i]!.approach === lit);
+          const stalled = now - lastIn[crossing]! > STALLED;
+          if (now - greenSince[crossing]! > GREEN || onIt.length === 0 || stalled) {
+            green[crossing] = null;
+            if (stalled) for (const i of onIt) cars[i]!.waiting = 0;
+          }
+        }
+        // Empty and dark: green for the approach of whoever has waited longest
+        // at the line, whether or not the way out is free yet. Waiting for a
+        // moment when it is free was tried, and a lane whose way out the green
+        // lane kept filling never got one.
+        if (green[crossing] === null && inside[crossing] === 0) {
+          let first: number | null = null;
+          for (const i of list) {
+            if (sight[i]!.crossing!.stop > 12) continue;
+            if (first === null || cars[i]!.waiting > cars[first]!.waiting) first = i;
+          }
+          if (first === null) continue;
+          green[crossing] = sight[first]!.approach;
+          greenSince[crossing] = now;
+          lastIn[crossing] = now;
+        }
+        for (const i of list) {
+          if (sight[i]!.approach !== green[crossing] || !canGo(i)) continue;
+          const car = cars[i]!;
+          release(car);
+          inside[crossing] += 1;
+          lastIn[crossing] = now;
+          car.holding = crossing;
+          car.waiting = 0;
+        }
       }
+      // Lights left on at a crossing nobody is coming up to.
+      green.forEach((lit, crossing) => {
+        if (lit !== null && !coming.has(crossing) && inside[crossing] === 0) green[crossing] = null;
+      });
 
       cars.forEach((car, i) => {
         const seen = sight[i]!;
         let gap = seen.gap;
-        if (seen.crossing && holders[seen.crossing.id] !== car.id) {
+        if (seen.crossing && car.holding !== seen.crossing.id) {
           gap = Math.min(gap, seen.crossing.stop);
           if (seen.crossing.stop < 4) car.waiting += dt;
         }
