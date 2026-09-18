@@ -19,6 +19,11 @@ export interface Road {
   width: number;
   /** Polyline in local metres, [x, z] with north at -Z. */
   points: [number, number][];
+  /**
+   * Driven in the direction the points run, and only that way. A körút is two
+   * of these with the tram between them. Absent means both ways.
+   */
+  oneway?: boolean;
 }
 
 /**

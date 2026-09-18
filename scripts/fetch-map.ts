@@ -430,11 +430,21 @@ async function main() {
       // `area=yes` is not a bridge for this purpose. It is how the map files
       // the raised deck outside Keleti -- a floor, a closed way, a thing with
       // no two ends to ramp between -- and it is better left painted flat.
+      // Which way it is driven. Most of the big streets here are one way --
+      // a körút is two carriageways with the tram between them, and each is
+      // its own way in the map -- and `-1` means the way is drawn against the
+      // traffic, so the points are turned round and everything downstream can
+      // take "one way" to mean "the way the points run".
+      const oneway =
+        /^(yes|true|1|-1|reverse)$/.test(tags['oneway'] ?? '') ||
+        (tags['oneway'] !== 'no' && /^(roundabout|circular)$/.test(tags['junction'] ?? ''));
+      if (oneway && /^(-1|reverse)$/.test(tags['oneway'] ?? '')) points.reverse();
+
       if (tags['bridge'] && tags['bridge'] !== 'no' && tags['area'] !== 'yes') {
-        bridges.push({ kind: highway, width, points, layer: Number(tags['layer'] ?? 1) || 1 });
+        bridges.push({ kind: highway, width, points, layer: Number(tags['layer'] ?? 1) || 1, ...(oneway ? { oneway } : {}) });
         continue;
       }
-      roads.push({ kind: highway, width, points });
+      roads.push({ kind: highway, width, points, ...(oneway ? { oneway } : {}) });
       continue;
     }
 

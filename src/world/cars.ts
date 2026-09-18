@@ -4,7 +4,8 @@
  * A first version, and a deliberately plain one. The streets become a graph
  * -- a node wherever two ways meet or one ends, an edge for the stretch of
  * road between -- and a car is a position along one edge, in one direction,
- * on the right-hand side of it. At a node it picks a way on at random.
+ * on the right-hand side of it. At a node it picks a way on at random, from
+ * the ones it is allowed to take.
  *
  * Two rules keep them out of each other, which is the whole of the traffic
  * law here:
@@ -18,8 +19,9 @@
  *   the lane is empty or its time is up; everybody else waits at the edge of
  *   the crossing road. The next lane gets green once the crossing is empty.
  *
- * There are no traffic lights, no priorities and no one-way streets -- the
- * map has no one-way data, so every road is driven both ways. And there is
+ * One-way streets are driven one way -- the map says which, and most of the
+ * big streets here are one: a körút is two of them with the tram between. But
+ * there are no traffic lights and no priorities. And there is
  * no simulating the whole city: a fixed number of cars is kept near the bird,
  * and one that ends up far away is taken off the road and put back on one
  * nearer him, out past the fog. They are scenery, like the flock, and scenery
@@ -99,6 +101,8 @@ export interface CarEdge {
   length: number;
   width: number;
   speed: number;
+  /** Driven from `a` to `b` only: the other half of the street runs elsewhere. */
+  oneway: boolean;
 }
 
 export interface CarGraph {
@@ -164,7 +168,7 @@ export function buildCarGraph(roads: readonly Road[]): CarGraph {
       const length = along[along.length - 1]!;
       if (length > 0.5 && from !== to) {
         const id = edges.length;
-        edges.push({ a: from, b: to, points: run, along, length, width: road.width, speed: DRIVEN[road.kind]! });
+        edges.push({ a: from, b: to, points: run, along, length, width: road.width, speed: DRIVEN[road.kind]!, oneway: road.oneway === true });
         nodes[from]!.edges.push(id);
         nodes[to]!.edges.push(id);
       }
@@ -225,6 +229,8 @@ export interface Car {
   waiting: number;
   /** Seconds stood still. */
   still: number;
+  /** Metres to where the road runs out with nowhere legal to turn, or ∞. */
+  roadEnds: number;
   colour: number;
   /** Where it is and which way it faces, worked out after each update. */
   x: number;
@@ -240,8 +246,17 @@ export interface Traffic {
   update(dt: number, around: { x: number; z: number }): void;
 }
 
-/** How far out of the car's lane it sits from the centreline: the right-hand half. */
-const laneOffset = (edge: CarEdge) => Math.min(edge.width / 4, 3.2);
+/**
+ * How far out of the car's lane it sits from the centreline, in metres.
+ *
+ * On a two-way street the line down the middle is the middle, and a car keeps
+ * the right-hand half of it. A one-way street is half of a bigger road -- the
+ * two carriageways of a körút are two ways in the map with the tram between
+ * them -- so its centreline is the middle of the traffic, and a car sits only
+ * a little right of it.
+ */
+const laneOffset = (edge: CarEdge) =>
+  edge.oneway ? Math.min(edge.width / 8, 1.6) : Math.min(edge.width / 4, 3.2);
 
 /**
  * How far either side of a corner the curve through it starts, in metres.
@@ -396,11 +411,24 @@ export function createTraffic(
   const endOf = (edge: number, forward: boolean) =>
     forward ? graph.edges[edge]!.b : graph.edges[edge]!.a;
 
-  /** A way on from the end of a leg: anything but back, unless back is all there is. */
+  /** Whether a road may be entered from `at`: the right end of a one-way one. */
+  const enterable = (id: number, at: number) =>
+    !graph.edges[id]!.oneway || graph.edges[id]!.a === at;
+
+  /**
+   * A way on from the end of a leg: anything but back the way it came, and
+   * nothing the wrong way up a one-way street. Turning round is allowed only
+   * where the street is two-way and there is nothing else -- a dead end. At
+   * the end of a one-way street there is nowhere legal to go, and `null` says
+   * so: the car stops there, and is taken off the road like any other stopped
+   * one once nobody is looking.
+   */
   const onFrom = (edge: number, forward: boolean) => {
     const at = endOf(edge, forward);
-    const options = graph.nodes[at]!.edges.filter((id) => id !== edge);
-    if (options.length === 0) return { edge, forward: !forward };
+    const options = graph.nodes[at]!.edges.filter((id) => id !== edge && enterable(id, at));
+    if (options.length === 0) {
+      return graph.edges[edge]!.oneway ? null : { edge, forward: !forward };
+    }
     const next = options[Math.floor(random() * options.length)]!;
     return { edge: next, forward: graph.edges[next]!.a === at };
   };
@@ -413,8 +441,14 @@ export function createTraffic(
       ahead += graph.edges[leg.edge]!.length;
       last = leg;
     }
+    car.roadEnds = Infinity;
     while (ahead < LOOK && car.route.length < 12) {
-      last = onFrom(last.edge, last.forward);
+      const next = onFrom(last.edge, last.forward);
+      if (!next) {
+        car.roadEnds = ahead;
+        return;
+      }
+      last = next;
       car.route.push(last);
       ahead += graph.edges[last.edge]!.length;
     }
@@ -459,12 +493,12 @@ export function createTraffic(
       const mid = edge.points[Math.floor(edge.points.length / 2)]!;
       const away = Math.hypot(mid[0] - near.x, mid[1] - near.z);
       if (away < within[0] || away > within[1] || edge.length < 30) continue;
-      const forward = random() < 0.5;
+      const forward = edge.oneway ? true : random() < 0.5;
       const s = 12 + random() * (edge.length - 24);
       const others = lanes.get(lane(id, forward)) ?? [];
       if (others.some((other) => Math.abs(other.s - s) < CAR_LENGTH + GAP * 2)) continue;
       release(car);
-      Object.assign(car, { edge: id, forward, s, speed: edge.speed * 0.6, route: [], came: null, waiting: 0, still: 0 });
+      Object.assign(car, { edge: id, forward, s, speed: edge.speed * 0.6, route: [], came: null, waiting: 0, still: 0, roadEnds: Infinity });
       locate(car);
       others.push(car);
       others.sort((p, q) => p.s - q.s);
@@ -476,7 +510,7 @@ export function createTraffic(
   for (let i = 0; i < count; i += 1) {
     cars.push({
       id: i, edge: 0, forward: true, s: 0, speed: 0, route: [], came: null, holding: null, waiting: 0,
-      still: 0, colour: COLOURS[i % COLOURS.length]!, x: 0, z: 0, yaw: 0,
+      still: 0, roadEnds: Infinity, colour: COLOURS[i % COLOURS.length]!, x: 0, z: 0, yaw: 0,
     });
   }
   {
@@ -499,6 +533,7 @@ export function createTraffic(
         const mine = lanes.get(lane(car.edge, car.forward))!;
         const leader = mine.find((other) => other.s > car.s);
         let gap = leader ? leader.s - car.s - CAR_LENGTH - GAP : Infinity;
+        gap = Math.min(gap, car.roadEnds - CAR_LENGTH / 2);
         let travelled = graph.edges[car.edge]!.length - car.s;
         let crossing: { id: number; at: number; stop: number } | null = null;
         let node = endOf(car.edge, car.forward);
@@ -597,6 +632,13 @@ export function createTraffic(
 
         while (car.s >= graph.edges[car.edge]!.length) {
           const next = car.route.shift() ?? onFrom(car.edge, car.forward);
+          // The end of a one-way street with nothing leading out of it: it
+          // stands at the kerb like a parked car until nobody is looking.
+          if (!next) {
+            car.s = graph.edges[car.edge]!.length;
+            car.speed = 0;
+            break;
+          }
           car.s -= graph.edges[car.edge]!.length;
           car.came = { edge: car.edge, forward: car.forward };
           car.edge = next.edge;

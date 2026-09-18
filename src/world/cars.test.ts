@@ -34,6 +34,48 @@ describe('the road network', () => {
   });
 });
 
+describe('one-way streets', () => {
+  /**
+   * The same grid, one way per street and every other street the other way
+   * round -- which is how a city of one-way streets is laid out, and the only
+   * way a grid of them stays drivable: every corner has a way in and a way out.
+   */
+  const oneWayTown = (blocks: number, size: number) =>
+    town(blocks, size).map((road) => {
+      const [from, to] = [road.points[0]!, road.points[1]!];
+      const line = (from[0] === to[0] ? from[0] : from[1]) / size;
+      const back = Math.round(line) % 2 === 1;
+      return {
+        ...road,
+        points: (back ? [...road.points].reverse() : road.points) as [number, number][],
+        oneway: true,
+      };
+    });
+
+  it('are driven the way the map says, and never the other way', () => {
+    const graph = buildCarGraph(oneWayTown(4, 70));
+    expect(graph.edges.every((edge) => edge.oneway)).toBe(true);
+    const traffic = createTraffic(graph, 30, { x: 140, z: 140 }, seeded(5), 10000, [0, 10000]);
+    for (let step = 0; step < 60 * 120; step += 1) {
+      traffic.update(1 / 60, { x: 140, z: 140 });
+      expect(traffic.cars.every((car) => car.forward)).toBe(true);
+    }
+    // And they are going somewhere, not all parked at the ends of the streets.
+    expect(traffic.cars.filter((car) => car.speed > 1).length).toBeGreaterThan(10);
+  });
+
+  it('still lets a car turn round at the end of a two-way dead end', () => {
+    const graph = buildCarGraph([{ kind: 'residential', width: 8, points: [[0, 0], [200, 0]] }]);
+    const traffic = createTraffic(graph, 1, { x: 100, z: 0 }, seeded(2), 10000, [0, 10000]);
+    const wentBoth = new Set<boolean>();
+    for (let step = 0; step < 60 * 120; step += 1) {
+      traffic.update(1 / 60, { x: 100, z: 0 });
+      wentBoth.add(traffic.cars[0]!.forward);
+    }
+    expect(wentBoth.size).toBe(2);
+  });
+});
+
 describe('the cars', () => {
   it('keep out of each other in a town that is busy, and keep moving', () => {
     const graph = buildCarGraph(town(4, 70));
