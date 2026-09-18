@@ -46,6 +46,8 @@ export interface MapData {
   name: string;
   centre: [number, number];
   radius: number;
+  /** How far the map reaches west of the centre, where that is further than the radius. */
+  west?: number;
   attribution: string;
   roads: Road[];
   /**

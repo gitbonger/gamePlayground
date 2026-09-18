@@ -1168,6 +1168,12 @@ export function buildLayoutFromMap(
     let z = box ? box.z : (ring[0]![1] + ring[1]![1]) / 2;
     if (along < 8) return;
 
+    // And it has to belong to a line. The map has islands that no tram in it
+    // calls at -- a bus bay, a stop served by a track outside the map, half
+    // of an interchange -- and a slab of platform standing in a street with
+    // no rail beside it is street furniture out of nowhere.
+    if (!anyTrack.nearest(x, z, PLATFORM_SERVED)) return;
+
     // Off the track -- the whole slab, not its middle.
     //
     // Measuring the centre is not enough twice over. A platform beside a

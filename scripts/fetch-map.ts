@@ -145,9 +145,100 @@ function worshipKind(tags: Record<string, string>): number | null {
 }
 
 
+/**
+ * A relation's outer members joined end to end into closed rings.
+ *
+ * A park is usually one closed way and needs none of this. The river is the
+ * reason it exists: the Danube is a multipolygon whose outer ring is filed as
+ * two dozen open ways -- stretches of each bank, and a line across the water
+ * at either end of the section -- and taken one at a time they are not areas
+ * at all but the banks drawn as slivers. Joined, they are the river.
+ *
+ * Anything that will not close is handed back as it came, which is what the
+ * old code did with everything.
+ */
+function assembleRings(members: OverpassGeometry[][]): OverpassGeometry[][] {
+  const at = (p: OverpassGeometry) => `${p.lat.toFixed(7)},${p.lon.toFixed(7)}`;
+  const closed = (ring: OverpassGeometry[]) => at(ring[0]!) === at(ring[ring.length - 1]!);
+  const pool = members.filter((member) => member.length >= 2);
+  const rings: OverpassGeometry[][] = [];
+  while (pool.length) {
+    let ring = pool.shift()!;
+    for (let joined = true; joined && !closed(ring); ) {
+      joined = false;
+      for (let i = 0; i < pool.length; i += 1) {
+        const way = pool[i]!;
+        const head = at(ring[0]!);
+        const tail = at(ring[ring.length - 1]!);
+        if (at(way[0]!) === tail) ring = [...ring, ...way.slice(1)];
+        else if (at(way[way.length - 1]!) === tail) ring = [...ring, ...way.slice(0, -1).reverse()];
+        else if (at(way[way.length - 1]!) === head) ring = [...way.slice(0, -1), ...ring];
+        else if (at(way[0]!) === head) ring = [...way.slice(1).reverse(), ...ring];
+        else continue;
+        pool.splice(i, 1);
+        joined = true;
+        break;
+      }
+    }
+    rings.push(ring);
+  }
+  return rings;
+}
+
+/** The map's edges in degrees, with a margin so nothing stops short of them. */
+interface Box {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}
+
+/**
+ * A ring cut down to the box, by Sutherland and Hodgman.
+ *
+ * The Danube's section polygon runs from Csepel to the Margaret bridge,
+ * fourteen kilometres of river for a map three of them tall, and the far end
+ * of it is water nobody will ever fly over. Cut to the edges it is the river
+ * you can see and nothing else. A ring wholly outside comes back empty.
+ */
+function clipRing(ring: OverpassGeometry[], box: Box): OverpassGeometry[] {
+  const inside = (p: OverpassGeometry, side: keyof Box) =>
+    side === 'south' ? p.lat >= box.south
+    : side === 'north' ? p.lat <= box.north
+    : side === 'west' ? p.lon >= box.west
+    : p.lon <= box.east;
+  const cross = (a: OverpassGeometry, b: OverpassGeometry, side: keyof Box): OverpassGeometry => {
+    const vertical = side === 'south' || side === 'north';
+    const edge = box[side];
+    const t = vertical ? (edge - a.lat) / (b.lat - a.lat) : (edge - a.lon) / (b.lon - a.lon);
+    return { lat: a.lat + (b.lat - a.lat) * t, lon: a.lon + (b.lon - a.lon) * t };
+  };
+
+  let out = ring;
+  for (const side of ['south', 'north', 'west', 'east'] as (keyof Box)[]) {
+    const kept: OverpassGeometry[] = [];
+    for (let i = 0; i < out.length; i += 1) {
+      const a = out[i]!;
+      const b = out[(i + 1) % out.length]!;
+      if (inside(a, side)) {
+        kept.push(a);
+        if (!inside(b, side)) kept.push(cross(a, b, side));
+      } else if (inside(b, side)) {
+        kept.push(cross(a, b, side));
+      }
+    }
+    out = kept;
+    if (!out.length) return out;
+  }
+  return out;
+}
+
+
 interface Args {
   centre: [number, number];
   radius: number;
+  /** How far the map reaches west of the centre, where that is not the radius. */
+  west: number;
   name: string;
 }
 
@@ -160,15 +251,21 @@ function parseArgs(argv: string[]): Args {
 
   const centre = (flags.get('centre') ?? flags.get('center') ?? '').split(',').map(Number);
   const radius = Number(flags.get('radius') ?? 1200);
+  // The city is not the same in every direction. Budapest's one unmissable
+  // thing is the river, and the river is four and a half kilometres west of
+  // a map centred on Jozsefvaros -- so the box can be stretched that way
+  // without carrying the same distance of suburb on the other three sides.
+  const west = Number(flags.get('west') ?? radius);
   const name = flags.get('name') ?? 'map';
 
   if (centre.length !== 2 || centre.some((v) => !Number.isFinite(v))) {
     throw new Error('--centre must be "lat,lon", e.g. --centre 47.4979,19.0402');
   }
   if (!Number.isFinite(radius) || radius <= 0) throw new Error('--radius must be metres');
+  if (!Number.isFinite(west) || west < radius) throw new Error('--west must be metres, and at least the radius');
   if (!/^[a-z0-9-]+$/i.test(name)) throw new Error('--name must be a plain identifier');
 
-  return { centre: [centre[0]!, centre[1]!], radius, name };
+  return { centre: [centre[0]!, centre[1]!], radius, west, name };
 }
 
 /** Perpendicular distance from `p` to the line through `a` and `b`. */
@@ -283,20 +380,35 @@ interface OverpassElement {
 }
 
 async function main() {
-  const { centre, radius, name } = parseArgs(process.argv.slice(2));
+  const { centre, radius, west, name } = parseArgs(process.argv.slice(2));
   const [lat, lon] = centre;
   const perDegree = metresPerDegree(lat);
 
   const dLat = radius / perDegree.lat;
   const dLon = radius / perDegree.lon;
-  const bbox = [lat - dLat, lon - dLon, lat + dLat, lon + dLon].map((v) => v.toFixed(7)).join(',');
+  const dWest = west / perDegree.lon;
+  const box = { south: lat - dLat, west: lon - dWest, north: lat + dLat, east: lon + dLon };
+  // Ground is cut to a little outside the box: the edge of the world is a
+  // place nobody flies to, and a river that stopped exactly at it would show
+  // a straight bank where the map ends.
+  const margin = { lat: 150 / perDegree.lat, lon: 150 / perDegree.lon };
+  const edges: Box = {
+    south: box.south - margin.lat,
+    west: box.west - margin.lon,
+    north: box.north + margin.lat,
+    east: box.east + margin.lon,
+  };
+  const bbox = [box.south, box.west, box.north, box.east].map((v) => v.toFixed(7)).join(',');
 
   const wanted = Object.keys(ROAD_WIDTHS).join('|');
   const areaFilters = Object.keys(AREA_KINDS)
     .flatMap((key) => [`way${alternation(key)}(${bbox});`, `relation${alternation(key)}(${bbox});`])
     .join('');
   const track = Object.keys(RAIL_WIDTHS).join('|');
-  process.stderr.write(`querying OpenStreetMap for ${radius} m around ${lat}, ${lon}\n`);
+  process.stderr.write(
+    `querying OpenStreetMap for ${radius} m around ${lat}, ${lon}` +
+      `${west === radius ? '' : `, and ${west} m west`}\n`,
+  );
 
   // Three queries rather than one. The ways that make the ground are one
   // shape of question, seven and a half thousand building outlines are
@@ -451,21 +563,25 @@ async function main() {
     const kind = areaKind(tags);
     if (!kind) continue;
 
-    // A closed way is a ring on its own. A relation's outer members are each
-    // treated as a ring, which ignores holes -- there are few of them, and an
+    // A closed way is a ring on its own; a relation's outer members are
+    // joined into one. Holes are ignored -- there are few of them, and an
     // over-large park only costs a handful of houses that were never there.
     const rings =
       element.type === 'relation'
-        ? (element.members ?? [])
-            .filter((member) => member.role !== 'inner' && member.geometry)
-            .map((member) => member.geometry!)
+        ? assembleRings(
+            (element.members ?? [])
+              .filter((member) => member.role !== 'inner' && member.geometry)
+              .map((member) => member.geometry!),
+          )
         : element.geometry
           ? [element.geometry]
           : [];
 
-    for (const ring of rings) {
-      if (ring.length < 4) continue;
-      rawPoints += ring.length;
+    for (const whole of rings) {
+      if (whole.length < 4) continue;
+      rawPoints += whole.length;
+      const ring = clipRing(whole, edges);
+      if (ring.length < 3) continue;
       const points = toLocal(ring, 2.5);
       if (points.length >= 3) areas.push({ kind, points });
     }
@@ -633,6 +749,7 @@ async function main() {
         name,
         centre,
         radius,
+        ...(west === radius ? {} : { west }),
         generated: new Date().toISOString(),
         attribution: ATTRIBUTION,
         roads,

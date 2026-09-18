@@ -63,8 +63,13 @@ npm run build
 The map is fetched separately and committed, so a clone needs no network:
 
 ```bash
-npm run fetch-map -- --centre 47.4979,19.0402 --radius 1200 --name home
+npm run fetch-map -- --centre 47.498969,19.093366 --radius 2100 --west 4867 --name home
 ```
+
+`--west` stretches the box that way alone, which is how the Danube got in:
+the river is nearly five kilometres west of a map centred on Jozsefvaros, and
+carrying the same distance of suburb on the other three sides would have been
+four times the city for one more thing worth flying to.
 
 ## Licence and attribution
 
