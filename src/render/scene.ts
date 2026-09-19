@@ -154,8 +154,15 @@ export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): S
  * however far the bird travels. Its direction is measured from the camera and
  * not from the origin, or the disc would slide across the sky as the bird flew
  * out from the middle of the dome.
+ *
+ * The dome itself is carried along with the camera, for the same reason and a
+ * harder one. It was left at the origin, which was fine while the map was two
+ * kilometres across and the bird could never reach the shell; the map now
+ * reaches ten kilometres into Buda, and a bird outside a sphere drawn on its
+ * inside faces sees the far wall of it -- a pale dome standing over the city,
+ * there and gone as he crossed the nine kilometre line.
  */
-function createSkyDome(direction: THREE.Vector3): THREE.Mesh {
+export function createSkyDome(direction: THREE.Vector3): THREE.Mesh {
   const geometry = new THREE.SphereGeometry(9000, 32, 16);
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide,
@@ -200,5 +207,15 @@ function createSkyDome(direction: THREE.Vector3): THREE.Mesh {
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.renderOrder = -1;
+  // It surrounds the viewer, so there is never a frame it is not in: culling
+  // it by a bounding sphere that moves with the camera is work with one
+  // answer, and the wrong answer whenever the two are worked out a frame
+  // apart.
+  mesh.frustumCulled = false;
+  mesh.onBeforeRender = (_renderer, _scene, camera) => {
+    if (mesh.position.equals(camera.position)) return;
+    mesh.position.copy(camera.position);
+    mesh.updateMatrixWorld(true);
+  };
   return mesh;
 }

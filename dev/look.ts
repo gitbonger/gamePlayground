@@ -30,6 +30,7 @@ import { project } from '../src/world/geo';
 import { buildCarGraph, createTraffic } from '../src/world/cars';
 import { createCarMeshes } from '../src/render/cars';
 import { FLAT } from '../src/world/ground';
+import { createSkyDome } from '../src/render/scene';
 
 const map = homeMap as unknown as MapData;
 // The same world the game builds, trams and all -- otherwise a count of what
@@ -68,15 +69,16 @@ scene.background = new THREE.Color(0xbcd3e8);
  * of the last row it knew about, which from the streets was a pale dome
  * standing over the city, and nothing without fog in it would ever show that.
  */
+let skyDome: THREE.Mesh | null = null;
 if (new URLSearchParams(location.search).get('sky')) {
-  const HORIZON = new THREE.Color(0xbcd3e8);
-  scene.fog = new THREE.Fog(HORIZON.clone(), 350, 4200);
-  const dome = new THREE.Mesh(
-    new THREE.SphereGeometry(9000, 32, 16),
-    new THREE.MeshBasicMaterial({ color: HORIZON, side: THREE.BackSide, depthWrite: false, fog: false }),
-  );
+  scene.fog = new THREE.Fog(new THREE.Color(0xbcd3e8), 350, 4200);
+  // The game's own sky, not a plain blue ball: the gradient is the half of it
+  // that shows a fault up.
+  const dome = createSkyDome(new THREE.Vector3(-0.42, 0.66, 0.62).normalize());
   dome.renderOrder = -1;
+  dome.frustumCulled = false;
   scene.add(dome);
+  skyDome = dome;
 }
 scene.add(world.group);
 // The game's own lights, copied from `render/scene.ts` rather than invented
@@ -93,11 +95,18 @@ const W = 1200, H = 700;
 renderer.setSize(W, H);
 document.body.appendChild(renderer.domElement);
 
-const camera = new THREE.PerspectiveCamera(55, W / H, 0.5, 6000);
+// The game's near and far planes, so that what is clipped here is what is
+// clipped there.
+const camera = new THREE.PerspectiveCamera(55, W / H, 0.35, 12000);
 const params = new URLSearchParams(location.search);
 const n = (k: string, d: number) => Number(params.get(k) ?? d);
 camera.position.set(n('x', 300), n('y', 40), n('z', 60));
 camera.lookAt(n('tx', 298), n('ty', 6), n('tz', -72));
+// Carried with the camera, as the game carries it: a dome left at the origin
+// is one the camera can fly out of.
+// `?skyfixed=1` pins it at the origin, which is how it used to be: what that
+// looks like from the far side of the map is the whole reason it does not.
+if (skyDome && new URLSearchParams(location.search).get('skyfixed')) skyDome.onBeforeRender = () => {};
 renderer.render(scene, camera);
 
 // Left where a console can reach it, so the page is also somewhere to ask
