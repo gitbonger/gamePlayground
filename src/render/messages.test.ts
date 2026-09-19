@@ -11,6 +11,7 @@ const flying = (over: Partial<Moment> = {}): Moment => ({
   level: 'Temető',
   teaching: true,
   since: 30,
+  rocket: false,
   altitude: 40,
   airspeed: 14,
   climb: 0,

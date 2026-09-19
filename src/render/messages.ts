@@ -53,6 +53,15 @@ export interface Moment {
   teaching: boolean;
   /** Seconds since the level began. */
   since: number;
+  /**
+   * Whether the rocket is flown on this level.
+   *
+   * Sightseeing and the round have it; the story does not. It is the one
+   * thing a message needs to know about which game this is, so it is that
+   * rather than the mode itself: a message asking `mode !== 'story'` would be
+   * a message that has to be revisited the day a fourth game is added.
+   */
+  rocket: boolean;
 
   // --- The flight ----------------------------------------------------------
   altitude: number;
@@ -425,6 +434,20 @@ export const MESSAGES: readonly Message[] = [
     // time it is true and for as long as it is: it can kill, and there is
     // nothing to have learnt once.
     when: (at) => aloft(at) && at.altitude < LEVEL_BELOW && at.notLevel,
+  },
+  {
+    // The one control that is not survival and not story: it is why the free
+    // levels are fun, and unless it is said nobody finds a key that is on no
+    // list. Said every time the level begins rather than once, because these
+    // are the levels somebody drops into without having played the others.
+    id: 'rocket',
+    keys: ['X'],
+    text: { en: 'X - For rocket mode!', hu: 'X - Rakéta mód!' },
+    icon: 'rocket',
+    sort: 'hint',
+    once: true,
+    when: (at) => at.rocket && at.since < 8,
+    done: (at) => at.down(['X']),
   },
   {
     id: 'brakes',

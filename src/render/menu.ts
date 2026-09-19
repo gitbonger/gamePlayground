@@ -67,7 +67,13 @@ export interface LevelMenu {
 
 export function createLevelMenu(
   container: HTMLElement,
-  levels: readonly { name: string }[],
+  /**
+   * The levels, each with the name it is called by in its own game --
+   * `Story7`, `Sight1`, `Delivery1`. The tag rather than the row number: the
+   * first thirteen rows are the story and their numbers agree anyway, and
+   * past that a row number says nothing about what the level is.
+   */
+  levels: readonly { name: string; tag?: string }[],
   onSwitchMode?: () => void,
   /**
    * Called when a level is picked with the mouse.
@@ -137,7 +143,7 @@ export function createLevelMenu(
       });
 
       const number = document.createElement('b');
-      number.textContent = String(index + 1);
+      number.textContent = level.tag ?? String(index + 1);
       const name = document.createElement('span');
       name.textContent = level.name;
       row.append(number, name);

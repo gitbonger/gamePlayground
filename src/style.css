@@ -319,7 +319,8 @@ body {
 }
 
 .menu-level b {
-  min-width: 18px;
+  /* Wide enough for `Delivery1`, so the names line up down the list. */
+  min-width: 62px;
   color: var(--dim);
   font-weight: 600;
 }

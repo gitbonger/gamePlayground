@@ -75,6 +75,8 @@ import {
   meetsSomewhereFixed,
   metBy,
   PINK,
+  LEVEL_TAGS,
+  rocketOn,
   sceneNamed,
   standingOf,
   targetName,
@@ -2014,16 +2016,20 @@ createDebugGui(flightParams, cameraParams, windParams, pictureParams, {
   repaint: () => setPixelRatio(pictureParams.pixelRatio),
 });
 
-const menu = createLevelMenu(overlay, LEVELS, () => {
-  // Switching takes effect on the spot rather than at the next level: the
-  // bird carries on from where it is, in the air it is now in, with the
-  // parameters the new mode asks for. Which is the honest thing for a switch
-  // to do -- somebody who turns the wind off wants the wind off now.
-  switchMode(otherMode(mode));
-  menu.showMode(level, mode);
-},
+const menu = createLevelMenu(
+  overlay,
+  LEVELS.map((spec, at) => ({ name: spec.name, tag: LEVEL_TAGS[at] })),
+  () => {
+    // Switching takes effect on the spot rather than at the next level: the
+    // bird carries on from where it is, in the air it is now in, with the
+    // parameters the new mode asks for. Which is the honest thing for a
+    // switch to do -- somebody who turns the wind off wants the wind off now.
+    switchMode(otherMode(mode));
+    menu.showMode(level, mode);
+  },
   // Clicked, which is the way in nobody has to be told about.
-  (picked) => playLevel(picked));
+  (picked) => playLevel(picked),
+);
 const talkPanel = createDialoguePanel(overlay);
 const tipPanel = createTipPanel(overlay);
 /** And the cage's, on the one level that has something to work at. */
@@ -3068,8 +3074,11 @@ function frame(nowMs: number) {
     // every other message's, in `MESSAGES`.
     voiceNote = { said: voice.toggle() ? 'on' : 'off', at: clock };
   }
-  // Hidden: twenty wingbeats' worth of speed at once. See `boost`.
-  if (input.consumeBoost()) boost(bird, flightParams);
+  // Twenty wingbeats' worth of speed at once -- see `boost` -- and only where
+  // it belongs. Sightseeing and the round are flown with it and say so on
+  // arrival; the story is about the wing, and a rocket in it would be a way
+  // past the one thing each level is asking for.
+  if (input.consumeBoost() && rocketOn(LEVELS[level] ?? LEVELS[0]!)) boost(bird, flightParams);
   if (input.consumeMusic()) {
     musicOn = !musicOn;
     if (!musicOn) music.stop();
@@ -3413,6 +3422,7 @@ function frame(nowMs: number) {
     level: LEVELS[level]?.name ?? '',
     teaching: tutorial,
     since: clock - startedAt,
+    rocket: rocketOn(LEVELS[level] ?? LEVELS[0]!),
     altitude: telemetry.altitude,
     airspeed: telemetry.airspeed,
     climb: telemetry.climbRate,

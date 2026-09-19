@@ -94,6 +94,7 @@ const CODES: Record<string, readonly string[]> = {
   B: ['KeyB'],
   R: ['KeyR'],
   V: ['KeyV'],
+  X: ['KeyX'],
   TAB: ['Tab'],
 };
 

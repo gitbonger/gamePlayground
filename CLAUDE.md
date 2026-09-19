@@ -51,6 +51,12 @@ weigh. Then give the numbers and a recommendation.
   metres above the map centre: Pest is flat and near nought, Buda rises a
   hundred. A first pass only — things *stand* on the ground, nothing tilts to
   it, and the flat layers are still settled by draw order.
+- `src/levels.ts` — every level, and which of the three games it belongs to:
+  `story` (Story1–Story13, the story as it was), `sight` (Sight1, Sight2:
+  somewhere to go with nothing to do there) and `delivery` (Delivery1: the
+  round). `LEVEL_TAGS` is what each is called in its own game, and that is
+  what the level list shows. The rocket on `X` is flown on everything but the
+  story — `rocketOn` — and the level says so when it begins.
 - `src/finish.ts` — what ends each kind of level.
 - `src/render/messages.ts` — the instruction conditions in code.
 - `scripts/start-manualtest.sh` — the play server, which does not reload

@@ -47,6 +47,7 @@ On top of that:
 | `too fast` / `too hard` | touching down right now would kill, by the landing rule |
 | `hunted` | a crow has picked him out and is coming |
 | `teaching` | the level is still explaining itself (Levels 1–4 only) |
+| `rocket` | the rocket on `X` is flown on this level: sightseeing and delivery levels, never a story one |
 
 Thresholds: **slow** is 20 km/h, **low** is 10 m, **tired** is 0.3 of a tank,
 the **crow ceiling** is 20 m, an **approach** is the last 150 m to somewhere
@@ -76,6 +77,7 @@ to land, and something to land on is **in sight** at 200 m.
 | `pullUp` | `↓` | Pull up! | below **low**, sinking, nowhere to land within 150 m, **and** an arrival right now would kill | `↓` is pressed |
 | `keepLevel` | `←` `→` | Keep level! | below **10 m**, in the air, and banked past what a touchdown survives — landing at this roll would kill | he levels out (every time it is true, not once) |
 | `brakes` | `B` | Try the brakes! | **teaching** levels only, and stamina below **tired** | `B` is pressed (once a level) |
+| `rocket` | `X` | X - For rocket mode! | the level is flown **with the rocket** — sightseeing and delivery, never the story — in its first 8 s | `X` is pressed (once a level) |
 
 ## The crows
 

@@ -412,9 +412,25 @@ export const opensOf = (level: Level): Opens | undefined =>
   // second kind had nothing to open onto.
   'opens' in level.finish ? level.finish.opens : undefined;
 
+/**
+ * Which game a level belongs to.
+ *
+ * `story` is the thirteen levels of the story, from the nest to Everafter,
+ * and they are what the game was until now. `sight` is somewhere to go with
+ * nothing to do there. `delivery` is the round: a letter, a crossing named
+ * after two streets, and a flight to find it.
+ *
+ * What it settles today is the rocket: the boost on X is part of how the
+ * last two are flown, and has no business in a story level where the wing is
+ * what is being taught.
+ */
+export type GameMode = 'story' | 'sight' | 'delivery';
+
 export interface Level {
   /** What it is called, on the marker and in the menu. */
   name: string;
+  /** Which game it belongs to. Left out, the story: that is most of them. */
+  mode?: GameMode;
   /** Where the pigeon is released, in degrees. */
   start: [number, number];
   /**
@@ -781,6 +797,11 @@ export const crossed = (line: Line, x: number, z: number): boolean =>
 export const hersOnMap = (level: Level): boolean => level.hersKnown ?? false;
 
 export const crowsOn = (level: Level): boolean => level.crows ?? false;
+
+export const modeOf = (level: Level): GameMode => level.mode ?? 'story';
+
+/** Whether the rocket is flown on this one: everything but the story. */
+export const rocketOn = (level: Level): boolean => modeOf(level) !== 'story';
 
 export const LEVELS: readonly Level[] = [
   {
@@ -1304,13 +1325,14 @@ export const LEVELS: readonly Level[] = [
     finish: { kind: 'free' },
   },
   {
-    // Andrássy út, and nothing to do on it.
+    // Andrássy út, and nothing to do on it. Sight1.
     //
     // The second level with no target and no way to finish, and the first
     // that is not the end of anything: the story closes on `Everafter`, and
     // this is somewhere else to go afterwards. Reached from the level screen,
     // like any other -- nothing is locked.
     name: 'Andrássy',
+    mode: 'sight',
     // Up by the Kodály körönd end of it, a hundred metres up.
     start: [47.515828, 19.079152],
     // Pointed south-west, down the avenue towards the city. Two hundred and
@@ -1342,6 +1364,7 @@ export const LEVELS: readonly Level[] = [
     // hundred metres of building, twice the height he is let go at -- and the
     // level is let go facing it.
     name: 'Elméleti Tömb',
+    mode: 'sight',
     // Over the south of the district, a hundred metres up and a kilometre
     // short of the towers.
     start: [47.486124, 19.084255],
@@ -1356,4 +1379,48 @@ export const LEVELS: readonly Level[] = [
     cast: [],
     finish: { kind: 'free' },
   },
+  {
+    // The round: a letter to carry to a crossing named after two streets.
+    //
+    // Delivery1, and so far only the shape of it. What is here is a place to
+    // be let go with the whole city in front of him and the rocket to cross
+    // it with; what is not here yet is the letter, the crossing it is
+    // addressed to, and the start being somewhere different every time.
+    name: 'The round',
+    mode: 'delivery',
+    // Off the Danube by Margaret Island, which is about the middle of
+    // everything now that the map reaches Óbuda: the hills one way, Pest the
+    // other, and the river to follow either way.
+    start: [47.526491, 19.048907],
+    // South, down the river towards the bridges and the city.
+    facing: [47.507218, 19.045543],
+    release: 120,
+    health: 1,
+    when: EVENING,
+    escort: false,
+    // Nothing is being tested and nothing is hunting: this is a round, not a
+    // trial. The wing runs out only when a level is about the wing.
+    tireless: true,
+    teaches: false,
+    cast: [],
+    finish: { kind: 'free' },
+  },
 ];
+
+/**
+ * What each level is called in its own game: `Story7`, `Sight1`, `Delivery1`.
+ *
+ * Numbered within the mode rather than across the list, because that is what
+ * the name is for: the thirteenth story level is Story13 whatever else has
+ * been added after it, and the first delivery is Delivery1 even though it is
+ * the sixteenth row of the menu.
+ */
+export const LEVEL_TAGS: readonly string[] = (() => {
+  const counted = new Map<GameMode, number>();
+  return LEVELS.map((level) => {
+    const mode = modeOf(level);
+    const next = (counted.get(mode) ?? 0) + 1;
+    counted.set(mode, next);
+    return `${mode[0]!.toUpperCase()}${mode.slice(1)}${next}`;
+  });
+})();

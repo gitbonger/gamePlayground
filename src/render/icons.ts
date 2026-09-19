@@ -186,6 +186,20 @@ export const ICONS = {
     { d: 'M12 16.4l4.8-6.6-6.2 4.8z', fill: true, ink: 'danger' },
     { d: 'M12 18.1a1.7 1.7 0 100-3.4 1.7 1.7 0 000 3.4z', wash: 'dark', ink: 'metal', thin: true },
   ],
+  /**
+   * The rocket: what X does, drawn as what it feels like.
+   *
+   * Not a bird doing anything. Every other icon here is the bird or the
+   * ground or a thing that hunts it, because every other instruction is about
+   * flying; this one is a fairground ride bolted onto a pigeon, and drawing it
+   * as a nose cone and a flame is the honest picture of it.
+   */
+  rocket: [
+    { d: 'M12 2.6q3.4 3.8 3.4 9.2 0 3.2-1.2 5.6h-4.4q-1.2-2.4-1.2-5.6 0-5.4 3.4-9.2z', wash: 'metal', ink: 'dark', thin: true },
+    { d: 'M12 6.6a1.7 1.7 0 100 3.4 1.7 1.7 0 000-3.4z', wash: 'sky', ink: 'dark', thin: true },
+    { d: 'M8.6 11.4L5.4 15.8l3-.6zM15.4 11.4l3.2 4.4-3-.6z', fill: true, ink: 'danger' },
+    { d: 'M12 17.6q1.8 2 0 3.8-1.8-1.8 0-3.8z', fill: true, ink: 'warn' },
+  ],
   /** Nothing hunting here. */
   safe: [
     { d: 'M12 3.2l7.4 2.6v6.6c0 4.1-3.2 6.9-7.4 8.4-4.2-1.5-7.4-4.3-7.4-8.4V5.8z', wash: 'dark', ink: 'safe', thin: true },

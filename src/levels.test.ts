@@ -14,6 +14,9 @@ import {
   NOT_AT_JANI,
   NOT_AT_MATYAS,
   LEVELS,
+  LEVEL_TAGS,
+  modeOf,
+  rocketOn,
   characterNamed,
   meetsSomewhereFixed,
   metBy,
@@ -508,6 +511,7 @@ describe('what the levels aim at', () => {
       'Everafter',
       'Andrássy',
       'Elméleti Tömb',
+      'The round',
     ]);
     for (const level of dropped) expect(level.release, level.name).toBeGreaterThanOrEqual(100);
 
@@ -1002,6 +1006,7 @@ describe('what the levels aim at', () => {
       'Everafter',
       'Andrássy',
       'Elméleti Tömb',
+      'The round',
     ]);
     for (const level of free.slice(1)) expect(level.finish.kind, level.name).toBe('free');
     // And every level with nothing to finish has it, not just some of them.
@@ -1147,6 +1152,7 @@ describe('what the levels aim at', () => {
       'Everafter',
       'Andrássy',
       'Elméleti Tömb',
+      'The round',
     ]);
   });
 
@@ -1239,6 +1245,7 @@ describe('what the levels aim at', () => {
       'Everafter',
       'Andrássy',
       'Elméleti Tömb',
+      'The round',
     ]);
   });
 
@@ -1761,5 +1768,26 @@ describe('keeping the ending out of sight until it is earned', () => {
       expect(cagedIn(named(name)), name).toBeUndefined();
       expect(hersHidden(named(name)), `${name}: she is simply there`).toBe(false);
     }
+  });
+});
+
+describe('the three games', () => {
+  it('numbers each level within its own game', () => {
+    // The story is what it always was, and the two free ones follow it.
+    expect(LEVEL_TAGS.slice(0, 13).every((tag, at) => tag === `Story${at + 1}`)).toBe(true);
+    expect(LEVEL_TAGS.slice(13)).toEqual(['Sight1', 'Sight2', 'Delivery1']);
+    expect(LEVEL_TAGS).toHaveLength(LEVELS.length);
+  });
+
+  it('flies the rocket on everything but the story', () => {
+    for (const level of LEVELS) {
+      expect(rocketOn(level), level.name).toBe(modeOf(level) !== 'story');
+    }
+    // And it is on the two that were added for it, not on the thirteen.
+    expect(LEVELS.filter(rocketOn).map((level) => level.name)).toEqual([
+      'Andrássy',
+      'Elméleti Tömb',
+      'The round',
+    ]);
   });
 });
