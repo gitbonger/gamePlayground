@@ -537,14 +537,24 @@ export function buildWorld(
   };
 
   const groundTexture = makeGridTexture();
-  // Enough segments to have a hill in it: at forty metres a side this is the
-  // shape of the land, not the shape of a street.
-  const groundGeometry = drape(
-    ((plane: THREE.PlaneGeometry) => {
-      plane.rotateX(-Math.PI / 2);
-      return plane;
-    })(new THREE.PlaneGeometry(12000, 12000, 300, 300)),
-  );
+  // Big enough to reach past the map on every side -- the sheet the city is
+  // drawn on, and it has to be bigger than the city -- and cut into squares
+  // about forty metres across, which is the shape of the land rather than the
+  // shape of a street.
+  const sheet = (() => {
+    const edges = relief.bounds;
+    const over = 2500;
+    const wide = edges ? Math.max(12000, edges.east - edges.west + over * 2) : 12000;
+    const deep = edges ? Math.max(12000, edges.south - edges.north + over * 2) : 12000;
+    const middle = edges
+      ? { x: (edges.west + edges.east) / 2, z: (edges.north + edges.south) / 2 }
+      : { x: 0, z: 0 };
+    const plane = new THREE.PlaneGeometry(wide, deep, Math.round(wide / 40), Math.round(deep / 40));
+    plane.rotateX(-Math.PI / 2);
+    plane.translate(middle.x, 0, middle.z);
+    return plane;
+  })();
+  const groundGeometry = drape(sheet);
   const groundMaterial = new THREE.MeshLambertMaterial({ map: groundTexture, color: 0x6b7d52 });
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.receiveShadow = true;

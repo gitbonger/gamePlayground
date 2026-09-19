@@ -21,10 +21,16 @@ export interface Ground {
   /** The lowest and highest it gets, for anything that wants to know. */
   readonly low: number;
   readonly high: number;
+  /**
+   * The corners of the ground that is known, in local metres, or null where
+   * none is. What is drawn has to cover at least this: a map wider than the
+   * sheet it is drawn on is a city standing on the sky.
+   */
+  readonly bounds: { west: number; east: number; north: number; south: number } | null;
 }
 
 /** A ground that is flat at nought: what a map with no heights in it gets. */
-export const FLAT: Ground = { heightAt: () => 0, low: 0, high: 0 };
+export const FLAT: Ground = { heightAt: () => 0, low: 0, high: 0, bounds: null };
 
 export function groundFromMap(map: Pick<MapData, 'ground'>): Ground {
   const grid = map.ground;
@@ -78,5 +84,15 @@ export function groundFromMap(map: Pick<MapData, 'ground'>): Ground {
     if (height < low) low = height;
     if (height > high) high = height;
   }
-  return { heightAt, low, high };
+  return {
+    heightAt,
+    low,
+    high,
+    bounds: {
+      west,
+      east: west + (cols - 1) * step,
+      north,
+      south: north + (rows - 1) * step,
+    },
+  };
 }
