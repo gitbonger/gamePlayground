@@ -59,6 +59,25 @@ const world = buildWorld(full);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xbcd3e8);
+/**
+ * `?sky=1` adds the game's fog and its sky dome.
+ *
+ * Off by default, because a page for looking at a thing that has just been
+ * built should show it plainly. On, because some faults only exist at the
+ * distance the fog hides: the ground beyond the map used to hold the height
+ * of the last row it knew about, which from the streets was a pale dome
+ * standing over the city, and nothing without fog in it would ever show that.
+ */
+if (new URLSearchParams(location.search).get('sky')) {
+  const HORIZON = new THREE.Color(0xbcd3e8);
+  scene.fog = new THREE.Fog(HORIZON.clone(), 350, 4200);
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(9000, 32, 16),
+    new THREE.MeshBasicMaterial({ color: HORIZON, side: THREE.BackSide, depthWrite: false, fog: false }),
+  );
+  dome.renderOrder = -1;
+  scene.add(dome);
+}
 scene.add(world.group);
 // The game's own lights, copied from `render/scene.ts` rather than invented
 // here. They were invented here, brighter, and the page spent its life

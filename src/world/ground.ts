@@ -31,10 +31,28 @@ export function groundFromMap(map: Pick<MapData, 'ground'>): Ground {
   if (!grid || grid.heights.length !== grid.cols * grid.rows) return FLAT;
   const { step, west, north, cols, rows, heights } = grid;
 
+  /**
+   * How far outside the grid a place is, and how much of the height it keeps.
+   *
+   * Beyond the map the nearest sample used to be held forever, which made the
+   * Buda hills into a plateau reaching to the horizon -- from down in the
+   * streets, a pale dome standing over the city. The land instead settles
+   * back to nought over the first few hundred metres past the edge. It is a
+   * lie either way; this is the lie that is mostly inside the fog.
+   */
+  const SETTLES = 500;
+  const outside = (x: number, z: number) =>
+    Math.max(
+      0,
+      west - x,
+      x - (west + (cols - 1) * step),
+      north - z,
+      z - (north + (rows - 1) * step),
+    );
+
   // Between the samples, the flat average of the four corners weighted by how
-  // near each is: a slope rather than a staircase. Off the edge of the grid,
-  // the edge itself -- the map ends there and so does the city.
-  const heightAt = (x: number, z: number) => {
+  // near each is: a slope rather than a staircase.
+  const sample = (x: number, z: number) => {
     const u = Math.min(cols - 1, Math.max(0, (x - west) / step));
     const v = Math.min(rows - 1, Math.max(0, (z - north) / step));
     const col = Math.min(cols - 2, Math.floor(u));
@@ -45,6 +63,13 @@ export function groundFromMap(map: Pick<MapData, 'ground'>): Ground {
     const top = at(col, row) * (1 - fx) + at(col + 1, row) * fx;
     const bottom = at(col, row + 1) * (1 - fx) + at(col + 1, row + 1) * fx;
     return top * (1 - fz) + bottom * fz;
+  };
+
+  const heightAt = (x: number, z: number) => {
+    const away = outside(x, z);
+    if (away <= 0) return sample(x, z);
+    if (away >= SETTLES) return 0;
+    return sample(x, z) * (1 - away / SETTLES);
   };
 
   let low = Infinity;
