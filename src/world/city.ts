@@ -2055,6 +2055,11 @@ function buildAreas(
     if (area.points.length < 3) continue;
 
     const shape = new THREE.Shape(area.points.map(([x, z]) => new THREE.Vector2(x, -z)));
+    // Islands: the river is a ring with holes in it, and without them the
+    // island is under the water.
+    for (const hole of area.holes ?? []) {
+      if (hole.length >= 3) shape.holes.push(new THREE.Path(hole.map(([x, z]) => new THREE.Vector2(x, -z))));
+    }
     const flat = new THREE.ShapeGeometry(shape);
     const positions = flat.toNonIndexed().getAttribute('position');
 

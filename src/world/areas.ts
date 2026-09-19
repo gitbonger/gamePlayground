@@ -12,6 +12,14 @@ export interface Area {
   kind: AreaKind;
   /** Closed ring in local metres, [x, z]. The last point need not repeat. */
   points: [number, number][];
+  /**
+   * Rings cut out of it: an island in the river, a lake with an eyot.
+   *
+   * The Danube is drawn as one polygon with Margaret Island as a hole in it.
+   * Without the hole the island is under the water -- which is what it looked
+   * like, trees and all.
+   */
+  holes?: [number, number][][];
 }
 
 export interface AreaIndex {
@@ -57,6 +65,10 @@ function inRing(x: number, z: number, points: readonly (readonly [number, number
   return inside;
 }
 
+/** Inside the ring and not inside one of its holes. */
+const inArea = (x: number, z: number, area: Area) =>
+  inRing(x, z, area.points) && !area.holes?.some((hole) => inRing(x, z, hole));
+
 export function indexAreas(areas: readonly Area[]): AreaIndex {
   const bounded: Bounded[] = areas.map((area) => {
     let minX = Infinity;
@@ -95,7 +107,7 @@ export function indexAreas(areas: readonly Area[]): AreaIndex {
       // Bounding box first: most candidates fail here for the cost of four
       // comparisons, rather than a walk around a hundred-vertex boundary.
       if (x < entry.minX || x > entry.maxX || z < entry.minZ || z > entry.maxZ) continue;
-      if (inRing(x, z, entry.area.points)) return entry.area;
+      if (inArea(x, z, entry.area)) return entry.area;
     }
     return null;
   }
@@ -107,7 +119,7 @@ export function indexAreas(areas: readonly Area[]): AreaIndex {
       const entry = bounded[index]!;
       if (entry.area.kind !== kind) continue;
       if (x < entry.minX || x > entry.maxX || z < entry.minZ || z > entry.maxZ) continue;
-      if (inRing(x, z, entry.area.points)) return true;
+      if (inArea(x, z, entry.area)) return true;
     }
     return false;
   }

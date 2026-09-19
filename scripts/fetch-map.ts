@@ -571,7 +571,7 @@ async function main() {
     // A closed way is a ring on its own; a relation's outer members are
     // joined into one. Holes are ignored -- there are few of them, and an
     // over-large park only costs a handful of houses that were never there.
-    const rings =
+    const outers =
       element.type === 'relation'
         ? assembleRings(
             (element.members ?? [])
@@ -581,15 +581,29 @@ async function main() {
         : element.geometry
           ? [element.geometry]
           : [];
+    // What is cut out of them: islands in the river, mostly. Kept with the
+    // ring they fall in -- which for every one of these is the one and only
+    // outer ring, so they are simply attached to the first.
+    const inners =
+      element.type === 'relation'
+        ? assembleRings(
+            (element.members ?? [])
+              .filter((member) => member.role === 'inner' && member.geometry)
+              .map((member) => member.geometry!),
+          )
+            .map((hole) => (hole.length >= 4 ? toLocal(clipRing(hole, edges), 2.5) : []))
+            .filter((hole) => hole.length >= 3)
+        : [];
 
-    for (const whole of rings) {
-      if (whole.length < 4) continue;
+    outers.forEach((whole, index) => {
+      if (whole.length < 4) return;
       rawPoints += whole.length;
       const ring = clipRing(whole, edges);
-      if (ring.length < 3) continue;
+      if (ring.length < 3) return;
       const points = toLocal(ring, 2.5);
-      if (points.length >= 3) areas.push({ kind, points });
-    }
+      if (points.length < 3) return;
+      areas.push({ kind, points, ...(index === 0 && inners.length ? { holes: inners } : {}) });
+    });
   }
 
   // --- Buildings -----------------------------------------------------------
