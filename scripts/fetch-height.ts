@@ -115,14 +115,16 @@ async function main() {
     centre: [number, number];
     radius: number;
     west?: number;
+    north?: number;
     ground?: unknown;
   };
   const [lat, lon] = map.centre;
   const perDegree = metresPerDegree(lat);
   const west = map.west ?? map.radius;
+  const north = map.north ?? map.radius;
 
   // The same box the city was fetched for, in local metres: north is -Z.
-  const box = { west: -west, east: map.radius, north: -map.radius, south: map.radius };
+  const box = { west: -west, east: map.radius, north: -north, south: map.radius };
   const cols = Math.ceil((box.east - box.west) / step) + 1;
   const rows = Math.ceil((box.south - box.north) / step) + 1;
   process.stderr.write(`sampling ${cols} x ${rows} heights, ${step} m apart, at zoom ${ZOOM}\n`);
@@ -162,8 +164,14 @@ async function main() {
     }
   }
 
-  const low = Math.min(...heights);
-  const high = Math.max(...heights);
+  // Not Math.min(...heights): a hundred and fifty thousand arguments is more
+  // than a call frame holds.
+  let low = Infinity;
+  let high = -Infinity;
+  for (const height of heights) {
+    if (height < low) low = height;
+    if (height > high) high = height;
+  }
   process.stderr.write(
     `${tiles.size} tiles, ${heights.length} heights, ` +
       `${low.toFixed(0)} m to ${high.toFixed(0)} m about the centre (${datum.toFixed(0)} m above the sea)\n`,

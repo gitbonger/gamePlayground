@@ -237,8 +237,9 @@ function clipRing(ring: OverpassGeometry[], box: Box): OverpassGeometry[] {
 interface Args {
   centre: [number, number];
   radius: number;
-  /** How far the map reaches west of the centre, where that is not the radius. */
+  /** How far the map reaches west and north of the centre, where that is not the radius. */
   west: number;
+  north: number;
   name: string;
 }
 
@@ -256,6 +257,7 @@ function parseArgs(argv: string[]): Args {
   // a map centred on Jozsefvaros -- so the box can be stretched that way
   // without carrying the same distance of suburb on the other three sides.
   const west = Number(flags.get('west') ?? radius);
+  const north = Number(flags.get('north') ?? radius);
   const name = flags.get('name') ?? 'map';
 
   if (centre.length !== 2 || centre.some((v) => !Number.isFinite(v))) {
@@ -263,9 +265,10 @@ function parseArgs(argv: string[]): Args {
   }
   if (!Number.isFinite(radius) || radius <= 0) throw new Error('--radius must be metres');
   if (!Number.isFinite(west) || west < radius) throw new Error('--west must be metres, and at least the radius');
+  if (!Number.isFinite(north) || north < radius) throw new Error('--north must be metres, and at least the radius');
   if (!/^[a-z0-9-]+$/i.test(name)) throw new Error('--name must be a plain identifier');
 
-  return { centre: [centre[0]!, centre[1]!], radius, west, name };
+  return { centre: [centre[0]!, centre[1]!], radius, west, north, name };
 }
 
 /** Perpendicular distance from `p` to the line through `a` and `b`. */
@@ -380,14 +383,15 @@ interface OverpassElement {
 }
 
 async function main() {
-  const { centre, radius, west, name } = parseArgs(process.argv.slice(2));
+  const { centre, radius, west, north, name } = parseArgs(process.argv.slice(2));
   const [lat, lon] = centre;
   const perDegree = metresPerDegree(lat);
 
   const dLat = radius / perDegree.lat;
   const dLon = radius / perDegree.lon;
   const dWest = west / perDegree.lon;
-  const box = { south: lat - dLat, west: lon - dWest, north: lat + dLat, east: lon + dLon };
+  const dNorth = north / perDegree.lat;
+  const box = { south: lat - dLat, west: lon - dWest, north: lat + dNorth, east: lon + dLon };
   // Ground is cut to a little outside the box: the edge of the world is a
   // place nobody flies to, and a river that stopped exactly at it would show
   // a straight bank where the map ends.
@@ -407,7 +411,8 @@ async function main() {
   const track = Object.keys(RAIL_WIDTHS).join('|');
   process.stderr.write(
     `querying OpenStreetMap for ${radius} m around ${lat}, ${lon}` +
-      `${west === radius ? '' : `, and ${west} m west`}\n`,
+      `${west === radius ? '' : `, ${west} m west`}` +
+      `${north === radius ? '' : `, ${north} m north`}\n`,
   );
 
   // Three queries rather than one. The ways that make the ground are one
@@ -750,6 +755,7 @@ async function main() {
         centre,
         radius,
         ...(west === radius ? {} : { west }),
+        ...(north === radius ? {} : { north }),
         generated: new Date().toISOString(),
         attribution: ATTRIBUTION,
         roads,

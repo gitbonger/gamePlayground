@@ -46,8 +46,9 @@ export interface MapData {
   name: string;
   centre: [number, number];
   radius: number;
-  /** How far the map reaches west of the centre, where that is further than the radius. */
+  /** How far the map reaches west and north of the centre, where further than the radius. */
   west?: number;
+  north?: number;
   /**
    * The shape of the ground: heights every `step` metres from the corner at
    * (`west`, `north`), in local metres above the map centre. Absent on maps
