@@ -96,6 +96,7 @@ import { browserKit, createAmbience, type Source } from './render/ambience';
 import { cityBed, sampledKit } from './render/samples';
 import { createMusic } from './render/music';
 import { buildCarGraph, CAR_LENGTH, createTraffic } from './world/cars';
+import { FLAT } from './world/ground';
 import { createCarMeshes } from './render/cars';
 import { intensityOf, type Situation } from './render/intensity';
 import { browserChime, createCue } from './render/cue';
@@ -912,7 +913,7 @@ if (start.perched) standStill(bird);
  */
 const CARS = 300;
 const traffic = createTraffic(buildCarGraph(layout.roads ?? map.roads), CARS, start.at);
-const carMeshes = createCarMeshes(CARS);
+const carMeshes = createCarMeshes(CARS, (x, z) => (layout.ground ?? FLAT).heightAt(x, z));
 scene.add(carMeshes.object);
 /** Only the cars this near the bird are solid: nothing further can be touched this tick. */
 const CARS_SOLID_WITHIN = 40;

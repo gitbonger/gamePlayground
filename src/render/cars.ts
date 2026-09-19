@@ -22,7 +22,11 @@ export interface CarMeshes {
   dispose(): void;
 }
 
-export function createCarMeshes(most: number): CarMeshes {
+export function createCarMeshes(
+  most: number,
+  /** How high the ground is under a place. A car stands on it, level. */
+  standOn: (x: number, z: number) => number = () => 0,
+): CarMeshes {
   const group = new THREE.Group();
 
   const bodyShape = new THREE.BoxGeometry(CAR_LENGTH, BODY_HEIGHT, WIDTH);
@@ -60,7 +64,7 @@ export function createCarMeshes(most: number): CarMeshes {
         const car = cars[i]!;
         // Built along x, and turned the way the collider turns boxes.
         turn.setFromAxisAngle(up, car.yaw);
-        matrix.compose(at.set(car.x, 0, car.z), turn, one);
+        matrix.compose(at.set(car.x, standOn(car.x, car.z), car.z), turn, one);
         bodies.setMatrixAt(i, matrix);
         cabins.setMatrixAt(i, matrix);
         bodies.setColorAt(i, tint.set(car.colour));

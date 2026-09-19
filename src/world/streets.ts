@@ -48,6 +48,21 @@ export interface MapData {
   radius: number;
   /** How far the map reaches west of the centre, where that is further than the radius. */
   west?: number;
+  /**
+   * The shape of the ground: heights every `step` metres from the corner at
+   * (`west`, `north`), in local metres above the map centre. Absent on maps
+   * fetched before there was such a thing, which are flat.
+   */
+  ground?: {
+    step: number;
+    west: number;
+    north: number;
+    cols: number;
+    rows: number;
+    /** How high the centre stands above the sea, for the record. */
+    datum: number;
+    heights: number[];
+  };
   attribution: string;
   roads: Road[];
   /**

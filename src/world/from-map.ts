@@ -27,6 +27,7 @@ import {
 import { footprintSamples, indexAreas, type AreaIndex } from './areas';
 import { crowdOn } from './waiting';
 import { DECK, deckOf } from './bridges';
+import { FLAT, groundFromMap } from './ground';
 import { fitBoxes, orientedBox, solidsOf } from './plans';
 import { fillHeights } from './heights';
 import { extractBlocks, type Block } from './blocks';
@@ -1967,6 +1968,18 @@ export function buildLayoutFromMap(
     }
   }
 
+  // Everything solid stands on the ground too, or the bird would hit a house
+  // that is drawn a hundred metres above where it is felt. The box goes up by
+  // the height under its middle, exactly as the drawing does.
+  const ground = groundFromMap(map);
+  if (ground !== FLAT) {
+    for (const box of boxes) {
+      const lift = ground.heightAt((box.minX + box.maxX) / 2, (box.minZ + box.maxZ) / 2);
+      box.minY += lift;
+      box.maxY += lift;
+    }
+  }
+
   return {
     buildings,
     trees,
@@ -1986,6 +1999,7 @@ export function buildLayoutFromMap(
     rails: map.rails ?? [],
     trains,
     areas: map.areas ?? [],
+    ground,
     streets,
     green,
     blocks,

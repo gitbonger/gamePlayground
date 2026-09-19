@@ -11,6 +11,7 @@ import type { Bridge } from './bridges';
 import type { Train } from './train';
 import type { Area } from './areas';
 import type { Part } from './model';
+import type { Ground } from './ground';
 
 /** Small deterministic PRNG, so the same seed always builds the same city. */
 function mulberry32(seed: number): () => number {
@@ -831,6 +832,8 @@ export interface CityLayout {
   trains?: Train[];
   /** Parks, woods and water to draw. */
   areas?: Area[];
+  /** How high the ground is, where the map said. Flat where it did not. */
+  ground?: Ground;
 }
 
 /** How much tighter a tree's collision box is than its visible cone. */

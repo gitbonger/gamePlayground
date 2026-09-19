@@ -66,6 +66,12 @@ The map is fetched separately and committed, so a clone needs no network:
 npm run fetch-map -- --centre 47.498969,19.093366 --radius 2100 --west 4867 --name home
 ```
 
+The shape of the ground comes separately, and can be refetched on its own:
+
+```bash
+npx tsx scripts/fetch-height.ts --name home
+```
+
 `--west` stretches the box that way alone, which is how the Danube got in:
 the river is nearly five kilometres west of a map centred on Jozsefvaros, and
 carrying the same distance of suburb on the other three sides would have been

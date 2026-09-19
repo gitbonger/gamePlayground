@@ -29,6 +29,7 @@ import { LANDMARKS } from '../src/landmarks';
 import { project } from '../src/world/geo';
 import { buildCarGraph, createTraffic } from '../src/world/cars';
 import { createCarMeshes } from '../src/render/cars';
+import { FLAT } from '../src/world/ground';
 
 const map = homeMap as unknown as MapData;
 // The same world the game builds, trams and all -- otherwise a count of what
@@ -96,7 +97,7 @@ world.updateWater(n('t', 0));
   const looking = { x: n('tx', 298), z: n('tz', -72) };
   const traffic = createTraffic(buildCarGraph(full.roads ?? []), 300, looking);
   for (let t = 0; t < n('drive', 40); t += 1 / 30) traffic.update(1 / 30, looking);
-  const cars = createCarMeshes(300);
+  const cars = createCarMeshes(300, (x, z) => (full.ground ?? FLAT).heightAt(x, z));
   cars.update(traffic.cars);
   scene.add(cars.object);
 }

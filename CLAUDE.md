@@ -44,6 +44,13 @@ weigh. Then give the numbers and a recommendation.
   solid from the same list. Hook one up as a landmark in `src/landmarks.ts`,
   and it clears the generated city off its footprint. Look at it with
   `dev/look.html?x=..&y=..&z=..&tx=..&ty=..&tz=..` (local metres, north is -z).
+- `src/world/ground.ts` — how high the ground is, read from the grid of
+  heights in the map file. `scripts/fetch-height.ts` fetches that grid (free
+  terrarium tiles, no key) and writes it into `src/world/data/home.json`
+  without touching the rest, so it can be rerun on its own. Heights are
+  metres above the map centre: Pest is flat and near nought, Buda rises a
+  hundred. A first pass only — things *stand* on the ground, nothing tilts to
+  it, and the flat layers are still settled by draw order.
 - `src/finish.ts` — what ends each kind of level.
 - `src/render/messages.ts` — the instruction conditions in code.
 - `scripts/start-manualtest.sh` — the play server, which does not reload

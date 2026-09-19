@@ -39,6 +39,7 @@ import { WAITING } from './waiting';
 import { insetRing, orientedBox, shoelace } from './plans';
 import { CARRIAGE, ENGINE, TRAM, WAGON, type Train, type Vehicle } from './train';
 import { defaultSmokeOptions, puffOpacity, puffRadius, type Puff } from './smoke';
+import { FLAT } from './ground';
 import { SEED_SIZE } from './seeds';
 import type { Area, AreaKind } from './areas';
 
@@ -512,11 +513,40 @@ export function buildWorld(
   let setWaiting: (platforms: readonly Platform[]) => void = () => {};
 
   // --- Ground -------------------------------------------------------------
+  /**
+   * How high the ground is, which used to be nought everywhere.
+   *
+   * Two things are done with it, and deliberately nothing more. A flat layer
+   * -- the ground itself, the streets, the parks, the river -- has each of
+   * its corners lifted to the height under that corner. Everything that
+   * stands on the ground is lifted by the height under the one place it
+   * stands. Nothing is tilted, nothing is cut finer to follow a slope, and a
+   * straight road over a hill still goes through it.
+   */
+  const relief = layout.ground ?? FLAT;
+  const standOn = (x: number, z: number) => relief.heightAt(x, z);
+  /** Lift a flat layer onto the ground, corner by corner. */
+  const drape = (geometry: THREE.BufferGeometry) => {
+    if (relief === FLAT) return geometry;
+    const at = geometry.getAttribute('position');
+    for (let i = 0; i < at.count; i += 1) at.setY(i, at.getY(i) + standOn(at.getX(i), at.getZ(i)));
+    at.needsUpdate = true;
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
+    return geometry;
+  };
+
   const groundTexture = makeGridTexture();
-  const groundGeometry = new THREE.PlaneGeometry(12000, 12000);
+  // Enough segments to have a hill in it: at forty metres a side this is the
+  // shape of the land, not the shape of a street.
+  const groundGeometry = drape(
+    ((plane: THREE.PlaneGeometry) => {
+      plane.rotateX(-Math.PI / 2);
+      return plane;
+    })(new THREE.PlaneGeometry(12000, 12000, 300, 300)),
+  );
   const groundMaterial = new THREE.MeshLambertMaterial({ map: groundTexture, color: 0x6b7d52 });
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-  ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   // Drawn first, and -- like every other flat layer -- it does not write
   // depth. It used to be the one that did, on the grounds that something has
@@ -565,7 +595,7 @@ export function buildWorld(
       });
       disposables.push(yard, tarmac);
       const apron = new THREE.Mesh(yard, asDecal(tarmac));
-      apron.position.set(landmark.x, 0, landmark.z);
+      apron.position.set(landmark.x, standOn(landmark.x, landmark.z), landmark.z);
       apron.rotation.y = landmark.yaw ?? 0;
       apron.receiveShadow = true;
       apron.renderOrder = PATCH_ORDER;
@@ -576,7 +606,7 @@ export function buildWorld(
       disposables.push(geometry, material);
 
       const site = new THREE.Mesh(geometry, material);
-      site.position.set(landmark.x, 0, landmark.z);
+      site.position.set(landmark.x, standOn(landmark.x, landmark.z), landmark.z);
       site.rotation.y = landmark.yaw ?? 0;
       site.castShadow = true;
       site.receiveShadow = true;
@@ -608,7 +638,7 @@ export function buildWorld(
       );
       disposables.push(geometry, material);
       const building = new THREE.Mesh(geometry, material);
-      building.position.set(landmark.x, 0, landmark.z);
+      building.position.set(landmark.x, standOn(landmark.x, landmark.z), landmark.z);
       building.rotation.y = landmark.yaw ?? 0;
       building.castShadow = true;
       building.receiveShadow = true;
@@ -650,7 +680,7 @@ export function buildWorld(
       const faces = deck ? [material, material, deck, material, material, material] : material;
 
       const block = new THREE.Mesh(boxGeometry, faces);
-      block.position.set(landmark.x, landmark.height / 2, landmark.z);
+      block.position.set(landmark.x, standOn(landmark.x, landmark.z) + landmark.height / 2, landmark.z);
       block.rotation.y = landmark.yaw ?? 0;
       block.scale.set(landmark.width, landmark.height, landmark.depth);
       block.castShadow = true;
@@ -666,7 +696,7 @@ export function buildWorld(
         // anything that is not facing up.
         const rise = penthouse.top - landmark.height;
         const upper = new THREE.Mesh(boxGeometry, material);
-        upper.position.set(penthouse.x, landmark.height + rise / 2, penthouse.z);
+        upper.position.set(penthouse.x, standOn(landmark.x, landmark.z) + landmark.height + rise / 2, penthouse.z);
         upper.rotation.y = penthouse.yaw;
         upper.scale.set(penthouse.width, rise, penthouse.depth);
         upper.castShadow = true;
@@ -704,7 +734,7 @@ export function buildWorld(
     disposables.push(slab, concrete);
 
     const mesh = new THREE.Mesh(slab, asDecal(concrete));
-    mesh.position.set(landmark.x, 0, landmark.z);
+    mesh.position.set(landmark.x, standOn(landmark.x, landmark.z), landmark.z);
     mesh.rotation.y = landmark.yaw ?? 0;
     mesh.receiveShadow = true;
     mesh.renderOrder = PATCH_ORDER;
@@ -771,7 +801,7 @@ export function buildWorld(
     zebra.frustumCulled = false;
     bars.forEach((each, i) => {
       rotation.setFromAxisAngle(up, each.yaw);
-      position.set(each.x, 0, each.z);
+      position.set(each.x, standOn(each.x, each.z), each.z);
       // A stripe runs the depth of the crossing -- along the road, the way the
       // traffic goes -- and the stripes repeat *across* the carriageway. That
       // is what a zebra is, and it is the way round you step over them rather
@@ -845,7 +875,7 @@ export function buildWorld(
         for (const each of stop.waiting) {
           if (person < roomFor) {
             rotation.setFromAxisAngle(up, each.person.facing);
-            position.set(each.person.x, each.person.base, each.person.z);
+            position.set(each.person.x, each.person.base + standOn(each.person.x, each.person.z), each.person.z);
             scale.setScalar(PERSON_HEIGHT);
             matrix.compose(position, rotation, scale);
             standing.setMatrixAt(person, matrix);
@@ -853,7 +883,7 @@ export function buildWorld(
           }
           if (each.dog && dog < roomFor) {
             rotation.setFromAxisAngle(up, each.dog.facing);
-            position.set(each.dog.x, stop.height, each.dog.z);
+            position.set(each.dog.x, stop.height + standOn(each.dog.x, each.dog.z), each.dog.z);
             scale.setScalar(1);
             matrix.compose(position, rotation, scale);
             hounds.setMatrixAt(dog, matrix);
@@ -877,7 +907,7 @@ export function buildWorld(
     let hut = 0;
     layout.platforms.forEach((stop, i) => {
       rotation.setFromAxisAngle(up, stop.yaw);
-      position.set(stop.x, stop.height / 2, stop.z);
+      position.set(stop.x, stop.height / 2 + standOn(stop.x, stop.z), stop.z);
       scale.set(stop.width, stop.height, stop.depth);
       matrix.compose(position, rotation, scale);
       islands.setMatrixAt(i, matrix);
@@ -887,12 +917,12 @@ export function buildWorld(
       for (const at of stop.shelters) {
         const x = stop.x + at * cos;
         const z = stop.z - at * sin;
-        position.set(x, stop.height + SHELTER.tall / 2, z);
+        position.set(x, stop.height + SHELTER.tall / 2 + standOn(x, z), z);
         scale.set(SHELTER.long, SHELTER.tall, SHELTER.deep);
         matrix.compose(position, rotation, scale);
         walls.setMatrixAt(hut, matrix);
 
-        position.set(x, stop.height + SHELTER.tall + SHELTER.roof / 2, z);
+        position.set(x, stop.height + SHELTER.tall + SHELTER.roof / 2 + standOn(x, z), z);
         scale.set(SHELTER.long + SHELTER.eaves * 2, SHELTER.roof, SHELTER.deep + SHELTER.eaves * 2);
         matrix.compose(position, rotation, scale);
         roofs.setMatrixAt(hut, matrix);
@@ -914,7 +944,7 @@ export function buildWorld(
     disposables.push(band, paint);
 
     const stripe = new THREE.Mesh(band, asDecal(paint));
-    stripe.position.set(gate.x, 0, gate.z);
+    stripe.position.set(gate.x, standOn(gate.x, gate.z), gate.z);
     stripe.rotation.y = gate.yaw;
     stripe.renderOrder = GATE_ORDER;
     // Shown only while the level it belongs to is the one being flown.
@@ -947,7 +977,7 @@ export function buildWorld(
   // --- Buildings ------------------------------------------------------------
   // Drawn as the outlines the map gave, walls and roof, in two buffers: one
   // for the window shader and one for the tiles.
-  const { walls: wallGeometry, roofs: roofGeometry } = buildPlans(layout.plans ?? []);
+  const { walls: wallGeometry, roofs: roofGeometry } = buildPlans(layout.plans ?? [], standOn);
   const wallMaterial = withWindows(
     new THREE.MeshLambertMaterial({ vertexColors: true }),
   );
@@ -1002,7 +1032,7 @@ export function buildWorld(
     // already in its own proportions, so the same scale puts any of them on
     // the ground at the size the layout asked for.
     matrix.makeScale(tree.radius, tree.height, tree.radius);
-    matrix.setPosition(tree.x, 0, tree.z);
+    matrix.setPosition(tree.x, standOn(tree.x, tree.z), tree.z);
     stand.setMatrixAt(stand.count++, matrix);
   }
   for (const stand of stands) stand.instanceMatrix.needsUpdate = true;
@@ -1026,7 +1056,7 @@ export function buildWorld(
 
     layout.graves.forEach((grave, i) => {
       rotation.setFromAxisAngle(up, grave.yaw);
-      position.set(grave.x, 0, grave.z);
+      position.set(grave.x, standOn(grave.x, grave.z), grave.z);
       // Modelled one metre tall and at the width a stone is, so the height is
       // the only thing scaled. A taller stone is a taller stone, not a
       // bigger one: scaling all three axes would make a four-metre marker two
@@ -1060,7 +1090,7 @@ export function buildWorld(
 
     layout.bushes.forEach((bush, i) => {
       matrix.makeScale(bush.radius, bush.height, bush.radius);
-      matrix.setPosition(bush.x, bush.base, bush.z);
+      matrix.setPosition(bush.x, bush.base + standOn(bush.x, bush.z), bush.z);
       hedge.setMatrixAt(i, matrix);
     });
     hedge.instanceMatrix.needsUpdate = true;
@@ -1090,7 +1120,7 @@ export function buildWorld(
     const standPerson = (i: number, tall: number) => {
       const person = layout.people[i]!;
       rotation.setFromAxisAngle(up, person.facing);
-      position.set(person.x, person.base, person.z);
+      position.set(person.x, person.base + standOn(person.x, person.z), person.z);
       scale.setScalar(tall);
       matrix.compose(position, rotation, scale);
       crowd.setMatrixAt(i, matrix);
@@ -1104,6 +1134,7 @@ export function buildWorld(
   // Drawn under the roads, so a path through a park still reads as a path.
   if (layout.areas?.length) {
     for (const { geometry, material } of buildAreas(layout.areas)) {
+      drape(geometry);
       disposables.push(geometry, material);
       const patch = new THREE.Mesh(geometry, asDecal(material));
       patch.receiveShadow = true;
@@ -1175,7 +1206,7 @@ export function buildWorld(
           createMarker(
             name,
             material as THREE.MeshLambertMaterial,
-            new THREE.Vector3(vehicle.x, WAGON.deck + WAGON.stake, vehicle.z),
+            new THREE.Vector3(vehicle.x, standOn(vehicle.x, vehicle.z) + WAGON.deck + WAGON.stake, vehicle.z),
             disposables,
             overlay,
             { train: t, vehicle: v },
@@ -1244,14 +1275,14 @@ export function buildWorld(
       // gone is this, and nothing else.
       mesh.visible = !running.gone;
       if (running.gone) continue;
-      mesh.position.set(at.x, 0, at.z);
+      mesh.position.set(at.x, standOn(at.x, at.z), at.z);
       mesh.rotation.y = at.yaw;
     }
     for (const marker of markers) {
       const carried = marker.rides;
       if (!carried) continue;
       const at = trains[carried.train]?.vehicles[carried.vehicle];
-      if (at) marker.position.set(at.x, WAGON.deck + WAGON.stake, at.z);
+      if (at) marker.position.set(at.x, standOn(at.x, at.z) + WAGON.deck + WAGON.stake, at.z);
     }
   };
 
@@ -1259,6 +1290,7 @@ export function buildWorld(
   // Over the road surface, because a tramway is laid in the carriageway.
   if (layout.rails?.length) {
     const { geometry, material } = buildRails(layout.rails);
+    drape(geometry);
     disposables.push(geometry, material);
     const track = new THREE.Mesh(geometry, asDecal(material));
     track.receiveShadow = true;
@@ -1269,6 +1301,7 @@ export function buildWorld(
   // --- Streets ------------------------------------------------------------
   if (layout.roads?.length) {
     const { geometry, material } = buildRoads(layout.roads);
+    drape(geometry);
     disposables.push(geometry, material);
     const surface = new THREE.Mesh(geometry, asDecal(material));
     surface.receiveShadow = true;
@@ -1312,7 +1345,7 @@ export function buildWorld(
       }
 
       const mesh = new THREE.Mesh(shape, material);
-      mesh.position.set(steeple.x, 0, steeple.z);
+      mesh.position.set(steeple.x, standOn(steeple.x, steeple.z), steeple.z);
       mesh.rotation.y = steeple.yaw;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -2825,7 +2858,11 @@ export function buildSteepleGeometry(spec: {
  * nothing extra: a box could be instanced six times over and an outline
  * cannot be instanced at all.
  */
-function buildPlans(plans: readonly Footprint[]): {
+function buildPlans(
+  plans: readonly Footprint[],
+  /** How high the ground is under a place: a house stands on it, level. */
+  standOn: (x: number, z: number) => number = () => 0,
+): {
   walls: THREE.BufferGeometry;
   roofs: THREE.BufferGeometry;
 } {
@@ -2848,6 +2885,10 @@ function buildPlans(plans: readonly Footprint[]): {
     const box = orientedBox(ring as number[][]);
     const narrow = box ? Math.min(box.width, box.depth) : 8;
     const rise = roofRise({ depth: narrow, height: plan.height });
+    // One height for the whole house, taken under the middle of it. Per
+    // corner would shear a terrace into a fan; a house stands level on a
+    // slope and buries a corner, which is what a house does.
+    const base = standOn(box ? box.x : ring[0]![0]!, box ? box.z : ring[0]![1]!);
     const eaves = plan.height - rise;
 
     tint.copy(shades[index % shades.length]!);
@@ -2895,16 +2936,16 @@ function buildPlans(plans: readonly Footprint[]): {
       if (Math.hypot(b[0]! - a[0]!, b[1]! - a[1]!) < 1e-4) continue;
 
       // The wall: straight up from the ground to the eaves.
-      panel(a, b, 0, a, b, eaves, wallPoints, wallNormals, wallColours);
+      panel(a, b, base, a, b, base + eaves, wallPoints, wallNormals, wallColours);
 
       // And the pitch above it, leaning in to the ridge.
       if (ridge) {
-        panel(a, b, eaves, ridge[i]!, ridge[j]!, plan.height, roofPoints, roofNormals, null);
+        panel(a, b, base + eaves, ridge[i]!, ridge[j]!, base + plan.height, roofPoints, roofNormals, null);
       }
     }
 
     const cap = ridge ?? ring;
-    const capY = ridge ? plan.height : eaves;
+    const capY = base + (ridge ? plan.height : eaves);
 
     // And the flat between the ridges, which on a narrow wing is nothing and
     // on a broad building is most of it.
