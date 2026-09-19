@@ -511,6 +511,7 @@ describe('what the levels aim at', () => {
       'Everafter',
       'Andrássy',
       'Elméleti Tömb',
+      'Népsziget',
       'The round',
     ]);
     for (const level of dropped) expect(level.release, level.name).toBeGreaterThanOrEqual(100);
@@ -1006,6 +1007,7 @@ describe('what the levels aim at', () => {
       'Everafter',
       'Andrássy',
       'Elméleti Tömb',
+      'Népsziget',
       'The round',
     ]);
     for (const level of free.slice(1)) expect(level.finish.kind, level.name).toBe('free');
@@ -1152,6 +1154,7 @@ describe('what the levels aim at', () => {
       'Everafter',
       'Andrássy',
       'Elméleti Tömb',
+      'Népsziget',
       'The round',
     ]);
   });
@@ -1245,6 +1248,7 @@ describe('what the levels aim at', () => {
       'Everafter',
       'Andrássy',
       'Elméleti Tömb',
+      'Népsziget',
       'The round',
     ]);
   });
@@ -1775,7 +1779,7 @@ describe('the three games', () => {
   it('numbers each level within its own game', () => {
     // The story is what it always was, and the two free ones follow it.
     expect(LEVEL_TAGS.slice(0, 13).every((tag, at) => tag === `Story${at + 1}`)).toBe(true);
-    expect(LEVEL_TAGS.slice(13)).toEqual(['Sight1', 'Sight2', 'Delivery1']);
+    expect(LEVEL_TAGS.slice(13)).toEqual(['Sight1', 'Sight2', 'Sight3', 'Delivery1']);
     expect(LEVEL_TAGS).toHaveLength(LEVELS.length);
   });
 
@@ -1787,6 +1791,7 @@ describe('the three games', () => {
     expect(LEVELS.filter(rocketOn).map((level) => level.name)).toEqual([
       'Andrássy',
       'Elméleti Tömb',
+      'Népsziget',
       'The round',
     ]);
   });

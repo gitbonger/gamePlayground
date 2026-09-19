@@ -30,6 +30,7 @@ import { project } from '../src/world/geo';
 import { buildCarGraph, createTraffic } from '../src/world/cars';
 import { createCarMeshes } from '../src/render/cars';
 import { FLAT } from '../src/world/ground';
+import { createSmoke, ROCKET_SMOKE } from '../src/world/smoke';
 import { createSkyDome } from '../src/render/scene';
 
 const map = homeMap as unknown as MapData;
@@ -56,7 +57,7 @@ const full = buildLayoutFromMap(map, {
     { stock: 'carriage', cars: 5, speed: 14, minRoute: 1200, most: 8, headway: 0 },
   ],
 });
-const world = buildWorld(full);
+const world = buildWorld(full, { smoke: 200 });
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xbcd3e8);
@@ -119,6 +120,39 @@ world.updateTrains(full.trains ?? []);
 // And the water's clock, from `t` in seconds, so that two stills a moment
 // apart show whether it moves.
 world.updateWater(n('t', 0));
+// And a rocket trail, if one is asked for: `?rocket=1` burns one along the
+// line from the camera to what it is looking at, which is the only way to see
+// what X leaves behind without being able to press X.
+if (n('rocket', 0)) {
+  const trail = createSmoke(ROCKET_SMOKE, 3);
+  // Flown *at* what the camera is looking at, ending on it: a trail laid from
+  // the camera outwards starts in its own face and is gone by the time it is
+  // in frame.
+  const eye = { x: n('x', 300), y: n('y', 40), z: n('z', 60) };
+  const to = { x: n('tx', 298), y: n('ty', 6), z: n('tz', -72) };
+  const run = Math.hypot(to.x - eye.x, to.y - eye.y, to.z - eye.z) || 1;
+  // Twenty-two metres a second, which is a boosted pigeon, for the burn and a
+  // little after it.
+  const speed = 22;
+  const dt = 1 / 120;
+  const seconds = 2.6;
+  const way = { x: (to.x - eye.x) / run, y: (to.y - eye.y) / run, z: (to.z - eye.z) / run };
+  // Flown away from the camera along its own line of sight, starting a few
+  // metres out: the trail then lies between the camera and what it is looking
+  // at, which is where a chase camera sees it from.
+  const START = 8;
+  for (let t = 0; t < seconds; t += dt) {
+    const along = START + t * speed;
+    trail.update(
+      dt,
+      { x: eye.x + way.x * along, y: eye.y + way.y * along, z: eye.z + way.z * along },
+      { x: 0, y: 0, z: 0 },
+      t < 1.4,
+    );
+  }
+  world.updateSmoke([{ puffs: trail.puffs, smoke: ROCKET_SMOKE }], camera.quaternion);
+}
+
 // And the cars, driven for `drive` seconds round where the camera is looking
 // first, so they are spread along the roads rather than where they were put.
 {

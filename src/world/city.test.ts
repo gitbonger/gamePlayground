@@ -618,7 +618,7 @@ describe('drawing the smoke', () => {
     const mesh = smokeMesh(world);
     const quiet = new THREE.Quaternion();
 
-    world.updateSmoke(aged([1.5, 8, 15, 22]), quiet);
+    world.updateSmoke([{ puffs: aged([1.5, 8, 15, 22]) }], quiet);
 
     const fade = mesh.geometry.getAttribute('puffFade');
     const values = [0, 1, 2, 3].map((i) => fade.getX(i));
@@ -633,7 +633,7 @@ describe('drawing the smoke', () => {
   it('draws them paler and larger as they go', () => {
     const world = build();
     const mesh = smokeMesh(world);
-    world.updateSmoke(aged([1.5, 21]), new THREE.Quaternion());
+    world.updateSmoke([{ puffs: aged([1.5, 21]) }], new THREE.Quaternion());
 
     const colour = mesh.instanceColor;
     // Soot at the stack, a grey haze by the end.
@@ -651,7 +651,7 @@ describe('drawing the smoke', () => {
   it('leaves the dead ones out of the draw entirely', () => {
     const world = build();
     const mesh = smokeMesh(world);
-    world.updateSmoke(aged([2, 6, 10]).concat(aged([-1, -1])), new THREE.Quaternion());
+    world.updateSmoke([{ puffs: aged([2, 6, 10]).concat(aged([-1, -1])) }], new THREE.Quaternion());
     expect(mesh.count).toBe(3);
     world.dispose();
   });

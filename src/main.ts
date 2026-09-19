@@ -34,6 +34,7 @@ import {
 import {
   quat,
   quatFromAxisAngle,
+  rotate,
   vec,
   type Quat,
   type Vec3,
@@ -124,7 +125,7 @@ import { createMinimap, REACH as MINIMAP_REACH } from './render/minimap';
 import { defaultSight, sighted } from './render/sighted';
 import { sunVector } from './render/sun';
 import { createOutcomePanel } from './render/outcome';
-import { buildWorld, targetFlash } from './world/city';
+import { buildWorld, targetFlash, type Plume } from './world/city';
 import { peopleOn, PERSON_HEIGHT, pointOn, topOf } from './world/layout';
 import { createScatter, seedWithin, SEED_SIZE } from './world/seeds';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
@@ -152,7 +153,7 @@ import {
   tweenAlong,
   type Vehicle,
 } from './world/train';
-import { createSmoke, defaultSmokeOptions, type Puff, type Smoke } from './world/smoke';
+import { createSmoke, defaultSmokeOptions, ROCKET_SMOKE, type Smoke } from './world/smoke';
 import {
   asFlight,
   asStance,
@@ -347,8 +348,20 @@ const smokes = layout.trains
   )
   .filter((each): each is { index: number; puffs: Smoke } => each !== null);
 
-/** Every puff in the world, in one array the renderer can be given as is. */
-const allPuffs: Puff[] = smokes.flatMap((each) => each.puffs.puffs);
+/** How long the burn lasts, in seconds. */
+const BURN = 1.4;
+
+const rocketSmoke = createSmoke(ROCKET_SMOKE, 3);
+/** When the burn ends. Before that, it is making smoke. */
+let burningUntil = -1;
+
+/** Everything in the world that smokes, as the renderer wants it. */
+const plumes: Plume[] = [
+  ...smokes.map((each) => ({ puffs: each.puffs.puffs })),
+  { puffs: rocketSmoke.puffs, smoke: ROCKET_SMOKE },
+];
+/** How many puffs can be out at once, which is what the renderer allocates. */
+const allPuffs = plumes.reduce((total, plume) => total + plume.puffs.length, 0);
 
 /**
  * How far a painted finishing line reaches either side of the route.
@@ -605,7 +618,7 @@ const world = buildWorld(layout, {
     if (on?.kind !== 'wagon') return [];
     return [{ name: on.name, train: on.train, vehicle: carOf(on) }];
   }),
-  smoke: allPuffs.length,
+  smoke: allPuffs,
 });
 
 /**
@@ -2832,6 +2845,17 @@ function moveTrains(dt: number) {
     plume.puffs.update(dt, { x: at.x, y: stack.height, z: at.z }, air);
   }
 
+  // Out of the tail, and only while the burn lasts. Behind him rather than
+  // under him: smoke coming out of the middle of a pigeon is a pigeon on
+  // fire, which is a different game.
+  const back = rotate(bird.orientation, vec(0, 0, 0.45));
+  rocketSmoke.update(
+    dt,
+    { x: bird.position.x + back.x, y: bird.position.y + back.y, z: bird.position.z + back.z },
+    air,
+    clock < burningUntil,
+  );
+
   return combineColliders(...fields);
 }
 
@@ -3078,7 +3102,10 @@ function frame(nowMs: number) {
   // it belongs. Sightseeing and the round are flown with it and say so on
   // arrival; the story is about the wing, and a rocket in it would be a way
   // past the one thing each level is asking for.
-  if (input.consumeBoost() && rocketOn(LEVELS[level] ?? LEVELS[0]!)) boost(bird, flightParams);
+  if (input.consumeBoost() && rocketOn(LEVELS[level] ?? LEVELS[0]!)) {
+    boost(bird, flightParams);
+    burningUntil = clock + BURN;
+  }
   if (input.consumeMusic()) {
     musicOn = !musicOn;
     if (!musicOn) music.stop();
@@ -3531,7 +3558,7 @@ function frame(nowMs: number) {
   } else {
     hud.music(null);
   }
-  world.updateSmoke(allPuffs, camera.quaternion);
+  world.updateSmoke(plumes, camera.quaternion);
   world.updateWater(clock);
   // The thrown grain, and the grain riding on the freight train. One list,
   // one instanced mesh: the seeds on the wagons are worked out from where the

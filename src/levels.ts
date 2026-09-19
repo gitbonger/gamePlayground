@@ -1380,6 +1380,29 @@ export const LEVELS: readonly Level[] = [
     finish: { kind: 'free' },
   },
   {
+    // Népsziget, at the top of the map: the spit between the Danube and the
+    // Váci-öbök, which is the far end of everything the city has and the
+    // furthest north there is anything to fly to.
+    //
+    // A place rather than a task, like the other two: no target, no line and
+    // no way to finish it.
+    name: 'Népsziget',
+    mode: 'sight',
+    start: [47.545759, 19.062954],
+    // Due north -- the same meridian, eight hundred metres up the island --
+    // rather than at a thing. Which way he is let go facing is the whole of
+    // what this does, and north is up the water.
+    facing: [47.552954, 19.062954],
+    release: 100,
+    health: 1,
+    when: EVENING,
+    escort: false,
+    tireless: true,
+    teaches: false,
+    cast: [],
+    finish: { kind: 'free' },
+  },
+  {
     // The round: a letter to carry to a crossing named after two streets.
     //
     // Delivery1, and so far only the shape of it. What is here is a place to

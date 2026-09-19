@@ -68,6 +68,31 @@ export const defaultSmokeOptions: SmokeOptions = {
   spread: 0.2,
 };
 
+/**
+ * The rocket: the same smoke out of a much smaller hole.
+ *
+ * A chimney is one big puff a second rising twenty-six metres. This is
+ * twenty-five small ones a second, gone in two, so what is left behind a
+ * boosting pigeon is a short dirty streak rather than a column standing over
+ * the city. Same puffs, same renderer, same soot: a trail drawn some other
+ * way would be the one thing in the sky that did not come from this game.
+ */
+export const ROCKET_SMOKE: SmokeOptions = {
+  // Forty-five a second so the trail is a streak rather than a row of beads
+  // -- each puff is only ever half solid, so what makes it read as smoke is
+  // how many of them overlap -- and gone in a little over two seconds: what
+  // belongs behind a boosting pigeon is thirty metres of it, not a column
+  // standing over the district.
+  rate: 45,
+  climb: 1.2,
+  reach: 2.6,
+  // A pigeon is a quarter of a metre across. A puff out of its tail starts
+  // about that and ends the width of the bird's wingspan, which is as much
+  // smoke as a bird can plausibly make.
+  size: 0.28,
+  spread: 0.5,
+};
+
 export interface Smoke {
   /** The ring. Slots with a negative `risen` are empty. */
   readonly puffs: readonly Puff[];
@@ -85,6 +110,15 @@ export interface Smoke {
     dt: number,
     from: { x: number; y: number; z: number },
     wind: { x: number; y: number; z: number },
+    /**
+     * Whether anything is coming out of it right now. Left out: it is.
+     *
+     * A chimney on a moving engine is always lit, which is why this was not
+     * here. A rocket burns for a second and a half and then the trail it left
+     * has to go on rising and thinning like any other smoke -- so the puffs
+     * still need moving on a tick when none are made.
+     */
+    emitting?: boolean,
   ): void;
 }
 
@@ -144,14 +178,14 @@ export function createSmoke(
     get living() {
       return living;
     },
-    update(dt, from, wind) {
+    update(dt, from, wind, emitting = true) {
       if (dt <= 0) return;
 
       // Lit where the stack is now, and nowhere else. Nothing is remembered
       // about where it was: a train that has reversed since the last puff did
       // not leave a trail through the place it used to be, and one that
       // changes speed did not leave an evenly spaced one.
-      owed += options.rate * dt;
+      owed += emitting ? options.rate * dt : 0;
       while (owed >= 1) {
         owed -= 1;
         const puff = puffs[next]!;

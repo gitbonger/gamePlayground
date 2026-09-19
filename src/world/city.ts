@@ -38,7 +38,7 @@ import { standingDogGeometry } from '../render/dog';
 import { WAITING } from './waiting';
 import { insetRing, orientedBox, shoelace } from './plans';
 import { CARRIAGE, ENGINE, TRAM, WAGON, type Train, type Vehicle } from './train';
-import { defaultSmokeOptions, puffOpacity, puffRadius, type Puff } from './smoke';
+import { defaultSmokeOptions, puffOpacity, puffRadius, type Puff, type SmokeOptions } from './smoke';
 import { FLAT } from './ground';
 import { SEED_SIZE } from './seeds';
 import type { Area, AreaKind } from './areas';
@@ -107,6 +107,21 @@ export interface ObjectiveOptions {
   gates?: { name: string; mark: number | null; x: number; z: number; yaw: number; span: number }[];
 }
 
+/**
+ * One thing that smokes, as its puffs and the shape of plume they are.
+ *
+ * The shape used to be a constant here, on the grounds that a puff knows
+ * where it is and not which chimney it came from. That was true while
+ * everything that smoked was an engine. A rocket on a pigeon's tail is the
+ * same soot in much smaller, shorter-lived balls, and drawn at a chimney's
+ * size and fade it is a locomotive going off behind him.
+ */
+export interface Plume {
+  puffs: readonly Puff[];
+  /** Left out: the engine's, which is what most of them are. */
+  smoke?: SmokeOptions;
+}
+
 export interface World {
   group: THREE.Group;
   /** Every solid object, in simulation coordinates. */
@@ -158,7 +173,7 @@ export interface World {
    * Given the puffs rather than owning them: where the smoke *is* is physics,
    * and physics does not belong in the renderer.
    */
-  updateSmoke(puffs: readonly Puff[], viewer: THREE.Quaternion): void;
+  updateSmoke(plumes: readonly Plume[], viewer: THREE.Quaternion): void;
   /**
    * Move the ripples on the water on to this moment, in seconds.
    *
@@ -1236,13 +1251,14 @@ export function buildWorld(
   const puffMatrix = new THREE.Matrix4();
   const puffTint = new THREE.Color();
 
-  const updateSmoke = (puffs: readonly Puff[], viewer: THREE.Quaternion) => {
+  const updateSmoke = (plumes: readonly Plume[], viewer: THREE.Quaternion) => {
     let drawn = 0;
+    for (const { puffs, smoke = defaultSmokeOptions } of plumes) {
     for (const puff of puffs) {
-      const alpha = puffOpacity(puff, defaultSmokeOptions);
-      if (alpha <= 0.004 || drawn >= plume.mesh.count + puffs.length) continue;
+      const alpha = puffOpacity(puff, smoke);
+      if (alpha <= 0.004 || drawn >= smokeCapacity) continue;
 
-      const radius = puffRadius(puff, defaultSmokeOptions) * 2;
+      const radius = puffRadius(puff, smoke) * 2;
       puffPlace.set(puff.x, puff.y, puff.z);
       puffScale.set(radius, radius, radius);
       puffMatrix.compose(puffPlace, viewer, puffScale);
@@ -1255,7 +1271,7 @@ export function buildWorld(
       // grey by the top of the plume, which against a pale sky is very nearly
       // nothing at all: what was drawn was the bottom two seconds of a
       // chimney and then air.
-      const through = Math.min(1, puff.risen / defaultSmokeOptions.reach);
+      const through = Math.min(1, puff.risen / smoke.reach);
       const grey = 0.07 + 0.2 * through;
       puffTint.setRGB(grey, grey, grey * 1.06);
       plume.mesh.setColorAt(drawn, puffTint);
@@ -1265,6 +1281,7 @@ export function buildWorld(
       // stack, and thinning as it climbs.
       plume.fade.setX(drawn, alpha * PUFF_ALPHA);
       drawn += 1;
+    }
     }
 
     plume.mesh.count = drawn;
