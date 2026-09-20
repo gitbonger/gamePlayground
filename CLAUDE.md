@@ -57,6 +57,11 @@ weigh. Then give the numbers and a recommendation.
   round). `LEVEL_TAGS` is what each is called in its own game, and that is
   what the level list shows. The rocket on `X` is flown on everything but the
   story — `rocketOn` — and the level says so when it begins.
+- `src/world/grid.ts` — the overhead power lines: towers where the survey
+  tagged one, cable sagging between them, three arms of two. The cable is
+  solid and **soft**, so a pigeon can sit on a wire and nothing about a wire
+  can kill him — see `Box.soft`, which now forgives a bad landing as well as
+  a bad collision.
 - `src/finish.ts` — what ends each kind of level.
 - `src/render/messages.ts` — the instruction conditions in code.
 - `scripts/start-manualtest.sh` — the play server, which does not reload

@@ -422,7 +422,13 @@ async function main() {
   // on its own.
   const payload = await overpass(
     `[out:json][timeout:180];(way["highway"~"^(${wanted})$"](${bbox});` +
-      `way["railway"~"^(${track})$"](${bbox});${areaFilters});out geom;`,
+      `way["railway"~"^(${track})$"](${bbox});` +
+      // The grid: the big stuff only. A `line` is towers and heavy cable
+      // strung between them, which is a thing you can see from a mile off and
+      // land on; a `minor_line` is the wooden pole down a lane, and five
+      // hundred and eighty of those would be five hundred and eighty poles
+      // nobody would ever notice.
+      `way["power"="line"](${bbox});${areaFilters});out geom;`,
     'roads, rails and green space',
   );
 
@@ -455,6 +461,11 @@ async function main() {
       // round trip costs more than they do.
       `way["public_transport"="platform"]["tram"="yes"](${bbox});` +
       `node["railway"="tram_stop"](${bbox});` +
+      // The towers themselves. A line's other nodes are bends in it -- five
+      // hundred vertices against a hundred and twelve towers -- so without
+      // these the pylons would stand wherever the cable happened to change
+      // direction, which is not where a pylon stands.
+      `node["power"~"^(tower|portal)$"](${bbox});` +
       `);out geom;`,
     'crossings, trees and tram platforms',
   );
@@ -500,12 +511,37 @@ async function main() {
   const bridges = [];
   const rails = [];
   const areas = [];
+  /**
+   * Overhead lines, as the places the towers stand.
+   *
+   * A way's own nodes *are* the towers -- that is how the grid is mapped --
+   * so the line and the pylons along it are one thing here rather than two.
+   * Nothing is thinned: the distance between two towers is the span the wire
+   * hangs across, and a simplifier that dropped one would hang a cable over
+   * a pylon that was no longer there.
+   */
+  const power: { points: [number, number][]; volts: number }[] = [];
+  /** Where the towers stand, which is only some of the points on a line. */
+  const towers: number[][] = [];
   let rawPoints = 0;
 
   for (const element of payload.elements) {
     const tags = element.tags ?? {};
     const highway = tags['highway'];
     const railway = tags['railway'];
+
+    if (tags['power'] === 'line') {
+      if (!element.geometry || element.geometry.length < 2) continue;
+      if (tags['tunnel'] || tags['location'] === 'underground') continue;
+      rawPoints += element.geometry.length;
+      const points = toLocal(element.geometry, 0);
+      // The voltage decides how big the towers are, and the ones with none
+      // written on them are the ordinary hundred and thirty-two kilovolts
+      // that most of this city's grid runs at.
+      const volts = Number((tags['voltage'] ?? '132000').split(';')[0]) || 132000;
+      if (points.length >= 2) power.push({ points, volts });
+      continue;
+    }
 
     if (railway && RAIL_WIDTHS[railway] !== undefined) {
       // Underground, or no longer there: nothing to see from the air. The
@@ -726,6 +762,7 @@ async function main() {
       Math.round(-(element.lat - lat) * perDegree.lat * 10) / 10,
     ];
     if (element.tags?.['natural'] === 'tree') trees.push(at);
+    else if (element.tags?.['power']) towers.push(at);
     else if (element.tags?.['railway'] === 'tram_stop') {
       stops.push(at);
       stopNames.push(element.tags['name'] ?? '');
@@ -758,7 +795,7 @@ async function main() {
     signs.push([x, z, index]);
   }
 
-  const keptPoints = [...roads, ...bridges, ...rails].reduce((total, way) => total + way.points.length, 0);
+  const keptPoints = [...roads, ...bridges, ...rails, ...power].reduce((total, way) => total + way.points.length, 0);
   const out = resolve(process.cwd(), 'src/world/data', `${name}.json`);
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(
@@ -775,6 +812,8 @@ async function main() {
         roads,
         bridges,
         rails,
+        power,
+        towers,
         areas,
         plans,
         crossings,
@@ -794,12 +833,13 @@ async function main() {
   const kb = (
     Buffer.byteLength(
       JSON.stringify({
-        roads, bridges, rails, areas, plans, crossings, trees, islands, stops, stopNames, brands, signs, worship,
+        roads, bridges, rails, power, towers, areas, plans, crossings, trees, islands, stops, stopNames, brands, signs, worship,
       }),
     ) / 1024
   ).toFixed(0);
   process.stderr.write(
-    `${roads.length} roads, ${bridges.length} bridges and ${rails.length} railways ` +
+    `${roads.length} roads, ${bridges.length} bridges, ${rails.length} railways ` +
+      `and ${power.length} overhead lines on ${towers.length} towers ` +
       `(${keptPoints} points), ` +
       `${areas.length} green areas, ${plans.length} buildings ` +
       `(${plans.filter((b) => b[0] !== null).length} of them saying how tall, ` +

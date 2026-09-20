@@ -40,6 +40,7 @@ import { insetRing, orientedBox, shoelace } from './plans';
 import { CARRIAGE, ENGINE, TRAM, WAGON, type Train, type Vehicle } from './train';
 import { defaultSmokeOptions, puffOpacity, puffRadius, type Puff, type SmokeOptions } from './smoke';
 import { FLAT } from './ground';
+import { ARMS } from './grid';
 import { Floats } from '../render/floats';
 import { SEED_SIZE } from './seeds';
 import type { Area, AreaKind } from './areas';
@@ -1156,6 +1157,63 @@ export function buildWorld(
   }
   for (const patch of stands.values()) {
     for (const stand of patch) stand.instanceMatrix.needsUpdate = true;
+  }
+
+  // --- The grid ------------------------------------------------------------
+  // Towers of a given height share a shape, so each height is one instanced
+  // mesh; the cable is drawn as lines, which is what a cable is.
+  if (layout.pylons?.length) {
+    const byHeight = new Map<number, typeof layout.pylons>();
+    for (const pylon of layout.pylons) {
+      const already = byHeight.get(pylon.height);
+      if (already) already.push(pylon);
+      else byHeight.set(pylon.height, [pylon]);
+    }
+    for (const [height, standing] of byHeight) {
+      const shape = buildPylonGeometry(height);
+      const steel = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+      disposables.push(shape, steel);
+      const towers = new THREE.InstancedMesh(shape, steel, standing.length);
+      towers.castShadow = true;
+      towers.receiveShadow = true;
+      towers.name = 'pylons';
+      group.add(towers);
+      standing.forEach((pylon, i) => {
+        rotation.setFromAxisAngle(up, pylon.yaw);
+        position.set(pylon.x, standOn(pylon.x, pylon.z), pylon.z);
+        scale.setScalar(1);
+        matrix.compose(position, rotation, scale);
+        towers.setMatrixAt(i, matrix);
+      });
+      towers.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  if (layout.wires?.length) {
+    // One line list per patch, so a cable a kilometre away is not drawn for
+    // the sake of the three pixels it would cover.
+    const cable = new THREE.LineBasicMaterial({ color: 0x2c3138 });
+    disposables.push(cable);
+    for (const patch of intoPatches(layout.wires, (wire) => {
+      const first = wire.points[0];
+      return first ? ([first[0], first[2]] as const) : null;
+    })) {
+      const strung = new Floats(patch.length * 64);
+      for (const wire of patch) {
+        for (let i = 1; i < wire.points.length; i += 1) {
+          const a = wire.points[i - 1]!;
+          const b = wire.points[i]!;
+          strung.push3(a[0], a[1], a[2]);
+          strung.push3(b[0], b[1], b[2]);
+        }
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(strung.take(), 3));
+      disposables.push(geometry);
+      const lines = new THREE.LineSegments(geometry, cable);
+      lines.name = 'wires';
+      group.add(lines);
+    }
   }
 
   // --- Headstones -----------------------------------------------------------
@@ -2904,6 +2962,72 @@ const STEEPLE_SLATE = 0x50535a;
  * the mesh, as it is for a tram, which is what lets two churches of a size
  * share one shape.
  */
+/** Galvanised steel, which is the colour of every pylon ever built. */
+const PYLON_STEEL = 0x9aa1a8;
+
+/**
+ * A lattice tower, one shape for every tower of that height.
+ *
+ * Four legs leaning in, a few belts of bracing across them, and the
+ * cross-arms the cable hangs from at the heights `ARMS` says. Drawn as solid
+ * members rather than as a real lattice: what says "pylon" from three hundred
+ * metres is the silhouette -- the taper and the arms -- and a truss of the
+ * real thing would be four hundred little boxes apiece for a pattern nobody
+ * can resolve at that range.
+ */
+export function buildPylonGeometry(height: number): THREE.BufferGeometry {
+  const pieces: { geometry: THREE.BufferGeometry; color: number }[] = [];
+  const add = (
+    width: number,
+    tall: number,
+    deep: number,
+    x: number,
+    y: number,
+    z: number,
+    yaw = 0,
+  ) => {
+    const part = new THREE.BoxGeometry(width, tall, deep);
+    if (yaw) part.rotateY(yaw);
+    part.translate(x, y, z);
+    pieces.push({ geometry: part, color: PYLON_STEEL });
+  };
+
+  const foot = height * 0.13;
+  const shoulder = height * 0.045;
+  const thick = Math.max(0.12, height * 0.012);
+
+  // The legs, in three lengths so they lean in rather than stand straight.
+  const steps = 3;
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      for (let i = 0; i < steps; i += 1) {
+        const low = (i / steps) * height * 0.94;
+        const high = ((i + 1) / steps) * height * 0.94;
+        const at = (foot + (shoulder - foot) * ((low + high) / 2 / height)) ;
+        add(thick, high - low, thick, sx * at, (low + high) / 2, sz * at);
+      }
+    }
+  }
+
+  // Belts across it, which is what stops the legs reading as four poles.
+  for (const up of [0.18, 0.42, 0.66, 0.9]) {
+    const at = foot + (shoulder - foot) * up;
+    for (const sz of [-1, 1]) add(at * 2, thick, thick, 0, height * up, sz * at);
+    for (const sx of [-1, 1]) add(thick, thick, at * 2, sx * at, height * up, 0);
+  }
+
+  // And the arms, reaching out either side of the way the cable runs.
+  for (const arm of ARMS) {
+    add(thick * 1.4, thick * 1.4, arm.out * 2, 0, height * arm.up, 0);
+    // A little mast under each, so an arm is carried rather than floating.
+    for (const side of [-1, 1]) {
+      add(thick, height * 0.05, thick, 0, height * (arm.up - 0.025), side * arm.out * 0.75);
+    }
+  }
+
+  return painted(pieces);
+}
+
 export function buildSteepleGeometry(spec: {
   kind: 'church' | 'chapel' | 'synagogue';
   width: number;

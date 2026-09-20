@@ -679,6 +679,30 @@ export interface Steeple {
  * from `BuildingPlan` off the map, whose height may be null; by the time one
  * of these exists the height has been settled, invented if need be.
  */
+/**
+ * A lattice tower, standing where the survey says one stands.
+ *
+ * `yaw` is square to the line it carries, because that is how a pylon is
+ * built: the cross-arms reach out either side of the cable's direction.
+ */
+export interface Pylon {
+  x: number;
+  z: number;
+  yaw: number;
+  height: number;
+}
+
+/**
+ * One cable, as the points it hangs through.
+ *
+ * Already sagged: the points are the shape of the wire, not the line on the
+ * map. A cable between two towers is a catenary, and the one thing everybody
+ * knows about a power line is that it dips in the middle.
+ */
+export interface Wire {
+  points: [number, number, number][];
+}
+
 export interface Footprint {
   /** The footprint, open: the last point does not repeat the first. */
   ring: readonly (readonly number[])[];
@@ -841,6 +865,9 @@ export interface CityLayout {
   areas?: Area[];
   /** How high the ground is, where the map said. Flat where it did not. */
   ground?: Ground;
+  /** The grid: towers, and the cable strung between them. */
+  pylons?: Pylon[];
+  wires?: Wire[];
 }
 
 /** How much tighter a tree's collision box is than its visible cone. */

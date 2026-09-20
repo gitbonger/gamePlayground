@@ -858,7 +858,7 @@ export function step(
       if (hit.normal.y >= ROOF_NORMAL) {
         // Something you could stand on. A roof is judged exactly as the ground
         // is -- come down slow, level and gently and you have landed on it.
-        settle(state, p, work, hit.point, hit.carrier);
+        settle(state, p, work, hit.point, hit.carrier, hit.soft);
         return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work, airVelocity);
       }
 
@@ -1013,10 +1013,12 @@ function settle(
   work: WorkLedger,
   at: Vec3,
   carrier: number | null = null,
+  /** Whether what it came down on is the sort that cannot kill: see `Box.soft`. */
+  soft = false,
 ): void {
   state.position = at;
   state.restingOn = carrier;
-  state.ending = touchdown(state, p);
+  state.ending = touchdown(state, p, soft);
   // Down is down: whether that hop worked or not, it is finished with.
   state.leaving = null;
   work.collision -= kinetic(state.velocity, p);
@@ -1047,13 +1049,18 @@ export function landingReadiness(state: BirdState, p: FlightParams): LandingRead
  * order below only decides which fault gets named to the player, cheapest
  * mistake to fix first.
  */
-function touchdown(state: BirdState, p: FlightParams): Ending {
+function touchdown(state: BirdState, p: FlightParams, soft = false): Ending {
   const r = landingReadiness(state, p);
 
   // A take-off that never became flight cannot kill you, wherever it puts you
   // down. See `BirdState.leaving`: the bird leaves the ground faster than it
   // is allowed to touch it, so without this every fluffed hop is fatal.
-  const cause: CrashCause | null = state.leaving
+  //
+  // Nor can a soft thing, however badly it is arrived at. The landing rule is
+  // about masonry and about the ground: a cable is neither, and a pigeon that
+  // drops onto one at speed is a pigeon that makes a mess of sitting down --
+  // which is what every pigeon that has ever sat on a wire looks like.
+  const cause: CrashCause | null = state.leaving || soft
     ? null
     : !r.sinkOk
       ? 'hard-impact'

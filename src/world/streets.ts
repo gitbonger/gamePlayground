@@ -73,6 +73,22 @@ export interface MapData {
   bridges?: Bridge[];
   /** Surface railway: heavy rail and tram. Absent on older baked maps. */
   rails?: Rail[];
+  /**
+   * Overhead power lines, as the path the cable takes.
+   *
+   * The big stuff only: towers with heavy cable slung between them, not the
+   * pole down a lane. Absent on older baked maps, which had no grid at all.
+   */
+  power?: { points: [number, number][]; volts: number }[];
+  /**
+   * Where the pylons stand, as [x, z] in local metres.
+   *
+   * Separate from the lines because they are separate in the survey: a line's
+   * vertices are wherever the cable changes direction, and only some of them
+   * carry a tower -- five hundred and ninety-seven vertices here, a hundred
+   * and sixty-eight towers.
+   */
+  towers?: number[][];
   /** Parks, woods, playing fields and water. Absent on older baked maps. */
   areas?: Area[];
   /**

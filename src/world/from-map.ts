@@ -28,6 +28,7 @@ import { footprintSamples, indexAreas, type AreaIndex } from './areas';
 import { crowdOn } from './waiting';
 import { DECK, deckOf } from './bridges';
 import { FLAT, groundFromMap } from './ground';
+import { buildGrid } from './grid';
 import { fitBoxes, orientedBox, solidsOf } from './plans';
 import { fillHeights } from './heights';
 import { extractBlocks, type Block } from './blocks';
@@ -458,6 +459,20 @@ const PLATFORM = {
  * something to pull up for.
  */
 const PLATFORM_SERVED = 12;
+
+/**
+ * Half the width of a pylon's solid middle, and half the thickness of a
+ * cable's, both in metres.
+ *
+ * A lattice tower is mostly air. Made solid to its full three metres across
+ * it would swat a bird that flew through a gap it could plainly see through,
+ * so what is solid is a trunk up the middle. The cable is the opposite
+ * problem: it is thinner than a pigeon's foot, and something that thin is
+ * something nothing can ever land on, so it is thickened to where a bird can
+ * find it -- a quarter of a metre, which is about the width of the pigeon.
+ */
+const PYLON_TRUNK = 0.9;
+const WIRE_THICK = 0.13;
 
 /**
  * How near another route's beginning has to be to this one's end, in metres.
@@ -1978,6 +1993,44 @@ export function buildLayoutFromMap(
   // that is drawn a hundred metres above where it is felt. The box goes up by
   // the height under its middle, exactly as the drawing does.
   const ground = groundFromMap(map);
+
+  // The grid: towers where the survey says, cable sagging between them, and
+  // both of them solid -- a wire you can land on is the point of it.
+  const grid = buildGrid(map.power ?? [], map.towers ?? [], (x, z) => ground.heightAt(x, z));
+  for (const pylon of grid.pylons) {
+    const foot = ground.heightAt(pylon.x, pylon.z);
+    // The mast, as one box up the middle of it. A lattice is mostly air and
+    // a bird that clipped a leg of it at forty metres up would be a bird
+    // killed by something it could see straight through, so what is solid is
+    // the trunk.
+    boxes.push({
+      minX: pylon.x - PYLON_TRUNK,
+      maxX: pylon.x + PYLON_TRUNK,
+      minY: foot,
+      maxY: foot + pylon.height,
+      minZ: pylon.z - PYLON_TRUNK,
+      maxZ: pylon.z + PYLON_TRUNK,
+    });
+  }
+  for (const wire of grid.wires) {
+    for (let i = 1; i < wire.points.length; i += 1) {
+      const a = wire.points[i - 1]!;
+      const b = wire.points[i]!;
+      // One box a sample, thin enough to be the wire it draws and wide enough
+      // to land on. Soft: flying into a cable stops a pigeon, it does not
+      // kill one, and neither does sitting on it.
+      boxes.push({
+        minX: Math.min(a[0], b[0]) - WIRE_THICK,
+        maxX: Math.max(a[0], b[0]) + WIRE_THICK,
+        minY: Math.min(a[1], b[1]) - WIRE_THICK,
+        maxY: Math.max(a[1], b[1]) + WIRE_THICK,
+        minZ: Math.min(a[2], b[2]) - WIRE_THICK,
+        maxZ: Math.max(a[2], b[2]) + WIRE_THICK,
+        soft: true,
+      });
+    }
+  }
+
   if (ground !== FLAT) {
     for (const box of boxes) {
       const lift = ground.heightAt((box.minX + box.maxX) / 2, (box.minZ + box.maxZ) / 2);
@@ -2006,6 +2059,8 @@ export function buildLayoutFromMap(
     trains,
     areas: map.areas ?? [],
     ground,
+    pylons: grid.pylons,
+    wires: grid.wires,
     streets,
     green,
     blocks,
