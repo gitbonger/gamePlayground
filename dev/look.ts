@@ -118,6 +118,9 @@ renderer.render(scene, camera);
 // left alone they are all stacked at the origin, and a draw-call count of a
 // heap of trams at nought says nothing about a city with trams in it.
 world.updateTrains(full.trains ?? []);
+// And whoever is waiting at the stops near what is being looked at: they are
+// a pool that follows the bird in the game, and here the camera is the bird.
+world.showWaitingNear({ x: n('tx', 298), z: n('tz', -72) });
 // And the water's clock, from `t` in seconds, so that two stills a moment
 // apart show whether it moves.
 world.updateWater(n('t', 0));

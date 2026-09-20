@@ -175,6 +175,15 @@ export interface World {
    * instances are scaled to nothing, the same way the trapper is hidden.
    */
   setWaiting(platforms: readonly Platform[]): void;
+  /**
+   * Draw the ones near this spot, and nobody else.
+   *
+   * The figures are a pool that is re-pointed at whichever stops are nearest,
+   * so a hundred square kilometres of tram stops costs what one district's
+   * worth does. Called as the bird moves; it does nothing until he has gone
+   * far enough to change the answer.
+   */
+  showWaitingNear(at: { x: number; z: number }): void;
   /** Move the rolling stock to where the layout says the trains have got to. */
   updateTrains(trains: readonly Train[]): void;
   /**
@@ -536,6 +545,8 @@ export function buildWorld(
   const smokeCapacity = options.smoke ?? 0;
   /** Filled in with the platforms, if there are any. See `World.setWaiting`. */
   let setWaiting: (platforms: readonly Platform[]) => void = () => {};
+  /** And who is drawn of them, which is whoever is near enough to see. */
+  let showWaitingNear: (at: { x: number; z: number }) => void = () => {};
 
   // --- Ground -------------------------------------------------------------
   /**
@@ -901,10 +912,21 @@ export function buildWorld(
       group.add(mesh);
     }
 
-    // And whoever is on them. Sized for the most there could ever be, since
-    // an instanced mesh is allocated once and cannot grow -- and the most is
-    // a fact about the rule that fills them: see `WAITING`.
-    const roomFor = layout.platforms.length * WAITING.most;
+    // And whoever is on them -- but only the ones near enough to see.
+    //
+    // This used to be sized for every platform on the map at once: two
+    // hundred and sixty stops, five waiting at each, thirteen hundred people
+    // and as many dogs, all of them drawn every frame because an instanced
+    // mesh that spans a hundred square kilometres is never out of shot. Seven
+    // hundred thousand triangles of people standing about in districts
+    // nobody was looking at.
+    //
+    // A pool instead, filled from the stops nearest the bird and refilled as
+    // he moves: the figures are reused rather than multiplied, so what this
+    // costs is fixed however big the map gets. Sized from the map itself --
+    // the most stops within sight of each other anywhere here is twelve --
+    // with room to spare.
+    const roomFor = NEAR_STOPS * WAITING.most;
     const figure = personShape();
     const hound = standingDogGeometry();
     const skin = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
@@ -919,10 +941,22 @@ export function buildWorld(
       mesh.frustumCulled = false;
       group.add(mesh);
     }
-    setWaiting = (stops) => {
+    /** Where the crowd was last drawn from, so a redraw can repeat it. */
+    let lastSeen = { x: 0, z: 0 };
+    let crowd: readonly Platform[] = layout.platforms;
+
+    const fill = () => {
       let person = 0;
       let dog = 0;
-      for (const stop of stops) {
+      // Nearest first, so a pool that runs out runs out on the far ones.
+      const seen = crowd
+        .filter((stop) => Math.hypot(stop.x - lastSeen.x, stop.z - lastSeen.z) <= WITHIN_SIGHT)
+        .sort(
+          (a, b) =>
+            Math.hypot(a.x - lastSeen.x, a.z - lastSeen.z) -
+            Math.hypot(b.x - lastSeen.x, b.z - lastSeen.z),
+        );
+      for (const stop of seen) {
         for (const each of stop.waiting) {
           if (person < roomFor) {
             rotation.setFromAxisAngle(up, each.person.facing);
@@ -942,18 +976,28 @@ export function buildWorld(
           }
         }
       }
-      // Whatever is left over is scaled to nothing, which is how a fixed list
-      // of instances says "not this one".
-      scale.setScalar(0);
-      rotation.setFromAxisAngle(up, 0);
-      position.set(0, -50, 0);
-      matrix.compose(position, rotation, scale);
-      for (let i = person; i < roomFor; i += 1) standing.setMatrixAt(i, matrix);
-      for (let i = dog; i < roomFor; i += 1) hounds.setMatrixAt(i, matrix);
+      // And the rest of the pool is simply not drawn. It used to be scaled to
+      // nothing and left in the list, which is what you do when the count is
+      // fixed; the count is the number standing there now.
+      standing.count = person;
+      hounds.count = dog;
       standing.instanceMatrix.needsUpdate = true;
       hounds.instanceMatrix.needsUpdate = true;
     };
-    setWaiting(layout.platforms);
+
+    setWaiting = (stops) => {
+      crowd = stops;
+      fill();
+    };
+    showWaitingNear = (at) => {
+      // Only when he has actually gone somewhere: the sort is over a couple
+      // of hundred stops and there is no sense doing it twice for the same
+      // spot.
+      if (Math.hypot(at.x - lastSeen.x, at.z - lastSeen.z) < 20) return;
+      lastSeen = { x: at.x, z: at.z };
+      fill();
+    };
+    fill();
 
     let hut = 0;
     layout.platforms.forEach((stop, i) => {
@@ -1482,6 +1526,7 @@ export function buildWorld(
     },
     overlay,
     setWaiting: (platforms) => setWaiting(platforms),
+    showWaitingNear: (at) => showWaitingNear(at),
     updateTrains,
     updateSmoke,
     updateWater: (seconds) => {
@@ -2969,6 +3014,19 @@ export function buildSteepleGeometry(spec: {
  * draw calls do not become the cost.
  */
 const PATCH = 1500;
+
+/**
+ * How far off a waiting figure is worth drawing, in metres, and how many
+ * stops' worth of them to keep on hand.
+ *
+ * Three hundred metres, which is inside where the fog starts: a person is
+ * under two metres and at that range is a few pixels of coat. Twenty stops,
+ * against the twelve that are within sight of each other at the thickest
+ * place on this map -- Szell Kalman ter and its neighbours -- so the pool is
+ * never the thing that runs out first.
+ */
+const WITHIN_SIGHT = 300;
+const NEAR_STOPS = 20;
 
 const patchOf = (x: number, z: number) =>
   Math.floor(x / PATCH) * 100000 + Math.floor(z / PATCH);

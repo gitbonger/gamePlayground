@@ -3950,6 +3950,10 @@ function frame(nowMs: number) {
     chase.update(interpolatedState, activeCamera, frameTime, isPerched(bird));
   }
 
+  // Who is standing at the tram stops: only the ones near enough to see, and
+  // the same figures over again as he moves. See `World.showWaitingNear`.
+  world.showWaitingNear(interpolatedState.position);
+
   // The air, heard. Nothing on the ground and nothing that has stopped: a
   // bird standing on a roof is not hearing the wind of its own flight.
   if (bird.ending === null) airflow.hear(telemetry.airspeed, frameTime);
