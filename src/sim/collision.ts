@@ -183,19 +183,92 @@ const GRID_STRIDE = 1024;
 const cellKey = (cx: number, cz: number) =>
   (cx + GRID_OFFSET) * GRID_STRIDE + (cz + GRID_OFFSET);
 
+/**
+ * The field's own copy of the boxes, as numbers rather than as objects.
+ *
+ * Four hundred and fifty thousand of them come off this map, and as objects
+ * -- one per building, tree, headstone, parapet and platform -- they are
+ * ninety megabytes, with another ninety for the world bounds beside them.
+ * Held as six floats and two extras apiece they are fifteen, and the array
+ * the caller passed in can be let go the moment this returns, which is the
+ * point: the caller is the layout, and the layout was keeping them for the
+ * life of the page for nobody.
+ *
+ * The narrow phase still works in `Box`, because the maths is clearer that
+ * way and there are only ever a handful of candidates. One object is kept and
+ * filled in for each of them rather than allocated.
+ */
 export function createColliderField(boxes: readonly Box[]): Collider {
-  // Broad phase works on world bounds; the narrow phase knows about the turn.
-  const bounds = boxes.map(worldBounds);
+  const count = boxes.length;
+  // The box as it stands, and the axis-aligned bounds the broad phase sorts
+  // by, which differ only for a turned one.
+  // Doubles rather than floats, and deliberately: a float is seven digits,
+  // and a roof at 34.2 m comes back as 34.200001, which is a height the
+  // drawing and the collider then disagree about. Twice the width of a float
+  // is still a twelfth of what the objects cost.
+  const solid = new Float64Array(count * 6);
+  const bound = new Float64Array(count * 6);
+  const turned = new Float64Array(count);
+  const carriers = new Int32Array(count).fill(-1);
+  /** Whether it is the sort of solid that stops you rather than kills you. */
+  const softness = new Uint8Array(count);
+  /** Sparse: almost nothing in a city moves, and nothing static does. */
+  const speeds = new Map<number, number>();
+
+  boxes.forEach((box, index) => {
+    const at = index * 6;
+    solid[at] = box.minX;
+    solid[at + 1] = box.minY;
+    solid[at + 2] = box.minZ;
+    solid[at + 3] = box.maxX;
+    solid[at + 4] = box.maxY;
+    solid[at + 5] = box.maxZ;
+    const world = worldBounds(box);
+    bound[at] = world.minX;
+    bound[at + 1] = world.minY;
+    bound[at + 2] = world.minZ;
+    bound[at + 3] = world.maxX;
+    bound[at + 4] = world.maxY;
+    bound[at + 5] = world.maxZ;
+    turned[index] = box.yaw ?? 0;
+    if (box.carrier !== undefined) carriers[index] = box.carrier;
+    if (box.soft) softness[index] = 1;
+    if (box.speed) speeds.set(index, box.speed);
+  });
+
+  /** One box, filled in from the arrays: see the note above. */
+  const scratch: Box = { minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 };
+  const boxAt = (index: number): Box => {
+    const at = index * 6;
+    scratch.minX = solid[at]!;
+    scratch.minY = solid[at + 1]!;
+    scratch.minZ = solid[at + 2]!;
+    scratch.maxX = solid[at + 3]!;
+    scratch.maxY = solid[at + 4]!;
+    scratch.maxZ = solid[at + 5]!;
+    scratch.yaw = turned[index]!;
+    scratch.soft = softness[index] === 1;
+    // Both of these are read back off the hit by whoever asked: what ran you
+    // over, and how fast it was going. Deleted rather than set to undefined,
+    // which this project's TypeScript settings treat as a different thing
+    // from absent -- and absent is what "nothing is carrying you" means.
+    if (carriers[index] === -1) delete scratch.carrier;
+    else scratch.carrier = carriers[index]!;
+    scratch.speed = speeds.get(index) ?? 0;
+    return scratch;
+  };
+
   const grid = new Map<number, number[]>();
 
   const toCell = (v: number) =>
     Math.max(-GRID_OFFSET, Math.min(GRID_OFFSET - 1, Math.floor(v / CELL_SIZE)));
 
-  bounds.forEach((box, index) => {
-    const x0 = toCell(box.minX);
-    const x1 = toCell(box.maxX);
-    const z0 = toCell(box.minZ);
-    const z1 = toCell(box.maxZ);
+  for (let index = 0; index < count; index += 1) {
+    const at = index * 6;
+    const x0 = toCell(bound[at]!);
+    const x1 = toCell(bound[at + 3]!);
+    const z0 = toCell(bound[at + 2]!);
+    const z1 = toCell(bound[at + 5]!);
     for (let cx = x0; cx <= x1; cx++) {
       for (let cz = z0; cz <= z1; cz++) {
         const key = cellKey(cx, cz);
@@ -204,11 +277,11 @@ export function createColliderField(boxes: readonly Box[]): Collider {
         else grid.set(key, [index]);
       }
     }
-  });
+  }
 
   // Marks which boxes a given query has already considered, so a box spanning
   // several cells is only tested once. Cheaper than allocating a Set per query.
-  const seen = new Int32Array(boxes.length).fill(-1);
+  const seen = new Int32Array(count).fill(-1);
   let queryId = 0;
 
   function sweep(from: Vec3, to: Vec3, radius: number): SweepHit | null {
@@ -232,10 +305,9 @@ export function createColliderField(boxes: readonly Box[]): Collider {
           if (seen[index] === id) continue;
           seen[index] = id;
 
-          const box = boxes[index]!;
-          const hit = sweepBox(from, delta, radius, box);
+          const hit = sweepBox(from, delta, radius, boxAt(index));
           if (hit && (!best || hit.t < best.t)) {
-            hit.carrier = box.carrier ?? null;
+            hit.carrier = carriers[index] === -1 ? null : carriers[index]!;
             best = hit;
           }
         }
@@ -265,11 +337,12 @@ export function createColliderField(boxes: readonly Box[]): Collider {
 
     let found: Touch | null = null;
     for (const index of bucket) {
-      const box = boxes[index]!;
-      if (gapTo(point, box) > radius * radius) continue;
-      const speed = box.speed ?? 0;
+      if (gapTo(point, boxAt(index)) > radius * radius) continue;
+      const speed = speeds.get(index) ?? 0;
       // The fastest, because that is the one that decides what happens.
-      if (!found || speed > found.speed) found = { carrier: box.carrier ?? null, speed };
+      if (!found || speed > found.speed) {
+        found = { carrier: carriers[index] === -1 ? null : carriers[index]!, speed };
+      }
     }
     return found;
   }
@@ -280,14 +353,14 @@ export function createColliderField(boxes: readonly Box[]): Collider {
 
     let highest = -Infinity;
     for (const index of bucket) {
-      const box = bounds[index]!;
-      if (x < box.minX || x > box.maxX || z < box.minZ || z > box.maxZ) continue;
-      if (box.maxY > highest) highest = box.maxY;
+      const at = index * 6;
+      if (x < bound[at]! || x > bound[at + 3]! || z < bound[at + 2]! || z > bound[at + 5]!) continue;
+      if (bound[at + 4]! > highest) highest = bound[at + 4]!;
     }
     return highest;
   }
 
-  return { sweep, touching, heightAt, boxCount: boxes.length };
+  return { sweep, touching, heightAt, boxCount: count };
 }
 
 /**

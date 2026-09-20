@@ -646,6 +646,10 @@ const world = buildWorld(layout, {
 });
 // And let them go: see the note above.
 layout.plans = undefined;
+// The same for the solids, now that the collider has taken its own copy of
+// them -- four hundred and fifty thousand objects, ninety megabytes, and the
+// only thing that ever reads them is the field that has just been built.
+layout.boxes.length = 0;
 
 /**
  * Storage, if the browser will give us any.

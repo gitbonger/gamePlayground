@@ -158,7 +158,16 @@ describe('street index', () => {
  * can be looked at on their own -- but the feature is still here and these
  * are the tests of it, so they ask for it by name.
  */
-const PLANTED = { ...defaultMapWorldOptions, inventsTrees: true };
+/**
+ * Planting, at a density of this file's own choosing.
+ *
+ * The rules below are about *where* a tree may stand, and they are checked by
+ * counting how many stand in a place. Left on the game's own density they
+ * would be tests of that number instead: thin the parks for the sake of a
+ * hundred square kilometres of map and half of them fail, having found
+ * nothing wrong. So the density is pinned here, and the game's is free.
+ */
+const PLANTED = { ...defaultMapWorldOptions, inventsTrees: true, parkTrees: 19, gardenTrees: 60 };
 
 describe('what fills a block once the buildings are placed', () => {
   const layout = buildLayoutFromMap(builtOn(BLOCK), PLANTED);

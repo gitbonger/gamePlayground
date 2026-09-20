@@ -204,8 +204,14 @@ export const defaultMapWorldOptions: MapWorldOptions = {
   minBlockArea: 500,
   maxBlockArea: 2000000,
   spacing: 9,
-  parkTrees: 19,
-  gardenTrees: 60,
+  // Thinner than they were -- nineteen to the hectare in a park and sixty in
+  // a garden, against fifteen and forty-eight now -- because the map is now a hundred square kilometres and the
+  // trees had become the largest single thing in it: eighty-six thousand of
+  // them, a third of every triangle drawn, and a tab that Safari killed with
+  // two of the game open. A wood reads as a wood at this density; what it
+  // stops being is a thicket you cannot see the ground through.
+  parkTrees: 15,
+  gardenTrees: 48,
   inventsTrees: true,
   trainReach: 40,
   seed: 11,
