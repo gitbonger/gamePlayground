@@ -54,6 +54,7 @@ import {
   PINK_MORPH,
   type WingPose,
 } from './render/bird';
+import { createPersonRig } from './render/person';
 import { createFlock, defaultFlockOptions, FLOCK_AHEAD, type Anchor } from './flock';
 import { createAmbient } from './ambient';
 import { createDog } from './dog';
@@ -77,6 +78,7 @@ import {
   meetsSomewhereFixed,
   metBy,
   PINK,
+  characterNamed,
   LEVEL_TAGS,
   modeOf,
   rocketOn,
@@ -890,10 +892,20 @@ function opposite(spec: Level): { at: Vec3; facing: Vec3 } | null {
   }
 
   // On a corner, beside them: there is no middle to be at either end of, so
-  // he stands an arm's length off and turns to face them. Which side does not
-  // matter and there is nothing to mirror about, so it is the way they are
-  // facing, which puts him in front of them.
-  const beside = pointOn({ x: stood.at.x, z: stood.at.z, yaw: stood.facing }, BESIDE, 0);
+  // he stands in front of them and turns to face them.
+  //
+  // Further off a person than a pigeon, and it is not politeness: the camera
+  // flies a metre and a half behind the bird, and somebody two metres tall
+  // standing where a pigeon would stand fills the whole shot. Still inside
+  // `MEET_RADIUS`, so the conversation still begins on the first tick.
+  // Asked of the cast rather than of the residents: this runs while the game
+  // is still being built, before there are any residents to ask.
+  const standing = characterNamed(waiting.who);
+  const beside = pointOn(
+    { x: stood.at.x, z: stood.at.z, yaw: stood.facing },
+    standing?.kind === 'person' ? BESIDE_PERSON : BESIDE,
+    0,
+  );
   return {
     at: vec(beside.x, standingOn.groundAt(beside.x, beside.z) + defaultParams.bodyRadius, beside.z),
     facing: stood.at,
@@ -909,6 +921,7 @@ function opposite(spec: Level): { at: Vec3; facing: Vec3 } | null {
  * inside each other.
  */
 const BESIDE = 0.7;
+const BESIDE_PERSON = 1.8;
 
 /**
  * The level whose conversation opens this one, if one does.
@@ -1469,7 +1482,7 @@ const crowdRigs = crowds.map((crowd) =>
 interface Resident {
   who: Character;
   state: BirdState;
-  rig: ReturnType<typeof createBirdRig>;
+  rig: ReturnType<typeof createBirdRig> | ReturnType<typeof createPersonRig>;
   /** The colour its words are printed in: its own, made readable. */
   voice: string;
   /** How red it is being washed this frame, 0 to 1. */
@@ -1526,7 +1539,10 @@ function carrierOf(train: number, vehicle: number): number {
  */
 const residents: Resident[] = CHARACTERS.map((who) => {
   const morph = CHARACTER_MORPHS[who.morph % CHARACTER_MORPHS.length]!;
-  const rig = createBirdRig(morph);
+  // A person is drawn as one of the crowd and a pigeon as a pigeon. Both
+  // answer the same three questions -- what to draw, where it stands, how red
+  // it is glowing -- so nothing below here asks which it is.
+  const rig = who.kind === 'person' ? createPersonRig() : createBirdRig(morph);
   scene.add(rig.object);
   return {
     who,

@@ -65,21 +65,27 @@ from it -- so this line has to be findable by somebody who knows the city and
 honest to somebody who does not.
 
 One branch takes the letter and ends, which is what starts the flight. The
-other asks where that is, and is answered with a second landmark rather than
-with a direction: a pigeon is not given a heading, it is given the name of a
-place and left to work it out.
+other asks where that is, and is answered with a landmark and a direction
+rather than with a heading: what a pigeon is given is what anybody is given
+when they ask in the street, and the rest is theirs to work out.
 
-- them: Take this to the corner of NOWHERE and NOWHERE, would you? | Elvinnéd ezt a SEHOL és a SEHOL sarkára?
+The address is the whole level. There is no arrow and no dot on the map until
+he is fifty metres from the pond, so what is said here is the only navigation
+in it -- and it has to be findable by somebody who knows Budapest and fair to
+somebody who is learning it.
+
+- them: Take this to Millenáris park, to the pond. | Vidd ezt a Millenáris parkba, a tóhoz.
   - you: On my way. | Már repülök is.
   - you: Where is that? | Az meg merre van?
-    - them: Past NOWHERE, and keep going. | A SEHOL mellett, és onnan tovább.
+    - them: North, past Széll Kálmán tér. You will see the water. | Északra, a Széll Kálmán téren túl. Meglátod a vizet.
       - you: Right. | Értem.
 
 ## Thank you
 
 The other end of the round, and deliberately short: he has flown across the
 city on nothing but an address, and what is waiting is somebody glad to see
-him. The branch that ends it is what starts the next round.
+him. The branch that ends it is where the next round hooks on -- put an
+`opens:` under it and finishing this one starts that one.
 
 - them: Thank you! | Köszönöm!
   - you: Any time. | Bármikor.

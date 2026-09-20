@@ -221,13 +221,14 @@ export const MATYAS_SQUARE: LandmarkSpec = {
  * earned, and ground nobody has built a house on.
  */
 export const FIRST_DROP: LandmarkSpec = {
-  name: 'The first drop',
-  // PLACEHOLDER: the corner the first round is addressed to. Picked only
-  // because it is clear of the carriageway; the real one is the level's to
-  // say, and moving it is a one-line change. See the level.
-  at: [47.501129, 19.081400],
-  width: 14,
-  depth: 10,
+  name: 'The pond at Millenáris',
+  // Beside the water rather than on it: the pond is the address and the bank
+  // is where a pigeon can put down -- landing on the water is drowning now.
+  // Fifteen metres off the middle of it, which is the nearest ground that is
+  // also clear of the path round it.
+  at: [47.51139, 19.0247],
+  width: 10,
+  depth: 7,
   height: 0,
   margin: 6,
 };

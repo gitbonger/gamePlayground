@@ -1747,7 +1747,7 @@ function graveShape(): THREE.BufferGeometry {
  * Facing -Z, which is the way the bird faces at a heading of zero, so a
  * rotation about Y means the same thing for both of them.
  */
-function personShape(): THREE.BufferGeometry {
+export function personShape(): THREE.BufferGeometry {
   const box = (
     color: number,
     width: number,

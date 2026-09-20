@@ -110,6 +110,15 @@ export interface Character {
   name: string;
   /** Which of the renderer's `CHARACTER_MORPHS` they wear. */
   morph: number;
+  /**
+   * What sort of thing they are.
+   *
+   * Everybody in the story is a pigeon, and this exists because the round is
+   * not the story: a letter is given to a pigeon by a person. What changes is
+   * only what gets drawn -- where they stand, how they are met and how they
+   * are lit up when they are the one to walk to are the same either way.
+   */
+  kind?: 'pigeon' | 'person';
 }
 
 /**
@@ -126,6 +135,10 @@ export const CHARACTERS: readonly Character[] = [
   { name: 'White', morph: 2 },
   { name: 'Ginger', morph: 3 },
   PINK,
+  // The round's sender: a person on a corner in Buda with a letter. The
+  // morph is what colour their words are printed in and nothing else -- they
+  // are not wearing it.
+  { name: 'The sender', morph: 2, kind: 'person' },
 ];
 
 export const characterNamed = (name: string): Character | undefined =>
@@ -1495,15 +1508,16 @@ export const LEVELS: readonly Level[] = [
     // ends the way the story's do, by landing and walking up to somebody --
     // and what they say is thank you.
     //
-    // PLACEHOLDER, all of it: the two corners, the two people and the words
-    // of the address are the level, and they are the thing to fill in.
+    // The first one: a letter given on a corner in Krisztinaváros and carried
+    // north to the pond in Millenáris park, which is nine hundred metres and
+    // the far side of Széll Kálmán tér.
     name: 'The round',
     mode: 'delivery',
     begins: 'perched',
     // Where he is standing when the letter is handed over. A perched level is
     // put beside whoever is briefing him rather than at this coordinate, so
     // this is the fallback and the place the map is centred on.
-    start: [47.497543, 19.083073],
+    start: [47.50165, 19.025609],
     release: 0,
     health: 1,
     when: EVENING,
@@ -1517,12 +1531,12 @@ export const LEVELS: readonly Level[] = [
     // way across a city he is supposed to know.
     hintsWithin: 50,
     cast: [
-      // The sender, on the corner he starts on.
-      { who: 'Ginger', on: { kind: 'spot', at: [47.497543, 19.083073] }, along: 0, across: 0 },
-      // And whoever is waiting at the far end, on the patch he lands on.
+      // The person who hands the letter over, standing where he starts.
+      { who: 'The sender', on: { kind: 'spot', at: [47.50165, 19.025609] }, along: 0, across: 0 },
+      // And the pigeon waiting by the water at the other end.
       { who: 'White', on: { kind: 'landmark', name: FIRST_DROP.name }, along: 2, across: 0 },
     ],
-    briefing: { who: 'Ginger', dialogue: THE_ROUND },
+    briefing: { who: 'The sender', dialogue: THE_ROUND },
     finish: { kind: 'meeting', who: 'White', dialogue: THANK_YOU, locked: true },
   },
 ];
