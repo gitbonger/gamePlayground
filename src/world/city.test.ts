@@ -927,8 +927,13 @@ describe('the ground the layers are drawn on', () => {
 
     // And they are ordered, because with no depth writing that is all there
     // is: parkland under concrete under roads under rails.
+    //
+    // One order per *layer* rather than per mesh: a layer is cut into patches
+    // of a kilometre or so, so what is on screen can be culled, and every
+    // patch of the roads is drawn at the roads' own order. What matters here
+    // is that the layers are still separated.
     const orders = flat.map((mesh) => mesh.renderOrder);
-    expect(new Set(orders).size).toBe(orders.length);
+    expect(new Set(orders).size).toBeGreaterThanOrEqual(5);
     world.dispose();
   });
 });

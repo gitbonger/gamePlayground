@@ -99,7 +99,7 @@ document.body.appendChild(renderer.domElement);
 
 // The game's near and far planes, so that what is clipped here is what is
 // clipped there.
-const camera = new THREE.PerspectiveCamera(55, W / H, 0.35, 12000);
+const camera = new THREE.PerspectiveCamera(55, W / H, 0.35, 5200);
 const params = new URLSearchParams(location.search);
 const n = (k: string, d: number) => Number(params.get(k) ?? d);
 camera.position.set(n('x', 300), n('y', 40), n('z', 60));

@@ -94,7 +94,12 @@ export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): S
   // Fog does double duty: it hides the world's edge and gives distance a feel.
   scene.fog = new THREE.Fog(HORIZON.clone(), 350, 4200);
 
-  const camera = new THREE.PerspectiveCamera(70, 1, 0.35, 12000);
+  // The far plane sits just beyond the fog rather than out at twelve
+  // kilometres. Everything past four thousand two hundred metres is solid
+  // horizon colour -- that is what the fog is -- so drawing it was drawing
+  // the far side of a hundred square kilometres of city in order to paint it
+  // the colour of the sky. Behind the fog is the one place nothing is missed.
+  const camera = new THREE.PerspectiveCamera(70, 1, 0.35, 5200);
 
   scene.add(new THREE.HemisphereLight(ZENITH.clone(), 0x6b7355, 1.5));
 
@@ -163,7 +168,10 @@ export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): S
  * there and gone as he crossed the nine kilometre line.
  */
 export function createSkyDome(direction: THREE.Vector3): THREE.Mesh {
-  const geometry = new THREE.SphereGeometry(9000, 32, 16);
+  // Inside the far plane, or the sky is clipped and the world has a hole in
+  // it where the sky should be. It follows the camera, so a smaller sphere is
+  // no less of a sky -- see the note above.
+  const geometry = new THREE.SphereGeometry(4600, 32, 16);
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,

@@ -566,7 +566,7 @@ export function buildWorld(
   // drawn on, and it has to be bigger than the city -- and cut into squares
   // about forty metres across, which is the shape of the land rather than the
   // shape of a street.
-  const sheet = (() => {
+  const sheets = (() => {
     const edges = relief.bounds;
     const over = 2500;
     const wide = edges ? Math.max(12000, edges.east - edges.west + over * 2) : 12000;
@@ -574,25 +574,41 @@ export function buildWorld(
     const middle = edges
       ? { x: (edges.west + edges.east) / 2, z: (edges.north + edges.south) / 2 }
       : { x: 0, z: 0 };
-    const plane = new THREE.PlaneGeometry(wide, deep, Math.round(wide / 40), Math.round(deep / 40));
-    plane.rotateX(-Math.PI / 2);
-    plane.translate(middle.x, 0, middle.z);
-    return plane;
+    // In patches like everything else on it, and for the same reason: as one
+    // sheet it is a quarter of a million triangles of ground, all of it
+    // submitted every frame including the half behind the bird.
+    const tiles: THREE.BufferGeometry[] = [];
+    const west = middle.x - wide / 2;
+    const north = middle.z - deep / 2;
+    const across = Math.ceil(wide / PATCH);
+    const down = Math.ceil(deep / PATCH);
+    const squares = Math.max(2, Math.round(PATCH / 40));
+    for (let col = 0; col < across; col += 1) {
+      for (let row = 0; row < down; row += 1) {
+        const plane = new THREE.PlaneGeometry(PATCH, PATCH, squares, squares);
+        plane.rotateX(-Math.PI / 2);
+        plane.translate(west + (col + 0.5) * PATCH, 0, north + (row + 0.5) * PATCH);
+        tiles.push(drape(plane));
+      }
+    }
+    return tiles;
   })();
-  const groundGeometry = drape(sheet);
-  const groundMaterial = new THREE.MeshLambertMaterial({ map: groundTexture, color: 0x6b7d52 });
-  const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-  ground.receiveShadow = true;
   // Drawn first, and -- like every other flat layer -- it does not write
   // depth. It used to be the one that did, on the grounds that something has
   // to; nothing has to. Everything in the world stands *on* this plane, so
   // there is nothing underneath for it to hide, and a flat layer that writes
   // depth at exactly the height of the flat layers drawn after it is a fight
   // those layers lose about half the pixels of.
-  ground.material.depthWrite = false;
-  ground.renderOrder = 0;
-  group.add(ground);
-  disposables.push(groundGeometry, groundMaterial, groundTexture);
+  const groundMaterial = new THREE.MeshLambertMaterial({ map: groundTexture, color: 0x6b7d52 });
+  groundMaterial.depthWrite = false;
+  disposables.push(groundMaterial, groundTexture);
+  for (const sheet of sheets) {
+    const ground = new THREE.Mesh(sheet, groundMaterial);
+    ground.receiveShadow = true;
+    ground.renderOrder = 0;
+    group.add(ground);
+    disposables.push(sheet);
+  }
 
   // A shared unit box, for the described things that are still boxes: the
   // crowd of buildings is not one of them any more -- see `buildPlans`.
@@ -1012,24 +1028,32 @@ export function buildWorld(
   // --- Buildings ------------------------------------------------------------
   // Drawn as the outlines the map gave, walls and roof, in two buffers: one
   // for the window shader and one for the tiles.
-  const { walls: wallGeometry, roofs: roofGeometry } = buildPlans(layout.plans ?? [], standOn);
+  // One pair of meshes per patch of city rather than one for the map: see
+  // `PATCH`. The materials are shared, so this is more draw calls only where
+  // there is more in view.
+  const patches = buildPlans(layout.plans ?? [], standOn);
   const wallMaterial = withWindows(
     new THREE.MeshLambertMaterial({ vertexColors: true }),
   );
   const roofMaterial = withTiles(new THREE.MeshLambertMaterial({ color: 0xffffff }));
-  disposables.push(wallGeometry, wallMaterial, roofGeometry, roofMaterial);
+  disposables.push(wallMaterial, roofMaterial);
 
-  const walls = new THREE.Mesh(wallGeometry, wallMaterial);
-  walls.castShadow = true;
-  walls.receiveShadow = true;
-  walls.name = 'walls';
-  group.add(walls);
+  let walls = new THREE.Mesh();
+  let roofs = new THREE.Mesh();
+  for (const patch of patches) {
+    disposables.push(patch.walls, patch.roofs);
+    walls = new THREE.Mesh(patch.walls, wallMaterial);
+    walls.castShadow = true;
+    walls.receiveShadow = true;
+    walls.name = 'walls';
+    group.add(walls);
 
-  const roofs = new THREE.Mesh(roofGeometry, roofMaterial);
-  roofs.castShadow = true;
-  roofs.receiveShadow = true;
-  roofs.name = 'roofs';
-  group.add(roofs);
+    roofs = new THREE.Mesh(patch.roofs, roofMaterial);
+    roofs.castShadow = true;
+    roofs.receiveShadow = true;
+    roofs.name = 'roofs';
+    group.add(roofs);
+  }
 
   // --- Trees --------------------------------------------------------------
   // Low, dense clutter near the ground: this is what sells low-altitude speed.
@@ -1044,25 +1068,41 @@ export function buildWorld(
   });
 
   // Counted first, because an InstancedMesh is told its size when it is made
-  // and a wrong guess is either wasted memory or missing trees.
+  // and a wrong guess is either wasted memory or missing trees. Counted per
+  // patch as well as per sort -- see `PATCH` -- because seventy thousand
+  // trees in one mesh is seventy thousand trees drawn wherever you look, and
+  // they are the biggest thing in the world by a wide margin.
+  const standing = new Map<number, number[]>();
   for (const tree of layout.trees) {
-    const kind = kinds[tree.species % kinds.length];
-    if (kind) kind.count += 1;
+    const key = patchOf(tree.x, tree.z);
+    let counts = standing.get(key);
+    if (!counts) {
+      counts = new Array<number>(kinds.length).fill(0);
+      standing.set(key, counts);
+    }
+    counts[tree.species % kinds.length]! += 1;
   }
 
-  const stands = kinds.map(({ geometry, material, count }) => {
-    const mesh = new THREE.InstancedMesh(geometry, material, count);
-    mesh.castShadow = true;
-    // Named so the test that counts them can tell a stand of trees from the
-    // other instanced things in the world, which is otherwise guesswork.
-    mesh.name = 'trees';
-    mesh.count = 0;
-    group.add(mesh);
-    return mesh;
-  });
+  const stands = new Map<number, THREE.InstancedMesh[]>();
+  for (const [key, counts] of standing) {
+    stands.set(
+      key,
+      kinds.map(({ geometry, material }, sort) => {
+        const mesh = new THREE.InstancedMesh(geometry, material, counts[sort]!);
+        mesh.castShadow = true;
+        // Named so the test that counts them can tell a stand of trees from
+        // the other instanced things in the world, which is otherwise
+        // guesswork.
+        mesh.name = 'trees';
+        mesh.count = 0;
+        group.add(mesh);
+        return mesh;
+      }),
+    );
+  }
 
   for (const tree of layout.trees) {
-    const stand = stands[tree.species % stands.length]!;
+    const stand = stands.get(patchOf(tree.x, tree.z))![tree.species % kinds.length]!;
     // Every shape is modelled one unit tall with its foot at the origin and
     // already in its own proportions, so the same scale puts any of them on
     // the ground at the size the layout asked for.
@@ -1070,7 +1110,9 @@ export function buildWorld(
     matrix.setPosition(tree.x, standOn(tree.x, tree.z), tree.z);
     stand.setMatrixAt(stand.count++, matrix);
   }
-  for (const stand of stands) stand.instanceMatrix.needsUpdate = true;
+  for (const patch of stands.values()) {
+    for (const stand of patch) stand.instanceMatrix.needsUpdate = true;
+  }
 
   // --- Headstones -----------------------------------------------------------
   // One instanced mesh for the lot, like the trees they stand among. A stone
@@ -1168,13 +1210,15 @@ export function buildWorld(
   // --- Parks, woods and water ----------------------------------------------
   // Drawn under the roads, so a path through a park still reads as a path.
   if (layout.areas?.length) {
-    for (const { geometry, material } of buildAreas(layout.areas)) {
-      drape(geometry);
-      disposables.push(geometry, material);
-      const patch = new THREE.Mesh(geometry, asDecal(material));
-      patch.receiveShadow = true;
-      patch.renderOrder = AREA_ORDER;
-      group.add(patch);
+    for (const ground of intoPatches(layout.areas, (area) => area.points[0] ?? null)) {
+      for (const { geometry, material } of buildAreas(ground)) {
+        drape(geometry);
+        disposables.push(geometry, material);
+        const patch = new THREE.Mesh(geometry, asDecal(material));
+        patch.receiveShadow = true;
+        patch.renderOrder = AREA_ORDER;
+        group.add(patch);
+      }
     }
   }
 
@@ -1329,24 +1373,28 @@ export function buildWorld(
   // --- Railways -------------------------------------------------------------
   // Over the road surface, because a tramway is laid in the carriageway.
   if (layout.rails?.length) {
-    const { geometry, material } = buildRails(layout.rails);
-    drape(geometry);
-    disposables.push(geometry, material);
-    const track = new THREE.Mesh(geometry, asDecal(material));
-    track.receiveShadow = true;
-    track.renderOrder = RAIL_ORDER;
-    group.add(track);
+    for (const patch of intoPatches(layout.rails, (rail) => rail.points[0] ?? null)) {
+      const { geometry, material } = buildRails(patch);
+      drape(geometry);
+      disposables.push(geometry, material);
+      const track = new THREE.Mesh(geometry, asDecal(material));
+      track.receiveShadow = true;
+      track.renderOrder = RAIL_ORDER;
+      group.add(track);
+    }
   }
 
   // --- Streets ------------------------------------------------------------
   if (layout.roads?.length) {
-    const { geometry, material } = buildRoads(layout.roads);
-    drape(geometry);
-    disposables.push(geometry, material);
-    const surface = new THREE.Mesh(geometry, asDecal(material));
-    surface.receiveShadow = true;
-    surface.renderOrder = ROAD_ORDER;
-    group.add(surface);
+    for (const patch of intoPatches(layout.roads, (road) => road.points[0] ?? null)) {
+      const { geometry, material } = buildRoads(patch);
+      drape(geometry);
+      disposables.push(geometry, material);
+      const surface = new THREE.Mesh(geometry, asDecal(material));
+      surface.receiveShadow = true;
+      surface.renderOrder = ROAD_ORDER;
+      group.add(surface);
+    }
   }
 
   // --- Bridges --------------------------------------------------------------
@@ -2906,10 +2954,63 @@ export function buildSteepleGeometry(spec: {
  * nothing extra: a box could be instanced six times over and an outline
  * cannot be instanced at all.
  */
+/**
+ * How big a patch of city is built as one mesh, in metres.
+ *
+ * The buildings used to be two meshes for the whole map, which is fine while
+ * the map is two kilometres across and wrong at ten: every triangle in the
+ * city was submitted every frame, including the half of it behind the bird,
+ * because a mesh that spans the world is never outside the view. Cut into
+ * patches, the ones that are not in shot are not drawn at all.
+ *
+ * Twelve hundred metres is the size that makes both counts small: at this
+ * distance the fog has swallowed everything anyway, so a handful of patches
+ * is all that is ever in view, and a patch is still big enough that the
+ * draw calls do not become the cost.
+ */
+const PATCH = 1500;
+
+const patchOf = (x: number, z: number) =>
+  Math.floor(x / PATCH) * 100000 + Math.floor(z / PATCH);
+
+/** Sort things into the patches they stand in, keeping each patch's order. */
+function intoPatches<T>(things: readonly T[], where: (thing: T) => readonly [number, number] | null) {
+  const patches = new Map<number, T[]>();
+  for (const thing of things) {
+    const at = where(thing);
+    if (!at) continue;
+    const key = patchOf(at[0], at[1]);
+    const already = patches.get(key);
+    if (already) already.push(thing);
+    else patches.set(key, [thing]);
+  }
+  return [...patches.values()];
+}
+
 function buildPlans(
   plans: readonly Footprint[],
   /** How high the ground is under a place: a house stands on it, level. */
   standOn: (x: number, z: number) => number = () => 0,
+): {
+  walls: THREE.BufferGeometry;
+  roofs: THREE.BufferGeometry;
+}[] {
+  // Sorted into patches first, so each one comes out as its own mesh.
+  const byPatch = new Map<number, Footprint[]>();
+  for (const plan of plans) {
+    const first = plan.ring[0];
+    if (!first) continue;
+    const key = patchOf(first[0]!, first[1]!);
+    const already = byPatch.get(key);
+    if (already) already.push(plan);
+    else byPatch.set(key, [plan]);
+  }
+  return [...byPatch.values()].map((patch) => buildOnePatch(patch, standOn));
+}
+
+function buildOnePatch(
+  plans: readonly Footprint[],
+  standOn: (x: number, z: number) => number,
 ): {
   walls: THREE.BufferGeometry;
   roofs: THREE.BufferGeometry;
