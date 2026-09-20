@@ -56,6 +56,34 @@ go somewhere rather than merely be chosen.
       - you: Okay. | Jól van.
         - opens: Temető
 
+## The round
+
+The first thing said on a delivery, and the only navigation the player gets:
+somebody hands him a letter and says where it goes, in words. The address is
+the level -- there is no arrow and no dot on the map until he is fifty metres
+from it -- so this line has to be findable by somebody who knows the city and
+honest to somebody who does not.
+
+One branch takes the letter and ends, which is what starts the flight. The
+other asks where that is, and is answered with a second landmark rather than
+with a direction: a pigeon is not given a heading, it is given the name of a
+place and left to work it out.
+
+- them: Take this to the corner of NOWHERE and NOWHERE, would you? | Elvinnéd ezt a SEHOL és a SEHOL sarkára?
+  - you: On my way. | Már repülök is.
+  - you: Where is that? | Az meg merre van?
+    - them: Past NOWHERE, and keep going. | A SEHOL mellett, és onnan tovább.
+      - you: Right. | Értem.
+
+## Thank you
+
+The other end of the round, and deliberately short: he has flown across the
+city on nothing but an address, and what is waiting is somebody glad to see
+him. The branch that ends it is what starts the next round.
+
+- them: Thank you! | Köszönöm!
+  - you: Any time. | Bármikor.
+
 ## The trapper
 
 The one out west, and the first news of the story since the empty nest. Five

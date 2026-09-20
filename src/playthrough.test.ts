@@ -229,6 +229,10 @@ describe('flying every level', () => {
     // metres and would not be at twenty.
     const buried: string[] = [];
     for (const level of LEVELS) {
+      // A level that begins on its feet is not released at all: it is stood
+      // beside whoever is talking to it, which is a place the world has
+      // already been asked about.
+      if (level.begins === 'perched') continue;
       const point = at(level.start);
       const over = world.buildings.filter((b) => {
         const turn = -(b.yaw ?? 0);

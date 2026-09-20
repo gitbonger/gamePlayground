@@ -12,9 +12,19 @@
  */
 
 import type { Words } from './i18n';
-import { CAUGHT, HEADING_OUT, SAVED, THE_ASK, THE_TRAPPER, type Turn } from './dialogue';
+import {
+  CAUGHT,
+  HEADING_OUT,
+  SAVED,
+  THANK_YOU,
+  THE_ASK,
+  THE_ROUND,
+  THE_TRAPPER,
+  type Turn,
+} from './dialogue';
 import { alone } from './script';
 import {
+  FIRST_DROP,
   HOME_TREE,
   JANI_SQUARE,
   LOFT,
@@ -46,10 +56,23 @@ export type LevelTarget =
    * landmark itself rather than being written out again, which is a typo
    * that cannot be made.
    */
-  | { kind: 'landmark'; name: string };
+  | { kind: 'landmark'; name: string }
+  /**
+   * A place on the ground, in degrees.
+   *
+   * For somebody standing on a street corner rather than on a described
+   * thing. The round needs it: a letter is handed over outside a door and
+   * taken to another door, and neither of them is a landmark with a name and
+   * a shape written down.
+   */
+  | { kind: 'spot'; at: [number, number] };
 
 /** What the marker over a level's target is called. */
-export const targetName = (level: Level): string | null => level.target?.name ?? null;
+export const targetName = (level: Level): string | null =>
+  // A spot on the ground has no name to be aimed at by: it is a coordinate,
+  // and what stands on it is placed from the coordinate rather than found by
+  // asking the world for a thing with that name.
+  level.target && 'name' in level.target ? level.target.name : null;
 
 /** Who is waiting there. */
 export interface LevelPerson {
@@ -327,6 +350,19 @@ export const waitingIn = (level: Level): Standing | undefined => {
   const who = metBy(level);
   return who === undefined ? undefined : standingOf(level, who);
 };
+
+/**
+ * Who he is standing with when the level begins, if anybody.
+ *
+ * The person who gives him the letter on a round, and the person he is
+ * finishing the level by meeting everywhere else. They are different people
+ * on a delivery and the same person in the story, which is the whole reason
+ * this is a function rather than one field read twice: a level that opens
+ * standing beside the sender must not begin him beside the receiver, who is
+ * three kilometres away.
+ */
+export const standingWith = (level: Level): Standing | undefined =>
+  level.briefing ? standingOf(level, level.briefing.who) : waitingIn(level);
 
 /** What they say, likewise. */
 export const dialogueOf = (level: Level): Turn | undefined =>
@@ -686,6 +722,28 @@ export interface Level {
    */
   finish: Finish;
   begins?: 'flight' | 'perched';
+  /**
+   * Somebody who says a piece at the start, before he has flown anywhere.
+   *
+   * The round's shape: he is standing on a corner, somebody gives him a
+   * letter and says where it goes, and then he is on his own. It is not the
+   * level's `finish` -- this conversation opens nothing and ends nothing, it
+   * just holds him still while it is said, the way every other locked
+   * conversation does.
+   */
+  briefing?: { who: string; dialogue: Turn };
+  /**
+   * How near the target before the game starts pointing at it, in metres.
+   *
+   * The whole of what makes a delivery a delivery. Left out, the arrow and
+   * the map point at the target from the moment the level begins, which is
+   * right for a level that is about flying and wrong for one that is about
+   * knowing where Rákóczi út is. Set, everything that points -- the marker
+   * over the place, the target on the minimap, the approach instructions --
+   * stays quiet until he is inside it, because nobody can be asked to find
+   * the exact doorway from the air.
+   */
+  hintsWithin?: number;
 }
 
 /**
@@ -1425,21 +1483,28 @@ export const LEVELS: readonly Level[] = [
     finish: { kind: 'free' },
   },
   {
-    // The round: a letter to carry to a crossing named after two streets.
+    // The round: a letter, an address in words, and no help finding it.
     //
-    // Delivery1, and so far only the shape of it. What is here is a place to
-    // be let go with the whole city in front of him and the rocket to cross
-    // it with; what is not here yet is the letter, the crossing it is
-    // addressed to, and the start being somewhere different every time.
+    // The shape of every delivery, and the first one is the shape written
+    // out. He begins on his feet on a corner with the sender beside him --
+    // `begins: 'perched'` and `briefing`, which is a conversation that opens
+    // nothing and ends nothing, it only holds him still while it is said.
+    // Then he is on his own: `hintsWithin` keeps the arrow, the map and the
+    // approach instructions quiet until he is fifty metres out, which is near
+    // enough to be looking for a doorway rather than a district. The level
+    // ends the way the story's do, by landing and walking up to somebody --
+    // and what they say is thank you.
+    //
+    // PLACEHOLDER, all of it: the two corners, the two people and the words
+    // of the address are the level, and they are the thing to fill in.
     name: 'The round',
     mode: 'delivery',
-    // Off the Danube by Margaret Island, which is about the middle of
-    // everything now that the map reaches Óbuda: the hills one way, Pest the
-    // other, and the river to follow either way.
-    start: [47.526491, 19.048907],
-    // South, down the river towards the bridges and the city.
-    facing: [47.507218, 19.045543],
-    release: 120,
+    begins: 'perched',
+    // Where he is standing when the letter is handed over. A perched level is
+    // put beside whoever is briefing him rather than at this coordinate, so
+    // this is the fallback and the place the map is centred on.
+    start: [47.497543, 19.083073],
+    release: 0,
     health: 1,
     when: EVENING,
     escort: false,
@@ -1447,8 +1512,18 @@ export const LEVELS: readonly Level[] = [
     // trial. The wing runs out only when a level is about the wing.
     tireless: true,
     teaches: false,
-    cast: [],
-    finish: { kind: 'free' },
+    target: { kind: 'landmark', name: FIRST_DROP.name },
+    // Fifty metres, which is the whole rule: past that he is finding his own
+    // way across a city he is supposed to know.
+    hintsWithin: 50,
+    cast: [
+      // The sender, on the corner he starts on.
+      { who: 'Ginger', on: { kind: 'spot', at: [47.497543, 19.083073] }, along: 0, across: 0 },
+      // And whoever is waiting at the far end, on the patch he lands on.
+      { who: 'White', on: { kind: 'landmark', name: FIRST_DROP.name }, along: 2, across: 0 },
+    ],
+    briefing: { who: 'Ginger', dialogue: THE_ROUND },
+    finish: { kind: 'meeting', who: 'White', dialogue: THANK_YOU, locked: true },
   },
 ];
 

@@ -114,7 +114,8 @@ describe('what the levels aim at', () => {
     // up by the target's name, and two levels on one building would collide
     // if it went by the level's.
     for (const level of LEVELS) {
-      expect(targetName(level), level.name).toBe(level.target?.name ?? null);
+      const named = level.target && 'name' in level.target ? level.target.name : null;
+      expect(targetName(level), level.name).toBe(named);
     }
   });
 
@@ -513,7 +514,6 @@ describe('what the levels aim at', () => {
       'Elméleti Tömb',
       'Népsziget',
       'Gellért hegy',
-      'The round',
     ]);
     for (const level of dropped) expect(level.release, level.name).toBeGreaterThanOrEqual(100);
 
@@ -923,7 +923,7 @@ describe('what the levels aim at', () => {
       // aiming for. Only askable of a target that stands still: a wagon is
       // somewhere else every tick and has no position until the trains have
       // been laid out, so there is nothing here to measure against.
-      const described = LANDMARKS.find((l) => l.name === level.target?.name);
+      const described = LANDMARKS.find((l) => l.name === targetName(level));
       if (!described) {
         expect(level.target?.kind, `${level.name} aims at nothing described`).not.toBe('landmark');
         continue;
@@ -1012,7 +1012,13 @@ describe('what the levels aim at', () => {
       'Gellért hegy',
       'The round',
     ]);
-    for (const level of free.slice(1)) expect(level.finish.kind, level.name).toBe('free');
+    // All of them but the loft and the round have nothing to finish. The
+    // round is finished by arriving; what it does not have is a way to fail,
+    // which is why it is on this list.
+    for (const level of free.slice(1)) {
+      if (modeOf(level) === 'delivery') continue;
+      expect(level.finish.kind, level.name).toBe('free');
+    }
     // And every level with nothing to finish has it, not just some of them.
     for (const level of LEVELS) {
       if (level.finish.kind === 'free') expect(level.tireless, level.name).toBe(true);
@@ -1124,7 +1130,11 @@ describe('what the levels aim at', () => {
     for (const level of LEVELS.slice(0, ends)) {
       expect(level.finish.kind, level.name).not.toBe('free');
     }
+    // After it, places to fly rather than levels to finish -- except the
+    // round, which is a delivery: it is finished by arriving, and what makes
+    // it a delivery is that nothing tells you where.
     for (const level of LEVELS.slice(ends)) {
+      if (modeOf(level) === 'delivery') continue;
       expect(level.finish.kind, level.name).toBe('free');
     }
   });
@@ -1158,7 +1168,6 @@ describe('what the levels aim at', () => {
       'Elméleti Tömb',
       'Népsziget',
       'Gellért hegy',
-      'The round',
     ]);
   });
 
@@ -1253,7 +1262,6 @@ describe('what the levels aim at', () => {
       'Elméleti Tömb',
       'Népsziget',
       'Gellért hegy',
-      'The round',
     ]);
   });
 
@@ -1369,7 +1377,7 @@ describe('what the levels aim at', () => {
         return opens !== undefined && 'scene' in opens && opens.scene === scene.name;
       });
       if (!from) continue;
-      const mark = LANDMARKS.find((each) => each.name === from.target?.name);
+      const mark = LANDMARKS.find((each) => each.name === targetName(from));
       if (!mark) continue;
 
       const spot = project(mark.at[0], mark.at[1], centre);
@@ -1481,7 +1489,7 @@ describe('what the levels aim at', () => {
     const centre = HOME_MAP.centre as [number, number];
     for (const level of LEVELS) {
       if (level.begins === 'perched') continue;
-      const described = LANDMARKS.find((l) => l.name === level.target?.name);
+      const described = LANDMARKS.find((l) => l.name === targetName(level));
       if (!described) continue;
       const from = project(level.start[0], level.start[1], centre);
       const to = project(described.at[0], described.at[1], centre);
@@ -1531,8 +1539,11 @@ describe('what the levels aim at', () => {
     // The perched opening is a hack -- a story beat told through the
     // level-completion machinery -- and this is the fence round it. One level
     // is allowed to be won by starting it.
+    // Two now: the nest, and the round, which begins on its feet for a
+    // different reason -- somebody is handing him a letter, and a pigeon
+    // taking delivery of one in mid-air is not a thing.
     const perched = LEVELS.filter((level) => level.begins === 'perched');
-    expect(perched).toEqual([LEVELS[0]]);
+    expect(perched.map((level) => level.name)).toEqual(['Nest', 'The round']);
   });
 
   it('turns somebody standing alone beside a flat thing to look at it', () => {
@@ -1742,6 +1753,9 @@ describe('where a level begins when it is picked out of the menu', () => {
     // -- which every level has, and which is why this cannot strand one.
     for (const level of LEVELS) {
       expect(level.start, level.name).toHaveLength(2);
+      // A level that begins standing is not released at all, so its release
+      // is a formality and may be nought.
+      if (level.begins === 'perched') continue;
       expect(level.release, level.name).toBeGreaterThan(0);
     }
   });

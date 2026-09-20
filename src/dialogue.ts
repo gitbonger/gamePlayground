@@ -182,3 +182,6 @@ export const THE_TRAPPER = conversation('The trapper');
 export const CAUGHT = conversation('Caught');
 export const THE_ASK = conversation('The ask');
 export const SAVED = conversation('Saved');
+/** The round: the letter handed over, and the thanks at the far end of it. */
+export const THE_ROUND = conversation('The round');
+export const THANK_YOU = conversation('Thank you');

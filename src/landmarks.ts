@@ -210,6 +210,28 @@ export const MATYAS_SQUARE: LandmarkSpec = {
  * of the loft, so going round the squares walks the hero towards the thing he
  * has not thought of yet without anybody having arranged it.
  */
+/**
+ * The far end of the first round, and the shape every one after it takes.
+ *
+ * A patch of pavement on a street corner, no different from the squares the
+ * search levels land on except that nothing points at it until the pigeon is
+ * fifty metres away -- see `Level.hintsWithin`. It is a landmark rather than
+ * a bare coordinate because a delivery needs the same three things a square
+ * needs: somewhere flat to put down, a marker to hang the arrow on once it is
+ * earned, and ground nobody has built a house on.
+ */
+export const FIRST_DROP: LandmarkSpec = {
+  name: 'The first drop',
+  // PLACEHOLDER: the corner the first round is addressed to. Picked only
+  // because it is clear of the carriageway; the real one is the level's to
+  // say, and moving it is a one-line change. See the level.
+  at: [47.501129, 19.081400],
+  width: 14,
+  depth: 10,
+  height: 0,
+  margin: 6,
+};
+
 export const JANI_SQUARE: LandmarkSpec = {
   name: 'Jani Pali tér',
   at: [47.495871, 19.077971],
@@ -363,6 +385,7 @@ export const LANDMARKS: readonly LandmarkSpec[] = [
   PETROL_STATION,
   MATYAS_SQUARE,
   JANI_SQUARE,
+  FIRST_DROP,
   THEORY_SOUTH,
   THEORY_NORTH,
   KELETI,

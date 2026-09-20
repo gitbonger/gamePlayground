@@ -88,7 +88,19 @@ describe('reading the script out of the file', () => {
     // wrote and forgot to hook up, which reads exactly like one that works.
     const used = new Set<string>();
     for (const scene of SCENES) if (alone(scene.name).length) used.add(scene.name);
-    for (const name of ['Heading out', 'The trapper', 'Caught', 'The ask', 'Saved']) used.add(name);
+    // The story's five, and the round's two: a level names these rather than
+    // a scene, so they are listed here the same way.
+    for (const name of [
+      'Heading out',
+      'The trapper',
+      'Caught',
+      'The ask',
+      'Saved',
+      'The round',
+      'Thank you',
+    ]) {
+      used.add(name);
+    }
     for (const heading of SPOKEN) expect(used, `"${heading}" is in the file`).toContain(heading);
   });
 });

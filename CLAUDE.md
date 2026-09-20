@@ -72,6 +72,14 @@ weigh. Then give the numbers and a recommendation.
   solid and **soft**, so a pigeon can sit on a wire and nothing about a wire
   can kill him — see `Box.soft`, which now forgives a bad landing as well as
   a bad collision.
+- **A delivery level**, which is the shape the round is built on: `begins:
+  'perched'` stands him beside the sender, `briefing` is the conversation that
+  hands the letter over (it opens nothing and ends nothing — it only holds him
+  still while it is said), `hintsWithin` keeps the arrow, the minimap and the
+  approach instructions quiet until he is that near the target, and the level
+  ends by landing and walking up to whoever is waiting. Somebody can stand on
+  a plain street corner now — `{ kind: 'spot', at: [lat, lon] }` — as well as
+  on a described landmark.
 - `src/finish.ts` — what ends each kind of level.
 - `src/render/messages.ts` — the instruction conditions in code.
 - `scripts/start-manualtest.sh` — the play server, which does not reload

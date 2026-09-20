@@ -83,7 +83,7 @@ import {
   sceneNamed,
   standingOf,
   targetName,
-  waitingIn,
+  standingWith,
   type Character,
   type Level,
   type LevelTarget,
@@ -724,6 +724,8 @@ const NOTE_SECONDS = 5;
 let talkingTo: Resident | null = null;
 /** Whether the conversation under way holds him until it is over. */
 let talkLocked = false;
+/** Whether the letter has been handed over on this run: see `Level.briefing`. */
+let briefed = false;
 
 // All of the above is declared here rather than beside the code that uses it
 // because `playLevel` runs at module scope, and a `let` read before its own
@@ -742,7 +744,18 @@ const objective = (name: string | null) =>
 const activeMarker = () => {
   const here = LEVELS[level];
   if (!here || here.finish.kind === 'crossing') return null;
-  return objective(targetName(here));
+  const marker = objective(targetName(here));
+  // And on a level that is about finding the place yourself, nothing points
+  // at it until he is near enough to be looking for a doorway rather than a
+  // district. Everything that points reads this -- the marker over the place,
+  // the target on the minimap, the approach instructions -- so the one rule
+  // is written once. See `Level.hintsWithin`.
+  if (!marker || here.hintsWithin === undefined) return marker;
+  const away = Math.hypot(
+    bird.position.x - marker.position.x,
+    bird.position.z - marker.position.z,
+  );
+  return away <= here.hintsWithin ? marker : null;
 };
 scene.add(world.group);
 
@@ -856,19 +869,46 @@ function switchMode(to: Mode): void {
  * those uses it to work out where it began -- see `releaseFor`.
  */
 function opposite(spec: Level): { at: Vec3; facing: Vec3 } | null {
-  const waiting = waitingIn(spec);
+  const waiting = standingWith(spec);
   const stood = waiting ? standingSpot(waiting) : null;
-  const marker = objective(targetName(spec));
-  if (!waiting || !stood || !marker) return null;
+  if (!waiting || !stood) return null;
 
-  const described = LANDMARKS.find((l) => l.name === spec.target?.name);
-  const across = pointOn(
-    { x: marker.position.x, z: marker.position.z, yaw: described?.yaw ?? 0 },
-    -waiting.along,
-    -waiting.across,
-  );
-  return { at: vec(across.x, stood.at.y, across.z), facing: stood.at };
+  // On a described thing, across the middle of it: the two of them stand at
+  // either end of a branch or a terrace, which is the shot every one of the
+  // story's conversations is framed as.
+  if (waiting.on.kind === 'landmark') {
+    const marker = objective(waiting.on.name);
+    if (!marker) return null;
+    const named = waiting.on.name;
+    const described = LANDMARKS.find((l) => l.name === named);
+    const across = pointOn(
+      { x: marker.position.x, z: marker.position.z, yaw: described?.yaw ?? 0 },
+      -waiting.along,
+      -waiting.across,
+    );
+    return { at: vec(across.x, stood.at.y, across.z), facing: stood.at };
+  }
+
+  // On a corner, beside them: there is no middle to be at either end of, so
+  // he stands an arm's length off and turns to face them. Which side does not
+  // matter and there is nothing to mirror about, so it is the way they are
+  // facing, which puts him in front of them.
+  const beside = pointOn({ x: stood.at.x, z: stood.at.z, yaw: stood.facing }, BESIDE, 0);
+  return {
+    at: vec(beside.x, standingOn.groundAt(beside.x, beside.z) + defaultParams.bodyRadius, beside.z),
+    facing: stood.at,
+  };
 }
+
+/**
+ * How far off somebody he is put down when a level opens standing with them,
+ * in metres.
+ *
+ * Near enough that the conversation starts on the first tick -- `meeting`
+ * wants them within reach -- and far enough that two pigeons are not drawn
+ * inside each other.
+ */
+const BESIDE = 0.7;
 
 /**
  * The level whose conversation opens this one, if one does.
@@ -1582,6 +1622,21 @@ function standingSpot(spot: Standing): { at: Vec3; facing: number; on: number | 
     };
   }
 
+  // A place on the ground, for somebody waiting on a corner: the round hands
+  // a letter over outside a door and takes it to another door, and neither of
+  // those is a described thing with a name and a shape.
+  if (place.kind === 'spot') {
+    const on = project(place.at[0], place.at[1], map.centre);
+    const at = pointOn({ x: on.x, z: on.z, yaw: 0 }, person.along, person.across);
+    return {
+      at: vec(at.x, standingOn.groundAt(at.x, at.z) + defaultParams.bodyRadius, at.z),
+      // Facing back down the way he came, which for somebody expecting a
+      // pigeon is as good as any: they turn to look when he walks up.
+      facing: 0,
+      on: null,
+    };
+  }
+
   // Otherwise it is one of the described things, which stands still and whose
   // shape is written down. The marker gives the place -- over the terrace of
   // a block of flats, over the middle of a patch of concrete -- and the
@@ -1901,6 +1956,7 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   paintWayline();
 
   finished = false;
+  briefed = false;
   talk = null;
   talkLocked = false;
   // A scene or a conversation's last words carry over a hand-over, which is
@@ -3110,6 +3166,20 @@ function reachLevel(): void {
     : (residents.find((resident) => resident.here && meeting(bird, resident.state)) ?? null);
 
   const here = LEVELS[level];
+
+  // The letter, handed over before he has flown anywhere.
+  //
+  // It finishes nothing -- `finished` is left alone, so the conversation
+  // running out opens no level and starts no scene. What it does is hold him
+  // still while it is said and then let go, and the take-off instruction
+  // takes it from there. See `Level.briefing`.
+  if (here?.briefing && !briefed && talkingTo?.who.name === here.briefing.who) {
+    briefed = true;
+    talkLocked = true;
+    talk = begin(here.briefing.dialogue);
+    return;
+  }
+
   // Meeting them finishes the level and nothing else. What happens next is
   // the player's move, not the game's: they are standing with somebody, and
   // the somebody says hello.
