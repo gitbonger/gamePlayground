@@ -33,7 +33,7 @@ import {
   type Station,
 } from './layout';
 import type { Rail, Road } from './streets';
-import { DECK, deckOf, type Bridge } from './bridges';
+import { DECK, deckOf, type Bridge, type Deck } from './bridges';
 import { standingDogGeometry } from '../render/dog';
 import { WAITING } from './waiting';
 import { insetRing, orientedBox, shoelace } from './plans';
@@ -2994,28 +2994,44 @@ const PYLON_STEEL = 0x9aa1a8;
  * See `HANGS` for where the cable is tied on, which is the other half of the
  * same drawing.
  */
+/**
+ * One steel member, from one place to another.
+ *
+ * Everything built out of girders in this world -- a pylon, the truss over a
+ * railway bridge -- is a list of these. A box turned to lie along the line
+ * between two points, which is what a strut is.
+ */
+function strut(
+  into: { geometry: THREE.BufferGeometry; color: number }[],
+  from: readonly [number, number, number],
+  to: readonly [number, number, number],
+  width: number,
+  colour: number,
+): void {
+  const along = new THREE.Vector3(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
+  const run = along.length();
+  if (run < 0.01) return;
+  const part = new THREE.BoxGeometry(width, run, width);
+  // A box comes with texture coordinates and nothing here is textured. They
+  // matter because these are merged with hand-built geometry that has none,
+  // and a merge of one with and one without simply fails.
+  part.deleteAttribute('uv');
+  part.applyQuaternion(
+    new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), along.normalize()),
+  );
+  part.translate((from[0] + to[0]) / 2, (from[1] + to[1]) / 2, (from[2] + to[2]) / 2);
+  into.push({ geometry: part, color: colour });
+}
+
 export function buildPylonGeometry(height: number): THREE.BufferGeometry {
   const pieces: { geometry: THREE.BufferGeometry; color: number }[] = [];
   const thick = Math.max(0.1, height * 0.011);
-  const along = new THREE.Vector3();
-  const turn = new THREE.Quaternion();
-  const upright = new THREE.Vector3(0, 1, 0);
 
-  /** One member, from one place to another. */
-  const strut = (
+  const strutTo = (
     from: readonly [number, number, number],
     to: readonly [number, number, number],
     width = thick,
-  ) => {
-    along.set(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
-    const run = along.length();
-    if (run < 0.01) return;
-    const part = new THREE.BoxGeometry(width, run, width);
-    turn.setFromUnitVectors(upright, along.clone().normalize());
-    part.applyQuaternion(turn);
-    part.translate((from[0] + to[0]) / 2, (from[1] + to[1]) / 2, (from[2] + to[2]) / 2);
-    pieces.push({ geometry: part, color: PYLON_STEEL });
-  };
+  ) => strut(pieces, from, to, width, PYLON_STEEL);
 
   /**
    * Half the width of the tower at a height, as the fraction of the whole it
@@ -3050,14 +3066,14 @@ export function buildPylonGeometry(height: number): THREE.BufferGeometry {
     const low = levels[panel]!;
     const high = levels[panel + 1]!;
     // The legs.
-    for (const [sx, sz] of sides) strut(corner(low, sx, sz), corner(high, sx, sz));
+    for (const [sx, sz] of sides) strutTo(corner(low, sx, sz), corner(high, sx, sz));
     // The horizontal member that closes the panel off at the top.
     for (let i = 0; i < sides.length; i += 1) {
       const here = sides[i]!;
       const next = sides[(i + 1) % sides.length]!;
-      strut(corner(high, here[0], here[1]), corner(high, next[0], next[1]), thick * 0.75);
+      strutTo(corner(high, here[0], here[1]), corner(high, next[0], next[1]), thick * 0.75);
       // And one diagonal across each face of it, which is the lattice.
-      strut(corner(low, here[0], here[1]), corner(high, next[0], next[1]), thick * 0.6);
+      strutTo(corner(low, here[0], here[1]), corner(high, next[0], next[1]), thick * 0.6);
     }
   }
 
@@ -3068,25 +3084,25 @@ export function buildPylonGeometry(height: number): THREE.BufferGeometry {
     const root = halfAt(TOWER.beam.up) * side;
     const tip = TOWER.beam.out * side;
     for (const sz of [-1, 1]) {
-      strut([root, beamUp, sz * deep], [tip, beamUp, sz * deep * 0.35]);
-      strut([root, beamUp - deep, sz * deep], [tip, beamUp, sz * deep * 0.35], thick * 0.7);
+      strutTo([root, beamUp, sz * deep], [tip, beamUp, sz * deep * 0.35]);
+      strutTo([root, beamUp - deep, sz * deep], [tip, beamUp, sz * deep * 0.35], thick * 0.7);
     }
-    strut([root, beamUp - deep, 0], [tip * 0.55, beamUp, 0], thick * 0.7);
+    strutTo([root, beamUp - deep, 0], [tip * 0.55, beamUp, 0], thick * 0.7);
     // The insulator string, hanging the phase under the beam's end.
-    strut([tip, beamUp, 0], [tip, height * HANGS[0]!.up, 0], thick * 0.8);
+    strutTo([tip, beamUp, 0], [tip, height * HANGS[0]!.up, 0], thick * 0.8);
   }
 
   // The fork in the window, which is what the middle phase hangs off.
   const forkUp = height * HANGS[2]!.up;
   for (const side of [-1, 1]) {
-    strut([side * halfAt(0.64), height * 0.64, 0], [0, forkUp, 0], thick * 0.8);
+    strutTo([side * halfAt(0.64), height * 0.64, 0], [0, forkUp, 0], thick * 0.8);
   }
 
   // And the two peaks over it, carrying the earth wires.
   for (const side of [-1, 1]) {
     const tip: [number, number, number] = [side * TOWER.peak.out, height * TOWER.peak.up, 0];
-    strut([side * halfAt(0.86), height * 0.86, deep], tip);
-    strut([side * halfAt(0.86), height * 0.86, -deep], tip);
+    strutTo([side * halfAt(0.86), height * 0.86, deep], tip);
+    strutTo([side * halfAt(0.86), height * 0.86, -deep], tip);
   }
 
   return painted(pieces);
@@ -3442,6 +3458,10 @@ function buildRails(rails: readonly Rail[]): {
   const edges = new Floats(points * 18);
 
   for (const rail of rails) {
+    // What is carried on a bridge is drawn by the bridge: see `Rail.bridge`.
+    // It is in this list for the trains, which follow it, and not for the
+    // painter, who would lay it flat across the Danube.
+    if (rail.bridge) continue;
     const tram = rail.kind === 'tram' ? 1 : 0;
     let along = 0;
 
@@ -3624,6 +3644,108 @@ const PARAPET = { height: 1.0, width: 0.4 };
 const BRIDGE_CONCRETE = 0x8b8a85;
 /** And the carriageway on top of it, which is a road like any other. */
 const BRIDGE_SURFACE = 0x53534f;
+/** What a railway deck is made of, and what runs along it. */
+const BALLAST = 0x6a6259;
+const RAIL_STEEL = 0x9b9a95;
+/** Standard gauge, near enough, for the pair drawn on a deck. */
+const GAUGE_ON_DECK = 1.5;
+
+/** Steel, a shade darker than a pylon's: this one is painted and old. */
+const TRUSS_STEEL = 0x8b949c;
+const PIER_STONE = 0xa9a49b;
+
+/**
+ * The truss over a railway bridge, and the piers under it.
+ *
+ * A through truss, which is what the Ujpest bridge is and what the photograph
+ * of any old steel railway bridge shows: two vertical trusses either side of
+ * the track with the train running between them, verticals every few metres,
+ * a diagonal in every panel, and the top chords tied across above the train.
+ * Under it, a pier every hundred metres or so, standing in the water.
+ *
+ * Only the long ones get it. A twenty metre rail flyover over a road is a
+ * slab, and a truss on it would be a Meccano set over a level crossing.
+ */
+function buildRailBridge(deck: Deck, pieces: { geometry: THREE.BufferGeometry; color: number }[]): void {
+  const spine = deck.spine;
+  let span = 0;
+  for (let i = 1; i < spine.length; i += 1) {
+    span += Math.hypot(spine[i]![0] - spine[i - 1]![0], spine[i]![1] - spine[i - 1]![1]);
+  }
+  if (span < 120) return;
+
+  const half = deck.width / 2;
+  const tall = 7.5;
+  const member = 0.34;
+  /** Where the middle line is at a distance along it, and which way it runs. */
+  const at = (along: number) => {
+    let gone = 0;
+    for (let i = 1; i < spine.length; i += 1) {
+      const a = spine[i - 1]!;
+      const b = spine[i]!;
+      const leg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (gone + leg >= along || i === spine.length - 1) {
+        const t = leg === 0 ? 0 : Math.min(1, (along - gone) / leg);
+        const dx = (b[0] - a[0]) / (leg || 1);
+        const dz = (b[1] - a[1]) / (leg || 1);
+        return {
+          x: a[0] + (b[0] - a[0]) * t,
+          y: a[2] + (b[2] - a[2]) * t,
+          z: a[1] + (b[1] - a[1]) * t,
+          // Square to the way it runs, for the two sides of the truss.
+          outX: -dz,
+          outZ: dx,
+        };
+      }
+      gone += leg;
+    }
+    const last = spine[spine.length - 1]!;
+    return { x: last[0], y: last[2], z: last[1], outX: 0, outZ: 1 };
+  };
+
+  // Panels of about ten metres, which is what the bays of a truss are.
+  const panels = Math.max(6, Math.round(span / 10));
+  const step = span / panels;
+  const corner = (along: number, side: number, up: number): [number, number, number] => {
+    const on = at(along);
+    return [on.x + on.outX * half * side, on.y + up, on.z + on.outZ * half * side];
+  };
+
+  for (const side of [-1, 1]) {
+    for (let panel = 0; panel < panels; panel += 1) {
+      const from = panel * step;
+      const to = (panel + 1) * step;
+      // The top chord, the vertical at the end of the panel, and the diagonal
+      // across it -- alternating, so the pattern reads as a truss.
+      strut(pieces, corner(from, side, tall), corner(to, side, tall), member, TRUSS_STEEL);
+      strut(pieces, corner(to, side, 0), corner(to, side, tall), member * 0.8, TRUSS_STEEL);
+      const lean = panel % 2 === 0;
+      strut(
+        pieces,
+        corner(from, side, lean ? 0 : tall),
+        corner(to, side, lean ? tall : 0),
+        member * 0.7,
+        TRUSS_STEEL,
+      );
+    }
+  }
+
+  // The bracing overhead, tying the two top chords together.
+  for (let panel = 0; panel <= panels; panel += 2) {
+    const along = Math.min(span, panel * step);
+    strut(pieces, corner(along, -1, tall), corner(along, 1, tall), member * 0.7, TRUSS_STEEL);
+  }
+
+  // And the piers: one every hundred metres, down to the water.
+  const piers = Math.max(1, Math.round(span / 110) - 1);
+  for (let pier = 1; pier <= piers; pier += 1) {
+    const on = at((span * pier) / (piers + 1));
+    const stone = new THREE.BoxGeometry(half * 1.5, on.y, half * 0.9);
+    stone.deleteAttribute('uv');
+    stone.translate(on.x, on.y / 2, on.z);
+    pieces.push({ geometry: stone, color: PIER_STONE });
+  }
+}
 
 function buildBridges(bridges: readonly Bridge[]): {
   geometry: THREE.BufferGeometry;
@@ -3631,14 +3753,36 @@ function buildBridges(bridges: readonly Bridge[]): {
 } {
   const positions: number[] = [];
   const colours: number[] = [];
+  /** The steelwork, which is built out of struts rather than out of beams. */
+  const girders: { geometry: THREE.BufferGeometry; color: number }[] = [];
 
   for (const bridge of bridges) {
     const deck = deckOf(bridge);
     if (!deck) continue;
+    if (bridge.rail) buildRailBridge(deck, girders);
 
     const half = deck.width / 2;
-    // The slab: carriageway on top, concrete everywhere else.
-    beam(deck.spine, 0, half, -DECK, 0, BRIDGE_CONCRETE, BRIDGE_SURFACE, positions, colours);
+    // The slab: carriageway on top, concrete everywhere else. A railway deck
+    // is ballast rather than tarmac, and has a pair of rails on it instead of
+    // a parapet -- two thin steel beams at the gauge, which is what you see
+    // of a railway from above.
+    beam(
+      deck.spine,
+      0,
+      half,
+      -DECK,
+      0,
+      BRIDGE_CONCRETE,
+      bridge.rail ? BALLAST : BRIDGE_SURFACE,
+      positions,
+      colours,
+    );
+    if (bridge.rail) {
+      for (const side of [1, -1]) {
+        beam(deck.spine, (side * GAUGE_ON_DECK) / 2, 0.09, 0, 0.16, RAIL_STEEL, RAIL_STEEL, positions, colours);
+      }
+      continue;
+    }
     // And a parapet down each edge, standing on it.
     for (const side of [1, -1]) {
       const at = side * (half - PARAPET.width / 2);
@@ -3657,10 +3801,14 @@ function buildBridges(bridges: readonly Bridge[]): {
     }
   }
 
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
-  geometry.computeVertexNormals();
+  const slabs = new THREE.BufferGeometry();
+  slabs.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  slabs.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
+  slabs.computeVertexNormals();
+
+  // The decks and the steel over them in one buffer: same material, and a
+  // bridge is one thing.
+  const geometry = girders.length ? merged([slabs, painted(girders)]) : slabs;
 
   return {
     geometry,

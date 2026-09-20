@@ -99,3 +99,57 @@ describe('a road carried over something', () => {
     expect(deckOf({ ...kerepesi, points: [[0, 0]] })).toBeNull();
   });
 });
+
+describe('a railway carried over a river', () => {
+  /** Seven hundred metres of it, which is what the Danube takes. */
+  const crossing = (points: [number, number][] = [[0, 0], [700, 0]]) => ({
+    kind: 'rail',
+    width: 8,
+    points,
+    layer: 1,
+    rail: true,
+  });
+
+  it('keeps the span over the water level', () => {
+    const deck = deckOf(crossing())!;
+    // The middle four hundred metres of a seven hundred metre crossing is
+    // within a few centimetres of flat: the climb belongs on the bank.
+    const middle = deck.spine.filter((point) => point[0] > 150 && point[0] < 550);
+    const ys = middle.map((point) => point[2]);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(0.3);
+  });
+
+  it('stands high enough to clear the shipping', () => {
+    const deck = deckOf(crossing())!;
+    const high = Math.max(...deck.spine.map((point) => point[2]));
+    // Eleven metres over the water, where a road flyover has six over the
+    // road: a barge is not a lorry.
+    expect(high).toBeGreaterThan(11);
+    expect(high).toBeLessThan(13);
+  });
+
+  it('climbs at a grade a train could take', () => {
+    const deck = deckOf(crossing())!;
+    let steepest = 0;
+    for (let i = 1; i < deck.spine.length; i += 1) {
+      const a = deck.spine[i - 1]!;
+      const b = deck.spine[i]!;
+      const run = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (run > 0) steepest = Math.max(steepest, Math.abs(b[2] - a[2]) / run);
+    }
+    // One in fifteen at its steepest, against a road's one in seven. Not a
+    // grade any railway would build -- it is three hundred metres of
+    // embankment doing the work of a kilometre -- but the shape is the thing
+    // that reads: level over the water, climbing only on the bank.
+    expect(steepest).toBeLessThan(0.07);
+  });
+
+  it('is still a flyover when it is short', () => {
+    // A twenty metre rail bridge over a street is not a river crossing, and
+    // building it eleven metres up with three hundred metres of embankment
+    // either side would bury the streets it lands between.
+    const deck = deckOf({ ...crossing([[0, 0], [20, 0]]) })!;
+    const high = Math.max(...deck.spine.map((point) => point[2]));
+    expect(high).toBeLessThan(8);
+  });
+});

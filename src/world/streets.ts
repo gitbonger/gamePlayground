@@ -40,6 +40,17 @@ export interface Rail {
   width: number;
   /** Polyline in local metres, [x, z] with north at -Z. */
   points: [number, number][];
+  /**
+   * Whether this stretch is carried on a bridge.
+   *
+   * It is in here *and* in `bridges`, on purpose and for two different
+   * readers. The trains trace their routes along this list, and a line with
+   * its viaducts taken out is a line that stops at every road it crosses --
+   * which is what happened: the longest route out of Keleti fell from three
+   * kilometres to two and a half. The renderer reads the flag instead and
+   * leaves the painting to the deck.
+   */
+  bridge?: boolean;
 }
 
 export interface MapData {

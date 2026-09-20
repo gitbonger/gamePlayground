@@ -57,6 +57,13 @@ weigh. Then give the numbers and a recommendation.
   round). `LEVEL_TAGS` is what each is called in its own game, and that is
   what the level list shows. The rocket on `X` is flown on everything but the
   story — `rocketOn` — and the level says so when it begins.
+- `src/world/bridges.ts` — what a bridge is: the deck, the ramps that are
+  invented for it, and how high it stands. A railway bridge over the river is
+  the same machinery with different numbers — eleven metres up, a level span
+  and the climb on the bank — plus a truss over it, drawn in `city.ts`. A
+  railway on a bridge is in **both** `bridges` and `rails`: the trains follow
+  the rails and would stop at every viaduct otherwise, and the painter skips
+  whatever is flagged `bridge`.
 - `src/world/grid.ts` — the overhead power lines: towers where the survey
   tagged one, cable sagging between them, three arms of two. The cable is
   solid and **soft**, so a pigeon can sit on a wire and nothing about a wire

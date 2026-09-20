@@ -348,8 +348,21 @@ async function overpass(query: string, what: string): Promise<{ elements: Overpa
         },
         body: new URLSearchParams({ data: query }),
       });
-      if (response.ok) return (await response.json()) as { elements: OverpassElement[] };
-      last = `${response.status} ${response.statusText}`;
+      if (response.ok) {
+        const body = (await response.json()) as {
+          elements: OverpassElement[];
+          remark?: string;
+        };
+        // A timed-out Overpass query answers 200 with *most* of the data and
+        // a remark saying so. Taking that at its word is how a railway bridge
+        // over the Danube went missing from a map that looked complete: a
+        // hundred and ninety rail ways short, and nothing to say it. A remark
+        // is a failure here, whatever the status line says.
+        if (!body.remark) return body;
+        last = `answered with a remark: ${body.remark.split('\n')[0]}`;
+      } else {
+        last = `${response.status} ${response.statusText}`;
+      }
     } catch (error) {
       last = String(error);
     }
@@ -420,17 +433,32 @@ async function main() {
   // another, and a few thousand nodes are a third -- and asking for all of it
   // at once means a single timeout loses the lot. Split, each can be retried
   // on its own.
-  const payload = await overpass(
-    `[out:json][timeout:180];(way["highway"~"^(${wanted})$"](${bbox});` +
-      `way["railway"~"^(${track})$"](${bbox});` +
+  // Four queries rather than one. What is asked for has grown -- a hundred
+  // square kilometres of it now -- and a single question big enough to time
+  // out comes back *nearly* answered, which is worse than not answered at
+  // all: see `overpass`. Asked in pieces, each piece is small enough to
+  // finish and any one of them can be retried on its own.
+  const streets = await overpass(
+    `[out:json][timeout:240];way["highway"~"^(${wanted})$"](${bbox});out geom;`,
+    'roads',
+  );
+  const tracks = await overpass(
+    `[out:json][timeout:240];(way["railway"~"^(${track})$"](${bbox});` +
       // The grid: the big stuff only. A `line` is towers and heavy cable
       // strung between them, which is a thing you can see from a mile off and
       // land on; a `minor_line` is the wooden pole down a lane, and five
       // hundred and eighty of those would be five hundred and eighty poles
       // nobody would ever notice.
-      `way["power"="line"](${bbox});${areaFilters});out geom;`,
-    'roads, rails and green space',
+      `way["power"="line"](${bbox}););out geom;`,
+    'railways and power lines',
   );
+  const green = await overpass(
+    `[out:json][timeout:240];(${areaFilters});out geom;`,
+    'green space and water',
+  );
+  const payload = {
+    elements: [...streets.elements, ...tracks.elements, ...green.elements],
+  };
 
   const built = await overpass(
     `[out:json][timeout:240];(way["building"](${bbox});relation["building"](${bbox}););out geom;`,
@@ -551,9 +579,35 @@ async function main() {
       if (buried || gone || !element.geometry || element.geometry.length < 2) continue;
       rawPoints += element.geometry.length;
       const points = toLocal(element.geometry, 1.5);
-      if (points.length >= 2) {
-        rails.push({ kind: railway, width: RAIL_WIDTHS[railway]!, points });
+      if (points.length < 2) continue;
+      // A railway on a bridge is a bridge. Left in with the rest of the
+      // track it is painted flat on whatever it crosses, which for the
+      // Ujpest bridge is half a kilometre of rail lying on the Danube.
+      //
+      // Trams are the exception, and it is not a detail: a tram over the
+      // Danube is riding on the Margaret bridge, which is already built as a
+      // road bridge. Given a bridge of its own it would be a second deck
+      // eleven metres over the first, with a truss on it.
+      if (
+        railway !== 'tram' &&
+        tags['bridge'] &&
+        tags['bridge'] !== 'no' &&
+        tags['area'] !== 'yes'
+      ) {
+        bridges.push({
+          kind: railway,
+          width: RAIL_WIDTHS[railway]!,
+          points,
+          layer: Number(tags['layer'] ?? 1) || 1,
+          rail: true,
+        });
+        // And into the track as well, flagged: the trains follow this list,
+        // and a network with its bridges taken out of it is a network that
+        // stops at every road and river it crosses. See `Rail.bridge`.
+        rails.push({ kind: railway, width: RAIL_WIDTHS[railway]!, points, bridge: true });
+        continue;
       }
+      rails.push({ kind: railway, width: RAIL_WIDTHS[railway]!, points });
       continue;
     }
 

@@ -39,6 +39,16 @@ export interface Bridge {
    * drawn at the same height as the one it crosses.
    */
   layer: number;
+  /**
+   * Whether it carries a railway rather than a road.
+   *
+   * Two things follow. It is built higher, because the one railway bridge on
+   * this map is a river crossing and a river crossing clears the shipping
+   * rather than a lorry; and it is drawn with a truss over it, because that
+   * is what a hundred-year-old steel railway bridge looks like from a
+   * pigeon's height.
+   */
+  rail?: boolean;
 }
 
 /**
@@ -70,6 +80,28 @@ export const DECK = 0.9;
  * it.
  */
 export const APRON = { least: 12, most: 40 };
+
+/**
+ * How high a railway bridge over a river stands, in metres, and how gently it
+ * is allowed to get up there.
+ *
+ * Eleven over the water, which is what the Ujpest bridge does and what a
+ * barge needs; one in forty on the approach, which is steep for a railway and
+ * gentle for this game; and up to three hundred metres of embankment either
+ * side to make that grade, because that is what it takes.
+ */
+const RIVER_CLEARANCE = 11;
+const RAIL_GRADE = 0.025;
+const RAIL_APRON = 300;
+
+/** How long a way is, end to end along its points. */
+const spanOf = (points: readonly [number, number][]) => {
+  let run = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    run += Math.hypot(points[i]![0] - points[i - 1]![0], points[i]![1] - points[i - 1]![1]);
+  }
+  return run;
+};
 
 /**
  * The steepest the ramp is allowed to climb, as a rise over a run.
@@ -139,15 +171,30 @@ export function deckOf(bridge: Bridge): Deck | null {
   const last = points[points.length - 1]!;
   if (Math.hypot(first[0] - last[0], first[1] - last[1]) < 1) return null;
 
-  const peak = CLEARANCE * Math.max(1, bridge.layer) + DECK;
+  // How high the deck sits. A flyover clears what is under it; a bridge over
+  // the Danube clears the river, which is another matter entirely -- the
+  // Ujpest bridge stands eleven metres over the water and is half a kilometre
+  // long. Anything short is a rail flyover and is treated as a road one.
+  const long = spanOf(points) > 150;
+  const peak =
+    (bridge.rail && long ? RIVER_CLEARANCE : CLEARANCE * Math.max(1, bridge.layer)) + DECK;
   // How long the span itself is, which decides how much ramp it needs: the
   // grade is a rise over a run, part of the run is the span, and the apron is
   // the rest of it.
-  let span = 0;
-  for (let i = 1; i < points.length; i += 1) {
-    span += Math.hypot(points[i]![0] - points[i - 1]![0], points[i]![1] - points[i - 1]![1]);
-  }
-  const apron = Math.min(APRON.most, Math.max(APRON.least, peak / GRADE - span / 2));
+  const span = spanOf(points);
+  // A train cannot climb what a lorry can. The road's one-in-eleven is a
+  // cheat that reads as a bridge from the air; the same cheat under a railway
+  // is a rollercoaster, so the approach to one is laid at one in forty and
+  // allowed to run as far as it needs to.
+  const grade = bridge.rail ? RAIL_GRADE : GRADE;
+  // A road's hump climbs across half its own span as well as the apron, so
+  // the span pays for part of the run. A river crossing cannot: the span is
+  // over the water and has to be level, so all of the climb is the apron's
+  // and the apron is sized by the grade alone.
+  const apron =
+    bridge.rail && long
+      ? Math.min(RAIL_APRON, Math.max(APRON.least, peak / grade))
+      : Math.min(APRON.most, Math.max(APRON.least, peak / grade - span / 2));
 
   // The span, run out at both ends along the direction it was going. Straight
   // continuation rather than anything cleverer: the approach to a flyover is
@@ -172,7 +219,13 @@ export function deckOf(bridge: Bridge): Deck | null {
 
   // How much run the ramp gets. Half the bridge at the outside: past that the
   // two ramps would be climbing through each other.
-  const rise = Math.min(length / 2, peak / GRADE);
+  //
+  // A railway gets exactly its apron, which is the other half of what makes a
+  // river crossing look like one: the ramp is the embankment on the bank and
+  // the span over the water is level. Given the run its grade really wants --
+  // four hundred and seventy metres for eleven of height -- the deck would
+  // still be climbing a hundred and seventy metres out over the river.
+  const rise = bridge.rail && long ? Math.min(length / 2, apron) : Math.min(length / 2, peak / GRADE);
   const height = (s: number) => LEAST + (peak - LEAST) * ease(Math.min(s, length - s) / rise);
 
   // Cut into even pieces, so the curve is smooth wherever the map happened to
