@@ -1403,6 +1403,28 @@ export const LEVELS: readonly Level[] = [
     finish: { kind: 'free' },
   },
   {
+    // Aimed at Gellert Hill rather than standing on it.
+    //
+    // The start is over Vermezo, on the flat by the river, and the hill is
+    // two and a half kilometres due south: a hundred and forty metres of rock
+    // with the whole of Pest laid out east of it. Let go facing it, the level
+    // is the flight to it -- and the hill is the one thing on this map worth
+    // flying at that is made of ground rather than of building.
+    name: 'Gellért hegy',
+    mode: 'sight',
+    start: [47.510639, 19.035151],
+    // South, down the length of the hill and the river with it.
+    facing: [47.503, 19.035151],
+    release: 100,
+    health: 1,
+    when: EVENING,
+    escort: false,
+    tireless: true,
+    teaches: false,
+    cast: [],
+    finish: { kind: 'free' },
+  },
+  {
     // The round: a letter to carry to a crossing named after two streets.
     //
     // Delivery1, and so far only the shape of it. What is here is a place to

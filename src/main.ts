@@ -77,6 +77,7 @@ import {
   metBy,
   PINK,
   LEVEL_TAGS,
+  modeOf,
   rocketOn,
   sceneNamed,
   standingOf,
@@ -2106,7 +2107,7 @@ createDebugGui(flightParams, cameraParams, windParams, pictureParams, {
 
 const menu = createLevelMenu(
   overlay,
-  LEVELS.map((spec, at) => ({ name: spec.name, tag: LEVEL_TAGS[at] })),
+  LEVELS.map((spec, at) => ({ name: spec.name, tag: LEVEL_TAGS[at], mode: modeOf(spec) })),
   () => {
     // Switching takes effect on the spot rather than at the next level: the
     // bird carries on from where it is, in the air it is now in, with the
@@ -3224,12 +3225,14 @@ function frame(nowMs: number) {
   // while the menu is shut, where the same keys are the pitch and roll of a
   // bird -- `move` and `confirm` both refuse while it is closed.
   menu.move(input.consumeStep());
-  // Left or right switches the mode while the list is up -- there are two, so
-  // either way is the other one. Asked every frame so a press made in flight
-  // is spent rather than saved up for the next time the list opens.
-  if (input.consumeSide() !== 0 && menu.open) {
-    switchMode(otherMode(mode));
-    menu.showMode(level, mode);
+  // Left or right moves between the three games while the list is up. It
+  // used to switch the flight model, which is now the button it always
+  // should have been: two states is a switch, three games is a strip of
+  // tabs. Asked every frame so a press made in flight is spent rather than
+  // saved up for the next time the list opens.
+  {
+    const sideways = input.consumeSide();
+    if (sideways !== 0 && menu.open) menu.step(sideways);
   }
   if (input.consumeConfirm()) {
     const picked = menu.confirm();

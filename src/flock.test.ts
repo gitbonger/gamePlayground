@@ -1832,9 +1832,9 @@ describe('a flock over ground that is not flat', () => {
       () => ({ x: -500, y: 130, z: 0, heading: 0, speed: 0, climb: 0 }),
       { ...defaultFlockOptions, count: 6, minAltitude: 25, groundAt: (x) => hill(x), seed: 4 },
     );
-    flock.update(0.5, undefined, undefined);
+    flock.update(0.5, undefined, createWind());
     for (const member of flock.members) {
-      if (!member.out) continue;
+      if (member.down > 0) continue;
       // A hundred and twenty-five is the floor here: the hill plus the
       // clearance. Flat-earth arithmetic would have put them at twenty-five,
       // which is seventy-five metres inside the hill.
@@ -1848,9 +1848,9 @@ describe('a flock over ground that is not flat', () => {
       () => ({ x: 500, y: 30, z: 0, heading: 0, speed: 0, climb: 0 }),
       { ...defaultFlockOptions, count: 6, minAltitude: 25, groundAt: (x) => hill(x), seed: 4 },
     );
-    flock.update(0.5, undefined, undefined);
+    flock.update(0.5, undefined, createWind());
     for (const member of flock.members) {
-      if (!member.out) continue;
+      if (member.down > 0) continue;
       expect(member.state.position.y).toBeLessThan(100);
     }
   });

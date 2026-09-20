@@ -31,6 +31,17 @@ export function highlightAfter(current: number, by: number, levels: number): num
   return (((current + by) % levels) + levels) % levels;
 }
 
+/**
+ * Which tab a step lands on: the three games, and it does not wrap.
+ *
+ * Its own function for the same reason the other two rules are: a tab strip
+ * that wrapped would take you from the story to the round with one press of
+ * a key that also means "bank left", and the ends of a list of three are
+ * where a player expects to stop.
+ */
+export const tabAfter = (current: number, by: number, tabs: number): number =>
+  Math.max(0, Math.min(tabs - 1, current + by));
+
 /** What the menu needs to know about the simulation being flown. */
 export interface MenuMode {
   title: string;
@@ -53,6 +64,14 @@ export interface LevelMenu {
    * the eleventh would have been, and the twelfth.
    */
   move(by: number): void;
+  /**
+   * Move between the games by `by` tabs. Returns whether it moved.
+   *
+   * Left and right, which used to switch the flight model. Three games in a
+   * strip is a thing the arrows are for; the flight model is one button with
+   * two states and is clicked.
+   */
+  step(by: number): boolean;
   /** Take the highlighted one. Returns the level, or null if none is. */
   confirm(): number | null;
   /**
@@ -69,11 +88,13 @@ export function createLevelMenu(
   container: HTMLElement,
   /**
    * The levels, each with the name it is called by in its own game --
-   * `Story7`, `Sight1`, `Delivery1`. The tag rather than the row number: the
-   * first thirteen rows are the story and their numbers agree anyway, and
-   * past that a row number says nothing about what the level is.
+   * `Story7`, `Sight1`, `Delivery1` -- and which game that is.
+   *
+   * The tag rather than the row number: the first thirteen rows are the story
+   * and their numbers agree anyway, and past that a row number says nothing
+   * about what the level is. The game is what the tabs are cut on.
    */
-  levels: readonly { name: string; tag?: string }[],
+  levels: readonly { name: string; tag?: string; mode?: string }[],
   onSwitchMode?: () => void,
   /**
    * Called when a level is picked with the mouse.
@@ -89,6 +110,25 @@ export function createLevelMenu(
   root.className = 'menu';
   root.hidden = true;
   container.appendChild(root);
+
+  /**
+   * The three games, as tabs.
+   *
+   * Taken from the levels rather than written down, so a game with no levels
+   * in it yet is not a tab that opens onto nothing -- and the order is the
+   * order they appear in the list, which is the order they were built.
+   */
+  const games: string[] = [];
+  for (const level of levels) {
+    const game = level.mode ?? 'story';
+    if (!games.includes(game)) games.push(game);
+  }
+  const rowsOf = (game: string) =>
+    levels
+      .map((level, at) => ({ level, at }))
+      .filter((row) => (row.level.mode ?? 'story') === game);
+  /** Which tab is open. Set to the played level's own game when it opens. */
+  let tab = 0;
 
   let showing = false;
   /**
@@ -127,7 +167,25 @@ export function createLevelMenu(
     title.textContent = say('menuTitle');
     card.appendChild(title);
 
-    levels.forEach((level, index) => {
+    // The tabs. Three of them and the arrows move between them, which is why
+    // the flight model is no longer on those keys: see the switch below.
+    const strip = document.createElement('div');
+    strip.className = 'menu-tabs';
+    games.forEach((game, index) => {
+      const tabButton = document.createElement('button');
+      tabButton.type = 'button';
+      tabButton.className = index === tab ? 'menu-tab picked' : 'menu-tab';
+      tabButton.textContent = say(`game-${game}` as Parameters<typeof say>[0]);
+      tabButton.addEventListener('click', () => {
+        tab = index;
+        highlighted = rowsOf(games[tab]!)[0]?.at ?? 0;
+        draw(drawnAt, drawnMode ?? mode);
+      });
+      strip.appendChild(tabButton);
+    });
+    card.appendChild(strip);
+
+    rowsOf(games[tab] ?? 'story').forEach(({ level, at: index }) => {
       const row = document.createElement('button');
       row.type = 'button';
       const marks = ['menu-level'];
@@ -189,8 +247,11 @@ export function createLevelMenu(
     toggle(at, mode) {
       showing = !showing;
       // Opened on the level being played, so the arrows start where the
-      // player is.
+      // player is -- and on that level's own tab, since it is the one the
+      // player is in the middle of.
       if (showing) {
+        const game = levels[at]?.mode ?? 'story';
+        tab = Math.max(0, games.indexOf(game));
         highlighted = at;
         drawnAt = at;
         drawnMode = mode;
@@ -204,11 +265,27 @@ export function createLevelMenu(
       if (showing) draw(at, mode);
     },
     move(by) {
-      if (!showing || levels.length === 0 || by === 0) return;
-      // Wrapping, so holding an arrow at the end of the list carries on
-      // rather than stopping dead against it.
-      highlighted = highlightAfter(highlighted, by, levels.length);
+      if (!showing || by === 0) return;
+      // Within the open tab, and wrapping inside it: holding an arrow at the
+      // end of a game's levels carries on round rather than stopping dead,
+      // and never wanders into another game -- that is what the tabs are for.
+      const rows = rowsOf(games[tab] ?? 'story');
+      if (rows.length === 0) return;
+      const now = Math.max(0, rows.findIndex((row) => row.at === highlighted));
+      highlighted = rows[highlightAfter(now, by, rows.length)]!.at;
       if (drawnMode) draw(drawnAt, drawnMode);
+    },
+    step(by) {
+      if (!showing || by === 0) return false;
+      const wanted = tabAfter(tab, by, games.length);
+      if (wanted === tab) return false;
+      tab = wanted;
+      // Onto the first level of the game you have just opened: a highlight
+      // left behind on a tab you cannot see is a highlight that takes the
+      // wrong level when you press Enter.
+      highlighted = rowsOf(games[tab]!)[0]?.at ?? highlighted;
+      if (drawnMode) draw(drawnAt, drawnMode);
+      return true;
     },
     confirm() {
       if (!showing || highlighted < 0 || highlighted >= levels.length) return null;
@@ -221,11 +298,12 @@ export function createLevelMenu(
       root.hidden = true;
     },
     choose(digit) {
-      const at = levelChoice(digit, levels.length, showing);
+      const rows = rowsOf(games[tab] ?? 'story');
+      const at = levelChoice(digit, rows.length, showing);
       if (at === null) return null;
       showing = false;
       root.hidden = true;
-      return at;
+      return rows[at]!.at;
     },
     dispose() {
       root.remove();

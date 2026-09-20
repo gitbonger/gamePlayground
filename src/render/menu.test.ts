@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { highlightAfter, levelChoice } from './menu';
+import { highlightAfter, levelChoice, tabAfter } from './menu';
 
 /**
  * The menu's own markup is not tested here: there is no DOM in this suite and
@@ -77,5 +77,23 @@ describe('walking the list with the arrows', () => {
 
   it('has somewhere to be even with nothing to show', () => {
     expect(highlightAfter(0, 1, 0)).toBe(0);
+  });
+});
+
+describe('moving between the games', () => {
+  it('stops at the ends rather than wrapping round', () => {
+    // Three tabs, and the arrows are also a bird's roll: a strip that wrapped
+    // would take you from the story to the round with one press.
+    expect(tabAfter(0, -1, 3)).toBe(0);
+    expect(tabAfter(0, 1, 3)).toBe(1);
+    expect(tabAfter(2, 1, 3)).toBe(2);
+    expect(tabAfter(1, -1, 3)).toBe(0);
+  });
+
+  it('takes a whole step however many frames the key was held for', () => {
+    // The input hands over a total rather than one press at a time, so a key
+    // held down arrives as three -- and three is still one tab from the end.
+    expect(tabAfter(0, 3, 3)).toBe(2);
+    expect(tabAfter(2, -5, 3)).toBe(0);
   });
 });
