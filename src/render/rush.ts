@@ -36,7 +36,7 @@ export interface AirStreaks {
 }
 
 /** How many there are at most, and the air they fill, in metres. */
-const MOST = 320;
+const MOST = 190;
 const AHEAD = 46;
 const BEHIND = 6;
 const ACROSS = 16;
@@ -111,9 +111,9 @@ export function spent(
 export function createAirStreaks(random: () => number = Math.random): AirStreaks {
   // A stick a metre long down +Z, stretched per instance to the length the
   // speed earns it. Three-sided: nothing about a streak needs a fourth face,
-  // and at three hundred and twenty of them that is a thousand triangles
-  // saved for nothing given up.
-  const shape = new THREE.CylinderGeometry(0.035, 0.035, 1, 3, 1, true);
+  // and at two hundred of them that is six hundred triangles saved for
+  // nothing given up.
+  const shape = new THREE.CylinderGeometry(0.024, 0.024, 1, 3, 1, true);
   shape.rotateX(Math.PI / 2);
   const paint = new THREE.MeshBasicMaterial({
     color: 0xffffff,
@@ -159,10 +159,12 @@ export function createAirStreaks(random: () => number = Math.random): AirStreaks
       const long = Math.max(0.6, speed * EXPOSURE);
       size.set(1, 1, long);
 
-      // Drawn thickest at the top of the range and never solid: what sells
-      // this is how fast they cross the frame, and a windscreen of white
-      // sticks is a windscreen.
-      paint.opacity = 0.16 + 0.24 * rush;
+      // Faint, and thickest at the top of the range. What sells this is how
+      // fast they cross the frame rather than how many of them there are:
+      // the first go at it was twice as many, twice as solid and half again
+      // as thick, and at that strength it stops being air going past and
+      // becomes weather on the lens.
+      paint.opacity = 0.07 + 0.13 * rush;
 
       const showing = Math.round(MOST * rush);
       for (let i = 0; i < showing; i += 1) {
