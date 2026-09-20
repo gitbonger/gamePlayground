@@ -93,6 +93,41 @@ describe('holding what the game has to say', () => {
     ]);
   });
 
+  it('keeps the pinned one however much else is said', () => {
+    // The standing order for the level -- on a delivery, the address -- and
+    // it is also the oldest thing on screen, so counting it against the three
+    // would mean the first warning of the flight pushed the only navigation
+    // the level has off the panel.
+    const stack = createTipStack(3, 3);
+    const address: Message = { ...tip('orders'), pinned: true };
+    stack.update([address], nowhere, 0);
+    const three = ['one', 'two', 'three'].map((id) => tip(id));
+    expect(said(stack.update([address, ...three], nowhere, 1))).toEqual([
+      'orders',
+      'one',
+      'two',
+      'three',
+    ]);
+    // And the ordinary three still push each other off under it.
+    expect(said(stack.update([address, ...three, tip('four')], nowhere, 2))).toEqual([
+      'orders',
+      'two',
+      'three',
+      'four',
+    ]);
+  });
+
+  it('reads the words off the moment where a message asks it to', () => {
+    // One message does: the address is the level's words, not the message's.
+    const stack = createTipStack(3, 3);
+    const address: Message = {
+      ...tip('orders'),
+      text: (at) => at.orders ?? sameInBoth(''),
+    };
+    const round = { orders: sameInBoth('Millenáris') } as Moment;
+    expect(said(stack.update([address], round, 0))).toEqual(['Millenáris']);
+  });
+
   it('leaves out a message that does not belong to this level', () => {
     const stack = createTipStack(3, 3);
     const elsewhere: Message = { ...tip('seeds'), on: ['Teleki tér'] };

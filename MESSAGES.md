@@ -48,6 +48,9 @@ On top of that:
 | `hunted` | a crow has picked him out and is coming |
 | `teaching` | the level is still explaining itself (Levels 1–4 only) |
 | `rocket` | the rocket on `X` is flown on this level: sightseeing and delivery levels, never a story one |
+| `boosted` | the rocket has been fired at least once since this level began |
+| `delivery` | which round this is, counted within the delivery game; 0 on every other level |
+| `orders` | the address this level was given, in the few words the panel can hold, or nothing |
 
 Thresholds: **slow** is 20 km/h, **low** is 10 m, **tired** is 0.3 of a tank,
 the **crow ceiling** is 20 m, an **approach** is the last 150 m to somewhere
@@ -77,7 +80,7 @@ to land, and something to land on is **in sight** at 200 m.
 | `pullUp` | `↓` | Pull up! | below **low**, sinking, nowhere to land within 150 m, **and** an arrival right now would kill | `↓` is pressed |
 | `keepLevel` | `←` `→` | Keep level! | below **10 m**, in the air, and banked past what a touchdown survives — landing at this roll would kill | he levels out (every time it is true, not once) |
 | `brakes` | `B` | Try the brakes! | **teaching** levels only, and stamina below **tired** | `B` is pressed (once a level) |
-| `rocket` | `X` | X - For rocket mode! | the level is flown **with the rocket** — sightseeing and delivery, never the story — in its first 8 s | `X` is pressed (once a level) |
+| `rocket` | `X` | X - For rocket mode! | the level is flown **with the rocket** — sightseeing and delivery, never the story — in its first 8 s, and it has not been fired yet | `X` is pressed, or the rocket is fired (once a level) |
 
 ## The crows
 
@@ -119,6 +122,29 @@ to land, and something to land on is **in sight** at 200 m.
 | `markedCar` | Keleti | — | Only land at the marked car! | 150 m flown | the feet are down |
 
 All of the per-level ones are **once a level**.
+
+## The round
+
+A delivery has nothing pointing at the target — no marker, no dot on the map,
+no approach talk until the last fifty metres — so the panel is the navigation.
+The address stays up for the whole flight, and three things about *how to
+look* are said over the first kilometre of the **first two** rounds. After
+that the player has flown a round and knows how one is flown.
+
+Written against `flown` rather than against the clock: the clock starts while
+he is still standing on the corner being handed the letter, and a tip that
+goes by during the conversation is a tip nobody was given.
+
+| name | keys | says | shows when | goes when |
+| --- | --- | --- | --- | --- |
+| `orders` | — | *the level's own address* | the level has `orders`, he is not standing on the target, and nobody is talking to him | — (**pinned**: it stays while it is true, and nothing newer pushes it off) |
+| `rocketAgain` | `X` | X - Rocket mode is faster! | a rocket level, 250 m flown, and the rocket still not fired | `X` is pressed, or the rocket is fired (once a level) |
+| `flyHighToSee` | — | Fly high to identify city landmarks! | `delivery` is 1 or 2, 60 m flown | after 6 s (once a level) |
+| `knowTheCity` | — | Use your city knowledge to find the target! | `delivery` is 1 or 2, 400 m flown | after 6 s (once a level) |
+| `watchTheMap` | — | Watch the mini map! | `delivery` is 1 or 2, 900 m flown | after 6 s (once a level) |
+
+A **pinned** message is exempt from the three-at-a-time limit: it is the
+standing order for the level, and three warnings still fit under it.
 
 ---
 

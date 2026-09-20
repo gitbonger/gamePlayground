@@ -48,11 +48,49 @@ describe('framing two birds together', () => {
     }
   });
 
+  it('stays above the hill it is standing on', () => {
+    // Two birds on a slope, and the side the shot picks is the uphill one:
+    // a metre above them is a foot inside the hill. The first delivery is
+    // handed over on a Krisztinaváros street and the shot of it was a
+    // screenful of dark green.
+    const hill = (x: number) => x * 0.4;
+    const a = vec(0, 1.5, 0);
+    const b = vec(0, 1.5, 2);
+    const shot = twoShot(a, b, vec(10, 1.5, 1), { ...p, floor: (x) => hill(x) });
+    expect(shot.position.y).toBeGreaterThan(hill(shot.position.x));
+    // And it is still a shot from about a person's height above the ground,
+    // not one from the sky.
+    expect(shot.position.y - hill(shot.position.x)).toBeCloseTo(p.height, 1);
+    // Downhill of them, nothing is pushed anywhere.
+    const below = twoShot(a, b, vec(-10, 1.5, 1), { ...p, floor: (x) => hill(x) });
+    expect(below.position.y).toBeCloseTo(1.5 + p.height, 6);
+  });
+
+  it('finds a side it can see them from', () => {
+    // The first delivery is handed over in the middle of Vérmező, which is a
+    // field of twelve-metre conifers: the shot picked the side it was
+    // already nearer, that side had a tree in it, and the conversation was
+    // played to a screenful of dark green.
+    const a = vec(0, 0.2, 0);
+    const b = vec(2, 1.6, 0);
+    // A tree south of them, where the camera is coming from.
+    const tree = { x: 1, z: -3, r: 1.6 };
+    const solid = (x: number, z: number) =>
+      Math.hypot(x - tree.x, z - tree.z) < tree.r ? 12 : 0;
+    const shot = twoShot(a, b, vec(0, 1.5, -10), { ...p, solid });
+    // Round the other side of them, not through the tree.
+    expect(shot.position.z).toBeGreaterThan(0);
+    // And with nothing in the way it stays on the side it came from.
+    const clear = twoShot(a, b, vec(0, 1.5, -10), p);
+    expect(clear.position.z).toBeLessThan(0);
+  });
+
   it('aims between them rather than at either one', () => {
     const shot = twoShot(vec(0, 1.5, 0), vec(2, 1.5, 0), vec(0, 1.5, -10), p);
     expect(shot.target.x).toBeCloseTo(1, 9);
     expect(shot.target.z).toBeCloseTo(0, 9);
-    expect(shot.target.y).toBeCloseTo(1.5, 9);
+    // A little under them, so they ride above the conversation card.
+    expect(shot.target.y).toBeCloseTo(1.5 - p.lift, 9);
   });
 
   it('stands to one side of them, not behind either', () => {
@@ -91,11 +129,11 @@ describe('framing two birds together', () => {
   });
 
   it('never crowds them, however close together they get', () => {
-    // Two birds in the same place still need the camera some way off. The
-    // margin is what provides that -- there is no separate minimum -- so the
-    // floor is the stand-off the margin alone buys, about three metres.
-    const floor = p.margin / Math.tan(halfFov(p));
-    expect(floor).toBeGreaterThan(2.5);
+    // Two birds in the same place still need the camera some way off: the
+    // stand-off is mostly a share of how far apart they are, so what stops
+    // it walking into a pair on one spot is the nearest it may stand.
+    const floor = p.nearest;
+    expect(floor).toBeGreaterThan(1.5);
 
     const from = vec(0, 1.5, -10);
     for (const apart of [0, 0.01, 0.2]) {
@@ -119,7 +157,7 @@ describe('framing two birds together', () => {
     for (const value of [shot.position.x, shot.position.y, shot.position.z]) {
       expect(Number.isFinite(value)).toBe(true);
     }
-    expect(shot.target).toEqual(same);
+    expect(shot.target).toEqual({ x: same.x, y: same.y - p.lift, z: same.z });
     // And on the side the camera was already on.
     expect(shot.position.z).toBeLessThan(same.z);
   });

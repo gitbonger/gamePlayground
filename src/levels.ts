@@ -757,6 +757,20 @@ export interface Level {
    * the exact doorway from the air.
    */
   hintsWithin?: number;
+  /**
+   * The address, in the few words the panel can keep on screen.
+   *
+   * The other half of `hintsWithin`. Nothing points at the target, so the
+   * only thing the player has is what was said at the start -- and what was
+   * said at the start scrolls away with the conversation. This is that
+   * sentence cut down to a label and pinned under the bird for the whole
+   * flight, so the level can be flown on it rather than remembered.
+   *
+   * Short on purpose: it is a line in the corner of the screen beside the
+   * warnings, not the briefing again. The briefing says where and which way;
+   * this says which place.
+   */
+  orders?: Words;
 }
 
 /**
@@ -1530,6 +1544,9 @@ export const LEVELS: readonly Level[] = [
     // Fifty metres, which is the whole rule: past that he is finding his own
     // way across a city he is supposed to know.
     hintsWithin: 50,
+    // And the address kept on the panel for the whole flight, because with
+    // nothing pointing at it the address is the only instrument he has.
+    orders: { en: 'Millenáris park — the pond', hu: 'Millenáris park – a tó' },
     cast: [
       // The person who hands the letter over, standing where he starts.
       { who: 'The sender', on: { kind: 'spot', at: [47.50165, 19.025609] }, along: 0, across: 0 },
@@ -1558,3 +1575,17 @@ export const LEVEL_TAGS: readonly string[] = (() => {
     return `${mode[0]!.toUpperCase()}${mode.slice(1)}${next}`;
   });
 })();
+
+/**
+ * Which round a delivery is, counted within the delivery game; 0 elsewhere.
+ *
+ * Read off the tag rather than counted again here, so there is one answer to
+ * "which delivery is this" and the panel and the menu cannot disagree about
+ * it. The instructions that teach the round are written against this number:
+ * see `Moment.delivery`.
+ */
+export function deliveryNumber(spec: Level): number {
+  const tag = LEVEL_TAGS[LEVELS.indexOf(spec)] ?? '';
+  const round = /^Delivery(\d+)$/.exec(tag);
+  return round ? Number(round[1]) : 0;
+}

@@ -82,6 +82,7 @@ import {
   LEVEL_TAGS,
   modeOf,
   rocketOn,
+  deliveryNumber,
   sceneNamed,
   standingOf,
   targetName,
@@ -372,6 +373,14 @@ const WINGTIP = { across: 0.38, up: 0.03 };
 const TRAIL_WHITE = 0xf2f7ff;
 /** When the burn ends. Before that, the tips are drawing. */
 let burningUntil = -1;
+/**
+ * Whether the rocket has been fired at all on this level.
+ *
+ * Not the same as burning: it stays true for the rest of the flight. What it
+ * is for is the reminder -- a player who has found the key is not told about
+ * it again. See `Moment.boosted`.
+ */
+let boosted = false;
 
 /** Everything in the world that smokes, as the renderer wants it. */
 const plumes: Plume[] = [
@@ -830,7 +839,59 @@ const standingOn = {
 let mode: Mode = MODES[DEFAULT_MODE];
 const flightParams = { ...paramsFor(mode), ...standingOn };
 const cameraParams = { ...defaultCameraParams };
-const watchParams = { ...defaultWatchParams };
+// The two-shot, kept above the hill it is standing on: see `WatchParams.floor`.
+/**
+ * How high the leaves stand over a point, where any do.
+ *
+ * The trees are not in the collider -- a pigeon flies through them, which is
+ * what `Fly through trees` means on Teleki tér -- so anything that wants to
+ * know where they are has to ask them. One thing does: the shot that frames
+ * two people talking, which otherwise stands in the middle of a conifer.
+ *
+ * Gridded once at load rather than walked: there are eight thousand of them
+ * and the shot asks about a dozen points a frame. Ten metres a cell, which
+ * is wider than the widest crown, so the nine cells around a point hold
+ * every tree that could reach it.
+ */
+const TREE_CELL = 10;
+const treeGrid = new Map<number, { x: number; z: number; top: number; radius: number }[]>();
+const treeCell = (x: number, z: number) =>
+  Math.floor(x / TREE_CELL) * 100003 + Math.floor(z / TREE_CELL);
+for (const tree of layout.trees) {
+  const cell = treeCell(tree.x, tree.z);
+  const grown = {
+    x: tree.x,
+    z: tree.z,
+    radius: tree.radius,
+    top: standingOn.groundAt(tree.x, tree.z) + tree.height,
+  };
+  const had = treeGrid.get(cell);
+  if (had) had.push(grown);
+  else treeGrid.set(cell, [grown]);
+}
+const leavesOver = (x: number, z: number): number => {
+  let top = -Infinity;
+  for (let dx = -1; dx <= 1; dx += 1) {
+    for (let dz = -1; dz <= 1; dz += 1) {
+      const cell = treeGrid.get(treeCell(x + dx * TREE_CELL, z + dz * TREE_CELL));
+      if (!cell) continue;
+      for (const tree of cell) {
+        if (Math.hypot(tree.x - x, tree.z - z) > tree.radius) continue;
+        if (tree.top > top) top = tree.top;
+      }
+    }
+  }
+  return top;
+};
+
+const watchParams = {
+  ...defaultWatchParams,
+  floor: standingOn.groundAt,
+  // Whatever stands at a point, so the shot can pick a side it can see from:
+  // see `WatchParams.solid`. The walls and the leaves both, because to a
+  // camera there is no difference between them.
+  solid: (x: number, z: number) => Math.max(world.collider.heightAt(x, z), leavesOver(x, z)),
+};
 const windParams = { ...defaultWindParams };
 
 // Rebuilt whenever the panel changes the air, since the field closes over its
@@ -922,6 +983,15 @@ function opposite(spec: Level): { at: Vec3; facing: Vec3 } | null {
  */
 const BESIDE = 0.7;
 const BESIDE_PERSON = 1.8;
+
+/**
+ * How much of the pavement a conversation clears, in metres.
+ *
+ * Six: the pair stand two metres apart and the shot is four metres off to one
+ * side of them, so this is the circle the camera can be anywhere inside of.
+ * See `hidePersonNear`.
+ */
+const CLEAR_SET = 6;
 
 /**
  * The level whose conversation opens this one, if one does.
@@ -1498,6 +1568,28 @@ interface Resident {
   here: boolean;
 }
 
+/**
+ * The point the two-shot frames somebody by.
+ *
+ * Everybody who talks is held at a pigeon's resting height, which for a
+ * person is their shoes -- and the shot is framed on the two points it is
+ * given. Handed a pair of shoes and a pigeon, it stands a metre off the
+ * ground and frames two metres of trousers, which is what the first delivery
+ * opened with. A person is given at the height of their face instead, which
+ * is what the shot is of.
+ *
+ * Seven tenths of the way up, rather than the top of the head: the hair is
+ * not the thing to aim between, and the letter changes hands lower still.
+ */
+const faceOf = (resident: Resident): Vec3 =>
+  resident.who.kind === 'person'
+    ? vec(
+        resident.state.position.x,
+        resident.state.position.y + PERSON_HEIGHT * 0.7,
+        resident.state.position.z,
+      )
+    : resident.state.position;
+
 /** Where an arrow hangs over a resident: its own head, near enough. */
 const personTop = (resident: Resident) =>
   new THREE.Vector3(
@@ -1899,15 +1991,26 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // Told by the order of the levels rather than by naming one, so inserting
   // another after the rescue does not quietly bring him back to life.
   const rescued = LEVELS.findIndex((each) => each.settles === true);
-  if (rescued < 0 || at <= rescued) {
-    trapperGone = false;
-    world.hidePersonNear(null);
-  } else if (trapperGone) {
+  const away: { x: number; z: number; within: number }[] = [];
+  if (rescued < 0 || at <= rescued) trapperGone = false;
+  else if (trapperGone) {
     const roof = layout.landmarks.find((mark) => mark.name === LOFT.name);
-    if (roof) world.hidePersonNear({ x: roof.x, z: roof.z, within: 40 });
-  } else {
-    world.hidePersonNear(null);
+    if (roof) away.push({ x: roof.x, z: roof.z, within: 40 });
   }
+  // And the corner the letter is handed over on, which is the other reason
+  // anybody is taken out of the crowd: the shot stands four metres off to one
+  // side, and the first delivery's opening was framed through a pedestrian.
+  // Cleared before the level is drawn, so nobody sees them go -- and put back
+  // by the next level, which is a district away.
+  const brief = spec.briefing ? standingOf(spec, spec.briefing.who) : undefined;
+  const set = brief ? standingSpot(brief) : null;
+  if (set) away.push({ x: set.at.x, z: set.at.z, within: CLEAR_SET });
+  world.hidePersonNear(away.length ? away : null);
+  // And the trees on the same ground, for the same shot: see `hideTreesNear`.
+  // Only the conversation's, never the trapper's -- taking forty metres of
+  // park off the map to hide one man would be a clearing where a wood was.
+  const stage = set ? [{ x: set.at.x, z: set.at.z, within: CLEAR_SET }] : null;
+  world.hideTreesNear(stage);
   // Thirty birds, all at once, on a ball behind him.
   //
   // The loft lets one out a second, which is right for a flock that drifts
@@ -1973,6 +2076,7 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
 
   finished = false;
   briefed = false;
+  boosted = false;
   talk = null;
   talkLocked = false;
   // A scene or a conversation's last words carry over a hand-over, which is
@@ -3365,6 +3469,7 @@ function frame(nowMs: number) {
   if (input.consumeBoost() && !menu.open && rocketOn(LEVELS[level] ?? LEVELS[0]!)) {
     boost(bird, flightParams);
     burningUntil = clock + BURN;
+    boosted = true;
   }
   if (input.consumeMusic()) {
     musicOn = !musicOn;
@@ -3513,7 +3618,7 @@ function frame(nowMs: number) {
         // map is drawn by, so this is the only way he can be taken out of it
         // -- and the frame he goes on is the frame the bars start tumbling,
         // which is the only reason the swap is not visible.
-        world.hidePersonNear({ x: middle.x, z: middle.z, within: 4 });
+        world.hidePersonNear([{ x: middle.x, z: middle.z, within: 4 }]);
         trapperGone = true;
       }
     }
@@ -3723,6 +3828,13 @@ function frame(nowMs: number) {
     teaching: tutorial,
     since: clock - startedAt,
     rocket: rocketOn(LEVELS[level] ?? LEVELS[0]!),
+    boosted,
+    // Which round this is, for the few tips that belong to learning how a
+    // delivery is flown rather than to flying one.
+    delivery: deliveryNumber(LEVELS[level] ?? LEVELS[0]!),
+    // The address, on a level that has one. Nothing points at the target on a
+    // delivery, so this is the navigation: see `Level.orders`.
+    orders: LEVELS[level]?.orders ?? null,
     altitude: telemetry.altitude,
     airspeed: telemetry.airspeed,
     climb: telemetry.climbRate,
@@ -4080,7 +4192,7 @@ function frame(nowMs: number) {
     chase.snap(bird, activeCamera);
     cutTo = false;
   } else if (talkingTo && lockedNow()) {
-    chase.watch(interpolatedState.position, talkingTo.state.position, watchParams, frameTime);
+    chase.watch(interpolatedState.position, faceOf(talkingTo), watchParams, frameTime);
   } else if (dyingAttitude && bird.ending?.settled === false) {
     // Following a body that is tumbling, so the camera is handed the attitude
     // the bird died in rather than the one it is spinning through. Same

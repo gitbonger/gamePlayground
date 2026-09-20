@@ -63,24 +63,79 @@ export const defaultCameraParams: CameraParams = {
  */
 export interface WatchParams {
   /**
-   * Clear air to leave beyond the pair, in metres.
+   * The least clear air to leave beyond the pair, in metres.
    *
-   * Also what stops the camera crowding two birds standing on top of each
-   * other: the stand-off never falls below `margin / tan(fov / 2)`, which at
-   * the defaults is three metres, so no separate minimum is needed and the
-   * one that used to be here was never once reached.
+   * The least, because the air is mostly a share of the pair itself: a third
+   * again of however far apart they are. A fixed metre and a half is two
+   * different shots depending on who is in it -- with two pigeons a metre
+   * apart it is most of the frame, and they end up a pair of thumbnails in a
+   * landscape, which is what the first delivery's two ends both looked like.
    */
   margin: number;
+  /**
+   * And the nearest it will ever stand, in metres.
+   *
+   * What the margin used to do on its own. Two birds can stand on the same
+   * spot -- they are a body's width apart on a branch -- and a stand-off
+   * worked out from how far apart they are would walk the lens into them.
+   */
+  nearest: number;
   /** How high above them it stands, in metres. */
   height: number;
+  /**
+   * How far below the middle of them it aims, in metres.
+   *
+   * The shot aims between the pair, which puts the middle of them at the
+   * middle of the screen -- and the bottom third of the screen is the card
+   * the conversation is printed on. Aiming a little low lifts both of them
+   * clear of it. Half a metre, which at the stand-off a pair of pigeons gets
+   * is about a seventh of the frame.
+   */
+  lift: number;
   /** Half-life for easing into and out of the shot, in seconds. */
   halfLife: number;
   /** Field of view for the two-shot, in degrees. */
   fov: number;
+  /**
+   * The ground under a point, where the shot has to stay above it.
+   *
+   * The two-shot stands off to the side of the pair and a metre above them,
+   * which was exactly right while the city was flat. On a hillside the side
+   * it picks is uphill as often as not, and a metre above two pigeons on a
+   * slope is a foot underneath the slope: the first delivery starts in
+   * Krisztinaváros, and the shot of the letter being handed over was a
+   * screenful of dark green with a man standing in it.
+   *
+   * The terrain rather than the buildings. A conversation on a roof is held
+   * thirty metres above ground that is not under it, and a camera shoved up
+   * to the top of the next block would be looking down at the wrong thing.
+   */
+  floor?: (x: number, z: number) => number;
+  /**
+   * The top of whatever solid thing stands at a point, for finding a view.
+   *
+   * The shot has two sides to choose from and used to take whichever it was
+   * already nearer, which is right until the thing on that side is a tree.
+   * The first delivery is handed over in the middle of Vérmező, which is a
+   * field of twelve-metre conifers, and the whole conversation was played to
+   * a screenful of dark green a metre from the lens.
+   *
+   * So both sides are tried, at the full stand-off and then at two thirds of
+   * it, and what is asked of each is whether anything stands above the line
+   * from there to the pair. Asked of the collider rather than the terrain --
+   * trees, walls, the sides of buildings are what get in the way, and none
+   * of them is the ground.
+   */
+  solid?: (x: number, z: number) => number;
 }
 
+/** How much of the pair's own span is left as air around it. */
+const AIR = 0.35;
+
 export const defaultWatchParams: WatchParams = {
-  margin: 1.4,
+  margin: 0.55,
+  nearest: 2,
+  lift: 0.45,
   height: 0.9,
   halfLife: 0.35,
   fov: 50,
@@ -143,14 +198,19 @@ export function twoShot(
   params: WatchParams,
 ): { position: Vec3; target: Vec3 } {
   const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
+  // What it aims at: a little under them, so the pair rides above the card
+  // the conversation is printed on. See `WatchParams.lift`.
+  const look = { x: mid.x, y: mid.y - params.lift, z: mid.z };
 
   const alongX = b.x - a.x;
   const alongZ = b.z - a.z;
   const span = Math.hypot(alongX, alongZ, b.y - a.y);
 
-  // Far enough back that the pair plus its margin fits the frame.
+  // Far enough back that the pair plus its air fits the frame, and never
+  // nearer than the lens is allowed to be.
   const half = (params.fov / 2) * (Math.PI / 180);
-  const back = (span / 2 + params.margin) / Math.tan(half);
+  const air = Math.max(params.margin, span * AIR);
+  const back = Math.max(params.nearest, (span / 2 + air) / Math.tan(half));
 
   // Across the line between them, in the ground plane.
   let outX = -alongZ;
@@ -162,7 +222,7 @@ export function twoShot(
     outX = from.x - mid.x;
     outZ = from.z - mid.z;
     const away = Math.hypot(outX, outZ);
-    if (away < 1e-6) return { position: { x: mid.x, y: mid.y + back, z: mid.z }, target: mid };
+    if (away < 1e-6) return { position: { x: mid.x, y: mid.y + back, z: mid.z }, target: look };
     outX /= away;
     outZ /= away;
   } else {
@@ -175,10 +235,60 @@ export function twoShot(
     }
   }
 
-  return {
-    position: { x: mid.x + outX * back, y: mid.y + params.height, z: mid.z + outZ * back },
-    target: mid,
+  /** Where the camera would stand, on a side and at a share of the stand-off. */
+  const stand = (sx: number, sz: number, of: number) => {
+    const x = mid.x + sx * back * of;
+    const z = mid.z + sz * back * of;
+    // Above the pair, and never below the ground it is standing over: see
+    // `WatchParams.floor`. The same clearance both ways, so a shot that is
+    // pushed up by a hill is still a shot taken from a person's height.
+    const above = params.floor ? params.floor(x, z) + params.height : -Infinity;
+    return { x, y: Math.max(mid.y + params.height, above), z };
   };
+
+  /**
+   * Whether the pair can be seen from there.
+   *
+   * The line from the lens to the middle of them, sampled: anything standing
+   * above it is between the two, and a tree between the camera and the
+   * subject is the entire picture. The ends are left out -- the pair's own
+   * perch is under them by definition, and the ground the camera stands on
+   * has already lifted it.
+   */
+  const sees = (from: { x: number; y: number; z: number }) => {
+    const solid = params.solid;
+    if (!solid) return true;
+    if (solid(from.x, from.z) > from.y) return false;
+    for (let t = 0.15; t < 0.9; t += 0.15) {
+      const x = from.x + (mid.x - from.x) * t;
+      const z = from.z + (mid.z - from.z) * t;
+      if (solid(x, z) > from.y + (mid.y - from.y) * t) return false;
+    }
+    return true;
+  };
+
+  // Where it would rather stand, in the order it would rather stand there:
+  // the near side square on, the far side square on, then round from each by
+  // a third of a right angle and by two thirds of one, and then the whole
+  // list again from two thirds as far. Square on is the shot; the rest are
+  // what a camera operator does when there is a tree in the way, which in
+  // Vérmező there always is. If none of them is clear the first is kept --
+  // there is nowhere better to be, and it is where the easing was heading.
+  const turned = (by: number, of: number) => {
+    const sin = Math.sin(by);
+    const cos = Math.cos(by);
+    return stand(outX * cos - outZ * sin, outX * sin + outZ * cos, of);
+  };
+  const ROUND = [0, Math.PI, 0.6, -0.6, Math.PI + 0.6, Math.PI - 0.6, 1.2, -1.2];
+  let position = turned(0, 1);
+  for (const of of [1, 2 / 3]) {
+    const clear = ROUND.map((by) => turned(by, of)).find(sees);
+    if (clear) {
+      position = clear;
+      break;
+    }
+  }
+  return { position, target: look };
 }
 
 /**

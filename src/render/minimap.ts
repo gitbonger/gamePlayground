@@ -120,6 +120,39 @@ const TARGET_SIZE = 4.5;
 /** The stop names: small, and in the pale grey-yellow a tram is. */
 const STOP_TEXT = 9;
 const STOP_INK = '#d8d2b4';
+/**
+ * The stations: the same size, and white, because they are the landmarks.
+ *
+ * A metro station or a terminus is what somebody navigating this city by
+ * memory actually steers by -- Széll Kálmán, Keleti, Déli -- and a delivery
+ * is flown on nothing else. So they are told apart from the tram stop
+ * outside the baker's by colour, and they are drawn even when they are off
+ * the edge of the panel.
+ */
+const STATION_INK = '#ffffff';
+/**
+ * Which names are stations.
+ *
+ * Read off the name rather than off a tag, because the survey has no tag for
+ * it here: the stops are tram and bus stops, and the ones that are also a
+ * station say so in the name the way the timetable does -- `M` for the
+ * metro, `H` for the HÉV, `M+H` for both, and `pályaudvar` for a terminus.
+ * `Széll Kálmán tér M` is a station; `Széna tér`, fifty metres away, is not.
+ */
+const STATION = /(^|[\s,])(M|H|M\+H)([\s,]|$)|pályaudvar/;
+export const isStation = (name: string): boolean => STATION.test(name);
+/**
+ * How far off the panel a station is still worth pointing at, in metres.
+ *
+ * Fifteen hundred, which is about the distance between the big stations here
+ * -- Keleti to Blaha is nine hundred -- so there is always one or two to
+ * steer by and never a rim full of them. They are drawn at the edge, dimmed,
+ * the way the target is: the panel reaches three hundred metres and the
+ * question on a delivery is which way Nyugati is, not which street this is.
+ */
+const STATION_REACH = 1500;
+/** How many off-panel stations are pointed at. */
+const STATIONS_BEYOND = 2;
 
 /**
  * How much of a name will ever be measured when it has to be cut to fit.
@@ -262,8 +295,8 @@ export function onPanel(
  */
 export function namedStops(
   calling: readonly TramStop[],
-): { x: number; z: number; name: string }[] {
-  const merged: { x: number; z: number; name: string; count: number }[] = [];
+): { x: number; z: number; name: string; station: boolean }[] {
+  const merged: { x: number; z: number; name: string; station: boolean; count: number }[] = [];
   for (const stop of calling) {
     if (!stop.name) continue;
     // Merged on the name as *shown*, not as recorded. Two points a hundred
@@ -275,16 +308,21 @@ export function namedStops(
     const near = merged.find(
       (had) => had.name === name && Math.hypot(had.x - stop.x, had.z - stop.z) <= STOP_TOGETHER,
     );
+    // Asked of the name as recorded rather than as shown: the `M` that says
+    // there is a metro under it is the third word, and three words is all
+    // that gets printed.
+    const station = isStation(stop.name);
     if (near) {
+      if (station) near.station = true;
       // The middle of however many islands carry the name, which for a pair
       // either side of a street is the middle of the street -- which is where
       // somebody would point when they said the name.
       near.x += (stop.x - near.x) / (near.count + 1);
       near.z += (stop.z - near.z) / (near.count + 1);
       near.count += 1;
-    } else merged.push({ x: stop.x, z: stop.z, name, count: 1 });
+    } else merged.push({ x: stop.x, z: stop.z, name, station, count: 1 });
   }
-  return merged.map(({ x, z, name }) => ({ x, z, name }));
+  return merged.map(({ x, z, name, station }) => ({ x, z, name, station }));
 }
 
 export function createMinimap(
@@ -414,22 +452,20 @@ export function createMinimap(
       }
       ctx.restore();
 
-      // The tram stops, named.
+      // The stops and the stations, named.
       //
       // The one thing on this panel that is a place rather than a thing: a
       // player who knows this district knows where Blaha is, and a name on
       // the map is worth more to them than any amount of street geometry.
       // Under everything that moves, and in the tram's own yellow-grey, so it
       // reads as printing on the map rather than as something happening.
-      const nearest = stops
-        .map((stop) => ({ stop, spot: to(stop.x, stop.z) }))
-        .filter(({ spot }) => Math.hypot(spot.x - middle, spot.y - middle) < middle - 26)
-        .sort(
-          (a, b) =>
-            Math.hypot(a.spot.x - middle, a.spot.y - middle) -
-            Math.hypot(b.spot.x - middle, b.spot.y - middle),
-        )
-        .slice(0, STOPS_SHOWN);
+      //
+      // The stations are the exception, and they are here because of the
+      // deliveries: an address and no arrow is a level flown entirely on
+      // knowing where things are, and what anybody knows is the stations. So
+      // they are white, they are never crowded out by an ordinary stop, and
+      // the nearest couple are pointed at from the rim even when they are a
+      // kilometre off the edge of the panel.
       ctx.font = `500 ${STOP_TEXT}px ui-monospace, SFMono-Regular, Menlo, monospace`;
       ctx.textBaseline = 'middle';
       const printed: { x: number; y: number; width: number }[] = [];
@@ -455,9 +491,17 @@ export function createMinimap(
         }
         return '';
       };
-      for (const { stop, spot } of nearest) {
-        ctx.fillStyle = STOP_INK;
+      /** One dot and its name, if the name has anywhere to go. */
+      const label = (
+        spot: { x: number; y: number },
+        name: string,
+        ink: string,
+        fade = 1,
+      ) => {
+        ctx.globalAlpha = fade;
+        ctx.fillStyle = ink;
         ctx.fillRect(spot.x - 2, spot.y - 2, 4, 4);
+        ctx.globalAlpha = 1;
 
         // Whichever side of the dot has more room, and as much of the name as
         // that room holds.
@@ -465,9 +509,9 @@ export function createMinimap(
         const roomRight = middle + rim - (spot.x + 5);
         const roomLeft = spot.x - 5 - (middle - rim);
         const right = roomRight >= roomLeft;
-        const label = fitted(stop.name, Math.max(roomRight, roomLeft));
-        if (!label) continue;
-        const width = ctx.measureText(label).width;
+        const text = fitted(name, Math.max(roomRight, roomLeft));
+        if (!text) return;
+        const width = ctx.measureText(text).width;
         ctx.textAlign = right ? 'left' : 'right';
         const at = right ? spot.x + 5 : spot.x - 5;
         const left = right ? at : at - width;
@@ -482,15 +526,51 @@ export function createMinimap(
             left < had.x + had.width + 3 &&
             had.x < left + width + 3,
         );
-        if (clashes) continue;
+        if (clashes) return;
         // A dark backing, so a name over a street is still a name.
-        ctx.globalAlpha = 0.55;
+        ctx.globalAlpha = 0.55 * fade;
         ctx.fillStyle = '#0d1116';
         ctx.fillRect(left - 2, spot.y - STOP_TEXT / 2 - 2, width + 4, STOP_TEXT + 4);
+        ctx.globalAlpha = fade;
+        ctx.fillStyle = ink;
+        ctx.fillText(text, at, spot.y);
         ctx.globalAlpha = 1;
-        ctx.fillStyle = STOP_INK;
-        ctx.fillText(label, at, spot.y);
         printed.push({ x: left, y: spot.y, width });
+      };
+
+      const seen = stops
+        .map((stop) => ({ stop, out: 0, spot: to(stop.x, stop.z) }))
+        .map((each) => ({
+          ...each,
+          out: Math.hypot(each.spot.x - middle, each.spot.y - middle),
+        }))
+        .sort((a, b) => a.out - b.out);
+      const here = seen.filter((each) => each.out < middle - 26);
+      // The stations first, so that where two names want the same corner of
+      // the panel it is the station that gets it.
+      for (const { stop, spot } of here) {
+        if (stop.station) label(spot, stop.name, STATION_INK);
+      }
+      // And the ones that are off the panel altogether, pulled to the rim:
+      // the answer to "which way is Nyugati", which is the only question a
+      // delivery asks.
+      const beyond = seen.filter(
+        (each) => each.stop.station && each.out >= middle - 26 && each.out / scale <= STATION_REACH,
+      );
+      for (const { stop, spot, out } of beyond.slice(0, STATIONS_BEYOND)) {
+        const rim = middle - 16;
+        const at = {
+          x: middle + ((spot.x - middle) / out) * rim,
+          y: middle + ((spot.y - middle) / out) * rim,
+        };
+        // Dimmed, because it is not where the station is -- it is which way
+        // it is. The target does the same thing and is not dimmed, which is
+        // the difference between the place you must reach and a landmark.
+        label(at, stop.name, STATION_INK, 0.55);
+      }
+      // Then the ordinary stops, the nearest few, in the tram's own colour.
+      for (const { stop, spot } of here.filter((each) => !each.stop.station).slice(0, STOPS_SHOWN)) {
+        label(spot, stop.name, STOP_INK);
       }
       ctx.textAlign = 'left';
 

@@ -2,7 +2,16 @@ import { describe, expect, it } from 'vitest';
 // The specification, as text. Vite hands a file over whole with `?raw`, which
 // is how a test can read prose without the project growing a node dependency.
 import spec from '../../MESSAGES.md?raw';
-import { MESSAGES, APPROACH, CROW_CEILING, LOW, SLOW, TIRED, type Moment } from './messages';
+import {
+  MESSAGES,
+  APPROACH,
+  CROW_CEILING,
+  LOW,
+  SLOW,
+  TIRED,
+  type Message,
+  type Moment,
+} from './messages';
 import { codesOf } from './tips';
 import { LEVELS } from '../levels';
 
@@ -18,6 +27,9 @@ const flying = (over: Partial<Moment> = {}): Moment => ({
   stamina: 1,
   stalled: false,
   noseUp: false,
+  boosted: false,
+  delivery: 0,
+  orders: null,
   flown: 0,
   toGo: 500,
   offCourse: 0,
@@ -39,6 +51,16 @@ const flying = (over: Partial<Moment> = {}): Moment => ({
   speaking: 'en',
   ...over,
 });
+
+/**
+ * What a message says at a given moment.
+ *
+ * Nearly all of them say the same thing at every moment; the address on a
+ * delivery is the level's own words, so it is a function of the moment. See
+ * `Message.text`.
+ */
+const saying = (each: { text: Moment extends never ? never : Message['text'] }, at: Moment) =>
+  typeof each.text === 'function' ? each.text(at) : each.text;
 
 const message = (id: string) => {
   const found = MESSAGES.find((each) => each.id === id);
@@ -64,9 +86,13 @@ describe('every message is one the rest of the game can work with', () => {
     // A line somebody forgot to translate is a blank instruction in the
     // middle of a flight, and it would be found by playing the game in
     // Hungarian rather than by anything here.
+    // Asked at a moment where every one of them has something to say: the
+    // address is the level's words rather than the message's, and a message
+    // asked about a level that has no address is rightly silent.
+    const at = flying({ orders: { en: 'The pond', hu: 'A tó' } });
     for (const each of MESSAGES) {
-      expect(each.text.en.length, each.id).toBeGreaterThan(0);
-      expect(each.text.hu.length, each.id).toBeGreaterThan(0);
+      expect(saying(each, at).en.length, each.id).toBeGreaterThan(0);
+      expect(saying(each, at).hu.length, each.id).toBeGreaterThan(0);
     }
   });
 
@@ -95,6 +121,52 @@ describe('every message is one the rest of the game can work with', () => {
     // code reads exactly like one that does.
     const written = [...spec.matchAll(/`([a-zA-Z]+)`/g)].map((hit) => hit[1]);
     for (const each of MESSAGES) expect(written, each.id).toContain(each.id);
+  });
+});
+
+describe('the round', () => {
+  /** A delivery, in the air, with the address in hand. */
+  const round = (over: Partial<Moment> = {}) =>
+    flying({
+      level: 'The round',
+      rocket: true,
+      delivery: 1,
+      orders: { en: 'Millenáris park — the pond', hu: 'Millenáris park – a tó' },
+      ...over,
+    });
+
+  it('keeps the address up for the whole flight, and takes it away on arrival', () => {
+    expect(shows('orders', round())).toBe(true);
+    // Not while the sender is still saying it at greater length, and not once
+    // he is standing on the place it names.
+    expect(shows('orders', round({ talking: true }))).toBe(false);
+    expect(shows('orders', round({ onTarget: true, perched: true }))).toBe(false);
+    // And never on a level that was not given one.
+    expect(shows('orders', flying({ orders: null }))).toBe(false);
+  });
+
+  it('teaches the round twice and then stops', () => {
+    const tips = ['flyHighToSee', 'knowTheCity', 'watchTheMap'];
+    for (const id of tips) {
+      expect(shows(id, round({ flown: 1000 })), `${id} on the first`).toBe(true);
+      expect(shows(id, round({ flown: 1000, delivery: 2 })), `${id} on the second`).toBe(true);
+      expect(shows(id, round({ flown: 1000, delivery: 3 })), `${id} on the third`).toBe(false);
+      // And nowhere near the story, whatever it is doing.
+      expect(shows(id, flying({ flown: 1000 })), `${id} off a delivery`).toBe(false);
+    }
+    // Spread over the first kilometre rather than arriving together.
+    expect(shows('flyHighToSee', round({ flown: 100 }))).toBe(true);
+    expect(shows('knowTheCity', round({ flown: 100 }))).toBe(false);
+    expect(shows('watchTheMap', round({ flown: 500 }))).toBe(false);
+  });
+
+  it('mentions the rocket again only to somebody who has not found it', () => {
+    expect(shows('rocketAgain', round({ flown: 300 }))).toBe(true);
+    expect(shows('rocketAgain', round({ flown: 300, boosted: true }))).toBe(false);
+    // And the first tip goes the moment it is used, rather than sitting out
+    // its eight seconds over somebody already flying at three hundred.
+    expect(shows('rocket', round({ since: 3 }))).toBe(true);
+    expect(shows('rocket', round({ since: 3, boosted: true }))).toBe(false);
   });
 });
 

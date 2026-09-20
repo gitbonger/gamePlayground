@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { heldOnPanel, namedStops, onPanel } from './minimap';
+import { heldOnPanel, isStation, namedStops, onPanel } from './minimap';
 import { shortStop } from '../world/layout';
 
 /** A panel 100 across, showing 200 m each way. */
@@ -232,8 +232,28 @@ describe('naming the tram stops', () => {
     // A third of the islands are a kerb somebody drew without naming, and a
     // dot with no name against it is a dot that means nothing.
     expect(namedStops([island('', 0, 0), island('Golgota tér', 40, 0)])).toEqual([
-      { x: 40, z: 0, name: 'Golgota tér' },
+      { x: 40, z: 0, name: 'Golgota tér', station: false },
     ]);
+  });
+
+  it('knows which of them are stations', () => {
+    // What a delivery is flown on. The survey has no tag for it here -- these
+    // are tram and bus stops -- so it is read off the name, which says it the
+    // way the timetable does: `M` for the metro, `H` for the HÉV, and
+    // `pályaudvar` for a terminus.
+    expect(isStation('Széll Kálmán tér M')).toBe(true);
+    expect(isStation('Batthyány tér M+H')).toBe(true);
+    expect(isStation('Keleti pályaudvar M')).toBe(true);
+    expect(isStation('Margit híd, budai hídfő H')).toBe(true);
+    // And the stop outside the baker's fifty metres away is not, however
+    // many capital letters are in its name.
+    expect(isStation('Széna tér')).toBe(false);
+    expect(isStation('Mester utca / Ferenc körút')).toBe(false);
+    expect(isStation('Március 15. tér')).toBe(false);
+    // The `M` survives the shortening of the name it is read from: the flag
+    // is on the merged stop, not on the printed words.
+    const merged = namedStops([island('Blaha Lujza tér M (Népszínház utca)', 0, 0)]);
+    expect(merged[0]).toEqual({ x: 0, z: 0, name: 'Blaha Lujza tér', station: true });
   });
 
   it('prints the part of a name that says which stop it is', () => {

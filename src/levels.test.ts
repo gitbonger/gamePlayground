@@ -44,7 +44,16 @@ import { buildLayoutFromMap, defaultMapWorldOptions } from './world/from-map';
 import { ROOFLINE } from './world/heights';
 import { CLEAR_OF_LEADER, defaultFlockOptions, FLOCK_AHEAD } from './flock';
 import type { MapData } from './world/streets';
-import { MESSAGES } from './render/messages';
+import { MESSAGES, type Message } from './render/messages';
+
+/**
+ * What a message says in English.
+ *
+ * All the ones these tests look at say the same thing every time. The one
+ * that reads its words off the moment -- the address on a delivery -- belongs
+ * to no level in particular, so it never comes back from `saidOn`.
+ */
+const inEnglish = (each: Message): string => (typeof each.text === 'function' ? '' : each.text.en);
 
 /**
  * The level the story ends on.
@@ -1081,8 +1090,8 @@ describe('what the levels aim at', () => {
     // the seeds to restore your health" -- and the panel is for the first.
     const seeds = saidOn('Teleki tér').find((each) => each.id === 'seeds');
     expect(seeds, 'the level has one').toBeDefined();
-    expect(seeds!.text.en).toContain('Collect');
-    expect(seeds!.text.en).toContain('seeds');
+    expect(inEnglish(seeds!)).toContain('Collect');
+    expect(inEnglish(seeds!)).toContain('seeds');
     // And spoken, because the level cannot go on without it.
     expect(seeds!.spoken).toBe(true);
     // At the moment of landing, which is the only trigger it has.
@@ -1096,7 +1105,7 @@ describe('what the levels aim at', () => {
     // None of the three is a control and none can be worked out by looking,
     // which is what a one-off is for.
     const yard = saidOn('Keleti');
-    const said = yard.map((each) => each.text.en);
+    const said = yard.map(inEnglish);
     expect(said).toHaveLength(3);
     expect(said.join(' | ')).toContain('land on the train');
     expect(said.join(' | ')).toContain('changing directions');

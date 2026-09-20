@@ -161,11 +161,30 @@ export interface World {
    * one of them who is a character. The trapper stands over the cage he put
    * her in, and when the cage goes he goes; this is how he goes.
    *
+   * A list rather than one place, because two things ask now. The other is
+   * the shot: a conversation held on a street corner is framed from four
+   * metres away and off to one side, and a pedestrian standing where the
+   * camera wants to be is two metres of trousers across half the frame.
+   * Clearing the corner for the level is the cheaper of the two honest
+   * answers -- the other being a camera that searches for a clear line -- and
+   * nobody sees it happen, because it happens before the level is drawn.
+   *
    * Hidden by being scaled to nothing rather than by being removed, because
    * the mesh's instances are a fixed list and the story has to be tellable
    * twice: `hidePersonNear(null)` puts everybody back.
    */
-  hidePersonNear(at: { x: number; z: number; within: number } | null): void;
+  hidePersonNear(at: readonly { x: number; z: number; within: number }[] | null): void;
+  /**
+   * Take the trees standing on this ground out of the world, or put them back.
+   *
+   * The same idea as `hidePersonNear` and for the same shot. A conifer is
+   * drawn as a cone standing on the ground, so anybody standing where one
+   * stands is *inside* it and cannot be seen from anywhere. These are the
+   * invented trees -- the generator plants them by the thousand across every
+   * park -- so a level that needs a few square metres of park to hold a
+   * conversation in may have them.
+   */
+  hideTreesNear(at: readonly { x: number; z: number; within: number }[] | null): void;
   /**
    * Redraw who is standing on the tram platforms.
    *
@@ -562,6 +581,99 @@ export function buildWorld(
    */
   const relief = layout.ground ?? FLAT;
   const standOn = (x: number, z: number) => relief.heightAt(x, z);
+  /**
+   * Lift a flat layer onto the ground, cutting it up until it fits.
+   *
+   * For the layers whose pieces are *large*: a park is one polygon and the
+   * biggest here is Vérmező, five hundred metres by seven hundred, whose
+   * corners stand between ten and nineteen metres up. Draped corner by
+   * corner that is one flat sheet tilted across a hillside, and in the
+   * middle of it the grass floats a metre over the ground -- which is where
+   * the first delivery is handed over, and why the pigeon was buried to the
+   * eyes and the man standing in front of him was cut off at the waist.
+   *
+   * So a triangle whose middle misses the ground by more than `CRUDE` is
+   * split down its worst edge and the halves are asked again. Nothing is
+   * split on the flat, which is most of Pest: the test is the error, not the
+   * size, so a park on a slope costs triangles and a park on a plain costs
+   * three heights to find out it does not.
+   *
+   * Takes a plain triangle soup -- positions and nothing else -- which is
+   * what `buildAreas` makes. The layers of ribbons are draped as they are:
+   * see `drape`.
+   */
+  const refine = (geometry: THREE.BufferGeometry) => {
+    if (relief === FLAT) return geometry;
+    const from = geometry.getAttribute('position');
+    const into = new Floats(from.count * 3);
+    /** One triangle, with the ground height at each corner already found. */
+    const cut = (
+      ax: number, az: number, ah: number,
+      bx: number, bz: number, bh: number,
+      cx: number, cz: number, ch: number,
+      depth: number,
+    ): void => {
+      if (depth < SPLITS) {
+        // The edge whose middle is furthest from the line between its ends.
+        let worst = CRUDE;
+        let edge = -1;
+        let mid = { x: 0, z: 0, h: 0 };
+        const ends: [number, number, number, number, number, number][] = [
+          [ax, az, ah, bx, bz, bh],
+          [bx, bz, bh, cx, cz, ch],
+          [cx, cz, ch, ax, az, ah],
+        ];
+        ends.forEach(([px, pz, ph, qx, qz, qh], i) => {
+          // Never below the height grid's own step: under that the ground is
+          // an interpolation between the same two samples, and splitting it
+          // buys triangles rather than accuracy.
+          if (Math.hypot(qx - px, qz - pz) < FINEST) return;
+          const mx = (px + qx) / 2;
+          const mz = (pz + qz) / 2;
+          const mh = standOn(mx, mz);
+          const off = Math.abs(mh - (ph + qh) / 2);
+          if (off <= worst) return;
+          worst = off;
+          edge = i;
+          mid = { x: mx, z: mz, h: mh };
+        });
+        if (edge === 0) {
+          cut(ax, az, ah, mid.x, mid.z, mid.h, cx, cz, ch, depth + 1);
+          cut(mid.x, mid.z, mid.h, bx, bz, bh, cx, cz, ch, depth + 1);
+          return;
+        }
+        if (edge === 1) {
+          cut(bx, bz, bh, mid.x, mid.z, mid.h, ax, az, ah, depth + 1);
+          cut(mid.x, mid.z, mid.h, cx, cz, ch, ax, az, ah, depth + 1);
+          return;
+        }
+        if (edge === 2) {
+          cut(cx, cz, ch, mid.x, mid.z, mid.h, bx, bz, bh, depth + 1);
+          cut(mid.x, mid.z, mid.h, ax, az, ah, bx, bz, bh, depth + 1);
+          return;
+        }
+      }
+      into.push3(ax, ah, az);
+      into.push3(bx, bh, bz);
+      into.push3(cx, ch, cz);
+    };
+
+    for (let i = 0; i + 2 < from.count; i += 3) {
+      const x = [from.getX(i), from.getX(i + 1), from.getX(i + 2)];
+      const z = [from.getZ(i), from.getZ(i + 1), from.getZ(i + 2)];
+      cut(
+        x[0]!, z[0]!, standOn(x[0]!, z[0]!),
+        x[1]!, z[1]!, standOn(x[1]!, z[1]!),
+        x[2]!, z[2]!, standOn(x[2]!, z[2]!),
+        0,
+      );
+    }
+    geometry.setAttribute('position', new THREE.BufferAttribute(into.take(), 3));
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
+    return geometry;
+  };
+
   /** Lift a flat layer onto the ground, corner by corner. */
   const drape = (geometry: THREE.BufferGeometry) => {
     if (relief === FLAT) return geometry;
@@ -1102,6 +1214,9 @@ export function buildWorld(
 
   // --- Trees --------------------------------------------------------------
   // Low, dense clutter near the ground: this is what sells low-altitude speed.
+  /** Replant them, leaving out whatever ground a level has claimed. */
+  let plantTrees: ((clear: readonly { x: number; z: number; within: number }[] | null) => void) | null =
+    null;
   //
   // One instanced mesh per sort, which is a handful of draw calls for the
   // whole nine thousand of them however many sorts there are -- the cost is
@@ -1146,18 +1261,47 @@ export function buildWorld(
     );
   }
 
-  for (const tree of layout.trees) {
-    const stand = stands.get(patchOf(tree.x, tree.z))![tree.species % kinds.length]!;
-    // Every shape is modelled one unit tall with its foot at the origin and
-    // already in its own proportions, so the same scale puts any of them on
-    // the ground at the size the layout asked for.
-    matrix.makeScale(tree.radius, tree.height, tree.radius);
-    matrix.setPosition(tree.x, standOn(tree.x, tree.z), tree.z);
-    stand.setMatrixAt(stand.count++, matrix);
-  }
-  for (const patch of stands.values()) {
-    for (const stand of patch) stand.instanceMatrix.needsUpdate = true;
-  }
+  /**
+   * Plant them all, leaving out the ones standing on a stage.
+   *
+   * A conifer is drawn as a cone from the ground up, so a pigeon standing
+   * where a tree stands is not shaded by it -- he is inside it, and no
+   * camera anywhere can see him. The first delivery is handed over in
+   * Vérmező under a tree this generator invented, and the hero was simply
+   * not in the shot.
+   *
+   * So the level takes the ground it needs and the tree goes. It is one tree
+   * out of a park with four hundred, it is put back the moment the level
+   * changes, and it was never on the map in the first place -- these are the
+   * invented ones. See `hideTreesNear`.
+   */
+  let planted: string | null = null;
+  const plant = (clear: readonly { x: number; z: number; within: number }[] | null) => {
+    // Seventy thousand of them, and every level asks. Nearly every level
+    // asks for the same thing -- nothing cleared -- so the work is done when
+    // the answer changes rather than when the question is put.
+    const asked = JSON.stringify(clear ?? null);
+    if (asked === planted) return;
+    planted = asked;
+    for (const patch of stands.values()) for (const stand of patch) stand.count = 0;
+    for (const tree of layout.trees) {
+      if (clear?.some((spot) => Math.hypot(tree.x - spot.x, tree.z - spot.z) <= spot.within)) {
+        continue;
+      }
+      const stand = stands.get(patchOf(tree.x, tree.z))![tree.species % kinds.length]!;
+      // Every shape is modelled one unit tall with its foot at the origin and
+      // already in its own proportions, so the same scale puts any of them on
+      // the ground at the size the layout asked for.
+      matrix.makeScale(tree.radius, tree.height, tree.radius);
+      matrix.setPosition(tree.x, standOn(tree.x, tree.z), tree.z);
+      stand.setMatrixAt(stand.count++, matrix);
+    }
+    for (const patch of stands.values()) {
+      for (const stand of patch) stand.instanceMatrix.needsUpdate = true;
+    }
+  };
+  plant(null);
+  plantTrees = plant;
 
   // --- The grid ------------------------------------------------------------
   // Towers of a given height share a shape, so each height is one instanced
@@ -1329,7 +1473,7 @@ export function buildWorld(
   if (layout.areas?.length) {
     for (const ground of intoPatches(layout.areas, (area) => area.points[0] ?? null)) {
       for (const { geometry, material } of buildAreas(ground)) {
-        drape(geometry);
+        refine(geometry);
         disposables.push(geometry, material);
         const patch = new THREE.Mesh(geometry, asDecal(material));
         patch.receiveShadow = true;
@@ -1582,11 +1726,15 @@ export function buildWorld(
     collider: createColliderField(layout.boxes),
     markers,
     gates,
+    hideTreesNear(at) {
+      plantTrees?.(at);
+    },
     hidePersonNear(at) {
       if (!people) return;
       layout.people.forEach((person, i) => {
         const gone =
-          at !== null && Math.hypot(person.x - at.x, person.z - at.z) <= at.within;
+          at !== null &&
+          at.some((spot) => Math.hypot(person.x - spot.x, person.z - spot.z) <= spot.within);
         people!.stand(i, gone ? 0 : PERSON_HEIGHT);
       });
       people.crowd.instanceMatrix.needsUpdate = true;
@@ -2183,6 +2331,20 @@ function growTree(
     overlay,
   );
 }
+
+/**
+ * How far a flat layer may float over the ground before it is cut up, in
+ * metres, and how many times a triangle may be cut. See `refine`.
+ *
+ * A third of a metre is about a pigeon, which is the thing that disappears
+ * into the grass when it is wrong. Ten cuts takes the biggest park in the
+ * district from one triangle to about the size of the height grid, and the
+ * error test stops long before that everywhere flat.
+ */
+const CRUDE = 0.35;
+const SPLITS = 10;
+/** And the shortest edge worth halving, in metres: half the height grid. */
+const FINEST = 12;
 
 const AREA_ORDER = 1;
 const PATCH_ORDER = 2;

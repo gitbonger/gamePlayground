@@ -62,6 +62,33 @@ export interface Moment {
    * a message that has to be revisited the day a fourth game is added.
    */
   rocket: boolean;
+  /**
+   * Whether the rocket has been fired at all on this level yet.
+   *
+   * Not whether the key is down now -- whether it has ever been down since
+   * the level began. The difference is the whole of what makes a second
+   * reminder bearable: somebody who has used it knows about it, and telling
+   * them again is the game not watching.
+   */
+  boosted: boolean;
+  /**
+   * Which delivery this is, counted within the delivery game; 0 elsewhere.
+   *
+   * For the handful of instructions that belong to *learning* the delivery
+   * rather than to flying one. A player on their third round knows to fly
+   * high and look, and does not need to be told again -- so the tips are
+   * written against "the first two" and stay written against it when a
+   * fourth round is added.
+   */
+  delivery: number;
+  /**
+   * The address this level was given, if it was given one, or null.
+   *
+   * The words come from the level rather than from here -- see
+   * `Level.orders` -- because this one message is the only thing on the panel
+   * whose text is different on every level that shows it.
+   */
+  orders: Words | null;
 
   // --- The flight ----------------------------------------------------------
   altitude: number;
@@ -186,7 +213,16 @@ export interface Message {
    */
   id: string;
   keys: readonly string[];
-  text: Words;
+  /**
+   * What it says, in both languages.
+   *
+   * Nearly always a fixed pair of sentences, and for one message a function
+   * of the moment: the address on a delivery is the level's, not the
+   * message's, and a message per level would be a message per level. The
+   * stack resolves it before anything draws it, so a tip is still two
+   * strings by the time it reaches the panel.
+   */
+  text: Words | ((at: Moment) => Words);
   icon?: IconName;
   sort?: 'survival' | 'story' | 'hint';
   spoken?: boolean;
@@ -202,6 +238,16 @@ export interface Message {
    * level, and a player who died is exactly the one who wants it again.
    */
   once?: boolean;
+  /**
+   * Kept while it is true, and never pushed off by something newer.
+   *
+   * For an instruction that is not an event but a *standing order*: the
+   * address on a delivery is what the level is, and it has to be there at
+   * minute four when the player looks down to check where they are going.
+   * The stack holds three, and a pinned one is exempt from that count --
+   * three warnings still fit under it.
+   */
+  pinned?: boolean;
   /**
    * How long it stays up, in seconds, where the usual five is wrong for it.
    *
@@ -262,6 +308,16 @@ export const ASTRAY = 90;
 export const IN_SIGHT = 200;
 /** How long a note about a setting stays up, in seconds. */
 export const NOTICE = 2;
+
+/**
+ * Whether this is one of the first two rounds, which are the ones that teach
+ * the round.
+ *
+ * Two, and counted rather than named: the tips belong to learning how a
+ * delivery is flown, and a player on their third one has learnt it. Naming
+ * the levels would mean editing this list every time a round is added.
+ */
+const learningTheRound = (at: Moment): boolean => at.delivery >= 1 && at.delivery <= 2;
 
 /** The levels with crows low enough that the answer is to get under them. */
 const CROW_STREETS = ['Népszínház', 'Blaha'] as const;
@@ -446,8 +502,8 @@ export const MESSAGES: readonly Message[] = [
     icon: 'rocket',
     sort: 'hint',
     once: true,
-    when: (at) => at.rocket && at.since < 8,
-    done: (at) => at.down(['X']),
+    when: (at) => at.rocket && at.since < 8 && !at.boosted,
+    done: (at) => at.down(['X']) || at.boosted,
   },
   {
     id: 'brakes',
@@ -804,6 +860,79 @@ export const MESSAGES: readonly Message[] = [
     once: true,
     when: (at) => at.flown >= 150,
     done: (at) => at.perched,
+  },
+
+  // --- The round ------------------------------------------------------------
+  //
+  // A delivery is the one kind of level with nothing pointing at the target,
+  // so what would be the marker's job falls to the panel: the address stays
+  // up, and three things about *how to look* are said over the first
+  // kilometre of the first two rounds. Written against `flown` rather than
+  // against the clock, because the clock starts while he is still standing
+  // being handed the letter -- and a tip about flying high that goes by
+  // during the conversation is a tip that was never given.
+  {
+    id: 'orders',
+    keys: [],
+    // The level's own words: the only message on the panel whose text is not
+    // written here. See `Level.orders`.
+    text: (at) => at.orders ?? { en: '', hu: '' },
+    icon: 'arriving',
+    sort: 'story',
+    pinned: true,
+    // Up from the moment the level starts until he is standing on the place
+    // it names. Not while the sender is still talking -- the card is on
+    // screen saying the same thing at greater length.
+    when: (at) => at.orders !== null && !at.onTarget && !at.talking,
+  },
+  {
+    id: 'rocketAgain',
+    keys: ['X'],
+    text: { en: 'X - Rocket mode is faster!', hu: 'X - Rakéta móddal gyorsabb!' },
+    icon: 'rocket',
+    sort: 'hint',
+    once: true,
+    // Once he has been flying a while and has still not tried it. A player
+    // who has used it knows; this is for the one who read the first tip
+    // while a conversation was on screen and never saw it.
+    when: (at) => at.rocket && !at.boosted && at.flown >= 250,
+    done: (at) => at.down(['X']) || at.boosted,
+  },
+  {
+    id: 'flyHighToSee',
+    keys: [],
+    text: {
+      en: 'Fly high to identify city landmarks!',
+      hu: 'Szállj magasra, hogy lásd a város pontjait!',
+    },
+    icon: 'high',
+    sort: 'hint',
+    once: true,
+    holds: 6,
+    when: (at) => learningTheRound(at) && at.flown >= 60,
+  },
+  {
+    id: 'knowTheCity',
+    keys: [],
+    text: {
+      en: 'Use your city knowledge to find the target!',
+      hu: 'A városismereted vezet a célhoz!',
+    },
+    icon: 'arriving',
+    sort: 'hint',
+    once: true,
+    holds: 6,
+    when: (at) => learningTheRound(at) && at.flown >= 400,
+  },
+  {
+    id: 'watchTheMap',
+    keys: [],
+    text: { en: 'Watch the mini map!', hu: 'Figyeld a kis térképet!' },
+    icon: 'arriving',
+    sort: 'hint',
+    once: true,
+    holds: 6,
+    when: (at) => learningTheRound(at) && at.flown >= 900,
   },
 ];
 

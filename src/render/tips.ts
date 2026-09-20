@@ -219,8 +219,26 @@ export function createTipStack(held = HELD, most = STACKED): TipStack {
       );
       // And never more than a screenful: the oldest goes first, which is the
       // one the player has had the longest to read.
-      if (up.length > most) up = up.slice(up.length - most);
-      return up.map((each) => each.message);
+      //
+      // Except the pinned one, which is not in the count. It is the standing
+      // order for the level -- on a delivery, the address itself -- and it is
+      // also the oldest thing on screen, so counting it would mean the first
+      // warning of the flight pushed the only navigation off the panel.
+      if (up.filter((each) => !each.message.pinned).length > most) {
+        let over = up.filter((each) => !each.message.pinned).length - most;
+        up = up.filter((each) => {
+          if (each.message.pinned || over === 0) return true;
+          over -= 1;
+          return false;
+        });
+      }
+      // Resolved here rather than where they are drawn: a message may read
+      // its words off the moment -- see `Message.text` -- and everything past
+      // this point is handed a tip, which is two strings.
+      return up.map(({ message }) => ({
+        ...message,
+        text: typeof message.text === 'function' ? message.text(at) : message.text,
+      }));
     },
     reset() {
       up = [];

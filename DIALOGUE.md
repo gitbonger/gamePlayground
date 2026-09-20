@@ -64,21 +64,14 @@ the level -- there is no arrow and no dot on the map until he is fifty metres
 from it -- so this line has to be findable by somebody who knows the city and
 honest to somebody who does not.
 
-One branch takes the letter and ends, which is what starts the flight. The
-other asks where that is, and is answered with a landmark and a direction
-rather than with a heading: what a pigeon is given is what anybody is given
-when they ask in the street, and the rest is theirs to work out.
+One line and one reply, with nothing to choose. The fork that used to be here
+offered "where is that?" as a second branch, which made the direction a thing
+the player could miss by answering wrongly -- and the direction is the level.
+Everything he is given, he is given at once, and the address stays on the
+panel afterwards so that it can be flown on rather than remembered.
 
-The address is the whole level. There is no arrow and no dot on the map until
-he is fifty metres from the pond, so what is said here is the only navigation
-in it -- and it has to be findable by somebody who knows Budapest and fair to
-somebody who is learning it.
-
-- them: Take this to Millenáris park, to the pond. | Vidd ezt a Millenáris parkba, a tóhoz.
+- them: Take this to Millenáris park, to the pond. North, past Széll Kálmán tér — you will see the water. | Vidd ezt a Millenáris parkba, a tóhoz. Északra, a Széll Kálmán téren túl – meglátod a vizet.
   - you: On my way. | Már repülök is.
-  - you: Where is that? | Az meg merre van?
-    - them: North, past Széll Kálmán tér. You will see the water. | Északra, a Széll Kálmán téren túl. Meglátod a vizet.
-      - you: Right. | Értem.
 
 ## Thank you
 
