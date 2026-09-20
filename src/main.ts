@@ -121,6 +121,7 @@ import {
 } from './sim/collision';
 import { createChaseCamera, defaultCameraParams, defaultWatchParams, rushOf } from './render/camera';
 import { createAirStreaks } from './render/rush';
+import { createAirflow } from './render/airflow';
 import { createHud } from './render/hud';
 import { createMinimap, REACH as MINIMAP_REACH } from './render/minimap';
 import { defaultSight, sighted } from './render/sighted';
@@ -751,6 +752,8 @@ const chase = createChaseCamera(camera);
  */
 const streaks = createAirStreaks();
 scene.add(streaks.object);
+/** And the sound of it, which is the loudest thing a bird hears. */
+const airflow = createAirflow();
 
 /**
  * Which birds are worth drawing, reused rather than rebuilt every frame.
@@ -2369,6 +2372,23 @@ const burnCameraParams = { ...cameraParams };
  * where the rocket puts him. Tied to airspeed rather than to the key, so a
  * long dive earns the same shot the rocket does.
  */
+/**
+ * How far the camera drops towards the ground while the rocket burns, in
+ * metres, and how much air it leaves under itself.
+ *
+ * The other half of the speed problem, and the opposite of tipping the shot
+ * down: what is wanted is not a better angle on distant ground, it is *near*
+ * ground. Down on the deck a hedge is a blur; at a hundred metres nothing is.
+ * So the burn takes the camera down as far as there is room for -- never
+ * below three metres over whatever is under it, and never more than this far
+ * below the bird, who has to stay the subject of his own shot.
+ *
+ * It comes back up as soon as the burn is over, over the second and a half
+ * the boom takes to ease home, which leaves the ordinary flying shot high and
+ * wide and calm.
+ */
+const DECK = { drop: 9, clear: 3 };
+
 const FAST = {
   from: 100 / 3.6,
   to: 300 / 3.6,
@@ -3853,11 +3873,25 @@ function frame(nowMs: number) {
   rush += (wants - rush) * (1 - Math.pow(2, -frameTime / 0.35));
   const flying = burning ? burnCameraParams : fastCameraParams;
   if (bird.ending === null) {
+    // How far down it can go before it is in the ground, or has left the bird
+    // behind. Measured against what is drawn under him rather than against
+    // nought, so a burn over the Buda hills does not fly the camera through a
+    // hillside.
+    const floor =
+      (layout.ground ?? FLAT).heightAt(interpolatedState.position.x, interpolatedState.position.z) +
+      DECK.clear;
+    const room = Math.max(0, interpolatedState.position.y - floor);
+    const dropped = burning ? Math.min(DECK.drop, room) : 0;
     Object.assign(flying, cameraParams, {
       distance: cameraParams.distance + FAST.back * rush + (burning ? 2.4 : 0),
-      height: cameraParams.height + FAST.rise * rush + (burning ? 0.35 : 0),
+      height: cameraParams.height + FAST.rise * rush - dropped,
       pitchDown: ((FAST.tip * Math.PI) / 180) * rush,
-      positionHalfLife: burning ? 0.3 : cameraParams.positionHalfLife,
+      // Slower on the way down and on the way back up, so the drop reads as
+      // the camera being left behind rather than as a cut -- and only for a
+      // second and a half after the burn, because ordinary flying wants the
+      // tight boom it has always had.
+      positionHalfLife:
+        clock < burningUntil + 1.5 ? 0.35 : cameraParams.positionHalfLife,
     });
   }
   const activeCamera = bird.ending ? restCameraParams : flying;
@@ -3899,6 +3933,11 @@ function frame(nowMs: number) {
     // should be easing against: see `ChaseCamera.update`.
     chase.update(interpolatedState, activeCamera, frameTime, isPerched(bird));
   }
+
+  // The air, heard. Nothing on the ground and nothing that has stopped: a
+  // bird standing on a roof is not hearing the wind of its own flight.
+  if (bird.ending === null) airflow.hear(telemetry.airspeed, frameTime);
+  else airflow.hush();
 
   // The air, once the camera is where it is going to be: they are drawn
   // relative to the lens and to the way he is actually travelling, which at
