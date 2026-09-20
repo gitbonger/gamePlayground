@@ -26,18 +26,45 @@ export const towerHeight = (volts: number): number =>
   TOWER_HEIGHT.find((each) => volts >= each.volts)?.tall ?? 11;
 
 /**
- * Where the cables hang on a tower, as a fraction of its height and how far
- * out to the side in metres.
+ * Where the cable hangs on a tower: up its height as a fraction, out to the
+ * side in metres.
  *
- * Three cross-arms, two cables each, which is a single-circuit tower and what
- * most of these are. The arms get shorter going up, as they do: the top one
- * carries the earth wire and the others the phases.
+ * A Danube tower, which is what most of the grid here is built of and what
+ * the diagram of one always shows: a single beam across the top with an
+ * insulator string at each end, a third phase hung on a fork inside the
+ * tower window between them, and two peaks above the beam carrying the earth
+ * wires that shield the lot from lightning.
+ *
+ * Five cables, not six. The two outer phases hang *below* the beam by the
+ * length of their insulators -- which is why the beam is at 0.72 and they are
+ * at 0.65 -- and the earth wires sit right on the peaks, because nothing
+ * hangs from a peak.
  */
-export const ARMS: { up: number; out: number }[] = [
-  { up: 0.62, out: 4.2 },
-  { up: 0.78, out: 3.6 },
-  { up: 0.94, out: 2.4 },
+export const HANGS: { up: number; out: number }[] = [
+  { up: 0.65, out: 6 },
+  { up: 0.65, out: -6 },
+  // The fork's phase, low in the window and on the middle line.
+  { up: 0.55, out: 0 },
+  // The earth wires, on the tips.
+  { up: 1, out: 2.2 },
+  { up: 1, out: -2.2 },
 ];
+
+/** Where the beam and the peaks are, which is what the tower is drawn to. */
+export const TOWER = {
+  beam: { up: 0.72, out: 6 },
+  peak: { up: 1, out: 2.2 },
+  /**
+   * The waist, and how wide the feet are: both fractions of the height.
+   *
+   * A hundred and thirty-two kilovolt tower stands about eight metres across
+   * at the feet and carries a beam twelve across, so the beam is the widest
+   * thing on it -- which is what makes the shape read as a pylon rather than
+   * as a pit head.
+   */
+  waist: { up: 0.45, wide: 0.042 },
+  feet: 0.12,
+};
 
 /** How far a cable dips at mid-span, as a fraction of the span. */
 const SAG = 0.03;
@@ -91,12 +118,16 @@ export function buildGrid(
       const key = `${Math.round(point[0])},${Math.round(point[1])}`;
       if (built.has(key)) continue;
       built.add(key);
-      // Square to the line, because that is how a tower is built: the arms
-      // reach out either side of the way the cable runs.
+      // Square to the line, because that is how a tower is built: the beam
+      // reaches out either side of the way the cable runs, and a beam built
+      // along the cable would hang all three phases off the same point.
+      //
+      // A quarter turn off the line's own bearing, and the quarter turn is
+      // the whole of it: the model is drawn with its beam along its own x.
       const before = points[Math.max(0, at - 1)]!;
       const after = points[Math.min(points.length - 1, at + 1)]!;
       const along = Math.atan2(-(after[1] - before[1]), after[0] - before[0]);
-      pylons.push({ x: point[0], z: point[1], yaw: along, height: tall });
+      pylons.push({ x: point[0], z: point[1], yaw: along + Math.PI / 2, height: tall });
     }
 
     // And the cable, span by span between the towers, following the bends in
@@ -110,48 +141,46 @@ export function buildGrid(
       if (span < 1) continue;
       const dip = Math.min(span * SAG, tall * 0.35);
 
-      for (const arm of ARMS) {
+      for (const arm of HANGS) {
         const hang = tall * arm.up;
-        for (const side of [-1, 1]) {
-          const points3: [number, number, number][] = [];
-          let walked = 0;
-          for (let i = 0; i < run.length; i += 1) {
-            if (i > 0) walked += gap(run[i - 1]!, run[i]!);
-            // Along the leg, and between the mapped vertices: a straight
-            // stretch of a three hundred metre span still has to be sampled
-            // or it is a cable made of two straight lines.
-            const before = i > 0 ? run[i - 1]! : run[i]!;
-            const here = run[i]!;
-            const stretch = i > 0 ? gap(before, here) : 0;
-            const steps = Math.max(1, Math.round(stretch / SAMPLED));
-            for (let step = i > 0 ? 1 : 0; step <= steps; step += 1) {
-              const t = steps === 0 ? 0 : step / steps;
-              const x = before[0] + (here[0] - before[0]) * t;
-              const z = before[1] + (here[1] - before[1]) * t;
-              const gone = walked - stretch * (1 - t);
-              const through = span === 0 ? 0 : gone / span;
-              // A parabola, which is a catenary to anybody looking at it.
-              const drop = dip * 4 * through * (1 - through);
+        const points3: [number, number, number][] = [];
+        let walked = 0;
+        for (let i = 0; i < run.length; i += 1) {
+          if (i > 0) walked += gap(run[i - 1]!, run[i]!);
+          // Along the leg, and between the mapped vertices: a straight
+          // stretch of a three hundred metre span still has to be sampled
+          // or it is a cable made of two straight lines.
+          const before = i > 0 ? run[i - 1]! : run[i]!;
+          const here = run[i]!;
+          const stretch = i > 0 ? gap(before, here) : 0;
+          const steps = Math.max(1, Math.round(stretch / SAMPLED));
+          for (let step = i > 0 ? 1 : 0; step <= steps; step += 1) {
+            const t = steps === 0 ? 0 : step / steps;
+            const x = before[0] + (here[0] - before[0]) * t;
+            const z = before[1] + (here[1] - before[1]) * t;
+            const gone = walked - stretch * (1 - t);
+            const through = span === 0 ? 0 : gone / span;
+            // A parabola, which is a catenary to anybody looking at it.
+            const drop = dip * 4 * through * (1 - through);
 
-              // Out to the side of the line, so the two cables on an arm are
-              // where the arm puts them.
-              const ahead = i > 0 ? before : run[Math.min(1, run.length - 1)]!;
-              const lead = i > 0 ? here : run[0]!;
-              const dx = lead[0] - ahead[0];
-              const dz = lead[1] - ahead[1];
-              const length = Math.hypot(dx, dz) || 1;
-              const outX = (-dz / length) * arm.out * side;
-              const outZ = (dx / length) * arm.out * side;
+            // Out to the side of the line, so the two cables on an arm are
+            // where the arm puts them.
+            const ahead = i > 0 ? before : run[Math.min(1, run.length - 1)]!;
+            const lead = i > 0 ? here : run[0]!;
+            const dx = lead[0] - ahead[0];
+            const dz = lead[1] - ahead[1];
+            const length = Math.hypot(dx, dz) || 1;
+            const outX = (-dz / length) * arm.out;
+            const outZ = (dx / length) * arm.out;
 
-              points3.push([
-                x + outX,
-                groundAt(x + outX, z + outZ) + hang - drop,
-                z + outZ,
-              ]);
-            }
+            points3.push([
+              x + outX,
+              groundAt(x + outX, z + outZ) + hang - drop,
+              z + outZ,
+            ]);
           }
-          if (points3.length >= 2) wires.push({ points: points3 });
         }
+        if (points3.length >= 2) wires.push({ points: points3 });
       }
     }
   }

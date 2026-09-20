@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ARMS, buildGrid, towerHeight } from './grid';
+import { buildGrid, HANGS, towerHeight } from './grid';
 import { buildLayoutFromMap, defaultMapWorldOptions } from './from-map';
 import { createColliderField } from '../sim/collision';
 import { createBird, defaultParams, neutralControls, step } from '../sim/flight';
@@ -44,7 +44,9 @@ describe('the overhead grid', () => {
 
   it('hangs the cable from the towers and lets it dip between them', () => {
     const { wires } = buildGrid([{ points: LINE, volts: 132000 }], LINE.map(([x, z]) => [x, z]));
-    expect(wires.length).toBe(ARMS.length * 2 * 3);
+    // Five cables a span -- three phases and two earth wires -- over the
+    // three spans this line has.
+    expect(wires.length).toBe(HANGS.length * 3);
 
     const wire = wires[0]!;
     const ends = [wire.points[0]!, wire.points[wire.points.length - 1]!];
@@ -58,13 +60,13 @@ describe('the overhead grid', () => {
     expect(ends[0]![1] - lowest).toBeLessThan(300 * 0.05);
   });
 
-  it('carries the cable off to the side, one each way along every arm', () => {
+  it('hangs each cable where the tower carries it', () => {
     const { wires } = buildGrid([{ points: LINE, volts: 132000 }], LINE.map(([x, z]) => [x, z]));
     const acrossTheLine = wires.map((wire) => wire.points[0]![2]);
-    for (const arm of ARMS) {
-      expect(acrossTheLine).toContainEqual(arm.out);
-      expect(acrossTheLine).toContainEqual(-arm.out);
-    }
+    // The beam's two ends, the fork on the middle line, and the two peaks:
+    // the tower's own shape, read off the cable rather than off the drawing.
+    for (const hang of HANGS) expect(acrossTheLine).toContainEqual(hang.out);
+    expect(acrossTheLine.filter((out) => out === 0).length).toBeGreaterThan(0);
   });
 
   it('builds a smaller tower for a smaller line', () => {

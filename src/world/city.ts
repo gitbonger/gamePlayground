@@ -40,7 +40,7 @@ import { insetRing, orientedBox, shoelace } from './plans';
 import { CARRIAGE, ENGINE, TRAM, WAGON, type Train, type Vehicle } from './train';
 import { defaultSmokeOptions, puffOpacity, puffRadius, type Puff, type SmokeOptions } from './smoke';
 import { FLAT } from './ground';
-import { ARMS } from './grid';
+import { HANGS, TOWER } from './grid';
 import { Floats } from '../render/floats';
 import { SEED_SIZE } from './seeds';
 import type { Area, AreaKind } from './areas';
@@ -1163,29 +1163,44 @@ export function buildWorld(
   // Towers of a given height share a shape, so each height is one instanced
   // mesh; the cable is drawn as lines, which is what a cable is.
   if (layout.pylons?.length) {
-    const byHeight = new Map<number, typeof layout.pylons>();
-    for (const pylon of layout.pylons) {
-      const already = byHeight.get(pylon.height);
-      if (already) already.push(pylon);
-      else byHeight.set(pylon.height, [pylon]);
-    }
-    for (const [height, standing] of byHeight) {
-      const shape = buildPylonGeometry(height);
-      const steel = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-      disposables.push(shape, steel);
-      const towers = new THREE.InstancedMesh(shape, steel, standing.length);
-      towers.castShadow = true;
-      towers.receiveShadow = true;
-      towers.name = 'pylons';
-      group.add(towers);
-      standing.forEach((pylon, i) => {
-        rotation.setFromAxisAngle(up, pylon.yaw);
-        position.set(pylon.x, standOn(pylon.x, pylon.z), pylon.z);
-        scale.setScalar(1);
-        matrix.compose(position, rotation, scale);
-        towers.setMatrixAt(i, matrix);
-      });
-      towers.instanceMatrix.needsUpdate = true;
+    // One shape per height, built once and instanced -- a tower is eight
+    // hundred triangles and there are a couple of hundred of them -- and one
+    // mesh per height *per patch*, so the line across Ujpest is not drawn
+    // while you are over Blaha. Same arrangement as the trees.
+    const steel = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    disposables.push(steel);
+    const shapes = new Map<number, THREE.BufferGeometry>();
+    const shapeOf = (height: number) => {
+      const known = shapes.get(height);
+      if (known) return known;
+      const made = buildPylonGeometry(height);
+      shapes.set(height, made);
+      disposables.push(made);
+      return made;
+    };
+
+    for (const patch of intoPatches(layout.pylons, (pylon) => [pylon.x, pylon.z] as const)) {
+      const byHeight = new Map<number, typeof patch>();
+      for (const pylon of patch) {
+        const already = byHeight.get(pylon.height);
+        if (already) already.push(pylon);
+        else byHeight.set(pylon.height, [pylon]);
+      }
+      for (const [height, standing] of byHeight) {
+        const towers = new THREE.InstancedMesh(shapeOf(height), steel, standing.length);
+        towers.castShadow = true;
+        towers.receiveShadow = true;
+        towers.name = 'pylons';
+        group.add(towers);
+        standing.forEach((pylon, i) => {
+          rotation.setFromAxisAngle(up, pylon.yaw);
+          position.set(pylon.x, standOn(pylon.x, pylon.z), pylon.z);
+          scale.setScalar(1);
+          matrix.compose(position, rotation, scale);
+          towers.setMatrixAt(i, matrix);
+        });
+        towers.instanceMatrix.needsUpdate = true;
+      }
     }
   }
 
@@ -2966,63 +2981,112 @@ const STEEPLE_SLATE = 0x50535a;
 const PYLON_STEEL = 0x9aa1a8;
 
 /**
- * A lattice tower, one shape for every tower of that height.
+ * A lattice tower: the Danube sort, which is what this grid is built of.
  *
- * Four legs leaning in, a few belts of bracing across them, and the
- * cross-arms the cable hangs from at the heights `ARMS` says. Drawn as solid
- * members rather than as a real lattice: what says "pylon" from three hundred
- * metres is the silhouette -- the taper and the arms -- and a truss of the
- * real thing would be four hundred little boxes apiece for a pattern nobody
- * can resolve at that range.
+ * Four main legs splayed at the feet and drawn in to a waist, the body above
+ * it carrying one beam across with an insulator string hanging at each end,
+ * a third phase on a fork inside the tower window, and two peaks over the
+ * beam for the earth wires. Every member is a strut, so the diagonals are
+ * diagonal and the thing reads as a lattice rather than as a mast.
+ *
+ * One geometry per height and every tower of that height an instance of it:
+ * eight hundred triangles built once and drawn from wherever they are wanted.
+ * See `HANGS` for where the cable is tied on, which is the other half of the
+ * same drawing.
  */
 export function buildPylonGeometry(height: number): THREE.BufferGeometry {
   const pieces: { geometry: THREE.BufferGeometry; color: number }[] = [];
-  const add = (
-    width: number,
-    tall: number,
-    deep: number,
-    x: number,
-    y: number,
-    z: number,
-    yaw = 0,
+  const thick = Math.max(0.1, height * 0.011);
+  const along = new THREE.Vector3();
+  const turn = new THREE.Quaternion();
+  const upright = new THREE.Vector3(0, 1, 0);
+
+  /** One member, from one place to another. */
+  const strut = (
+    from: readonly [number, number, number],
+    to: readonly [number, number, number],
+    width = thick,
   ) => {
-    const part = new THREE.BoxGeometry(width, tall, deep);
-    if (yaw) part.rotateY(yaw);
-    part.translate(x, y, z);
+    along.set(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
+    const run = along.length();
+    if (run < 0.01) return;
+    const part = new THREE.BoxGeometry(width, run, width);
+    turn.setFromUnitVectors(upright, along.clone().normalize());
+    part.applyQuaternion(turn);
+    part.translate((from[0] + to[0]) / 2, (from[1] + to[1]) / 2, (from[2] + to[2]) / 2);
     pieces.push({ geometry: part, color: PYLON_STEEL });
   };
 
-  const foot = height * 0.13;
-  const shoulder = height * 0.045;
-  const thick = Math.max(0.12, height * 0.012);
+  /**
+   * Half the width of the tower at a height, as the fraction of the whole it
+   * is: wide at the feet, drawn in to the waist, and near enough straight
+   * above it. It is the outline that says "pylon" from a mile off.
+   */
+  const halfAt = (up: number) => {
+    const { waist, feet } = TOWER;
+    if (up <= waist.up) {
+      const through = up / waist.up;
+      return height * (feet + (waist.wide - feet) * through);
+    }
+    const through = (up - waist.up) / (1 - waist.up);
+    return height * (waist.wide - (waist.wide - 0.028) * through * 0.55);
+  };
 
-  // The legs, in three lengths so they lean in rather than stand straight.
-  const steps = 3;
-  for (const sx of [-1, 1]) {
+  // The body: six panels from the feet to the beam, and two more above it.
+  const levels = [0, 0.14, 0.28, 0.45, 0.58, TOWER.beam.up, 0.86, 1];
+  const corner = (up: number, sx: number, sz: number): [number, number, number] => [
+    sx * halfAt(up),
+    up * height,
+    sz * halfAt(up),
+  ];
+  const sides: [number, number][] = [
+    [1, 1],
+    [1, -1],
+    [-1, -1],
+    [-1, 1],
+  ];
+
+  for (let panel = 0; panel + 1 < levels.length; panel += 1) {
+    const low = levels[panel]!;
+    const high = levels[panel + 1]!;
+    // The legs.
+    for (const [sx, sz] of sides) strut(corner(low, sx, sz), corner(high, sx, sz));
+    // The horizontal member that closes the panel off at the top.
+    for (let i = 0; i < sides.length; i += 1) {
+      const here = sides[i]!;
+      const next = sides[(i + 1) % sides.length]!;
+      strut(corner(high, here[0], here[1]), corner(high, next[0], next[1]), thick * 0.75);
+      // And one diagonal across each face of it, which is the lattice.
+      strut(corner(low, here[0], here[1]), corner(high, next[0], next[1]), thick * 0.6);
+    }
+  }
+
+  // The beam: a truss out either side, top and bottom chords and a brace.
+  const beamUp = TOWER.beam.up * height;
+  const deep = height * 0.035;
+  for (const side of [-1, 1]) {
+    const root = halfAt(TOWER.beam.up) * side;
+    const tip = TOWER.beam.out * side;
     for (const sz of [-1, 1]) {
-      for (let i = 0; i < steps; i += 1) {
-        const low = (i / steps) * height * 0.94;
-        const high = ((i + 1) / steps) * height * 0.94;
-        const at = (foot + (shoulder - foot) * ((low + high) / 2 / height)) ;
-        add(thick, high - low, thick, sx * at, (low + high) / 2, sz * at);
-      }
+      strut([root, beamUp, sz * deep], [tip, beamUp, sz * deep * 0.35]);
+      strut([root, beamUp - deep, sz * deep], [tip, beamUp, sz * deep * 0.35], thick * 0.7);
     }
+    strut([root, beamUp - deep, 0], [tip * 0.55, beamUp, 0], thick * 0.7);
+    // The insulator string, hanging the phase under the beam's end.
+    strut([tip, beamUp, 0], [tip, height * HANGS[0]!.up, 0], thick * 0.8);
   }
 
-  // Belts across it, which is what stops the legs reading as four poles.
-  for (const up of [0.18, 0.42, 0.66, 0.9]) {
-    const at = foot + (shoulder - foot) * up;
-    for (const sz of [-1, 1]) add(at * 2, thick, thick, 0, height * up, sz * at);
-    for (const sx of [-1, 1]) add(thick, thick, at * 2, sx * at, height * up, 0);
+  // The fork in the window, which is what the middle phase hangs off.
+  const forkUp = height * HANGS[2]!.up;
+  for (const side of [-1, 1]) {
+    strut([side * halfAt(0.64), height * 0.64, 0], [0, forkUp, 0], thick * 0.8);
   }
 
-  // And the arms, reaching out either side of the way the cable runs.
-  for (const arm of ARMS) {
-    add(thick * 1.4, thick * 1.4, arm.out * 2, 0, height * arm.up, 0);
-    // A little mast under each, so an arm is carried rather than floating.
-    for (const side of [-1, 1]) {
-      add(thick, height * 0.05, thick, 0, height * (arm.up - 0.025), side * arm.out * 0.75);
-    }
+  // And the two peaks over it, carrying the earth wires.
+  for (const side of [-1, 1]) {
+    const tip: [number, number, number] = [side * TOWER.peak.out, height * TOWER.peak.up, 0];
+    strut([side * halfAt(0.86), height * 0.86, deep], tip);
+    strut([side * halfAt(0.86), height * 0.86, -deep], tip);
   }
 
   return painted(pieces);
