@@ -29,6 +29,17 @@ export interface CameraParams {
   fovGain: number;
   /** Airspeed at which fovGain is fully applied, in m/s. */
   fovRefSpeed: number;
+  /**
+   * How far the shot is tipped down, in radians. Nought is level.
+   *
+   * Speed is a thing you see on the ground, not in the air: at a hundred
+   * metres, level, a pigeon at four hundred kilometres an hour is a pigeon
+   * hanging in front of a photograph. Tipped over so the streets are running
+   * through the frame, the same flight is frightening. The angle is turned up
+   * with airspeed -- see `rushOf` -- rather than with the rocket, because it
+   * is about how fast he is going and not about how he got there.
+   */
+  pitchDown?: number;
 }
 
 export const defaultCameraParams: CameraParams = {
@@ -170,6 +181,20 @@ export function twoShot(
   };
 }
 
+/**
+ * How fast he is going, as nought to one, for everything that answers to it.
+ *
+ * Nought below `from`, one above `to`, and eased at both ends so the shot
+ * does not start moving the instant the number is crossed. A hundred to three
+ * hundred kilometres an hour is where it runs: under a hundred he is flying,
+ * over three hundred he is a missile, and the whole of the difference belongs
+ * in between.
+ */
+export const rushOf = (speed: number, from: number, to: number): number => {
+  const t = Math.min(1, Math.max(0, (speed - from) / Math.max(to - from, 1e-6)));
+  return t * t * (3 - 2 * t);
+};
+
 /** Frame-rate independent smoothing factor for a given half-life. */
 const smoothing = (halfLife: number, dt: number) =>
   halfLife <= 0 ? 1 : 1 - Math.pow(2, -dt / halfLife);
@@ -187,6 +212,8 @@ export function createChaseCamera(camera: THREE.PerspectiveCamera): ChaseCamera 
   const desiredPos = new THREE.Vector3();
   const desiredTarget = new THREE.Vector3();
   const desiredUp = new THREE.Vector3();
+  const look = new THREE.Vector3();
+  const across = new THREE.Vector3();
 
   let initialised = false;
   /** Where the pair was last frame, so the shot can be carried along with it. */
@@ -216,6 +243,18 @@ export function createChaseCamera(camera: THREE.PerspectiveCamera): ChaseCamera 
       .addScaledVector(up, params.height);
 
     desiredTarget.copy(birdPos).addScaledVector(forward, params.lookAhead);
+
+    // And tipped down, about the horizontal across the shot, so what is
+    // framed is the ground he is crossing rather than the sky he is under.
+    const tip = params.pitchDown ?? 0;
+    if (tip > 0.001) {
+      look.copy(desiredTarget).sub(desiredPos);
+      across.copy(look).cross(up);
+      if (across.lengthSq() > 1e-9) {
+        look.applyAxisAngle(across.normalize(), -tip);
+        desiredTarget.copy(desiredPos).add(look);
+      }
+    }
 
     // Only part of the bank is carried into the camera roll. Full roll follow
     // is disorienting; none at all makes turns feel weightless.

@@ -4,6 +4,7 @@ import {
   createChaseCamera,
   defaultCameraParams,
   defaultWatchParams,
+  rushOf,
   twoShot,
   type WatchParams,
 } from './camera';
@@ -309,5 +310,45 @@ describe('following a bird that is standing on something', () => {
     const before = { x: camera.position.x, z: camera.position.z };
     chase.update(bird, perched(false), DT, true);
     expect(Math.hypot(camera.position.x - before.x, camera.position.z - before.z)).toBeLessThan(1);
+  });
+});
+
+describe('the shot at speed', () => {
+  it('is level until a hundred, and fully over by three hundred', () => {
+    const from = 100 / 3.6;
+    const to = 300 / 3.6;
+    expect(rushOf(20, from, to)).toBe(0);
+    expect(rushOf(from, from, to)).toBe(0);
+    expect(rushOf(to, from, to)).toBe(1);
+    expect(rushOf(200, from, to)).toBe(1);
+    // Eased at both ends rather than a ramp: the shot starts and stops moving
+    // gently, which is the difference between a camera and a lever.
+    const middle = rushOf((from + to) / 2, from, to);
+    expect(middle).toBeCloseTo(0.5, 5);
+    expect(rushOf(from + (to - from) * 0.1, from, to)).toBeLessThan(0.1);
+    expect(rushOf(from + (to - from) * 0.9, from, to)).toBeGreaterThan(0.9);
+  });
+
+  it('tips the aim down by the angle it is given, and nothing else', () => {
+    const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1000);
+    const chase = createChaseCamera(camera);
+    const level = { ...defaultCameraParams, rollFollow: 0 };
+    const bird = createBird(vec(0, 60, 0), 30, 0);
+
+    chase.snap(bird, level);
+    const flat = camera.getWorldDirection(new THREE.Vector3()).clone();
+    // Not level to begin with: the boom sits half a metre above him and aims
+    // at his own height nine metres out, which is three degrees down already.
+    const pitchOf = (v: THREE.Vector3) => (Math.asin(-v.y / v.length()) * 180) / Math.PI;
+    expect(pitchOf(flat)).toBeGreaterThan(2);
+    expect(pitchOf(flat)).toBeLessThan(4);
+
+    const tipped = { ...level, pitchDown: (30 * Math.PI) / 180 };
+    chase.snap(bird, tipped);
+    const down = camera.getWorldDirection(new THREE.Vector3()).clone();
+    // Thirty degrees further over, which is what the number says.
+    expect(pitchOf(down) - pitchOf(flat)).toBeCloseTo(30, 1);
+    // And still pointing the same way round the compass.
+    expect(Math.atan2(down.x, -down.z)).toBeCloseTo(Math.atan2(flat.x, -flat.z), 3);
   });
 });

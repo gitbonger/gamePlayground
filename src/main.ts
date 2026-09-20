@@ -119,7 +119,7 @@ import {
   turnedBox,
   type Collider,
 } from './sim/collision';
-import { createChaseCamera, defaultCameraParams, defaultWatchParams } from './render/camera';
+import { createChaseCamera, defaultCameraParams, defaultWatchParams, rushOf } from './render/camera';
 import { createHud } from './render/hud';
 import { createMinimap, REACH as MINIMAP_REACH } from './render/minimap';
 import { defaultSight, sighted } from './render/sighted';
@@ -153,7 +153,7 @@ import {
   tweenAlong,
   type Vehicle,
 } from './world/train';
-import { createSmoke, defaultSmokeOptions, ROCKET_SMOKE, type Smoke } from './world/smoke';
+import { createSmoke, defaultSmokeOptions, WINGTIP_TRAIL, type Smoke } from './world/smoke';
 import {
   asFlight,
   asStance,
@@ -351,14 +351,26 @@ const smokes = layout.trains
 /** How long the burn lasts, in seconds. */
 const BURN = 1.4;
 
-const rocketSmoke = createSmoke(ROCKET_SMOKE, 3);
-/** When the burn ends. Before that, it is making smoke. */
+/**
+ * One a side, because the streak comes off the wing tips.
+ *
+ * Two emitters rather than one down the middle: the tips are what leaves a
+ * vortex, they are the part of the bird still in frame from a camera a metre
+ * and a half behind him, and two lines say *turning* when he banks in a way
+ * one never could.
+ */
+const trails = [createSmoke(WINGTIP_TRAIL, 3), createSmoke(WINGTIP_TRAIL, 11)];
+/** How far out the tips are, and how far above the middle of him. */
+const WINGTIP = { across: 0.38, up: 0.03 };
+/** White, and the same white whatever it is doing: see `Plume.tint`. */
+const TRAIL_WHITE = 0xf2f7ff;
+/** When the burn ends. Before that, the tips are drawing. */
 let burningUntil = -1;
 
 /** Everything in the world that smokes, as the renderer wants it. */
 const plumes: Plume[] = [
   ...smokes.map((each) => ({ puffs: each.puffs.puffs })),
-  { puffs: rocketSmoke.puffs, smoke: ROCKET_SMOKE },
+  ...trails.map((trail) => ({ puffs: trail.puffs, smoke: WINGTIP_TRAIL, tint: TRAIL_WHITE })),
 ];
 /** How many puffs can be out at once, which is what the renderer allocates. */
 const allPuffs = plumes.reduce((total, plume) => total + plume.puffs.length, 0);
@@ -2323,6 +2335,68 @@ playLevel(level);
 const interpolatedState: BirdState = { ...bird };
 // Once the flight is over the camera drifts back to take in the spot.
 const restCameraParams = { ...cameraParams };
+/**
+ * And where it goes while the rocket burns: back a little, and lazier about
+ * closing the gap.
+ *
+ * The shot is the other half of the trail. From a metre and a half back, two
+ * streaks off the tips are two smudges at the edges of the frame; from four,
+ * with the camera taking its time to catch up, they are lines running away
+ * behind him -- which is the thing that happened, and the camera falling
+ * behind is what a sudden twenty wingbeats feels like from outside.
+ */
+const burnCameraParams = { ...cameraParams };
+
+/**
+ * The shot at speed: up, back, and tipped down over the streets.
+ *
+ * What was missing is that height hides speed. Four hundred kilometres an
+ * hour a hundred metres up, framed level, is a bird in front of a still
+ * picture -- nothing in the frame is near enough to move. The answer is not
+ * more blur, it is a different shot: rise, fall back, and tip the camera down
+ * until the ground is what is going past.
+ *
+ * Off at a hundred kilometres an hour and fully on at three hundred, which is
+ * where the rocket puts him. Tied to airspeed rather than to the key, so a
+ * long dive earns the same shot the rocket does.
+ */
+const FAST = {
+  from: 100 / 3.6,
+  to: 300 / 3.6,
+  /**
+   * How far over it tips at the top, in degrees.
+   *
+   * Thirty-eight. Sixty was asked for and sixty is too much to fly in: half
+   * the field of view is forty-three degrees at this speed, so at sixty the
+   * horizon has left the frame altogether and the buildings he is about to
+   * hit are above the top edge. At thirty-eight the horizon sits along the
+   * top of the shot and everything below it is the city coming at him, which
+   * is the picture that was wanted.
+   */
+  tip: 38,
+  /**
+   * And how far up and back, in metres.
+   *
+   * The pair of them decide where he sits in the shot, so they are chosen
+   * together: three and a half up and five back puts the camera thirty-four
+   * degrees above him while it is aiming forty-one degrees down, which leaves
+   * him in the upper third of the frame with the whole of the city running
+   * underneath. Raise it without going back as far and he drops out of the
+   * bottom of his own shot.
+   */
+  rise: 3.5,
+  back: 3.5,
+};
+const fastCameraParams = { ...cameraParams };
+/**
+ * How far into that it is now, eased.
+ *
+ * The rocket is a step change in speed -- twenty wingbeats in one frame -- and
+ * a shot that answered it exactly would snap. This follows over about a third
+ * of a second, so the camera swings up into the dive and settles back out of
+ * it.
+ */
+let rush = 0;
 
 /**
  * Run the trains on, and hand back a collider that includes them.
@@ -2845,16 +2919,22 @@ function moveTrains(dt: number) {
     plume.puffs.update(dt, { x: at.x, y: stack.height, z: at.z }, air);
   }
 
-  // Out of the tail, and only while the burn lasts. Behind him rather than
-  // under him: smoke coming out of the middle of a pigeon is a pigeon on
-  // fire, which is a different game.
-  const back = rotate(bird.orientation, vec(0, 0, 0.45));
-  rocketSmoke.update(
-    dt,
-    { x: bird.position.x + back.x, y: bird.position.y + back.y, z: bird.position.z + back.z },
-    air,
-    clock < burningUntil,
-  );
+  // Off the wing tips, and only while the burn lasts. Turned with him, so a
+  // banked bird lays its two lines over each other the way a banked aircraft
+  // does.
+  const burning = clock < burningUntil;
+  trails.forEach((trail, side) => {
+    const tip = rotate(
+      bird.orientation,
+      vec(side === 0 ? -WINGTIP.across : WINGTIP.across, WINGTIP.up, 0),
+    );
+    trail.update(
+      dt,
+      { x: bird.position.x + tip.x, y: bird.position.y + tip.y, z: bird.position.z + tip.z },
+      air,
+      burning,
+    );
+  });
 
   return combineColliders(...fields);
 }
@@ -3756,7 +3836,21 @@ function frame(nowMs: number) {
 
   // Once the bird is down the camera settles: further back and levelled off
   // for a crash, closer and lower for a perch, where the bird is the subject.
-  const activeCamera = bird.ending ? restCameraParams : cameraParams;
+  const burning = clock < burningUntil && bird.ending === null;
+  // Where the shot wants to be for the speed he is doing, eased into rather
+  // than jumped to.
+  const wants = bird.ending ? 0 : rushOf(telemetry.airspeed, FAST.from, FAST.to);
+  rush += (wants - rush) * (1 - Math.pow(2, -frameTime / 0.35));
+  const flying = burning ? burnCameraParams : fastCameraParams;
+  if (bird.ending === null) {
+    Object.assign(flying, cameraParams, {
+      distance: cameraParams.distance + FAST.back * rush + (burning ? 2.4 : 0),
+      height: cameraParams.height + FAST.rise * rush + (burning ? 0.35 : 0),
+      pitchDown: ((FAST.tip * Math.PI) / 180) * rush,
+      positionHalfLife: burning ? 0.3 : cameraParams.positionHalfLife,
+    });
+  }
+  const activeCamera = bird.ending ? restCameraParams : flying;
   if (bird.ending) {
     Object.assign(
       restCameraParams,

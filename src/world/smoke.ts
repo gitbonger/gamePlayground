@@ -48,6 +48,16 @@ export interface SmokeOptions {
   /** Radius at the stack, in metres, and how much wider per metre risen. */
   size: number;
   spread: number;
+  /**
+   * How far it has to rise before it is at full strength, in metres.
+   *
+   * A metre, left out, which is what a chimney wants: smoke thickens as it
+   * leaves rather than appearing whole at the lip. A wingtip wants nothing of
+   * the sort -- the streak is a metre behind the bird and gone past the
+   * camera in a tenth of a second, and one that spends that tenth fading up
+   * is a streak nobody ever sees.
+   */
+  fadeIn?: number;
 }
 
 /**
@@ -69,28 +79,27 @@ export const defaultSmokeOptions: SmokeOptions = {
 };
 
 /**
- * The rocket: the same smoke out of a much smaller hole.
+ * The rocket, as two streaks off the wing tips.
  *
- * A chimney is one big puff a second rising twenty-six metres. This is
- * twenty-five small ones a second, gone in two, so what is left behind a
- * boosting pigeon is a short dirty streak rather than a column standing over
- * the city. Same puffs, same renderer, same soot: a trail drawn some other
- * way would be the one thing in the sky that did not come from this game.
+ * Smoke out of the tail was the first try and it was invisible, for a reason
+ * that is worth writing down: the camera flies a metre and a half behind the
+ * bird, so a trail laid *behind* him is past the lens inside a tenth of a
+ * second. What can be seen from there is what comes off the sides -- the wing
+ * tips are three quarters of a metre apart and they stay in frame -- so that
+ * is where it comes from, one of these a side.
+ *
+ * And nothing about it is a chimney. It is lit the moment it exists rather
+ * than fading up over a metre of rise, it barely climbs, it is small, and it
+ * is bright instead of sooty: a pigeon has no engine, and what a wing leaves
+ * in the air at speed is a vortex off the tip, which is white.
  */
-export const ROCKET_SMOKE: SmokeOptions = {
-  // Forty-five a second so the trail is a streak rather than a row of beads
-  // -- each puff is only ever half solid, so what makes it read as smoke is
-  // how many of them overlap -- and gone in a little over two seconds: what
-  // belongs behind a boosting pigeon is thirty metres of it, not a column
-  // standing over the district.
-  rate: 45,
-  climb: 1.2,
-  reach: 2.6,
-  // A pigeon is a quarter of a metre across. A puff out of its tail starts
-  // about that and ends the width of the bird's wingspan, which is as much
-  // smoke as a bird can plausibly make.
-  size: 0.28,
-  spread: 0.5,
+export const WINGTIP_TRAIL: SmokeOptions = {
+  rate: 60,
+  climb: 0.5,
+  reach: 1,
+  size: 0.07,
+  spread: 0.22,
+  fadeIn: 0.02,
 };
 
 export interface Smoke {
@@ -137,7 +146,7 @@ export function puffRadius(puff: Puff, options: SmokeOptions): number {
 export function puffOpacity(puff: Puff, options: SmokeOptions): number {
   if (puff.risen < 0) return 0;
   const through = Math.min(1, puff.risen / options.reach);
-  const leaving = Math.min(1, puff.risen / 1);
+  const leaving = Math.min(1, puff.risen / (options.fadeIn ?? 1));
   const fading = 1 - through;
   return leaving * fading * fading;
 }

@@ -30,7 +30,7 @@ import { project } from '../src/world/geo';
 import { buildCarGraph, createTraffic } from '../src/world/cars';
 import { createCarMeshes } from '../src/render/cars';
 import { FLAT } from '../src/world/ground';
-import { createSmoke, ROCKET_SMOKE } from '../src/world/smoke';
+import { createSmoke, WINGTIP_TRAIL } from '../src/world/smoke';
 import { createSkyDome } from '../src/render/scene';
 
 const map = homeMap as unknown as MapData;
@@ -124,7 +124,7 @@ world.updateWater(n('t', 0));
 // line from the camera to what it is looking at, which is the only way to see
 // what X leaves behind without being able to press X.
 if (n('rocket', 0)) {
-  const trail = createSmoke(ROCKET_SMOKE, 3);
+  const trails = [createSmoke(WINGTIP_TRAIL, 3), createSmoke(WINGTIP_TRAIL, 11)];
   // Flown *at* what the camera is looking at, ending on it: a trail laid from
   // the camera outwards starts in its own face and is gone by the time it is
   // in frame.
@@ -141,16 +141,28 @@ if (n('rocket', 0)) {
   // metres out: the trail then lies between the camera and what it is looking
   // at, which is where a chase camera sees it from.
   const START = 8;
+  // Two of them, a wingspan apart across the line of flight.
+  const across = { x: -way.z, y: 0, z: way.x };
   for (let t = 0; t < seconds; t += dt) {
     const along = START + t * speed;
-    trail.update(
-      dt,
-      { x: eye.x + way.x * along, y: eye.y + way.y * along, z: eye.z + way.z * along },
-      { x: 0, y: 0, z: 0 },
-      t < 1.4,
-    );
+    trails.forEach((trail, side) => {
+      const out = (side === 0 ? -0.38 : 0.38);
+      trail.update(
+        dt,
+        {
+          x: eye.x + way.x * along + across.x * out,
+          y: eye.y + way.y * along,
+          z: eye.z + way.z * along + across.z * out,
+        },
+        { x: 0, y: 0, z: 0 },
+        t < 1.4,
+      );
+    });
   }
-  world.updateSmoke([{ puffs: trail.puffs, smoke: ROCKET_SMOKE }], camera.quaternion);
+  world.updateSmoke(
+    trails.map((trail) => ({ puffs: trail.puffs, smoke: WINGTIP_TRAIL, tint: 0xf2f7ff })),
+    camera.quaternion,
+  );
 }
 
 // And the cars, driven for `drive` seconds round where the camera is looking

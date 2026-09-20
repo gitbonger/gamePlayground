@@ -120,6 +120,15 @@ export interface Plume {
   puffs: readonly Puff[];
   /** Left out: the engine's, which is what most of them are. */
   smoke?: SmokeOptions;
+  /**
+   * What colour it is, if it is not soot.
+   *
+   * A chimney's puffs darken and thin on a ramp worked out from how far they
+   * have risen. A wingtip vortex is white the whole way and gone in a second,
+   * and running it through the soot ramp would draw a pigeon with two little
+   * chimneys on its wrists.
+   */
+  tint?: number;
 }
 
 export interface World {
@@ -1253,7 +1262,7 @@ export function buildWorld(
 
   const updateSmoke = (plumes: readonly Plume[], viewer: THREE.Quaternion) => {
     let drawn = 0;
-    for (const { puffs, smoke = defaultSmokeOptions } of plumes) {
+    for (const { puffs, smoke = defaultSmokeOptions, tint } of plumes) {
     for (const puff of puffs) {
       const alpha = puffOpacity(puff, smoke);
       if (alpha <= 0.004 || drawn >= smokeCapacity) continue;
@@ -1271,9 +1280,12 @@ export function buildWorld(
       // grey by the top of the plume, which against a pale sky is very nearly
       // nothing at all: what was drawn was the bottom two seconds of a
       // chimney and then air.
-      const through = Math.min(1, puff.risen / smoke.reach);
-      const grey = 0.07 + 0.2 * through;
-      puffTint.setRGB(grey, grey, grey * 1.06);
+      if (tint !== undefined) puffTint.setHex(tint);
+      else {
+        const through = Math.min(1, puff.risen / smoke.reach);
+        const grey = 0.07 + 0.2 * through;
+        puffTint.setRGB(grey, grey, grey * 1.06);
+      }
       plume.mesh.setColorAt(drawn, puffTint);
 
       // There are eighteen of these in a plume rather than fifteen hundred,
