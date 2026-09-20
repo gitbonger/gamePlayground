@@ -1821,3 +1821,37 @@ describe('starting a flock already in its ball', () => {
     expect(ahead.length).toBeGreaterThan(20);
   });
 });
+
+describe('a flock over ground that is not flat', () => {
+  /** A hill a hundred metres high, everywhere west of the origin. */
+  const hill = (x: number) => (x < 0 ? 100 : 0);
+
+  it('keeps its clearance over the hill rather than over the sea', () => {
+    const flock = createFlock(
+      1,
+      () => ({ x: -500, y: 130, z: 0, heading: 0, speed: 0, climb: 0 }),
+      { ...defaultFlockOptions, count: 6, minAltitude: 25, groundAt: (x) => hill(x), seed: 4 },
+    );
+    flock.update(0.5, undefined, undefined);
+    for (const member of flock.members) {
+      if (!member.out) continue;
+      // A hundred and twenty-five is the floor here: the hill plus the
+      // clearance. Flat-earth arithmetic would have put them at twenty-five,
+      // which is seventy-five metres inside the hill.
+      expect(member.state.position.y, `${member.state.position.x}`).toBeGreaterThan(100);
+    }
+  });
+
+  it('leaves the flat side alone', () => {
+    const flock = createFlock(
+      1,
+      () => ({ x: 500, y: 30, z: 0, heading: 0, speed: 0, climb: 0 }),
+      { ...defaultFlockOptions, count: 6, minAltitude: 25, groundAt: (x) => hill(x), seed: 4 },
+    );
+    flock.update(0.5, undefined, undefined);
+    for (const member of flock.members) {
+      if (!member.out) continue;
+      expect(member.state.position.y).toBeLessThan(100);
+    }
+  });
+});

@@ -1049,6 +1049,9 @@ const flock = createFlock(PIGEON_MORPHS.length, () => leaderOf(bird), {
   // see `Spawn`. Behind a player diving at speed, the old way kept them out
   // of shot for the first twenty seconds of a level.
   spawn: { kind: 'above', away: 12 },
+  // The ground they keep clear of, which over Buda is a hillside: see
+  // `FlockOptions.groundAt`.
+  groundAt: standingOn.groundAt,
   // The anchor is the bird itself. Where the flock *wheels* is thirty metres
   // in front of him and that is the flock's own business -- handed a
   // pre-shifted anchor it also moved the loft they are let out of, which is
@@ -1195,6 +1198,7 @@ const crows = crowsAt
         // ball that size are a stretch of sky to get through rather than a
         // knot to fly round.
         radius: 60,
+        groundAt: standingOn.groundAt,
         // See below: this is about how they look, not about what they hit.
         // Above the ordinary rooflines, which come to twenty-four, so that
         // the ones milling look like birds over a city rather than birds in

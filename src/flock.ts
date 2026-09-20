@@ -170,6 +170,16 @@ export interface FlockOptions {
    */
   minAltitude: number;
   /**
+   * How high the ground is at a place, if the caller knows.
+   *
+   * Every height in here that says "a bird will not go below this" means
+   * below the *ground*, and the ground used to be nought everywhere. Over the
+   * Buda hills nought is thirty metres of hillside, so a flock told to keep
+   * ten metres up kept ten metres up over the sea and flew through the hill.
+   * Left out, it is the flat plane it always was.
+   */
+  groundAt?: (x: number, z: number) => number;
+  /**
    * How far in front of the anchor the flock wheels, in metres.
    *
    * Targets only. Centred on the leader, half a flock is behind him at all
@@ -720,6 +730,13 @@ export function createFlock(
 ): Flock {
   const rand = mulberry32(options.seed);
 
+  /**
+   * The lowest a bird will be put or aimed at a place: the ground there, plus
+   * the clearance the flock was told to keep. See `FlockOptions.groundAt`.
+   */
+  const overGround = (x: number, z: number) =>
+    (options.groundAt?.(x, z) ?? 0) + options.minAltitude;
+
   interface Pilot {
     member: FlockMember;
     /** Its place in the flock, which is what `only` counts against. */
@@ -811,7 +828,10 @@ export function createFlock(
       z: at.z + Math.sin(around) * ring * away,
       // Height comes from the same ball, so the flock is at the leader's own
       // altitude give or take -- floored, because the ground is down there.
-      altitude: Math.max(options.minAltitude, at.y + up * away),
+      altitude: Math.max(
+        overGround(at.x + Math.cos(around) * ring * away, at.z + Math.sin(around) * ring * away),
+        at.y + up * away,
+      ),
     };
   };
 
@@ -825,14 +845,14 @@ export function createFlock(
 
     if (spawn.kind === 'at') {
       return {
-        where: vec(spawn.x, Math.max(spawn.y, options.minAltitude), spawn.z),
+        where: vec(spawn.x, Math.max(spawn.y, overGround(spawn.x, spawn.z)), spawn.z),
         facing: rand() * Math.PI * 2,
       };
     }
 
     if (spawn.kind === 'above') {
       return {
-        where: vec(at.x, Math.max(at.y + spawn.away, options.minAltitude), at.z),
+        where: vec(at.x, Math.max(at.y + spawn.away, overGround(at.x, at.z)), at.z),
         facing: at.heading,
         speed: at.speed,
       };
@@ -843,7 +863,10 @@ export function createFlock(
       return {
         where: vec(
           at.x + Math.sin(behind) * spawn.away,
-          Math.max(at.y, options.minAltitude),
+          Math.max(
+            at.y,
+            overGround(at.x + Math.sin(behind) * spawn.away, at.z - Math.cos(behind) * spawn.away),
+          ),
           at.z - Math.cos(behind) * spawn.away,
         ),
         facing: at.heading,
@@ -857,7 +880,10 @@ export function createFlock(
     return {
       where: vec(
         from.x + Math.sin(around) * spawn.away,
-        Math.max(from.y, options.minAltitude),
+        Math.max(
+          from.y,
+          overGround(from.x + Math.sin(around) * spawn.away, from.z - Math.cos(around) * spawn.away),
+        ),
         from.z - Math.cos(around) * spawn.away,
       ),
       // Facing back towards where it came from, which for something knocked
@@ -907,7 +933,7 @@ export function createFlock(
         hunting: false,
         morph: Math.floor(rand() * morphCount),
         down: 0,
-        aiming: { x: 0, z: 0, altitude: options.minAltitude },
+        aiming: { x: 0, z: 0, altitude: overGround(0, 0) },
       },
       controls: neutralControls(),
       index: i,
@@ -1113,7 +1139,10 @@ export function createFlock(
           member.aiming = {
             x: quarry.x,
             z: quarry.z,
-            altitude: Math.max(quarry.y, hunt.floor),
+            // The floor is over the ground under the quarry, not over the
+            // sea: a crow keeping station above a pigeon on Gellert Hill has
+            // to be above the hill.
+            altitude: Math.max(quarry.y, (options.groundAt?.(quarry.x, quarry.z) ?? 0) + hunt.floor),
           };
           pilot.chasing = 0;
         }
