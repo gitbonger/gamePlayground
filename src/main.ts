@@ -27,6 +27,7 @@ import {
   heading,
   landingReadiness,
   isPerched,
+  neutralControls,
   step,
   type BirdState,
   type FlightTelemetry,
@@ -3243,7 +3244,10 @@ function frame(nowMs: number) {
   // otherwise a level restarted after it was finished is a level with no
   // directions in it, and one restarted after somebody moved has them
   // standing wherever the last chapter left them.
-  if (input.consumeReset()) playLevel(level);
+  // Not while the list is up: R is a restart, and a restart under an open
+  // level list is the game changing out from under the thing the player is
+  // reading. The list has the keyboard while it is open.
+  if (input.consumeReset() && !menu.open) playLevel(level);
   // V for the voice. An undiscoverable key for now, which is the right amount
   // of discoverable for a thing whose whole purpose is to be turned off by
   // whoever is tired of it.
@@ -3272,7 +3276,7 @@ function frame(nowMs: number) {
   // it belongs. Sightseeing and the round are flown with it and say so on
   // arrival; the story is about the wing, and a rocket in it would be a way
   // past the one thing each level is asking for.
-  if (input.consumeBoost() && rocketOn(LEVELS[level] ?? LEVELS[0]!)) {
+  if (input.consumeBoost() && !menu.open && rocketOn(LEVELS[level] ?? LEVELS[0]!)) {
     boost(bird, flightParams);
     burningUntil = clock + BURN;
   }
@@ -3282,7 +3286,19 @@ function frame(nowMs: number) {
   }
   // The take-off, and nothing else: a conversation that has finished has
   // already handed over, and nothing in the game waits for a key any more.
-  if (input.consumeLaunch()) launchPending = true;
+  if (input.consumeLaunch() && !menu.open) launchPending = true;
+
+  /**
+   * What the player is actually flying with.
+   *
+   * Nothing, while the level list is up. The arrows move the highlight and
+   * the digits pick a level, and the same keys are the pitch and roll of a
+   * bird -- so reading a level off the list rolled him inverted underneath
+   * it. The list is a thing you opened on purpose; while it is open it has
+   * the keyboard, and the city carries on around a bird that is gliding.
+   */
+  const flownWith = menu.open ? neutralControls() : input.controls;
+  const walkedWith = menu.open ? { forward: 0, turn: 0 } : input.walk;
 
   // Alive rather than flying: a walking bird is not flying, and being run
   // over while on foot is still a death that has to raise the panel.
@@ -3306,7 +3322,7 @@ function frame(nowMs: number) {
     // everything away until it is over; any other leaves him free.
     const doing = stanceOf(bird, lockedNow());
     const allowed = asStance(
-      { forward: input.walk.forward, turn: input.walk.turn, launch: launchPending },
+      { forward: walkedWith.forward, turn: walkedWith.turn, launch: launchPending },
       doing,
     );
     walkControls.forward = allowed.forward;
@@ -3346,7 +3362,7 @@ function frame(nowMs: number) {
         }
       }
     }
-    telemetry = step(bird, asFlight(input.controls, doing), flightParams, TICK, solid, wind);
+    telemetry = step(bird, asFlight(flownWith, doing), flightParams, TICK, solid, wind);
     // On the level that does not tire, the wings are simply kept full. Put
     // back after the step rather than switched off inside the flight model:
     // the beat still costs what it costs, the telemetry still reports it,
@@ -3536,7 +3552,7 @@ function frame(nowMs: number) {
   // Read off the same controls the flight model was given, so the wings show
   // what the bird was actually told rather than what the keyboard says: a
   // dead bird takes no input, and its wings are not held in any shape.
-  const holding = asFlight(input.controls, stance);
+  const holding = asFlight(flownWith, stance);
   const wings: WingPose =
     stance === 'dead'
       ? 'dead'
