@@ -866,6 +866,14 @@ export interface CityLayout {
   /** How high the ground is, where the map said. Flat where it did not. */
   ground?: Ground;
   /**
+   * Whether the ground at a place is water.
+   *
+   * The river, the lakes and the pools in the parks, as the map drew them.
+   * What it is for is the one rule a pigeon cannot argue with: coming down on
+   * water is coming down on nothing.
+   */
+  water?: (x: number, z: number) => boolean;
+  /**
    * How high a bridge carries the track, where one does: see `deckHeights`.
    * Null off a bridge, which means the ground.
    */

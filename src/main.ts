@@ -798,8 +798,20 @@ const input = createInput();
  * take the air it asks for, and carry on. `flightParams` keeps its identity
  * through it because the tuning panel is bound to that object.
  */
+/**
+ * The ground the bird flies over: how high it is, and whether it is water.
+ *
+ * Handed to the flight model, which until now was flying over a plane at
+ * nought -- so a landing on Gellert Hill was a landing inside it, and a
+ * landing on the Danube was a landing on the Danube.
+ */
+const standingOn = {
+  groundAt: (x: number, z: number) => (layout.ground ?? FLAT).heightAt(x, z),
+  waterAt: (x: number, z: number) => layout.water?.(x, z) ?? false,
+};
+
 let mode: Mode = MODES[DEFAULT_MODE];
-const flightParams = { ...paramsFor(mode) };
+const flightParams = { ...paramsFor(mode), ...standingOn };
 const cameraParams = { ...defaultCameraParams };
 const watchParams = { ...defaultWatchParams };
 const windParams = { ...defaultWindParams };
@@ -938,12 +950,16 @@ function releaseFor(spec: Level): { at: Vec3; heading: number; perched: boolean 
   const walked = before && meetsSomewhereFixed(before) ? opposite(before) : null;
   if (walked) return { at: walked.at, heading: bearing(walked.at, aim), perched: true };
 
+  // The release height is measured from the ground under the start, not from
+  // the sea. It was the same number while the world was flat; over the Buda
+  // hills a hundred metres above nought is thirty metres underground.
+  const under = standingOn.groundAt(point.x, point.z);
   return {
     at: vec(
       point.x,
       Number.isFinite(floor)
-        ? Math.max(spec.release, floor + SPAWN_CLEARANCE)
-        : spec.release,
+        ? Math.max(under + spec.release, floor + SPAWN_CLEARANCE)
+        : under + spec.release,
       point.z,
     ),
     heading: bearing(point, aim),
@@ -1081,7 +1097,7 @@ function crowdOn(landmark: string, count: number, spread = 0) {
       width: on.width + spread * 2,
       depth: on.depth + spread * 2,
       // A flat thing has no top of its own, so it is the ground's.
-      top: on.height > 0 ? on.height : defaultParams.groundHeight,
+      top: on.height > 0 ? on.height : standingOn.groundAt(on.x, on.z),
     },
     morphs: PIGEON_MORPHS.length,
     flight: flightParams,
@@ -1265,7 +1281,7 @@ const dogs = square
       let seed = (0x9e3779b9 * (i + 1)) >>> 0;
       return createDog({
         home: { x: square.x + from.x, z: square.z + from.z },
-        ground: defaultParams.groundHeight,
+        ground: standingOn.groundAt(square.x, square.z),
         random: () => {
           seed = (seed + 0x6d2b79f5) >>> 0;
           let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
@@ -1568,7 +1584,10 @@ function standingSpot(spot: Standing): { at: Vec3; facing: number; on: number | 
   const described = LANDMARKS.find((landmark) => landmark.name === place.name);
   const marker = objective(place.name);
   if (!described || !marker) return null;
-  const top = described.height > 0 ? described.height : defaultParams.groundHeight;
+  const top =
+    described.height > 0
+      ? described.height
+      : standingOn.groundAt(marker.position.x, marker.position.z);
   // Placed along and across the thing rather than along and across the world,
   // so turning the building turns where its pigeon stands with it.
   const yaw = described.yaw ?? 0;

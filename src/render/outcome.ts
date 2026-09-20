@@ -37,6 +37,13 @@ const OUTCOMES: Record<
       hu: `Leszálltál ${speedText(e.speed)} km/h-val`,
     }),
   },
+  drowned: {
+    title: 'gameOver',
+    detail: () => ({
+      en: 'You came down on the water',
+      hu: 'A vízre szálltál le',
+    }),
+  },
   building: {
     title: 'gameOver',
     detail: (e) => ({

@@ -20,6 +20,7 @@
 
 import type { Collider, SweepHit } from './collision';
 import {
+  groundUnder as groundHeightUnder,
   heading,
   isPerched,
   neutralControls,
@@ -311,7 +312,7 @@ function groundUnder(
   // The ground plane is not in the collider, so it is checked separately -- and
   // it wins only if it is higher, which is what stops a bird stepping through
   // a wagon deck onto the ballast below.
-  const plane = p.groundHeight + p.bodyRadius;
+  const plane = groundHeightUnder(p, raised.x, raised.z) + p.bodyRadius;
   if (plane >= lowest && plane <= raised.y && (!best || plane > best.point.y)) {
     best = { point: vec(raised.x, plane, raised.z), carrier: null };
   }

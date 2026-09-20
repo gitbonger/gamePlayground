@@ -169,8 +169,34 @@ export interface FlightParams {
   /** Weathervane stability about the yaw axis; this is what makes banking turn. */
   yawStability: number;
 
-  /** Ground plane height in metres. */
+  /**
+   * Ground plane height in metres, where the ground is a plane.
+   *
+   * It was one for a long time, and the whole world was built on it. Now the
+   * map carries the shape of the land -- Pest within a few metres of nought,
+   * Gellert Hill a hundred above it -- and a bird that landed at nought on a
+   * hillside landed inside the hill. This is what is used when nothing
+   * better is offered, which is most of the tests and every caller that has
+   * no map.
+   */
   groundHeight: number;
+  /**
+   * How high the ground is at a place, where that is known.
+   *
+   * The map's own heights, handed in by whoever built the world. Everything
+   * in the model that used to read `groundHeight` asks this first: what the
+   * bird stands on, what its altitude is measured from, and what it hits.
+   */
+  groundAt?: (x: number, z: number) => number;
+  /**
+   * Whether the ground at a place is water.
+   *
+   * A pigeon is not a duck. Coming down on the Danube is not a landing and
+   * not a scrape along a wall -- it is the end of the flight, however gently
+   * it is done, and the only thing the model needs to know to say so is
+   * which ground is wet.
+   */
+  waterAt?: (x: number, z: number) => boolean;
 
   /** Collision radius of the bird, in metres. */
   bodyRadius: number;
@@ -369,6 +395,8 @@ export const neutralControls = (): Controls => ({
 export type CrashCause =
   /** Flew into something solid. */
   | 'building'
+  /** Came down on water, which for a pigeon is coming down on nothing. */
+  | 'drowned'
   /** Came down harder than the legs can absorb. */
   | 'hard-impact'
   /** Touched down without bleeding off enough speed. */
@@ -511,6 +539,16 @@ export interface FlightTelemetry {
   /** Joules each force added or removed over the tick. */
   work: WorkLedger;
 }
+
+/**
+ * How high the ground is under a place: the map's if there is one, the flat
+ * plane if there is not.
+ */
+export const groundUnder = (p: FlightParams, x: number, z: number): number =>
+  p.groundAt?.(x, z) ?? p.groundHeight;
+
+/** And whether that ground is water. */
+const wet = (p: FlightParams, x: number, z: number): boolean => p.waterAt?.(x, z) ?? false;
 
 export function createBird(
   position: Vec3 = vec(0, 60, 0),
@@ -991,12 +1029,12 @@ function finish(
   // landing and, on his first stride, found no footing at all -- caught each
   // tick by landing again, so what looked like walking on grass was falling a
   // hundred and twenty times a second.
-  const resting = p.groundHeight + p.bodyRadius;
+  const resting = groundUnder(p, state.position.x, state.position.z) + p.bodyRadius;
   if (state.position.y <= resting) {
     const settled = state.position.y;
     const ground = vec(state.position.x, resting, state.position.z);
     work.collision += p.mass * p.gravity * (ground.y - settled);
-    settle(state, p, work, ground);
+    settle(state, p, work, ground, null, false, wet(p, ground.x, ground.z));
   }
   return telemetryFor(state, p, alpha, cl, cd, wing.stallAngle, work, airVelocity);
 }
@@ -1015,10 +1053,12 @@ function settle(
   carrier: number | null = null,
   /** Whether what it came down on is the sort that cannot kill: see `Box.soft`. */
   soft = false,
+  /** Whether it came down on water, which is not a landing at all. */
+  water = false,
 ): void {
   state.position = at;
   state.restingOn = carrier;
-  state.ending = touchdown(state, p, soft);
+  state.ending = touchdown(state, p, soft, water);
   // Down is down: whether that hop worked or not, it is finished with.
   state.leaving = null;
   work.collision -= kinetic(state.velocity, p);
@@ -1049,8 +1089,23 @@ export function landingReadiness(state: BirdState, p: FlightParams): LandingRead
  * order below only decides which fault gets named to the player, cheapest
  * mistake to fix first.
  */
-function touchdown(state: BirdState, p: FlightParams, soft = false): Ending {
+function touchdown(state: BirdState, p: FlightParams, soft = false, water = false): Ending {
   const r = landingReadiness(state, p);
+
+  // Water first, and it beats everything: a perfect approach onto the Danube
+  // is a pigeon in the Danube. Nothing about how it was flown changes that,
+  // so none of the rest of this is asked.
+  if (water) {
+    return {
+      kind: 'crashed',
+      cause: 'drowned',
+      settled: true,
+      speed: r.speed,
+      sink: r.sink,
+      bank: r.bank,
+      position: state.position,
+    };
+  }
 
   // A take-off that never became flight cannot kill you, wherever it puts you
   // down. See `BirdState.leaving`: the bird leaves the ground faster than it
@@ -1097,7 +1152,7 @@ function telemetryFor(
   const airspeed = length(through);
   return {
     airspeed,
-    altitude: state.position.y - p.groundHeight,
+    altitude: state.position.y - groundUnder(p, state.position.x, state.position.z),
     angleOfAttack: alpha,
     liftCoefficient: cl,
     dragCoefficient: cd,
@@ -1117,7 +1172,12 @@ const kinetic = (velocity: Vec3, p: FlightParams): number =>
 
 /** Mechanical energy of the bird, relative to the ground plane. */
 export const birdEnergy = (state: BirdState, p: FlightParams): EnergyState =>
-  energyOf(state.velocity, state.position.y - p.groundHeight, p.mass, p.gravity);
+  energyOf(
+    state.velocity,
+    state.position.y - groundUnder(p, state.position.x, state.position.z),
+    p.mass,
+    p.gravity,
+  );
 
 /** True while the bird is resting on the ground after a clean landing. */
 /**
@@ -1262,7 +1322,7 @@ export function fall(
   // Swept, like the flight model's own step, because a body doing seventeen
   // metres a second covers most of a roof between two ticks.
   const hit = collider?.sweep(from, to, p.bodyRadius);
-  const resting = p.groundHeight + p.bodyRadius;
+  const resting = groundUnder(p, state.position.x, state.position.z) + p.bodyRadius;
   const down =
     hit && hit.normal.y >= ROOF_NORMAL
       ? hit.point

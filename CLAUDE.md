@@ -49,8 +49,11 @@ weigh. Then give the numbers and a recommendation.
   terrarium tiles, no key) and writes it into `src/world/data/home.json`
   without touching the rest, so it can be rerun on its own. Heights are
   metres above the map centre: Pest is flat and near nought, Buda rises a
-  hundred. A first pass only — things *stand* on the ground, nothing tilts to
-  it, and the flat layers are still settled by draw order.
+  hundred. Things *stand* on the ground and nothing tilts to it, and the flat
+  layers are still settled by draw order. The flight model knows about it too:
+  `FlightParams.groundAt` is what a bird lands on and what its altitude is
+  measured from, and `waterAt` says which ground is wet — a pigeon that comes
+  down on the Danube has drowned, however well it was flown.
 - `src/levels.ts` — every level, and which of the three games it belongs to:
   `story` (Story1–Story13, the story as it was), `sight` (Sight1, Sight2:
   somewhere to go with nothing to do there) and `delivery` (Delivery1: the

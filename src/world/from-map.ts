@@ -2064,6 +2064,7 @@ export function buildLayoutFromMap(
     trains,
     areas: map.areas ?? [],
     ground,
+    water: (x, z) => green.covers(x, z, 'water'),
     // Only the railway ones: a train does not drive over a road bridge, and
     // asking every deck on the map would have it hopping onto flyovers.
     railTop,
