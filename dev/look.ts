@@ -38,6 +38,10 @@ const map = homeMap as unknown as MapData;
 // The same world the game builds, trams and all -- otherwise a count of what
 // it costs to draw is a count of a city with no traffic in it.
 const yard = { x: -400, z: -180 };
+// `?train=x,z` puts a rake on the line nearest a place, which is how a train
+// on a bridge can be looked at without waiting for one to turn up.
+const asked = new URLSearchParams(location.search).get('train');
+const wanted = asked ? asked.split(',').map(Number) : null;
 const full = buildLayoutFromMap(map, {
   ...defaultMapWorldOptions,
   // The described buildings too, placed as the game places them, so that one
@@ -48,6 +52,7 @@ const full = buildLayoutFromMap(map, {
     return { ...rest, x: at.x, z: at.z };
   }),
   trains: [
+    ...(wanted ? [{ near: { x: wanted[0]!, z: wanted[1]! }, cars: 6, stock: 'carriage' as const }] : []),
     { near: yard, cars: 12 },
     { near: yard, cars: 6, stock: 'carriage', speed: 16, runsOut: true },
     { near: yard, cars: 4, stock: 'carriage', speed: 13, runsOut: true },

@@ -1402,7 +1402,7 @@ export function buildWorld(
           createMarker(
             name,
             material as THREE.MeshLambertMaterial,
-            new THREE.Vector3(vehicle.x, standOn(vehicle.x, vehicle.z) + WAGON.deck + WAGON.stake, vehicle.z),
+            new THREE.Vector3(vehicle.x, vehicle.y + WAGON.deck + WAGON.stake, vehicle.z),
             disposables,
             overlay,
             { train: t, vehicle: v },
@@ -1476,14 +1476,18 @@ export function buildWorld(
       // gone is this, and nothing else.
       mesh.visible = !running.gone;
       if (running.gone) continue;
-      mesh.position.set(at.x, standOn(at.x, at.z), at.z);
+      // Where its own rails are, which is the ground nearly everywhere and
+      // the deck of a bridge over the Danube. `Placed.y` is the height
+      // itself rather than a height above the ground -- the ground is
+      // already in it -- so nothing is added here.
+      mesh.position.set(at.x, at.y, at.z);
       mesh.rotation.y = at.yaw;
     }
     for (const marker of markers) {
       const carried = marker.rides;
       if (!carried) continue;
       const at = trains[carried.train]?.vehicles[carried.vehicle];
-      if (at) marker.position.set(at.x, standOn(at.x, at.z) + WAGON.deck + WAGON.stake, at.z);
+      if (at) marker.position.set(at.x, at.y + WAGON.deck + WAGON.stake, at.z);
     }
   };
 

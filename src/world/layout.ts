@@ -865,6 +865,11 @@ export interface CityLayout {
   areas?: Area[];
   /** How high the ground is, where the map said. Flat where it did not. */
   ground?: Ground;
+  /**
+   * How high a bridge carries the track, where one does: see `deckHeights`.
+   * Null off a bridge, which means the ground.
+   */
+  railTop?: (x: number, z: number) => number | null;
   /** The grid: towers, and the cable strung between them. */
   pylons?: Pylon[];
   wires?: Wire[];

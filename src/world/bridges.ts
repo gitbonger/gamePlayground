@@ -141,6 +141,53 @@ const STEP = 3;
  */
 const LEAST = 0.05;
 
+/**
+ * How high the track is, anywhere a bridge carries it.
+ *
+ * Built from the same decks that are drawn and boxed, so a train rides the
+ * bridge it can see. Off every bridge it answers null, which means "the
+ * ground, whatever the ground is doing" -- the caller knows that and this
+ * does not.
+ *
+ * A grid of the deck pieces rather than a walk over all of them: there are
+ * forty bridges on this map and a train asks twice a vehicle a tick.
+ */
+export function deckHeights(bridges: readonly Bridge[]): (x: number, z: number) => number | null {
+  const CELL = 32;
+  const grid = new Map<number, { x: number; z: number; y: number; reach: number }[]>();
+  const key = (cx: number, cz: number) => cx * 100003 + cz;
+
+  for (const bridge of bridges) {
+    const deck = deckOf(bridge);
+    if (!deck) continue;
+    const reach = deck.width / 2 + 1;
+    for (const [x, z, y] of deck.spine) {
+      const piece = { x, z, y, reach };
+      for (let cx = Math.floor((x - reach) / CELL); cx <= Math.floor((x + reach) / CELL); cx += 1) {
+        for (let cz = Math.floor((z - reach) / CELL); cz <= Math.floor((z + reach) / CELL); cz += 1) {
+          const bucket = grid.get(key(cx, cz));
+          if (bucket) bucket.push(piece);
+          else grid.set(key(cx, cz), [piece]);
+        }
+      }
+    }
+  }
+
+  return (x, z) => {
+    const bucket = grid.get(key(Math.floor(x / CELL), Math.floor(z / CELL)));
+    if (!bucket) return null;
+    let best: number | null = null;
+    let nearest = Infinity;
+    for (const piece of bucket) {
+      const away = Math.hypot(piece.x - x, piece.z - z);
+      if (away > piece.reach || away >= nearest) continue;
+      nearest = away;
+      best = piece.y;
+    }
+    return best;
+  };
+}
+
 /** The middle line of a deck: where it goes, and how high it is there. */
 export interface Deck {
   /** `[x, z, y]` along the middle of the carriageway, y being the surface. */

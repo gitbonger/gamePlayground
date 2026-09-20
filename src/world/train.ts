@@ -188,6 +188,15 @@ export const stockTop = (kind: Vehicle['kind']): number =>
 export interface Placed {
   x: number;
   z: number;
+  /**
+   * How high the rail is under it, in metres.
+   *
+   * Nought nearly everywhere, because nearly all of this railway is on the
+   * ground. It is not nought on a bridge, and the one that matters is half a
+   * kilometre of it over the Danube: a train that does not know how high its
+   * track is is a train swimming under its own bridge.
+   */
+  y: number;
   /** Which way it points, in the collider's yaw convention. */
   yaw: number;
 }
@@ -1036,16 +1045,19 @@ export function layOutTrain(
   along: number,
   cars: number,
   stock: Stock = 'wagon',
+  /** How high the track is at a place: see `Placed.y`. */
+  railTop: (x: number, z: number) => number = () => 0,
 ): Vehicle[] {
   const vehicles: Vehicle[] = Array.from({ length: vehicleCount(cars, stock) }, () => ({
     kind: 'wagon' as Vehicle['kind'],
     x: 0,
     z: 0,
+    y: 0,
     yaw: 0,
     length: 0,
     width: 0,
   }));
-  return moveTrain(vehicles, line, along, cars, stock) ? vehicles : [];
+  return moveTrain(vehicles, line, along, cars, stock, railTop) ? vehicles : [];
 }
 
 /** How many vehicles a rake of this many cars comes to, engine included. */
@@ -1070,6 +1082,8 @@ export function moveTrain(
   along: number,
   cars: number,
   stock: Stock = 'wagon',
+  /** How high the track is at a place: see `Placed.y`. */
+  railTop: (x: number, z: number) => number = () => 0,
 ): boolean {
   if (vehicles.length !== vehicleCount(cars, stock)) return false;
 
@@ -1092,6 +1106,9 @@ export function moveTrain(
     vehicle.width = width;
     vehicle.x = (lead.x + trail.x) / 2;
     vehicle.z = (lead.z + trail.z) / 2;
+    // Off the bogies rather than off the middle, so a carriage half onto a
+    // bridge rides up the ramp rather than stepping onto it.
+    vehicle.y = (railTop(lead.x, lead.z) + railTop(trail.x, trail.z)) / 2;
     vehicle.yaw = Math.atan2(-(lead.z - trail.z), lead.x - trail.x);
     front = centre - length / 2 - gap;
     return true;
@@ -1194,14 +1211,16 @@ export function moveTrainBoxes(
     depth: number,
     yaw: number,
     index: number,
+    /** How high the rail is under it: nought on the ground, up on a bridge. */
+    level: number,
   ) => {
     const box = boxes[at];
     if (!box) return;
     at += 1;
     box.minX = x - width / 2;
     box.maxX = x + width / 2;
-    box.minY = 0;
-    box.maxY = height;
+    box.minY = level;
+    box.maxY = level + height;
     box.minZ = z - depth / 2;
     box.maxZ = z + depth / 2;
     box.yaw = yaw;
@@ -1211,9 +1230,9 @@ export function moveTrainBoxes(
 
   for (const [index, vehicle] of vehicles.entries()) {
     if (vehicle.kind === 'engine') {
-      put(vehicle.x, vehicle.z, vehicle.length, ENGINE.body, vehicle.width, vehicle.yaw, index);
+      put(vehicle.x, vehicle.z, vehicle.length, ENGINE.body, vehicle.width, vehicle.yaw, index, vehicle.y);
       const cab = onVehicle(vehicle, vehicle.length / 2 - ENGINE.cabLength / 2, 0);
-      put(cab.x, cab.z, ENGINE.cabLength, ENGINE.cab, vehicle.width, vehicle.yaw, index);
+      put(cab.x, cab.z, ENGINE.cabLength, ENGINE.cab, vehicle.width, vehicle.yaw, index, vehicle.y);
       continue;
     }
     put(
@@ -1224,6 +1243,7 @@ export function moveTrainBoxes(
       vehicle.width,
       vehicle.yaw,
       index,
+      vehicle.y,
     );
   }
   return at === boxes.length;

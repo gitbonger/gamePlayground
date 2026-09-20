@@ -1309,7 +1309,7 @@ describe('carrying whatever is standing on a train', () => {
   });
   /** A copy of where each vehicle is, which is what a caller has to keep. */
   const snapshot = (rake: readonly Vehicle[]) =>
-    rake.map((v) => ({ x: v.x, z: v.z, yaw: v.yaw }));
+    rake.map((v) => ({ x: v.x, y: 0, z: v.z, yaw: v.yaw }));
 
   it('takes a passenger along when its wagon moves', () => {
     const rake = layOutTrain(LINE, 300, 6, 'wagon');
@@ -1466,7 +1466,7 @@ describe('calling at stops', () => {
 
 describe('seeing what is in the way', () => {
   /** A vehicle pointing along +x, which in the collider's yaw is nought. */
-  const car = (x: number, z: number, yaw = 0) => ({ x, z, yaw });
+  const car = (x: number, z: number, yaw = 0) => ({ x, y: 0, z, yaw });
   const east = { x: 1, z: 0 };
   const nose = { x: 0, z: 0 };
   const look = { x: 25, z: 0 };
@@ -1588,11 +1588,11 @@ describe('room to come back on', () => {
   ];
 
   it('finds an empty piece of line empty', () => {
-    expect(roomToComeOn(straight, 54, 54, [{ x: 300, z: 0, yaw: 0 }], 20)).toBe(true);
+    expect(roomToComeOn(straight, 54, 54, [{ x: 300, y: 0, z: 0, yaw: 0 }], 20)).toBe(true);
   });
 
   it('refuses one with something standing in the middle of it', () => {
-    expect(roomToComeOn(straight, 54, 54, [{ x: 27, z: 0, yaw: 0 }], 20)).toBe(false);
+    expect(roomToComeOn(straight, 54, 54, [{ x: 27, y: 0, z: 0, yaw: 0 }], 20)).toBe(false);
   });
 
   it('refuses one with something standing at the nose, not just the middle', () => {
@@ -1600,11 +1600,11 @@ describe('room to come back on', () => {
     // metres long: a clear middle says nothing at all about a clear nose, and
     // asking only about the middle is how trams came to materialise into each
     // other at the ends of the lines.
-    expect(roomToComeOn(straight, 54, 54, [{ x: 54, z: 0, yaw: 0 }], 20)).toBe(false);
+    expect(roomToComeOn(straight, 54, 54, [{ x: 54, y: 0, z: 0, yaw: 0 }], 20)).toBe(false);
   });
 
   it('refuses one with something standing at the tail', () => {
-    expect(roomToComeOn(straight, 54, 54, [{ x: 0, z: 0, yaw: 0 }], 20)).toBe(false);
+    expect(roomToComeOn(straight, 54, 54, [{ x: 0, y: 0, z: 0, yaw: 0 }], 20)).toBe(false);
   });
 });
 

@@ -967,6 +967,18 @@ if (start.perched) standStill(bird);
  * left no car stuck; three hundred is what makes a street near him look used.
  */
 const CARS = 300;
+/**
+ * How high the track is at a place: the deck where a bridge carries it, the
+ * ground everywhere else.
+ *
+ * The trains are given this rather than working it out, because the bridge
+ * decks belong to the layout and a train knows only about its line. Without
+ * it a train crossing the Danube runs at the height of the water, which is
+ * what it did.
+ */
+const railTop = (x: number, z: number) =>
+  layout.railTop?.(x, z) ?? (layout.ground ?? FLAT).heightAt(x, z);
+
 const traffic = createTraffic(buildCarGraph(layout.roads ?? map.roads), CARS, start.at);
 const carMeshes = createCarMeshes(CARS, (x, z) => (layout.ground ?? FLAT).heightAt(x, z));
 scene.add(carMeshes.object);
@@ -2559,7 +2571,12 @@ const everyVehicle: readonly Vehicle[] = layout.trains.flatMap((train) => train.
  * was a real bug: the pigeon standing on the middle wagon watched the train
  * leave without it.
  */
-const wasAt = everyVehicle.map((vehicle) => ({ x: vehicle.x, z: vehicle.z, yaw: vehicle.yaw }));
+const wasAt = everyVehicle.map((vehicle) => ({
+  x: vehicle.x,
+  y: vehicle.y,
+  z: vehicle.z,
+  yaw: vehicle.yaw,
+}));
 
 /** Take that copy. Called at the top of a tick, before anything has moved. */
 function rememberWhereTrainsWere() {
@@ -2567,6 +2584,7 @@ function rememberWhereTrainsWere() {
     const vehicle = everyVehicle[i]!;
     const kept = wasAt[i]!;
     kept.x = vehicle.x;
+    kept.y = vehicle.y;
     kept.z = vehicle.z;
     kept.yaw = vehicle.yaw;
   }
@@ -2806,7 +2824,7 @@ function moveTrains(dt: number) {
       // frame between the ticks from being drawn as a sweep across the city.
       previousAlong[index] = on;
       wrapped[index] = true;
-      moveTrain(train.vehicles, train.line, train.along, train.cars, train.stock);
+      moveTrain(train.vehicles, train.line, train.along, train.cars, train.stock, railTop);
       laidOut[index] = clock;
       return;
     }
@@ -2907,13 +2925,13 @@ function moveTrains(dt: number) {
       // half -- the collision boxes and the field built over them -- not the
       // layout, which is cheap.
       if (clock - laidOut[index]! >= DISTANT_REDRAW) {
-        moveTrain(train.vehicles, train.line, train.along, train.cars, train.stock);
+        moveTrain(train.vehicles, train.line, train.along, train.cars, train.stock, railTop);
         laidOut[index] = clock;
       }
       return;
     }
 
-    moveTrain(train.vehicles, train.line, train.along, train.cars, train.stock);
+    moveTrain(train.vehicles, train.line, train.along, train.cars, train.stock, railTop);
     laidOut[index] = clock;
     near[index] = true;
     // Every box knows how fast the rake is running, which is what makes
@@ -3519,6 +3537,7 @@ function frame(nowMs: number) {
       tweenAlong(previousAlong[index]!, train.along, alpha),
       train.cars,
       train.stock,
+      railTop,
     );
   }
   world.updateTrains(

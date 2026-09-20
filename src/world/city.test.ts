@@ -683,6 +683,7 @@ describe('a tram, which is one shape made of many boxes', () => {
     const { geometry } = buildVehicle({
       kind: 'tram',
       x: 0,
+      y: 0,
       z: 0,
       yaw: 0,
       length: TRAM.length,
@@ -709,6 +710,7 @@ describe('a tram, which is one shape made of many boxes', () => {
     const { geometry } = buildVehicle({
       kind: 'wagon',
       x: 0,
+      y: 0,
       z: 0,
       yaw: 0,
       length: WAGON.length,
@@ -978,6 +980,7 @@ describe('the shapes the vehicles are built from', () => {
   const tram = (over: Partial<Vehicle> = {}): Vehicle => ({
     kind: 'tram',
     x: 0,
+    y: 0,
     z: 0,
     yaw: 0,
     length: TRAM.length,

@@ -26,7 +26,7 @@ import {
 } from './streets';
 import { footprintSamples, indexAreas, type AreaIndex } from './areas';
 import { crowdOn } from './waiting';
-import { DECK, deckOf } from './bridges';
+import { DECK, deckHeights, deckOf } from './bridges';
 import { FLAT, groundFromMap } from './ground';
 import { buildGrid } from './grid';
 import { fitBoxes, orientedBox, solidsOf } from './plans';
@@ -521,6 +521,13 @@ export function buildLayoutFromMap(
   options: MapWorldOptions = defaultMapWorldOptions,
 ): MapWorld {
   const streets = indexStreets(map.roads);
+  // How high the ground is, and how high a bridge carries the track over it.
+  // Both are wanted early: the trains are laid out further down this function
+  // and a train has to know how high its own rails are.
+  const ground = groundFromMap(map);
+  const railTop = deckHeights((map.bridges ?? []).filter((bridge) => bridge.rail === true));
+  /** The rail height at a place: the deck if a bridge carries it, else the ground. */
+  const trackAt = (x: number, z: number) => railTop(x, z) ?? ground.heightAt(x, z);
   // The widest carriageway on the map, which is how far a street query has to
   // reach before the answer stops being able to change. Taken from the data
   // rather than written down, so a map with a motorway on it still works.
@@ -1682,7 +1689,7 @@ export function buildLayoutFromMap(
     if (band <= 0) return null;
     for (let step = 0; step <= TRIES && step * SHUFFLE <= band; step += 1) {
       const at = consist + (((from - consist) + step * SHUFFLE) % band);
-      const vehicles = layOutTrain(line, at, want.cars, want.stock);
+      const vehicles = layOutTrain(line, at, want.cars, want.stock, trackAt);
       if (vehicles.length && roomFor(vehicles, already)) return { along: at, vehicles };
     }
     return null;
@@ -1784,7 +1791,7 @@ export function buildLayoutFromMap(
     const wanted = chainageOf(line.points, spec.near.x, spec.near.z) + length / 2;
     const along = Math.min(Math.max(wanted, length), run);
 
-    const vehicles = layOutTrain(line, along, spec.cars, stock);
+    const vehicles = layOutTrain(line, along, spec.cars, stock, trackAt);
     if (!vehicles.length) continue;
     // Deliberately not added to `boxes`: a train moves, and the world's boxes
     // are built into a grid once and never touched again. It carries its own.
@@ -1902,7 +1909,7 @@ export function buildLayoutFromMap(
           : [length + (route.run - length) * ((index * spread) % 1)];
 
       for (const along of stops) {
-        const vehicles = layOutTrain(route.line, along, want.cars, want.stock);
+        const vehicles = layOutTrain(route.line, along, want.cars, want.stock, trackAt);
         if (!vehicles.length) continue;
         // Not on top of one that is already there.
         //
@@ -1992,8 +1999,6 @@ export function buildLayoutFromMap(
   // Everything solid stands on the ground too, or the bird would hit a house
   // that is drawn a hundred metres above where it is felt. The box goes up by
   // the height under its middle, exactly as the drawing does.
-  const ground = groundFromMap(map);
-
   // The grid: towers where the survey says, cable sagging between them, and
   // both of them solid -- a wire you can land on is the point of it.
   const grid = buildGrid(map.power ?? [], map.towers ?? [], (x, z) => ground.heightAt(x, z));
@@ -2059,6 +2064,9 @@ export function buildLayoutFromMap(
     trains,
     areas: map.areas ?? [],
     ground,
+    // Only the railway ones: a train does not drive over a road bridge, and
+    // asking every deck on the map would have it hopping onto flyovers.
+    railTop,
     pylons: grid.pylons,
     wires: grid.wires,
     streets,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { APRON, CLEARANCE, DECK, deckOf, type Bridge } from './bridges';
+import { APRON, CLEARANCE, DECK, deckHeights, deckOf, type Bridge } from './bridges';
 
 /**
  * Kerepesi út over the throat of Keleti station, near enough: eighty-five
@@ -151,5 +151,36 @@ describe('a railway carried over a river', () => {
     const deck = deckOf({ ...crossing([[0, 0], [20, 0]]) })!;
     const high = Math.max(...deck.spine.map((point) => point[2]));
     expect(high).toBeLessThan(8);
+  });
+});
+
+describe('how high the track is', () => {
+  const crossing: Bridge = {
+    kind: 'rail',
+    width: 8,
+    points: [[0, 0], [700, 0]],
+    layer: 1,
+    rail: true,
+  };
+
+  it('answers with the deck over a bridge and nothing at all off it', () => {
+    const top = deckHeights([crossing]);
+    // Mid-river: up on the deck.
+    expect(top(350, 0)).toBeGreaterThan(11);
+    // Beside it, off to one side: not on this bridge, so not this bridge's
+    // problem -- the caller reads null as "whatever the ground is doing".
+    expect(top(350, 30)).toBeNull();
+    // And a mile away.
+    expect(top(5000, 0)).toBeNull();
+  });
+
+  it('follows the ramp down rather than stepping off the end', () => {
+    const top = deckHeights([crossing]);
+    const onTheBank = top(-100, 0);
+    expect(onTheBank).not.toBeNull();
+    // A hundred metres out from the abutment it is partway down the
+    // embankment: lower than the span, higher than the ground.
+    expect(onTheBank!).toBeGreaterThan(0);
+    expect(onTheBank!).toBeLessThan(top(350, 0)!);
   });
 });
