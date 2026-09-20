@@ -40,6 +40,7 @@ import { insetRing, orientedBox, shoelace } from './plans';
 import { CARRIAGE, ENGINE, TRAM, WAGON, type Train, type Vehicle } from './train';
 import { defaultSmokeOptions, puffOpacity, puffRadius, type Puff, type SmokeOptions } from './smoke';
 import { FLAT } from './ground';
+import { Floats } from '../render/floats';
 import { SEED_SIZE } from './seeds';
 import type { Area, AreaKind } from './areas';
 
@@ -2078,7 +2079,7 @@ const AREA_COLORS: Record<AreaKind, number> = {
 function buildAreas(
   areas: readonly Area[],
 ): { geometry: THREE.BufferGeometry; material: THREE.Material }[] {
-  const byKind = new Map<AreaKind, number[]>();
+  const byKind = new Map<AreaKind, Floats>();
 
   for (const area of areas) {
     if (area.points.length < 3) continue;
@@ -2092,17 +2093,20 @@ function buildAreas(
     const flat = new THREE.ShapeGeometry(shape);
     const positions = flat.toNonIndexed().getAttribute('position');
 
-    const target = byKind.get(area.kind) ?? [];
-    for (let i = 0; i < positions.count; i += 1) {
-      target.push(positions.getX(i), 0, -positions.getY(i));
+    let target = byKind.get(area.kind);
+    if (!target) {
+      target = new Floats(4096);
+      byKind.set(area.kind, target);
     }
-    byKind.set(area.kind, target);
+    for (let i = 0; i < positions.count; i += 1) {
+      target.push3(positions.getX(i), 0, -positions.getY(i));
+    }
     flat.dispose();
   }
 
   return [...byKind].map(([kind, positions]) => {
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions.take(), 3));
     geometry.computeVertexNormals();
     const material = new THREE.MeshLambertMaterial({
       color: AREA_COLORS[kind],
@@ -2910,11 +2914,19 @@ function buildPlans(
   walls: THREE.BufferGeometry;
   roofs: THREE.BufferGeometry;
 } {
-  const wallPoints: number[] = [];
-  const wallNormals: number[] = [];
-  const wallColours: number[] = [];
-  const roofPoints: number[] = [];
-  const roofNormals: number[] = [];
+  // Written straight into typed arrays rather than into arrays of numbers:
+  // the city is ten million vertices, and a JavaScript number array of that
+  // size is three hundred megabytes of rubbish on the way to a buffer a
+  // third the size. See `Floats`.
+  //
+  // Sized from the corner count, which is very nearly right: every corner is
+  // a wall panel of six vertices, and the roof adds about as much again.
+  const corners = plans.reduce((total, plan) => total + plan.ring.length, 0);
+  const wallPoints = new Floats(corners * 18);
+  const wallNormals = new Floats(corners * 18);
+  const wallColours = new Floats(corners * 18);
+  const roofPoints = new Floats(corners * 18);
+  const roofNormals = new Floats(corners * 18);
 
   const tint = new THREE.Color();
   const shades = BUILDING_COLORS.map((colour) => new THREE.Color(colour));
@@ -2953,9 +2965,9 @@ function buildPlans(
       ta: readonly number[],
       tb: readonly number[],
       high: number,
-      into: number[],
-      normals: number[],
-      colours: number[] | null,
+      into: Floats,
+      normals: Floats,
+      colours: Floats | null,
     ) => {
       const face =
         out > 0
@@ -2968,7 +2980,7 @@ function buildPlans(
               [b[0]!, low, b[1]!], [ta[0]!, high, ta[1]!], [a[0]!, low, a[1]!],
             ];
       pushFacet(face, into, normals);
-      if (colours) for (let i = 0; i < 6; i += 1) colours.push(tint.r, tint.g, tint.b);
+      if (colours) for (let i = 0; i < 6; i += 1) colours.push3(tint.r, tint.g, tint.b);
     };
 
     const ridge = rise > 0.05 ? insetRing(ring, rise / ROOF_PITCH) : null;
@@ -3013,27 +3025,27 @@ function buildPlans(
             ? [[a[0]!, capY, a[1]!], [b[0]!, capY, b[1]!], [c[0]!, capY, c[1]!]]
             : [[a[0]!, capY, a[1]!], [c[0]!, capY, c[1]!], [b[0]!, capY, b[1]!]];
         for (const point of face) {
-          roofPoints.push(point[0]!, point[1]!, point[2]!);
-          roofNormals.push(0, 1, 0);
+          roofPoints.push3(point[0]!, point[1]!, point[2]!);
+          roofNormals.push3(0, 1, 0);
         }
       }
     }
   });
 
   const walls = new THREE.BufferGeometry();
-  walls.setAttribute('position', new THREE.Float32BufferAttribute(wallPoints, 3));
-  walls.setAttribute('normal', new THREE.Float32BufferAttribute(wallNormals, 3));
-  walls.setAttribute('color', new THREE.Float32BufferAttribute(wallColours, 3));
+  walls.setAttribute('position', new THREE.BufferAttribute(wallPoints.take(), 3));
+  walls.setAttribute('normal', new THREE.BufferAttribute(wallNormals.take(), 3));
+  walls.setAttribute('color', new THREE.BufferAttribute(wallColours.take(), 3));
 
   const roofs = new THREE.BufferGeometry();
-  roofs.setAttribute('position', new THREE.Float32BufferAttribute(roofPoints, 3));
-  roofs.setAttribute('normal', new THREE.Float32BufferAttribute(roofNormals, 3));
+  roofs.setAttribute('position', new THREE.BufferAttribute(roofPoints.take(), 3));
+  roofs.setAttribute('normal', new THREE.BufferAttribute(roofNormals.take(), 3));
 
   return { walls, roofs };
 }
 
 /** Six points making two triangles, with a normal worked out from the first. */
-function pushFacet(face: number[][], points: number[], normals: number[]): void {
+function pushFacet(face: number[][], points: Floats, normals: Floats): void {
   const a = face[0]!;
   const b = face[1]!;
   const c = face[2]!;
@@ -3051,8 +3063,8 @@ function pushFacet(face: number[][], points: number[], normals: number[]): void 
   ny /= length;
   nz /= length;
   for (const point of face) {
-    points.push(point[0]!, point[1]!, point[2]!);
-    normals.push(nx, ny, nz);
+    points.push3(point[0]!, point[1]!, point[2]!);
+    normals.push3(nx, ny, nz);
   }
 }
 
@@ -3078,8 +3090,9 @@ function buildRails(rails: readonly Rail[]): {
   geometry: THREE.BufferGeometry;
   material: THREE.Material;
 } {
-  const positions: number[] = [];
-  const edges: number[] = [];
+  const points = rails.reduce((total, rail) => total + rail.points.length, 0);
+  const positions = new Floats(points * 18);
+  const edges = new Floats(points * 18);
 
   for (const rail of rails) {
     const tram = rail.kind === 'tram' ? 1 : 0;
@@ -3107,15 +3120,15 @@ function buildRails(rails: readonly Rail[]): {
       ];
       for (const corner of [0, 1, 2, 1, 3, 2]) {
         const [px, pz, across, run] = quad[corner]!;
-        positions.push(px!, 0, pz!);
-        edges.push(across!, run!, tram);
+        positions.push3(px!, 0, pz!);
+        edges.push3(across!, run!, tram);
       }
     }
   }
 
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('edge', new THREE.Float32BufferAttribute(edges, 3));
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions.take(), 3));
+  geometry.setAttribute('edge', new THREE.BufferAttribute(edges.take(), 3));
   geometry.computeVertexNormals();
 
   const material = new THREE.MeshLambertMaterial({
@@ -3195,8 +3208,9 @@ function buildRoads(roads: readonly Road[]): {
   geometry: THREE.BufferGeometry;
   material: THREE.Material;
 } {
-  const positions: number[] = [];
-  const colours: number[] = [];
+  const spans = roads.reduce((total, road) => total + road.points.length, 0);
+  const positions = new Floats(spans * 18);
+  const colours = new Floats(spans * 18);
 
   const minor = new THREE.Color(0x4a4a4c);
   const major = new THREE.Color(0x5c5b5a);
@@ -3229,16 +3243,16 @@ function buildRoads(roads: readonly Road[]): {
         [1, 3, 2],
       ]) {
         for (const corner of [a, b, c]) {
-          positions.push(quad[corner! * 2]!, 0, quad[corner! * 2 + 1]!);
-          colours.push(shade.r, shade.g, shade.b);
+          positions.push3(quad[corner! * 2]!, 0, quad[corner! * 2 + 1]!);
+          colours.push3(shade.r, shade.g, shade.b);
         }
       }
     }
   }
 
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions.take(), 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(colours.take(), 3));
   geometry.computeVertexNormals();
 
   const material = new THREE.MeshLambertMaterial({

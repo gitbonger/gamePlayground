@@ -613,6 +613,16 @@ const riders = (() => {
   });
 })();
 
+/**
+ * The building outlines, handed back once the walls have been built out of
+ * them.
+ *
+ * Fifty-seven thousand rings of corners, forty megabytes, and nothing reads
+ * them after the geometry exists: the meshes are the buildings now. Held on
+ * to, they were forty megabytes the browser had to keep for the life of the
+ * page for no reason -- and this page is already the reason a tab gets
+ * killed with two of it open.
+ */
 const world = buildWorld(layout, {
   // The thrown scatter and the grain riding on the freight train, in one
   // mesh: they are the same object drawn in two places.
@@ -634,6 +644,8 @@ const world = buildWorld(layout, {
   }),
   smoke: allPuffs,
 });
+// And let them go: see the note above.
+layout.plans = undefined;
 
 /**
  * Storage, if the browser will give us any.

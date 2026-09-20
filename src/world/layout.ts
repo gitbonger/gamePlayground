@@ -810,8 +810,15 @@ export interface CityLayout {
   people: Person[];
   /** Painted pedestrian crossings, where the map recorded any. */
   crossings?: Crossing[];
-  /** The buildings as the map drew them, which is what gets drawn. */
-  plans?: Footprint[];
+  /**
+   * The buildings as the map drew them, which is what gets drawn.
+   *
+   * Given up once the walls have been built out of them -- hence the
+   * `undefined`, which is a thing that happens to this one rather than a
+   * thing it may arrive without. Fifty-seven thousand rings is forty
+   * megabytes, and nothing reads them after the geometry exists.
+   */
+  plans?: Footprint[] | undefined;
   /** Shop signs standing on the roofs they belong to. */
   signs?: Sign[];
   /** Towers, spires and domes on the buildings the map calls churches. */
