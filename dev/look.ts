@@ -31,6 +31,7 @@ import { buildCarGraph, createTraffic } from '../src/world/cars';
 import { createCarMeshes } from '../src/render/cars';
 import { FLAT } from '../src/world/ground';
 import { createSmoke, WINGTIP_TRAIL } from '../src/world/smoke';
+import { createAirStreaks } from '../src/render/rush';
 import { createSkyDome } from '../src/render/scene';
 
 const map = homeMap as unknown as MapData;
@@ -120,6 +121,23 @@ world.updateTrains(full.trains ?? []);
 // And the water's clock, from `t` in seconds, so that two stills a moment
 // apart show whether it moves.
 world.updateWater(n('t', 0));
+// The air at speed: `?rush=1` fills it with streaks, as the game does over a
+// hundred kilometres an hour. `?speed` is metres a second, which is what sets
+// how long they are drawn.
+if (n('rush', 0)) {
+  const streaks = createAirStreaks();
+  scene.add(streaks.object);
+  const eye = { x: n('x', 300), y: n('y', 40), z: n('z', 60) };
+  const to = { x: n('tx', 298), y: n('ty', 6), z: n('tz', -72) };
+  const run = Math.hypot(to.x - eye.x, to.y - eye.y, to.z - eye.z) || 1;
+  streaks.update(
+    eye,
+    { x: (to.x - eye.x) / run, y: (to.y - eye.y) / run, z: (to.z - eye.z) / run },
+    n('speed', 80),
+    n('rush', 0),
+  );
+}
+
 // And a rocket trail, if one is asked for: `?rocket=1` burns one along the
 // line from the camera to what it is looking at, which is the only way to see
 // what X leaves behind without being able to press X.

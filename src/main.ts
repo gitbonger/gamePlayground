@@ -120,6 +120,7 @@ import {
   type Collider,
 } from './sim/collision';
 import { createChaseCamera, defaultCameraParams, defaultWatchParams, rushOf } from './render/camera';
+import { createAirStreaks } from './render/rush';
 import { createHud } from './render/hud';
 import { createMinimap, REACH as MINIMAP_REACH } from './render/minimap';
 import { defaultSight, sighted } from './render/sighted';
@@ -742,6 +743,14 @@ scene.add(rig.object);
 // an autopilot that is not especially good at it.
 
 const chase = createChaseCamera(camera);
+/**
+ * And the air he is going through, which is the thing that says how fast.
+ *
+ * In the scene rather than on the overlay: they are in the world, lit by
+ * nothing, drawn a few metres from the lens. See `createAirStreaks`.
+ */
+const streaks = createAirStreaks();
+scene.add(streaks.object);
 
 /**
  * Which birds are worth drawing, reused rather than rebuilt every frame.
@@ -2366,14 +2375,15 @@ const FAST = {
   /**
    * How far over it tips at the top, in degrees.
    *
-   * Thirty-eight. Sixty was asked for and sixty is too much to fly in: half
-   * the field of view is forty-three degrees at this speed, so at sixty the
-   * horizon has left the frame altogether and the buildings he is about to
-   * hit are above the top edge. At thirty-eight the horizon sits along the
-   * top of the shot and everything below it is the city coming at him, which
-   * is the picture that was wanted.
+   * Twelve, and it used to be thirty-eight. The theory was that tipping the
+   * shot down puts the ground in the frame and the ground is what shows
+   * speed; in the air it only made the flying awkward, because the thing
+   * going past was still four hundred metres away and moving slowly whatever
+   * angle it was seen from. What does the work now is `createAirStreaks` --
+   * the air a few metres from the lens -- and this is left as a lean into the
+   * speed rather than as the effect itself.
    */
-  tip: 38,
+  tip: 12,
   /**
    * And how far up and back, in metres.
    *
@@ -2384,8 +2394,8 @@ const FAST = {
    * underneath. Raise it without going back as far and he drops out of the
    * bottom of his own shot.
    */
-  rise: 3.5,
-  back: 3.5,
+  rise: 2,
+  back: 3,
 };
 const fastCameraParams = { ...cameraParams };
 /**
@@ -3888,6 +3898,19 @@ function frame(nowMs: number) {
     // perch that moves -- a tram, a wagon -- is not something the camera
     // should be easing against: see `ChaseCamera.update`.
     chase.update(interpolatedState, activeCamera, frameTime, isPerched(bird));
+  }
+
+  // The air, once the camera is where it is going to be: they are drawn
+  // relative to the lens and to the way he is actually travelling, which at
+  // speed is the way he is pointing.
+  {
+    const along = rotate(interpolatedState.orientation, vec(0, 0, -1));
+    streaks.update(
+      camera.position,
+      along,
+      telemetry.airspeed,
+      bird.ending === null ? rush : 0,
+    );
   }
 
   // Keep the shadow frustum centred on the bird rather than on the origin.
