@@ -354,7 +354,35 @@ const fallingShort = (at: Moment): boolean =>
  * ends at a line, where there is nothing to land on at all.
  */
 const arriving = (at: Moment): boolean =>
-  aloft(at) && at.teaching && at.landing <= APPROACH;
+  aloft(at) && at.teaching && at.landing <= approachAt(at.airspeed);
+
+/**
+ * How far out the approach starts for the speed he is doing, in metres.
+ *
+ * A hundred and fifty metres is a long way at fourteen metres a second and
+ * three seconds at fifty. The approach is a thing that takes *time* -- there
+ * is a brake to find and a key to press -- so it is measured in seconds and
+ * floored at the old distance, which leaves every ordinary arrival exactly
+ * where it was and gives a fast one room to do something about it.
+ */
+export const APPROACH_SECONDS = 6;
+export const approachAt = (airspeed: number): number =>
+  Math.max(APPROACH, airspeed * APPROACH_SECONDS);
+
+/**
+ * Faster than an arrival wants to be, in metres a second.
+ *
+ * Not `tooFast`, and that is the whole of why the brake was never mentioned.
+ * `tooFast` is the landing rule's verdict, and the rule is the *mode's*:
+ * Basic forgives two and a half times what Realistic does, so nothing is too
+ * fast below ninety kilometres an hour -- by which point the park is behind
+ * you. This is the speed an arrival is flown at whatever mode is on: the
+ * strict limit and a little over, which is about forty-three an hour.
+ */
+export const LAND_SLOW = 12;
+
+/** How near the target, in seconds, before being fast stops being a hint. */
+const BRAKE_NOW = 2.5;
 
 export const MESSAGES: readonly Message[] = [
   // --- What the game has arranged ------------------------------------------
@@ -589,8 +617,37 @@ export const MESSAGES: readonly Message[] = [
     // ones that die -- was told about the height and never about the brake.
     // Both at once is two instructions; being killed by the one that was not
     // given is worse.
-    when: (at) => arriving(at) && at.tooFast,
-    done: (at) => !at.tooFast,
+    // Asked of the speed rather than of the landing rule: see `LAND_SLOW`.
+    // In Basic -- which is the mode the game opens in -- the rule forgives
+    // ninety kilometres an hour, so a bird doing seventy into a patch of
+    // concrete was never fast by it, and was never told about the brake
+    // while there was room to use it.
+    when: (at) => arriving(at) && at.airspeed > LAND_SLOW,
+    done: (at) => at.airspeed <= LAND_SLOW || at.down(['B']),
+  },
+  {
+    id: 'brakeNow',
+    keys: ['B'],
+    text: { en: 'Brake now!', hu: 'Fékezz, most!' },
+    icon: 'brake',
+    sort: 'survival',
+    spoken: true,
+    // The same thing said again when there is no longer room to think about
+    // it: two and a half seconds out and still carrying speed. It is a
+    // different message rather than a louder one because it is a different
+    // thing -- the first is a hint about how arrivals are flown, this is the
+    // last moment it can be acted on -- and because the panel holds three at
+    // once, a hint that has been up for five seconds is gone by now.
+    //
+    // The brake is strong enough to answer it from any speed: full brake
+    // takes a hundred and forty kilometres an hour down to twenty inside
+    // forty metres. So there is one answer and this says it.
+    when: (at) =>
+      aloft(at) &&
+      at.teaching &&
+      at.airspeed > LAND_SLOW &&
+      at.landing <= at.airspeed * BRAKE_NOW,
+    done: (at) => at.airspeed <= LAND_SLOW,
   },
   {
     id: 'beatToSoften',

@@ -5,6 +5,9 @@ import spec from '../../MESSAGES.md?raw';
 import {
   MESSAGES,
   APPROACH,
+  APPROACH_SECONDS,
+  approachAt,
+  LAND_SLOW,
   CROW_CEILING,
   LOW,
   SLOW,
@@ -277,7 +280,40 @@ describe('the approach, now that they stack', () => {
   });
 
   it('says nothing about the brake when the speed is already right', () => {
-    expect(shows('brakeToSlow', arriving({ altitude: 20, tooFast: false }))).toBe(false);
+    expect(shows('brakeToSlow', arriving({ altitude: 20, airspeed: LAND_SLOW - 1 }))).toBe(false);
+  });
+
+  it('asks for the brake on a mode that would forgive the landing anyway', () => {
+    // The bug this was written for. `tooFast` is the *mode's* verdict, and
+    // Basic -- which the game opens in -- forgives ninety kilometres an
+    // hour, so a bird doing seventy into Teleki tér was never too fast and
+    // was never told about the brake. It is asked of the speed now.
+    const quick = arriving({ airspeed: 20, tooFast: false });
+    expect(shows('brakeToSlow', quick)).toBe(true);
+  });
+
+  it('starts the approach in seconds rather than in metres', () => {
+    // A hundred and fifty metres is three seconds at fifty metres a second,
+    // which is no time to find a key in. Nothing changes for an ordinary
+    // arrival: the old distance is the floor.
+    expect(approachAt(10)).toBe(APPROACH);
+    expect(approachAt(45)).toBeGreaterThan(250);
+    const fast = flying({ landing: 240, toGo: 240, altitude: 40, airspeed: 45 });
+    expect(shows('brakeToSlow', fast), 'told while there is room').toBe(true);
+    const far = flying({ landing: 400, toGo: 400, altitude: 40, airspeed: 45 });
+    expect(shows('brakeToSlow', far), 'and not a level early').toBe(false);
+  });
+
+  it('says it again when there is no longer room to think about it', () => {
+    // Two and a half seconds out and still carrying speed: a different
+    // message, because a hint given five seconds ago is off the panel.
+    const close = flying({ landing: 40, toGo: 40, altitude: 8, airspeed: 20 });
+    expect(shows('brakeNow', close)).toBe(true);
+    // Not while there is still room, and not once he is slow.
+    expect(shows('brakeNow', flying({ landing: 140, toGo: 140, airspeed: 20 }))).toBe(false);
+    expect(shows('brakeNow', flying({ landing: 40, toGo: 40, airspeed: 8 }))).toBe(false);
+    // And it is a warning, not a lesson: it is spoken.
+    expect(message('brakeNow').spoken).toBe(true);
   });
 
   it('does not ask for a flare while the bird is still too fast', () => {

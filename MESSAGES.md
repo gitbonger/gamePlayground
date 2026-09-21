@@ -53,8 +53,21 @@ On top of that:
 | `orders` | the address this level was given, in the few words the panel can hold, or nothing |
 
 Thresholds: **slow** is 20 km/h, **low** is 10 m, **tired** is 0.3 of a tank,
-the **crow ceiling** is 20 m, an **approach** is the last 150 m to somewhere
-to land, and something to land on is **in sight** at 200 m.
+the **crow ceiling** is 20 m, and something to land on is **in sight** at
+200 m.
+
+An **approach** is the last 150 m to somewhere to land, or the last **6
+seconds** of it, whichever is longer — a hundred and fifty metres is three
+seconds at fifty metres a second, which is no time to find a key in. Nothing
+changes for an ordinary arrival; the old distance is the floor.
+
+**Landing speed** is 43 km/h, and it is not the same as `too fast`. `too
+fast` is the *mode's* verdict, and Basic — which the game opens in — forgives
+two and a half times what Realistic does, so nothing is too fast under 90
+km/h. That is why the brake used to go unmentioned on a fast arrival into
+Teleki tér: the landing would have been survived, and the park still went
+past underneath. Anything that coaches an arrival asks about the speed;
+anything that warns about dying asks `too fast`.
 
 ---
 
@@ -97,7 +110,8 @@ to land, and something to land on is **in sight** at 200 m.
 | `useTheMap` | — | Use the mini map to find your way! | pointing more than **90°** away from where the level wants you, with over 100 m still to go | after 5 s (once a level) |
 | `landNearArrow` | — | Land near the arrow! | something marked to land on within 200 m | the feet are down (once a level) |
 | `loseHeight` | `↑` | Lose some height | teaching, inside the approach, higher than a third of the distance left | the height is right |
-| `brakeToSlow` | `B` | Brake to slow down | teaching, inside the approach, and too fast — height or no height | no longer too fast |
+| `brakeToSlow` | `B` | Brake to slow down | teaching, inside the approach, and going faster than **landing speed** — height or no height | the speed is right, or `B` is pressed |
+| `brakeNow` | `B` | Brake now! | teaching, **2.5 s** from somewhere to land, and still faster than **landing speed** | the speed is right |
 | `beatToSoften` | `SPACE` | Beat to soften it | teaching, inside the approach, below 12 m and coming down too hard | no longer too hard |
 | `flare` | `↓` | Pull up! | teaching, inside the approach, below 6 m and not too fast | the feet are down |
 
@@ -165,6 +179,12 @@ standing order for the level, and three warnings still fit under it.
 - **`flap` and `pullUp` no longer stop after Level 4.** They are about flying
   into the ground, which is not a tutorial topic. `Try the brakes!` does stop,
   as you said.
+- **The brake is asked for by speed, not by `too fast`.** In Basic mode
+  nothing is too fast below 90 km/h, so a bird doing seventy into Teleki tér
+  was never told about the brake while there was room to use it — and then
+  flew past the seeds. `brakeNow` says it again two and a half seconds out,
+  because by then the hint has aged off the panel. One answer is enough: full
+  brake takes 140 km/h down to 20 inside forty metres, from any speed.
 - **The approach coaching stacks** rather than picking one. `flare` still
   waits until the speed is right — flaring fast is how a bird arrives fast --
   but `brakeToSlow` no longer waits for the height. Coming in high *and* fast
