@@ -63,7 +63,8 @@ npm run build
 The map is fetched separately and committed, so a clone needs no network:
 
 ```bash
-npm run fetch-map -- --centre 47.498969,19.093366 --radius 2100 --west 4867 --name home
+npm run fetch-map -- --centre 47.498969,19.093366 --radius 2100 \
+  --west 8165 --north 8348 --south 5207 --name home
 ```
 
 The shape of the ground comes separately, and can be refetched on its own:
@@ -72,10 +73,12 @@ The shape of the ground comes separately, and can be refetched on its own:
 npx tsx scripts/fetch-height.ts --name home
 ```
 
-`--west` stretches the box that way alone, which is how the Danube got in:
-the river is nearly five kilometres west of a map centred on Jozsefvaros, and
-carrying the same distance of suburb on the other three sides would have been
-four times the city for one more thing worth flying to.
+`--west`, `--north` and `--south` stretch the box one way alone, which is how
+the Danube got in: the river is nearly five kilometres west of a map centred
+on Jozsefvaros, and carrying the same distance of suburb on the other three
+sides would have been four times the city for one more thing worth flying to.
+Each defaults to `--radius`, and east has stayed there — the box reaches
+8.2 km west, 8.3 km north and 5.2 km south, and 2.1 km east.
 
 ## Licence and attribution
 

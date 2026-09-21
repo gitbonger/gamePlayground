@@ -116,15 +116,17 @@ async function main() {
     radius: number;
     west?: number;
     north?: number;
+    south?: number;
     ground?: unknown;
   };
   const [lat, lon] = map.centre;
   const perDegree = metresPerDegree(lat);
   const west = map.west ?? map.radius;
   const north = map.north ?? map.radius;
+  const south = map.south ?? map.radius;
 
   // The same box the city was fetched for, in local metres: north is -Z.
-  const box = { west: -west, east: map.radius, north: -north, south: map.radius };
+  const box = { west: -west, east: map.radius, north: -north, south };
   const cols = Math.ceil((box.east - box.west) / step) + 1;
   const rows = Math.ceil((box.south - box.north) / step) + 1;
   process.stderr.write(`sampling ${cols} x ${rows} heights, ${step} m apart, at zoom ${ZOOM}\n`);
