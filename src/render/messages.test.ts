@@ -5,9 +5,8 @@ import spec from '../../MESSAGES.md?raw';
 import {
   MESSAGES,
   APPROACH,
-  APPROACH_SECONDS,
   approachAt,
-  LAND_SLOW,
+  SAFE_ARRIVAL,
   CROW_CEILING,
   LOW,
   SLOW,
@@ -16,6 +15,8 @@ import {
   type Moment,
 } from './messages';
 import { codesOf } from './tips';
+import { defaultParams } from '../sim/flight';
+import { MODES, paramsFor } from '../sim/modes';
 import { LEVELS } from '../levels';
 
 /** A quiet moment: flying along, nothing wrong, nothing nearby. */
@@ -44,6 +45,8 @@ const flying = (over: Partial<Moment> = {}): Moment => ({
   blocked: false,
   tooFast: false,
   tooHard: false,
+  fastToLand: false,
+  hardToLand: false,
   notLevel: false,
   hunted: false,
   answering: false,
@@ -265,31 +268,58 @@ describe('the approach, now that they stack', () => {
   const arriving = (over: Partial<Moment>) =>
     flying({ landing: 100, toGo: 100, altitude: 20, ...over });
 
-  it('asks for the brake whenever the arrival would be too fast', () => {
+  it('asks for the brake whenever the arrival would be fast', () => {
     // Height or no height. It used to wait until the height was right, which
     // kept the screen tidy and meant that a bird coming in high *and* fast --
     // which is most of them, and the ones that die -- was told about the
     // height and never about the brake.
-    const high = arriving({ altitude: 60, tooFast: true });
+    const high = arriving({ altitude: 60, fastToLand: true });
     expect(shows('loseHeight', high), 'and the height as well').toBe(true);
     expect(shows('brakeToSlow', high)).toBe(true);
 
-    const settled = arriving({ altitude: 20, tooFast: true });
+    const settled = arriving({ altitude: 20, fastToLand: true });
     expect(shows('loseHeight', settled)).toBe(false);
     expect(shows('brakeToSlow', settled)).toBe(true);
   });
 
   it('says nothing about the brake when the speed is already right', () => {
-    expect(shows('brakeToSlow', arriving({ altitude: 20, airspeed: LAND_SLOW - 1 }))).toBe(false);
+    expect(shows('brakeToSlow', arriving({ altitude: 20, fastToLand: false }))).toBe(false);
   });
 
-  it('asks for the brake on a mode that would forgive the landing anyway', () => {
-    // The bug this was written for. `tooFast` is the *mode's* verdict, and
-    // Basic -- which the game opens in -- forgives ninety kilometres an
-    // hour, so a bird doing seventy into Teleki tér was never too fast and
-    // was never told about the brake. It is asked of the speed now.
-    const quick = arriving({ airspeed: 20, tooFast: false });
-    expect(shows('brakeToSlow', quick)).toBe(true);
+  it('coaches the arrival by what is safe, not by what the mode forgives', () => {
+    // The bug this was written for, and the rule that replaced it. Every
+    // message that talks an arrival down asks the safe verdict; every
+    // warning about dying asks the mode's, because that is the one the
+    // ground is about to apply.
+    const forgiven = arriving({ altitude: 4, fastToLand: true, hardToLand: true, tooFast: false, tooHard: false });
+    expect(shows('brakeToSlow', forgiven), 'brake').toBe(true);
+    expect(shows('beatToSoften', forgiven), 'beat').toBe(true);
+    expect(shows('flare', forgiven), 'and no flare while still fast').toBe(false);
+    // And none of the three has anything to say once the arrival is safe,
+    // however the mode would have judged it.
+    const safe = arriving({ altitude: 4, fastToLand: false, hardToLand: false, tooFast: true, tooHard: true });
+    expect(shows('brakeToSlow', safe)).toBe(false);
+    expect(shows('beatToSoften', safe)).toBe(false);
+    expect(shows('flare', safe)).toBe(true);
+  });
+
+  it('leaves a margin the forgiving mode does not', () => {
+    // The numbers behind the two verdicts, in one place. Basic is what the
+    // game opens in and it calls seventy kilometres an hour a landing;
+    // teaching coaches to twenty-nine, which is four fifths of the speed the
+    // strict rule allows. The gap between those two is the lesson.
+    const seventy = 70 / 3.6;
+    expect(seventy, 'Basic would land at seventy').toBeLessThanOrEqual(
+      paramsFor(MODES.basic).landingSpeed,
+    );
+    expect(seventy, 'and teaching calls it fast').toBeGreaterThan(
+      defaultParams.landingSpeed * SAFE_ARRIVAL,
+    );
+    // Room in hand in the strict mode too, rather than coaching to the edge
+    // of what the ground allows.
+    expect(defaultParams.landingSpeed * SAFE_ARRIVAL).toBeLessThan(
+      paramsFor(MODES.realistic).landingSpeed,
+    );
   });
 
   it('starts the approach in seconds rather than in metres', () => {
@@ -298,27 +328,27 @@ describe('the approach, now that they stack', () => {
     // arrival: the old distance is the floor.
     expect(approachAt(10)).toBe(APPROACH);
     expect(approachAt(45)).toBeGreaterThan(250);
-    const fast = flying({ landing: 240, toGo: 240, altitude: 40, airspeed: 45 });
+    const fast = flying({ landing: 240, toGo: 240, altitude: 40, airspeed: 45, fastToLand: true });
     expect(shows('brakeToSlow', fast), 'told while there is room').toBe(true);
-    const far = flying({ landing: 400, toGo: 400, altitude: 40, airspeed: 45 });
+    const far = flying({ landing: 400, toGo: 400, altitude: 40, airspeed: 45, fastToLand: true });
     expect(shows('brakeToSlow', far), 'and not a level early').toBe(false);
   });
 
   it('says it again when there is no longer room to think about it', () => {
     // Two and a half seconds out and still carrying speed: a different
     // message, because a hint given five seconds ago is off the panel.
-    const close = flying({ landing: 40, toGo: 40, altitude: 8, airspeed: 20 });
+    const close = flying({ landing: 40, toGo: 40, altitude: 8, airspeed: 20, fastToLand: true });
     expect(shows('brakeNow', close)).toBe(true);
-    // Not while there is still room, and not once he is slow.
-    expect(shows('brakeNow', flying({ landing: 140, toGo: 140, airspeed: 20 }))).toBe(false);
-    expect(shows('brakeNow', flying({ landing: 40, toGo: 40, airspeed: 8 }))).toBe(false);
+    // Not while there is still room, and not once the arrival is safe.
+    expect(shows('brakeNow', { ...close, landing: 140, toGo: 140 })).toBe(false);
+    expect(shows('brakeNow', { ...close, fastToLand: false })).toBe(false);
     // And it is a warning, not a lesson: it is spoken.
     expect(message('brakeNow').spoken).toBe(true);
   });
 
-  it('does not ask for a flare while the bird is still too fast', () => {
-    expect(shows('flare', arriving({ altitude: 4, tooFast: true }))).toBe(false);
-    expect(shows('flare', arriving({ altitude: 4, tooFast: false }))).toBe(true);
+  it('does not ask for a flare while the bird is still fast', () => {
+    expect(shows('flare', arriving({ altitude: 4, fastToLand: true }))).toBe(false);
+    expect(shows('flare', arriving({ altitude: 4, fastToLand: false }))).toBe(true);
   });
 
   it('says nothing at all beyond the approach', () => {

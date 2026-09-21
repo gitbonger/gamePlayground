@@ -109,7 +109,7 @@ import { createCarMeshes } from './render/cars';
 import { intensityOf, type Situation } from './render/intensity';
 import { browserChime, createCue } from './render/cue';
 import { createVitals, type Vital } from './render/vitals';
-import { MESSAGES, NOTICE, type Moment } from './render/messages';
+import { approachAt, MESSAGES, NOTICE, SAFE_ARRIVAL, type Moment } from './render/messages';
 import { createGauge } from './render/gauge';
 import { ARRIVED_WITHIN, endingFor, type Ending } from './finish';
 import { headingError } from './sim/autopilot';
@@ -3814,8 +3814,13 @@ function frame(nowMs: number) {
   // level has put a target in front of you and you are near it. The two
   // verdicts come off the landing rule itself, so the panel and the ground
   // cannot disagree about what "too fast" means.
+  // Judged from as far out as the approach reaches, which at speed is a good
+  // deal further than the hundred and fifty metres this used to ask about:
+  // see `approachAt`.
   const settling =
-    bird.ending === null && toGo <= 150 ? landingReadiness(bird, flightParams) : null;
+    bird.ending === null && toGo <= approachAt(telemetry.airspeed)
+      ? landingReadiness(bird, flightParams)
+      : null;
 
 
   // The moment, as every message sees it. One record, built once a frame, and
@@ -3873,6 +3878,10 @@ function frame(nowMs: number) {
     // anywhere to land, neither of these is asked.
     tooFast: settling !== null && !settling.speedOk,
     tooHard: settling !== null && !settling.sinkOk,
+    // And the same two arrivals judged as *flying* rather than as this mode:
+    // see `Moment.fastToLand` and `SAFE_ARRIVAL`.
+    fastToLand: settling !== null && settling.speed > defaultParams.landingSpeed * SAFE_ARRIVAL,
+    hardToLand: settling !== null && settling.sink > defaultParams.landingSink * SAFE_ARRIVAL,
     notLevel: !landingReadiness(bird, flightParams).bankOk,
     hunted:
       hunted &&

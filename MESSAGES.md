@@ -44,7 +44,8 @@ On top of that:
 | `offCourse` | degrees between the way you are pointing and the way to the target, 0–180; ∞ where the level aims at nothing |
 | `sinceMark` | seconds since the mark in front of you became the mark in front of you |
 | `onTarget` | down, and down on the thing the level was aiming at |
-| `too fast` / `too hard` | touching down right now would kill, by the landing rule |
+| `too fast` / `too hard` | touching down right now would kill, by **this mode's** landing rule |
+| `fast to land` / `hard to land` | touching down right now would not be a **safe arrival**, by the strict rule with a margin — the same in either mode |
 | `hunted` | a crow has picked him out and is coming |
 | `teaching` | the level is still explaining itself (Levels 1–4 only) |
 | `rocket` | the rocket on `X` is flown on this level: sightseeing and delivery levels, never a story one |
@@ -61,13 +62,19 @@ seconds** of it, whichever is longer — a hundred and fifty metres is three
 seconds at fifty metres a second, which is no time to find a key in. Nothing
 changes for an ordinary arrival; the old distance is the floor.
 
-**Landing speed** is 43 km/h, and it is not the same as `too fast`. `too
-fast` is the *mode's* verdict, and Basic — which the game opens in — forgives
-two and a half times what Realistic does, so nothing is too fast under 90
-km/h. That is why the brake used to go unmentioned on a fast arrival into
-Teleki tér: the landing would have been survived, and the park still went
-past underneath. Anything that coaches an arrival asks about the speed;
-anything that warns about dying asks `too fast`.
+A **safe arrival** is 29 km/h and 3.2 m/s of sink — four fifths of what the
+strict rule allows. It is **not** the same as `too fast` / `too hard`, which
+are the *mode's* verdict: Basic, which the game opens in, forgives two and a
+half times what Realistic does, so nothing is too fast under 90 km/h there.
+That is why the brake used to go unmentioned on a fast arrival into Teleki
+tér — the landing would have been survived, and the park still went past
+underneath.
+
+So the rule is: **anything that coaches an arrival asks the safe verdict,
+anything that warns about dying asks the mode's.** Teaching teaches flying,
+not the mode, and it teaches arriving with room in hand rather than at the
+edge of what the ground allows — a wide margin on purpose, and the same
+margin in both modes.
 
 ---
 
@@ -110,10 +117,10 @@ anything that warns about dying asks `too fast`.
 | `useTheMap` | — | Use the mini map to find your way! | pointing more than **90°** away from where the level wants you, with over 100 m still to go | after 5 s (once a level) |
 | `landNearArrow` | — | Land near the arrow! | something marked to land on within 200 m | the feet are down (once a level) |
 | `loseHeight` | `↑` | Lose some height | teaching, inside the approach, higher than a third of the distance left | the height is right |
-| `brakeToSlow` | `B` | Brake to slow down | teaching, inside the approach, and going faster than **landing speed** — height or no height | the speed is right, or `B` is pressed |
-| `brakeNow` | `B` | Brake now! | teaching, **2.5 s** from somewhere to land, and still faster than **landing speed** | the speed is right |
-| `beatToSoften` | `SPACE` | Beat to soften it | teaching, inside the approach, below 12 m and coming down too hard | no longer too hard |
-| `flare` | `↓` | Pull up! | teaching, inside the approach, below 6 m and not too fast | the feet are down |
+| `brakeToSlow` | `B` | Brake to slow down | teaching, inside the approach, and `fast to land` — height or no height | the arrival is safe, or `B` is pressed |
+| `brakeNow` | `B` | Brake now! | teaching, **2.5 s** from somewhere to land, and still `fast to land` | the arrival is safe |
+| `beatToSoften` | `SPACE` | Beat to soften it | teaching, inside the approach, below 12 m and `hard to land` | the sink is safe |
+| `flare` | `↓` | Pull up! | teaching, inside the approach, below 6 m and no longer `fast to land` | the feet are down |
 
 ## What each level has to say
 
@@ -179,7 +186,14 @@ standing order for the level, and three warnings still fit under it.
 - **`flap` and `pullUp` no longer stop after Level 4.** They are about flying
   into the ground, which is not a tutorial topic. `Try the brakes!` does stop,
   as you said.
-- **The brake is asked for by speed, not by `too fast`.** In Basic mode
+- **The approach is coached against safe flight, not against the mode.**
+  `too fast` and `too hard` are what *this mode* will kill you for, and Basic
+  forgives a landing at ninety kilometres an hour and ten metres a second of
+  sink. A lesson pitched at that is a lesson in arriving at a run. The four
+  messages that talk an arrival down ask `fast to land` / `hard to land`
+  instead, which is the strict rule with a fifth off it — so the margin is
+  wide, and it is the same lesson in both modes.
+- **The brake is asked for by the arrival, not by `too fast`.** In Basic mode
   nothing is too fast below 90 km/h, so a bird doing seventy into Teleki tér
   was never told about the brake while there was room to use it — and then
   flew past the seeds. `brakeNow` says it again two and a half seconds out,

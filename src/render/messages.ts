@@ -168,6 +168,24 @@ export interface Moment {
   /** And coming down too hard to put down, by the same rule. */
   tooHard: boolean;
   /**
+   * Faster, and harder, than a *safe* arrival -- whatever mode is on.
+   *
+   * Not the same pair, and the difference is the whole of what teaching is
+   * for. `tooFast` and `tooHard` are the mode's verdict, and Basic forgives
+   * two and a half times what Realistic does: nothing is too fast under
+   * ninety kilometres an hour there, so a bird doing seventy into Teleki tér
+   * was never told about the brake, arrived at a run, survived it, and flew
+   * straight past the seeds.
+   *
+   * These are measured against the strict rule with a margin off it, so the
+   * lesson is the same lesson in either mode and it is a lesson in arriving
+   * well rather than in what a forgiving mode will let go. Anything that
+   * coaches an arrival asks these; anything that warns about dying asks the
+   * mode's own, because that is what the ground is about to apply.
+   */
+  fastToLand: boolean;
+  hardToLand: boolean;
+  /**
    * Banked further over than a touchdown allows: land at this roll and he
    * dies. Asked everywhere, not only near somewhere to land -- the ground is
    * under him wherever he is.
@@ -370,16 +388,20 @@ export const approachAt = (airspeed: number): number =>
   Math.max(APPROACH, airspeed * APPROACH_SECONDS);
 
 /**
- * Faster than an arrival wants to be, in metres a second.
+ * What a safe arrival is, as a share of the strict landing limits.
  *
- * Not `tooFast`, and that is the whole of why the brake was never mentioned.
- * `tooFast` is the landing rule's verdict, and the rule is the *mode's*:
- * Basic forgives two and a half times what Realistic does, so nothing is too
- * fast below ninety kilometres an hour -- by which point the park is behind
- * you. This is the speed an arrival is flown at whatever mode is on: the
- * strict limit and a little over, which is about forty-three an hour.
+ * Four fifths: twenty-nine kilometres an hour and three and a bit metres a
+ * second of sink, against the strict rule's thirty-six and four, and against
+ * the ninety Basic will let go of. The approach coaching is judged by this
+ * and nothing else, so a lesson is a lesson in flying rather than in what
+ * the forgiving mode happens to survive -- and the margin is wide on
+ * purpose: somebody being taught to land should be taught to arrive with
+ * room in hand, not at the edge of what the ground allows.
+ *
+ * The warnings about dying keep the mode's own verdict. They are about what
+ * is a moment from happening, and that is the rule the ground will apply.
  */
-export const LAND_SLOW = 12;
+export const SAFE_ARRIVAL = 0.8;
 
 /** How near the target, in seconds, before being fast stops being a hint. */
 const BRAKE_NOW = 2.5;
@@ -617,13 +639,13 @@ export const MESSAGES: readonly Message[] = [
     // ones that die -- was told about the height and never about the brake.
     // Both at once is two instructions; being killed by the one that was not
     // given is worse.
-    // Asked of the speed rather than of the landing rule: see `LAND_SLOW`.
-    // In Basic -- which is the mode the game opens in -- the rule forgives
-    // ninety kilometres an hour, so a bird doing seventy into a patch of
-    // concrete was never fast by it, and was never told about the brake
-    // while there was room to use it.
-    when: (at) => arriving(at) && at.airspeed > LAND_SLOW,
-    done: (at) => at.airspeed <= LAND_SLOW || at.down(['B']),
+    // Asked of the safe verdict rather than the mode's: see `Moment
+    // .fastToLand`. In Basic -- which is the mode the game opens in -- the
+    // rule forgives ninety kilometres an hour, so a bird doing seventy into
+    // a patch of concrete was never fast by it, and was never told about the
+    // brake while there was room to use it.
+    when: (at) => arriving(at) && at.fastToLand,
+    done: (at) => !at.fastToLand || at.down(['B']),
   },
   {
     id: 'brakeNow',
@@ -643,11 +665,8 @@ export const MESSAGES: readonly Message[] = [
     // takes a hundred and forty kilometres an hour down to twenty inside
     // forty metres. So there is one answer and this says it.
     when: (at) =>
-      aloft(at) &&
-      at.teaching &&
-      at.airspeed > LAND_SLOW &&
-      at.landing <= at.airspeed * BRAKE_NOW,
-    done: (at) => at.airspeed <= LAND_SLOW,
+      aloft(at) && at.teaching && at.fastToLand && at.landing <= at.airspeed * BRAKE_NOW,
+    done: (at) => !at.fastToLand,
   },
   {
     id: 'beatToSoften',
@@ -658,8 +677,8 @@ export const MESSAGES: readonly Message[] = [
     spoken: true,
     // Down to roof height and still coming down hard. Beating arrests a sink
     // in a way that pulling the nose up at this height does not.
-    when: (at) => arriving(at) && at.altitude < 12 && at.tooHard,
-    done: (at) => !at.tooHard,
+    when: (at) => arriving(at) && at.altitude < 12 && at.hardToLand,
+    done: (at) => !at.hardToLand,
   },
   {
     id: 'flare',
@@ -675,7 +694,7 @@ export const MESSAGES: readonly Message[] = [
     // in either way.
     //
     // Only once the speed is right. Flaring fast is how a bird arrives fast.
-    when: (at) => arriving(at) && at.altitude < 6 && !at.tooFast,
+    when: (at) => arriving(at) && at.altitude < 6 && !at.fastToLand,
     done: (at) => at.perched,
   },
 
