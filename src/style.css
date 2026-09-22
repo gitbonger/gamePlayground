@@ -1068,9 +1068,24 @@ body {
 /* A reply is now a thing you hit with a finger, so it is finger-sized and it
    says so by lighting up. The panel around it stays transparent to the
    pointer -- only the replies take it. */
+/*
+ * A reply you can click or tap, which is every reply: the digit keys still
+ * work and are still what the panel shows, but a mouse and a thumb both
+ * expect the line itself to be the thing you press.
+ *
+ * `manipulation` so a phone does not hold the tap back for a third of a
+ * second waiting to see whether a second one is coming and it should zoom.
+ */
 .talk-reply.pickable {
   pointer-events: auto;
   cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.12s ease-out;
+}
+
+.talk-reply.pickable:hover,
+.talk-reply.pickable:active {
+  background: rgba(127, 224, 168, 0.2);
 }
 
 .phone .talk-reply.pickable {
