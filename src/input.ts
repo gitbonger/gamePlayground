@@ -52,6 +52,24 @@ const SYSTEM_MODIFIERS = new Set([
   'AltRight',
 ]);
 
+/**
+ * The stick, while a thumb is on it.
+ *
+ * A phone has no keys, and the ones it does not have are the two that matter
+ * most: pitch and roll *are* the flight. So the touch layer owns one of these
+ * and writes the thumb into it, and `update` reads it in place of the
+ * keyboard whenever it is held. Neither side has to know about the other, and
+ * a machine with both keeps both.
+ *
+ * `x` is right-positive and `y` is down-positive -- the screen's own sense,
+ * and the stick's too: pulled back is the nose up.
+ */
+export interface Pointing {
+  x: number;
+  y: number;
+  held: boolean;
+}
+
 export interface InputSource {
   controls: Controls;
   /**
@@ -119,7 +137,11 @@ export interface InputSource {
   dispose(): void;
 }
 
-export function createInput(target: HTMLElement | Window = window): InputSource {
+export function createInput(
+  target: HTMLElement | Window = window,
+  /** The thumb, if anything is offering one. See `Pointing`. */
+  pointing?: Pointing,
+): InputSource {
   const held = new Set<string>();
   let resetRequested = false;
 
@@ -208,8 +230,12 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
   window.addEventListener('blur', onBlur);
 
   function update(dt: number) {
-    const pitchTarget = axis(BINDINGS.pitchDown, BINDINGS.pitchUp);
-    const rollTarget = axis(BINDINGS.rollLeft, BINDINGS.rollRight);
+    // The thumb wins while it is down, and the keyboard has it the rest of
+    // the time. Not summed: a stick at rest reads nought, and a nought summed
+    // with a held key would cancel the key.
+    const stick = pointing?.held ? pointing : null;
+    const pitchTarget = stick ? stick.y : axis(BINDINGS.pitchDown, BINDINGS.pitchUp);
+    const rollTarget = stick ? stick.x : axis(BINDINGS.rollLeft, BINDINGS.rollRight);
     const yawTarget = axis(BINDINGS.yawLeft, BINDINGS.yawRight);
 
     controls.pitch = clamp(damp(controls.pitch, pitchTarget, AXIS_HALF_LIFE, dt), -1, 1);
@@ -219,8 +245,10 @@ export function createInput(target: HTMLElement | Window = window): InputSource 
     controls.tuck = anyHeld(BINDINGS.tuck);
     controls.brake = anyHeld(BINDINGS.brake);
 
-    walk.forward = axis(WALK_BINDINGS.back, WALK_BINDINGS.forward);
-    walk.turn = axis(WALK_BINDINGS.left, WALK_BINDINGS.right);
+    // The same stick, meaning what it means on foot: pushed away is forward,
+    // which is the other sign from the nose-up it means in the air.
+    walk.forward = stick ? -stick.y : axis(WALK_BINDINGS.back, WALK_BINDINGS.forward);
+    walk.turn = stick ? stick.x : axis(WALK_BINDINGS.left, WALK_BINDINGS.right);
   }
 
   function consumeVoice() {

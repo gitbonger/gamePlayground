@@ -10,8 +10,9 @@ export default defineConfig({
    * works at the root, in a subdirectory, and from a file:// URL, and it
    * needs no build-time knowledge of where the thing will be served from.
    *
-   * Nothing here fetches anything by path at runtime -- the map is imported
-   * and bundled -- so there is no second place this has to agree with.
+   * The map *is* fetched by path at runtime now -- see `main.ts` -- and this
+   * is what makes that safe: a `?url` import is written out against this base,
+   * so it comes out relative and resolves against whatever page is asking.
    */
   base: './',
   /**

@@ -92,7 +92,20 @@ export interface DialoguePanel {
   dispose(): void;
 }
 
-export function createDialoguePanel(container: HTMLElement): DialoguePanel {
+export function createDialoguePanel(
+  container: HTMLElement,
+  /**
+   * Called when a reply is picked with a finger or the mouse, with the number
+   * that reply is written under.
+   *
+   * The same route the digit keys take, and deliberately the same number
+   * rather than an index: a phone has no digit keys at all, and without this
+   * every conversation in the game is a dead end there. Optional, because the
+   * panel is drawn in places that have no game behind them to answer to --
+   * see `dev/`.
+   */
+  onPick?: (digit: number) => void,
+): DialoguePanel {
   const root = document.createElement('div');
   root.className = 'talk';
   root.hidden = true;
@@ -131,6 +144,11 @@ export function createDialoguePanel(container: HTMLElement): DialoguePanel {
         if (voices) row.style.color = voices.you;
 
         row.append(number, text);
+        if (onPick) {
+          row.classList.add('pickable');
+          const digit = index + 1;
+          row.addEventListener('click', () => onPick(digit));
+        }
         card.appendChild(row);
       });
     }
