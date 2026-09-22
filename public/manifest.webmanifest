@@ -1,0 +1,15 @@
+{
+  "name": "Pigeon Sim",
+  "short_name": "Pigeon",
+  "description": "A pigeon flight simulator over Budapest",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0b1118",
+  "theme_color": "#0b1118",
+  "icons": [
+    { "src": "./favicon-32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "./favicon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

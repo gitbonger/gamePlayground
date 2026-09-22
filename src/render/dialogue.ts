@@ -147,7 +147,34 @@ export function createDialoguePanel(
         if (onPick) {
           row.classList.add('pickable');
           const digit = index + 1;
-          row.addEventListener('click', () => onPick(digit));
+          /*
+           * Pointer events rather than `click`.
+           *
+           * `click` is the ordinary way to do this and it is the wrong one
+           * here. Safari on a phone is choosy about which elements it will
+           * synthesise a click on -- a bare `div` inside layers of
+           * `pointer-events: none` is exactly the shape it is choosy about --
+           * and it holds the event back besides. Down and up on the same row
+           * is the thing being asked about anyway, and it is the same three
+           * lines for a mouse.
+           */
+          let armed = false;
+          row.addEventListener('pointerdown', () => {
+            armed = true;
+          });
+          // A finger that wandered off the row before lifting chose nothing,
+          // which is how somebody takes a choice back.
+          const disarm = () => {
+            armed = false;
+          };
+          row.addEventListener('pointercancel', disarm);
+          row.addEventListener('pointerleave', disarm);
+          row.addEventListener('pointerup', (event) => {
+            if (!armed) return;
+            armed = false;
+            event.preventDefault();
+            onPick(digit);
+          });
         }
         card.appendChild(row);
       });
