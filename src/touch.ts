@@ -167,21 +167,40 @@ export function createTouchControls(container: HTMLElement, pointing: Pointing):
   container.appendChild(root);
 
   /**
-   * The sound, opened by the first thing the player touches.
+   * The two things that can only be asked for out of a gesture, asked for on
+   * the first one there is.
    *
-   * A phone will not let a page make a noise except out of a gesture, and it
-   * counts the attempt against the page when it tries. The game opens its
-   * context on the first sound it wants to make, which on a keyboard is
-   * after a key and on a phone was never -- there were no gestures at all.
-   * This is the gesture.
+   * **The sound.** A phone will not let a page make a noise except out of a
+   * gesture, and it counts the attempt against the page when it tries. The
+   * game opens its context on the first sound it wants to make, which on a
+   * keyboard is after a key and on a phone was never -- there were no
+   * gestures at all. This is the gesture.
+   *
+   * **The whole screen.** Android hands it over and the browser's toolbars
+   * go with it, which on a landscape phone is a tenth of the sky. iPhone
+   * Safari refuses -- it has no fullscreen for a page at all -- and the way
+   * to lose the toolbar there is to add the game to the home screen, which
+   * the manifest and the `apple-mobile-web-app-capable` tag in `index.html`
+   * are for. Both calls are allowed to fail and nothing is told if they do.
    */
-  let sounded = false;
+  let begun = false;
+
+  function begin(): void {
+    if (begun) return;
+    begun = true;
+    void audio();
+    void document.documentElement
+      .requestFullscreen?.()
+      // The lock only holds inside fullscreen, so it is asked for after it
+      // rather than beside it.
+      .then(() => screen.orientation?.lock?.('landscape'))
+      .catch(() => {
+        // Refused, which is most phones. The rotate card covers the case.
+      });
+  }
 
   function press(code: string): void {
-    if (!sounded) {
-      sounded = true;
-      void audio();
-    }
+    begin();
     window.dispatchEvent(new KeyboardEvent('keydown', { code }));
   }
 
@@ -261,10 +280,7 @@ export function createTouchControls(container: HTMLElement, pointing: Pointing):
     originY = event.clientY;
     pointing.held = true;
     ring.classList.add('down');
-    if (!sounded) {
-      sounded = true;
-      void audio();
-    }
+    begin();
     moveTo(event.clientX, event.clientY);
   });
 

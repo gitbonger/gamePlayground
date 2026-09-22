@@ -627,6 +627,17 @@ body {
   display: grid;
   place-items: center;
   pointer-events: none;
+  /*
+   * Above the pad, which is the one thing on screen that also takes a finger.
+   *
+   * The card is centred and the stick's zone is the whole left half, so the
+   * left end of every reply lay underneath it: a tap on "Yes, sure!" landed
+   * on the stick, the ring appeared under the thumb, and the reply never
+   * heard anything. Six beats the pad's five, so the replies are on top --
+   * and only the replies, since everything else here still lets the finger
+   * through to the stick behind it.
+   */
+  z-index: 6;
 }
 
 /* --- The ending ---------------------------------------------------------- */

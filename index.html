@@ -28,6 +28,25 @@
 <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png" />
 <link rel="icon" type="image/png" sizes="180x180" href="./favicon.png" />
 <link rel="apple-touch-icon" href="./favicon.png" />
+<!--
+  How the browser's own furniture gets out of the way.
+
+  On Android, the game asks for the whole screen on the first tap and gets it
+  -- see `begin` in `src/touch.ts`. iPhone Safari has no fullscreen for a page
+  at all, so the toolbar at the bottom stays however the page is written. The
+  way round it there is the home screen: added from the share sheet, a page
+  with these tags launches in its own window with no toolbar and no address
+  bar, which is the only chromeless iPhone there is.
+
+  `black-translucent` puts the status bar over the game rather than in a band
+  above it, which is why the panels keep clear of `env(safe-area-inset-top)`.
+-->
+<link rel="manifest" href="./manifest.webmanifest" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Pigeon" />
+<meta name="theme-color" content="#0b1118" />
 <link rel="stylesheet" href="/src/style.css" />
 
 <canvas id="viewport"></canvas>
