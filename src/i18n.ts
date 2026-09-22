@@ -64,6 +64,18 @@ export const PHRASES = {
   keyBrake: { en: 'brake', hu: 'fékezés' },
   keyLanguage: { en: 'magyar', hu: 'english' },
 
+  // --- The pad, on a machine with no keys -----------------------------------
+  // The buttons say what they do rather than which key they stand for: there
+  // is no key on a telephone, and `SPACE` on a button is a name for something
+  // the player cannot see.
+  padFlap: { en: 'flap', hu: 'csapj' },
+  padBrake: { en: 'brake', hu: 'fékezz' },
+  padTuck: { en: 'tuck', hu: 'húzd be' },
+  // The language button wears the code of the language it would swap *to*,
+  // which is `keyLanguage`'s trick in the two letters a 32-pixel button holds.
+  padLanguage: { en: 'HU', hu: 'EN' },
+  turnPhone: { en: 'Turn the phone sideways', hu: 'Fordítsd oldalra a telefont' },
+
   // --- The level menu -------------------------------------------------------
   menuTitle: { en: 'Levels', hu: 'Pályák' },
   menuPlaying: { en: 'playing', hu: 'itt tartasz' },

@@ -40,10 +40,11 @@ import {
   type Quat,
   type Vec3,
 } from './sim/math3';
-import { createInput } from './input';
+import { createInput, type Pointing } from './input';
+import { createTouchControls, onPhone } from './touch';
 import { createRunTracker } from './run';
 import { createDebugGui } from './debug-gui';
-import { createScene } from './render/scene';
+import { createScene, FULL_QUALITY, PHONE_QUALITY } from './render/scene';
 import {
   CHARACTER_MORPHS,
   createBirdRig,
@@ -175,7 +176,7 @@ import {
 } from './sim/walk';
 import { bearing, distance, project, unproject } from './world/geo';
 import type { MapData, Rail } from './world/streets';
-import homeMap from './world/data/home.json';
+import homeMapUrl from './world/data/home.json?url';
 import { createWind, defaultWindParams } from './sim/wind';
 
 /** Simulation tick rate. Fixed, so the flight model stays tunable and stable. */
@@ -221,12 +222,42 @@ const SUN_RANGE = 320;
 const canvas = document.querySelector<HTMLCanvasElement>('#viewport')!;
 const overlay = document.querySelector<HTMLElement>('#overlay')!;
 
-// Real streets from OpenStreetMap, with the blocks between them filled in.
-// JSON widens the fixed-length tuples, so this crosses through unknown.
-const map = homeMap as unknown as MapData;
+/**
+ * Whether this is being played on a telephone.
+ *
+ * Asked once, here, and everything that follows from it follows from this
+ * one answer: what the world is drawn at, whether there is a pad on screen,
+ * and which of the two stylesheets' worth of layout the page uses. A single
+ * class on the root element carries it into the CSS, so the panels do not
+ * each have to ask again.
+ */
+const phone = onPhone();
+document.documentElement.classList.toggle('phone', phone);
+
+/**
+ * Real streets from OpenStreetMap, with the blocks between them filled in.
+ *
+ * Fetched rather than imported. It is eleven megabytes of JSON, and an
+ * `import` of it is eleven megabytes of *JavaScript*: the bundler writes the
+ * whole map out as an object literal in the middle of the program, so the
+ * browser downloads it as code and parses it as code, which is the slow way
+ * to read a table of numbers. Asked for as a file it arrives gzipped at
+ * about three and a half, goes through `JSON.parse`, and the program itself
+ * drops to something a phone can fetch over a mobile connection.
+ *
+ * Top-level `await`, so nothing below has to learn that the map was ever
+ * absent. It is a module: the browser holds the rest of the program until
+ * this resolves, and the first frame could not have been drawn without it
+ * anyway.
+ *
+ * JSON widens the fixed-length tuples, so this crosses through unknown.
+ */
+const map = (await (await fetch(homeMapUrl)).json()) as unknown as MapData;
 
 const { renderer, scene, camera, sun, sunDirection, setSun, setPixelRatio } = createScene(canvas, {
   sun: sunVector(map.centre[0], map.centre[1], new Date(LEVELS[0]?.when ?? 0)),
+  // A phone gets the cheap picture. See `PHONE_QUALITY` for what that costs.
+  quality: phone ? PHONE_QUALITY : FULL_QUALITY,
 });
 /**
  * How far up-sun the shadow camera sits from the bird.
@@ -814,7 +845,16 @@ const hud = createHud(overlay, map.attribution);
  */
 const minimap = createMinimap(overlay, layout.roads ?? [], layout.stops ?? []);
 const outcome = createOutcomePanel(overlay);
-const input = createInput();
+/**
+ * The thumb, for the machines that have one instead of a keyboard.
+ *
+ * Made here and handed to both sides: the pad writes into it and the flight
+ * axes read it. On anything with keys it stays at rest and nothing reads it
+ * -- see `Pointing`.
+ */
+const pointing: Pointing = { x: 0, y: 0, held: false };
+const input = createInput(window, pointing);
+const pad = phone ? createTouchControls(overlay, pointing) : null;
 
 /**
  * Which simulation is being flown, and everything that follows from it.
@@ -2276,11 +2316,16 @@ let cutTo = false;
 
 /** What the picture is drawn at, so the panel can move it and see. */
 const pictureParams = { pixelRatio: renderer.getPixelRatio() };
-createDebugGui(flightParams, cameraParams, windParams, pictureParams, {
-  respawn,
-  rebuildWind,
-  repaint: () => setPixelRatio(pictureParams.pixelRatio),
-});
+// Not on a phone: it is a panel of sliders for tuning the flight model, it
+// covers a third of the screen at that size, and nobody tunes a flight model
+// with a thumb.
+if (!phone) {
+  createDebugGui(flightParams, cameraParams, windParams, pictureParams, {
+    respawn,
+    rebuildWind,
+    repaint: () => setPixelRatio(pictureParams.pixelRatio),
+  });
+}
 
 const menu = createLevelMenu(
   overlay,
@@ -2296,7 +2341,21 @@ const menu = createLevelMenu(
   // Clicked, which is the way in nobody has to be told about.
   (picked) => playLevel(picked),
 );
-const talkPanel = createDialoguePanel(overlay);
+/**
+ * A number, offered to whatever is waiting on one.
+ *
+ * The menu first, because the menu is the thing the player has just
+ * deliberately opened; then the conversation. Its own function because there
+ * are two ways in now: the digit keys, and a finger on the reply itself --
+ * which is the only way in on a phone.
+ */
+function answered(digit: number): void {
+  const picked = menu.choose(digit);
+  if (picked !== null) playLevel(picked);
+  else if (talk && !isOver(talk)) talk = reply(talk, digit);
+}
+
+const talkPanel = createDialoguePanel(overlay, answered);
 const tipPanel = createTipPanel(overlay);
 /** And the cage's, on the one level that has something to work at. */
 const gauge = createGauge(overlay);
@@ -3396,6 +3455,9 @@ function frame(nowMs: number) {
   smoothedFps += (1 / Math.max(frameTime, 1e-4) - smoothedFps) * 0.1;
 
   input.update(frameTime);
+  // The pad goes away under the level list, which is a full-screen card that
+  // wants the finger for itself. See `TouchPad.holster`.
+  pad?.holster(menu.open);
   if (input.consumeMenu()) menu.toggle(level, mode);
   // And Escape shuts it, which is the key everybody reaches for. It does
   // nothing when the list is not up: there is nothing else on screen that can
@@ -3406,9 +3468,7 @@ function frame(nowMs: number) {
   // conversation is waiting on one. Offered to the menu first, because the
   // menu is the thing the player has just deliberately opened.
   for (let digit = input.consumeDigit(); digit !== null; digit = input.consumeDigit()) {
-    const picked = menu.choose(digit);
-    if (picked !== null) playLevel(picked);
-    else if (talk && !isOver(talk)) talk = reply(talk, digit);
+    answered(digit);
   }
   // And the arrows, for the levels a digit cannot reach. Taken as a total
   // rather than one at a time, because holding the key repeats it and a list

@@ -1,6 +1,6 @@
 /** The conversation panel: what has been said, and what you can say next. */
 
-import { read } from '../i18n';
+import { onLanguageChange, read } from '../i18n';
 import { isOver, type Exchange } from '../dialogue';
 
 /**
@@ -92,7 +92,20 @@ export interface DialoguePanel {
   dispose(): void;
 }
 
-export function createDialoguePanel(container: HTMLElement): DialoguePanel {
+export function createDialoguePanel(
+  container: HTMLElement,
+  /**
+   * Called when a reply is picked with a finger or the mouse, with the number
+   * that reply is written under.
+   *
+   * The same route the digit keys take, and deliberately the same number
+   * rather than an index: a phone has no digit keys at all, and without this
+   * every conversation in the game is a dead end there. Optional, because the
+   * panel is drawn in places that have no game behind them to answer to --
+   * see `dev/`.
+   */
+  onPick?: (digit: number) => void,
+): DialoguePanel {
   const root = document.createElement('div');
   root.className = 'talk';
   root.hidden = true;
@@ -131,6 +144,11 @@ export function createDialoguePanel(container: HTMLElement): DialoguePanel {
         if (voices) row.style.color = voices.you;
 
         row.append(number, text);
+        if (onPick) {
+          row.classList.add('pickable');
+          const digit = index + 1;
+          row.addEventListener('click', () => onPick(digit));
+        }
         card.appendChild(row);
       });
     }
@@ -138,14 +156,54 @@ export function createDialoguePanel(container: HTMLElement): DialoguePanel {
     root.appendChild(card);
   }
 
+  /**
+   * What is on the card, so that it is only built when it changes.
+   *
+   * `show` is called once a frame, and it used to redraw every time: sixty
+   * `replaceChildren` a second, throwing away the replies and building them
+   * again. Which was merely wasteful until the replies became things you
+   * click -- and then it was the reason you could not. A click is a press and
+   * a release resolved against *the same element*; with the card rebuilt
+   * between the two, the press landed on a row that no longer existed by the
+   * time the finger came up, and the browser walked up to the nearest common
+   * ancestor, which is the card. So nothing was ever clicked. It worked from
+   * a script, where both halves happen inside one frame, and never once from
+   * a hand.
+   *
+   * An `Exchange` is immutable -- `reply` returns a new one -- so identity is
+   * the whole test.
+   */
+  let shown: Exchange | null = null;
+  let shownVoices: Voices | undefined;
+
+  const sameVoices = (voices: Voices | undefined) =>
+    voices === shownVoices ||
+    (voices !== undefined &&
+      shownVoices !== undefined &&
+      voices.them === shownVoices.them &&
+      voices.you === shownVoices.you);
+
+  function put(exchange: Exchange | null, voices: Voices | undefined): void {
+    shown = exchange;
+    shownVoices = voices;
+    root.hidden = exchange === null;
+    if (exchange) draw(exchange, voices);
+    else root.replaceChildren();
+  }
+
+  // The words on the card are in whichever language the game is in, and the
+  // card is not rebuilt on its own any more -- so the swap has to say so.
+  onLanguageChange(() => {
+    if (shown) draw(shown, shownVoices);
+  });
+
   return {
     height() {
       return root.hidden ? 0 : (root.firstElementChild?.getBoundingClientRect().height ?? 0);
     },
     show(exchange, voices) {
-      root.hidden = exchange === null;
-      if (exchange) draw(exchange, voices);
-      else root.replaceChildren();
+      if (exchange === shown && sameVoices(voices)) return;
+      put(exchange, voices);
     },
     dispose() {
       root.remove();

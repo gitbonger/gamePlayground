@@ -38,6 +38,8 @@ export interface SceneOptions {
    * Earth the map is and what the time is there -- see `./sun`.
    */
   sun: { x: number; y: number; z: number };
+  /** What to draw it at. `FULL_QUALITY` unless somebody says otherwise. */
+  quality?: Quality;
 }
 
 /**
@@ -58,19 +60,92 @@ export interface SceneOptions {
  */
 const MAX_PIXEL_RATIO = 1.5;
 
+/**
+ * What the machine is asked to draw, as the four numbers that decide it.
+ *
+ * One object rather than four flags, because they are one decision: a phone
+ * is not a desktop with the pixel ratio turned down, it is a different budget
+ * altogether, and the settings that make it playable want reading together.
+ */
+export interface Quality {
+  /** Device pixels per CSS pixel, at most. See `MAX_PIXEL_RATIO`. */
+  pixelRatio: number;
+  /** Where the fog closes. The far plane sits just beyond it. */
+  reach: number;
+  /** The nearest thing drawn, in metres. */
+  near: number;
+  /** Whether depth is stored logarithmically -- see the note in `createScene`. */
+  logarithmicDepth: boolean;
+  antialias: boolean;
+}
+
+export const FULL_QUALITY: Quality = {
+  pixelRatio: MAX_PIXEL_RATIO,
+  reach: 4200,
+  near: 0.35,
+  logarithmicDepth: true,
+  antialias: true,
+};
+
+/**
+ * The same world, drawn for a telephone.
+ *
+ * Every number here is a thing given up, and the reason for each:
+ *
+ * - **One device pixel per CSS pixel.** A phone reports 3.0. At 1.5 a modest
+ *   handset is shading four times the desktop's fragments on a tenth of the
+ *   silicon.
+ * - **Two kilometres of fog instead of four.** The far plane comes in with
+ *   it, so the far half of the city is not drawn at all. On a screen this
+ *   size the horizon was a smear before it was cut.
+ * - **No logarithmic depth.** three.js implements it by writing
+ *   `gl_FragDepth`, and a fragment shader that writes its own depth cannot be
+ *   rejected early -- which is precisely the optimisation the tile-based GPUs
+ *   in phones are built around. It is the most expensive setting in the file
+ *   on the machines that can least afford it. The price is paid at the near
+ *   plane instead: **`near` goes to one metre**, which a 24-bit buffer can
+ *   spread over two kilometres without flat things on the ground fighting.
+ *   If road markings flicker on a phone, this is the pair to put back.
+ * - **No multisampling.** Whole-frame cost for smoother rooflines, which is
+ *   the first thing to go when the frame is already late.
+ */
+export const PHONE_QUALITY: Quality = {
+  pixelRatio: 1,
+  reach: 2000,
+  near: 1,
+  logarithmicDepth: false,
+  antialias: false,
+};
+
+/**
+ * The vertical angle of view, and the aspect it is meant for.
+ *
+ * Seventy degrees is the *vertical* field, which is a fine thing to fix while
+ * every screen is roughly a desktop window. A phone in landscape is twice as
+ * wide as it is tall, and the same seventy degrees there opens the horizontal
+ * field to a hundred and thirteen -- a fisheye. So it is the *horizontal*
+ * field that is held constant on anything wider than `WIDE_ASPECT`, and the
+ * vertical narrows to keep it: the city looks the same shape on a phone held
+ * sideways as it does in a window.
+ */
+const FIELD_OF_VIEW = 70;
+const WIDE_ASPECT = 1.6;
+
 const HORIZON = new THREE.Color(0xbcd3e8);
 const ZENITH = new THREE.Color(0x4a86c8);
 
 export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): SceneBundle {
+  const quality = options.quality ?? FULL_QUALITY;
   const renderer = new THREE.WebGLRenderer({
     canvas,
-    antialias: true,
+    antialias: quality.antialias,
     // The view runs from under a metre to twelve kilometres. Spread linearly
     // across a depth buffer that wide, flat things lying on the ground have
-    // barely a bit of precision between them and flicker against it.
-    logarithmicDepthBuffer: true,
+    // barely a bit of precision between them and flicker against it. Off on a
+    // phone, where it costs more than it is worth -- see `PHONE_QUALITY`.
+    logarithmicDepthBuffer: quality.logarithmicDepth,
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.pixelRatio));
   /**
    * Shadows are off.
    *
@@ -92,14 +167,14 @@ export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): S
   const scene = new THREE.Scene();
   scene.background = HORIZON.clone();
   // Fog does double duty: it hides the world's edge and gives distance a feel.
-  scene.fog = new THREE.Fog(HORIZON.clone(), 350, 4200);
+  scene.fog = new THREE.Fog(HORIZON.clone(), Math.min(350, quality.reach * 0.2), quality.reach);
 
   // The far plane sits just beyond the fog rather than out at twelve
   // kilometres. Everything past four thousand two hundred metres is solid
   // horizon colour -- that is what the fog is -- so drawing it was drawing
   // the far side of a hundred square kilometres of city in order to paint it
   // the colour of the sky. Behind the fog is the one place nothing is missed.
-  const camera = new THREE.PerspectiveCamera(70, 1, 0.35, 5200);
+  const camera = new THREE.PerspectiveCamera(FIELD_OF_VIEW, 1, quality.near, quality.reach * 1.24);
 
   scene.add(new THREE.HemisphereLight(ZENITH.clone(), 0x6b7355, 1.5));
 
@@ -122,7 +197,7 @@ export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): S
   scene.add(sun);
   scene.add(sun.target);
 
-  const skyDome = createSkyDome(sunDirection);
+  const skyDome = createSkyDome(sunDirection, quality.reach * 1.1);
   scene.add(skyDome);
   const skyMaterial = skyDome.material as THREE.ShaderMaterial;
 
@@ -133,14 +208,35 @@ export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): S
   }
 
   function resize() {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    // `visualViewport` rather than `innerWidth`, where there is one: a phone
+    // browser's address bar slides in and out over the page, and `innerHeight`
+    // reports the height the page would have if it were not there. Drawn to
+    // that, the bottom of the world -- which is where the controls are --
+    // sits under the bar.
+    const view = window.visualViewport;
+    const width = Math.round(view?.width ?? window.innerWidth);
+    const height = Math.round(view?.height ?? window.innerHeight);
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
+    // Hold the horizontal field on anything wider than a window. See
+    // `WIDE_ASPECT`.
+    camera.fov =
+      camera.aspect <= WIDE_ASPECT
+        ? FIELD_OF_VIEW
+        : 2 *
+          THREE.MathUtils.radToDeg(
+            Math.atan(
+              (Math.tan(THREE.MathUtils.degToRad(FIELD_OF_VIEW) / 2) * WIDE_ASPECT) / camera.aspect,
+            ),
+          );
     camera.updateProjectionMatrix();
   }
   resize();
   window.addEventListener('resize', resize);
+  // And when the bar slides away, or the phone is turned, neither of which is
+  // reliably a `resize` on the window.
+  window.visualViewport?.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', resize);
 
   function setPixelRatio(ratio: number) {
     renderer.setPixelRatio(Math.min(Math.max(ratio, 0.5), window.devicePixelRatio));
@@ -167,11 +263,11 @@ export function createScene(canvas: HTMLCanvasElement, options: SceneOptions): S
  * inside faces sees the far wall of it -- a pale dome standing over the city,
  * there and gone as he crossed the nine kilometre line.
  */
-export function createSkyDome(direction: THREE.Vector3): THREE.Mesh {
+export function createSkyDome(direction: THREE.Vector3, radius = 4600): THREE.Mesh {
   // Inside the far plane, or the sky is clipped and the world has a hole in
   // it where the sky should be. It follows the camera, so a smaller sphere is
   // no less of a sky -- see the note above.
-  const geometry = new THREE.SphereGeometry(4600, 32, 16);
+  const geometry = new THREE.SphereGeometry(radius, 32, 16);
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,

@@ -1,5 +1,18 @@
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  `viewport-fit=cover` puts the page under the notch and the home bar rather
+  than in a letterbox between them, and the panels keep clear of both with
+  `env(safe-area-inset-*)` -- see the phone rules in `style.css`.
+
+  Zooming is off because the controls are a thumb stick and a row of buttons:
+  every gesture that would zoom a document is a gesture somebody is making at
+  a pigeon, and a game you can accidentally magnify by flapping is a game with
+  a bug in it.
+-->
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+/>
 <title>Pigeon Sim</title>
 <!--
   The bird's own head, rendered from the game's own rig rather than drawn: see
