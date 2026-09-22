@@ -1,3 +1,4 @@
+import { statSync } from 'node:fs';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -20,6 +21,18 @@ export default defineConfig({
    * `?url` import of one is a module Vite tries to parse as JavaScript.
    */
   assetsInclude: ['**/*.mid'],
+  /**
+   * How big the map file is, handed to the code as a literal.
+   *
+   * The loading bar counts the bytes it has read against this. It cannot use
+   * the `content-length` header: the file is served gzipped, so that number
+   * is the compressed size while the chunks arriving are uncompressed ones.
+   * Read from the file here, so that refetching the map updates it without
+   * anybody having to remember to.
+   */
+  define: {
+    __MAP_BYTES__: statSync('src/world/data/home.json').size,
+  },
   server: { port: 5183 },
   build: { target: 'es2022', sourcemap: true },
   test: {

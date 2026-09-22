@@ -76,6 +76,13 @@ export const PHRASES = {
   padLanguage: { en: 'HU', hu: 'EN' },
   turnPhone: { en: 'Turn the phone sideways', hu: 'Fordítsd oldalra a telefont' },
 
+  // --- Loading --------------------------------------------------------------
+  // What the splash says while it waits. Two phases, because they are two
+  // different waits -- see `render/splash.ts`.
+  loadingMap: { en: 'Fetching the city', hu: 'A város letöltése' },
+  loadingBuild: { en: 'Building the city', hu: 'A város felépítése' },
+  loadingFailed: { en: 'The city would not load', hu: 'A város nem töltődött be' },
+
   // --- The level menu -------------------------------------------------------
   menuTitle: { en: 'Levels', hu: 'Pályák' },
   menuPlaying: { en: 'playing', hu: 'itt tartasz' },

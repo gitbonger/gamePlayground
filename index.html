@@ -49,6 +49,26 @@
 <meta name="theme-color" content="#0b1118" />
 <link rel="stylesheet" href="/src/style.css" />
 
+<!--
+  What stands in front of the game while it loads.
+
+  In the markup rather than built in JavaScript, and that is the point: the
+  stylesheet is a blocking link in the head, so this is styled and on screen
+  at the browser's very first paint -- before the bundle has arrived, let
+  alone run. A splash that waits for the program to start is a splash that is
+  absent for the first half of the wait it is there to explain.
+
+  The bar starts sweeping on its own for the same reason: until the game can
+  say how far along it is, the honest thing to show is that something is
+  happening at all. `render/splash.ts` takes it over from there.
+-->
+<div id="splash" class="working">
+  <img class="splash-mark" src="./favicon.png" alt="" width="76" height="76" />
+  <h1 class="splash-title">Pigeon Sim</h1>
+  <div class="splash-bar"><div class="splash-fill"></div></div>
+  <p class="splash-says"></p>
+</div>
+
 <canvas id="viewport"></canvas>
 <div id="overlay">
 </div>

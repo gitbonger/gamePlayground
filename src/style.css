@@ -1154,3 +1154,137 @@ body {
   transform: translateX(-50%);
   font-size: 8px;
 }
+
+/* --- The splash ----------------------------------------------------------- */
+/*
+ * Over everything, including the pad, until the first frame is drawn. Its
+ * z-index is above both because there is nothing behind it yet worth
+ * reaching: the canvas is black and the game has not begun.
+ */
+#splash {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  /* The same colour as the page behind it, so the fade at the end is the
+     splash going out rather than a panel lifting off a different background. */
+  background: #0b1118;
+  transition: opacity 0.45s ease-out;
+}
+
+#splash.gone {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.splash-mark {
+  /* The bird's own head, which is already being fetched as the tab's icon --
+     so it costs a decoded image and no download at all.
+
+     Rounded, because it is a render with the sky behind it: square on a
+     near-black screen it reads as a pale rectangle somebody forgot to cut
+     out, and rounded it reads as a badge, which is what it is. */
+  border-radius: 16px;
+  opacity: 0.92;
+}
+
+.splash-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.34em;
+  /* The tracking above pushes the whole word right by one letter's worth of
+     space, which reads as off-centre next to a centred picture. */
+  text-indent: 0.34em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.splash-bar {
+  position: relative;
+  overflow: hidden;
+  width: 200px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(242, 245, 248, 0.12);
+}
+
+/*
+ * Always full width, and always scaled: the bar is a transform and never a
+ * width. A width is laid out and painted by the main thread, which is
+ * precisely the thread that is not available during the half of the load
+ * this bar exists for.
+ */
+.splash-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  background: #7fe0a8;
+  transform: scaleX(0);
+  transform-origin: left center;
+  /* Not `transform` in general: the sweep below sets its own and would fight
+     a transition on the way into it. */
+  transition: transform 0.2s ease-out;
+  will-change: transform;
+}
+
+/*
+ * The unmeasurable phase.
+ *
+ * `transform` only, so the compositor can run it without the main thread --
+ * which is the entire trick. While the city is being built nothing on this
+ * page can be repainted, and this goes on moving anyway. Take the rule off
+ * the compositor's list of things it can do alone -- animate a width, a
+ * colour, a margin -- and the bar freezes exactly when it is needed.
+ */
+#splash.working .splash-fill {
+  transition: none;
+  animation: splash-sweep 1.15s ease-in-out infinite;
+}
+
+@keyframes splash-sweep {
+  from {
+    transform: translateX(-40%) scaleX(0.35);
+  }
+  to {
+    transform: translateX(100%) scaleX(0.35);
+  }
+}
+
+#splash.failed .splash-fill {
+  animation: none;
+  background: #e8724b;
+}
+
+.splash-says {
+  margin: 0;
+  min-height: 1.2em;
+  max-width: 70vw;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+}
+
+#splash.failed .splash-says {
+  color: #e8a24b;
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
+/* Smaller on a phone, where the screen is 360 tall and this is the first
+   thing anybody sees of the game. */
+.phone .splash-mark {
+  width: 56px;
+  height: 56px;
+}
+
+.phone .splash-title {
+  font-size: 13px;
+}
