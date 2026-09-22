@@ -42,6 +42,7 @@ import {
 } from './sim/math3';
 import { createInput, type Pointing } from './input';
 import { createTouchControls, onPhone } from './touch';
+import { createSplash } from './render/splash';
 import { createRunTracker } from './run';
 import { createDebugGui } from './debug-gui';
 import { createScene, FULL_QUALITY, PHONE_QUALITY } from './render/scene';
@@ -235,6 +236,90 @@ const phone = onPhone();
 document.documentElement.classList.toggle('phone', phone);
 
 /**
+ * Which language the game is in, before anything at all is built.
+ *
+ * It used to be settled further down, with the rest of the setup, on the
+ * grounds that the HUD writes its labels the moment it is made and the menu
+ * builds its list from whatever is current -- starting in English and
+ * swapping a frame later would be a visible flicker on every load for half
+ * the people this game is about. That is still true, and there is now
+ * something earlier that speaks: the splash says what it is waiting for, and
+ * it starts saying it before any of the rest of this file has run.
+ */
+startLanguage(storage() ?? null);
+
+/**
+ * The screen in front of the game while it loads, and the bar on it.
+ *
+ * First of everything, because everything after this is the wait it is there
+ * to explain. See `render/splash.ts`.
+ */
+const splash = createSplash();
+
+/**
+ * The map, read a chunk at a time so that the wait can be counted.
+ *
+ * `response.json()` would be one line and would say nothing for the whole
+ * eleven megabytes. Read off the body stream instead, the bytes can be added
+ * up as they land, and the splash can put a number on the screen -- which is
+ * the difference between a game that is loading and a game that has frozen,
+ * as far as anybody watching can tell.
+ *
+ * Counted against `__MAP_BYTES__` rather than against `content-length`. The
+ * file is served gzipped, so the header is the *compressed* size while these
+ * chunks are the uncompressed ones, and a bar measured against it would pass
+ * a hundred percent a third of the way through. `__MAP_BYTES__` is the size
+ * of the file on disk, stamped in by the build -- see `vite.config.ts`.
+ */
+async function loadMap(url: string, onProgress: (part: number) => void): Promise<MapData> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+
+  const body = response.body;
+  // No stream to read: take the whole thing and say nothing, which is what
+  // used to happen every time.
+  if (!body) return (await response.json()) as unknown as MapData;
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    got += value.length;
+    onProgress(got / __MAP_BYTES__);
+  }
+
+  const whole = new Uint8Array(got);
+  let at = 0;
+  for (const chunk of chunks) {
+    whole.set(chunk, at);
+    at += chunk.length;
+  }
+  return JSON.parse(new TextDecoder().decode(whole)) as unknown as MapData;
+}
+
+/**
+ * Let the browser draw what was just written before blocking it again.
+ *
+ * Two frames, because the first fires before the paint that the change asked
+ * for and the second after it.
+ *
+ * And a timeout racing them, which is not belt and braces: a tab that is not
+ * being looked at runs *no* animation frames at all, so a load that waits for
+ * one before carrying on is a load that never finishes in a background tab --
+ * and a phone that was switched away from mid-download is exactly that tab.
+ * There is nothing to paint when nobody is looking, so waiting to have
+ * painted is waiting for nothing.
+ */
+const painted = (): Promise<void> =>
+  new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    setTimeout(resolve, 150);
+  });
+
+/**
  * Real streets from OpenStreetMap, with the blocks between them filled in.
  *
  * Fetched rather than imported. It is eleven megabytes of JSON, and an
@@ -252,7 +337,24 @@ document.documentElement.classList.toggle('phone', phone);
  *
  * JSON widens the fixed-length tuples, so this crosses through unknown.
  */
-const map = (await (await fetch(homeMapUrl)).json()) as unknown as MapData;
+const map = await loadMap(homeMapUrl, splash.fetched).catch((wrong: unknown) => {
+  // Nothing below this can run and there is nothing behind the splash to
+  // show, so the splash says what happened and stays up. Rethrown as well,
+  // so the console has the real thing rather than a sentence about it.
+  splash.failed(wrong instanceof Error ? wrong.message : String(wrong));
+  throw wrong;
+});
+
+/**
+ * Everything from here to the first frame is one unbroken lump of synchronous
+ * work: the city, the trains, the meshes. The page cannot be repainted for
+ * any of it, so the splash is told what is happening *and given a frame to
+ * say so* before the thread is taken away from it. What keeps moving after
+ * that is a CSS transform, which is not this thread's to run -- see
+ * `render/splash.ts`.
+ */
+splash.working('loadingBuild');
+await painted();
 
 const { renderer, scene, camera, sun, sunDirection, setSun, setPixelRatio } = createScene(canvas, {
   sun: sunVector(map.centre[0], map.centre[1], new Date(LEVELS[0]?.when ?? 0)),
@@ -708,16 +810,6 @@ function storage(): Storage | undefined {
     return undefined;
   }
 }
-
-/**
- * Which language the game is in, before anything is built.
- *
- * First, because the HUD writes its labels the moment it is made and the menu
- * builds its list from whatever is current: starting in English and swapping
- * a frame later would be a visible flicker on every load for half the people
- * this game is about.
- */
-startLanguage(storage() ?? null);
 
 /** The one being flown, remembered between visits. */
 let level = loadProgress(storage(), LEVELS.length);
@@ -4453,4 +4545,10 @@ function slerpQuat(a: Quat, b: Quat, t: number): Quat {
 }
 
 respawn();
-requestAnimationFrame(frame);
+// The splash comes down on the far side of the first frame rather than
+// before it: lifted a moment early, it uncovers a canvas nothing has drawn
+// into yet, which is a black flash exactly where the game should appear.
+requestAnimationFrame((now) => {
+  frame(now);
+  splash.done();
+});
