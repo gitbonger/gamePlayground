@@ -167,7 +167,22 @@ export const stockGap = (stock: Stock): number =>
 /** Which sort of line this stock runs on. */
 export const stockRuns = (stock: Stock): string => (stock === 'tram' ? 'tram' : 'rail');
 
-/** How high the top of a vehicle is: what anything standing on it stands on. */
+/**
+ * How high the top of *this* vehicle is, in the world: what anything standing
+ * on it stands on.
+ *
+ * Its own height plus the height of the rail under it, and the second half is
+ * the half that was missed. `stockTop` is a fact about the sort of vehicle --
+ * a wagon's deck is 1.25 m above its own floor -- and while the whole railway
+ * was at nought it was also the answer. It is not now: the Keleti yard is
+ * three and a half metres below the middle of the map and the Danube bridge
+ * is eleven above it, so a pigeon placed at `stockTop` alone stood three and
+ * a half metres over the wagon it was supposed to be on. Anything that puts
+ * something *on* a vehicle wants this; `stockTop` is for the model.
+ */
+export const vehicleTop = (vehicle: Vehicle): number => vehicle.y + stockTop(vehicle.kind);
+
+/** How high the top of a vehicle is over its own rail, by what sort it is. */
 export const stockTop = (kind: Vehicle['kind']): number =>
   kind === 'carriage'
     ? CARRIAGE.roof
@@ -1268,15 +1283,33 @@ export function trainBoxes(
     ...(carrierOf ? { carrier: carrierOf(index) } : {}),
     ...(speed ? { speed } : {}),
   });
+  /**
+   * Stood on the rail the vehicle is on rather than on nought.
+   *
+   * `turnedBox` builds from the ground up, which was the whole story while
+   * every rail in the world was at nought. It is not: the yard is three and a
+   * half metres down and the river bridge eleven up. `moveTrainBoxes` has
+   * always written the level in -- this is the same rake built rather than
+   * moved, and the two have to agree or a test is not standing in for the
+   * game.
+   */
+  const on = (box: Box, level: number): Box =>
+    level === 0 ? box : { ...box, minY: box.minY + level, maxY: box.maxY + level };
 
   for (const [index, vehicle] of vehicles.entries()) {
     if (vehicle.kind === 'engine') {
       boxes.push(
-        tag(turnedBox(vehicle.x, vehicle.z, vehicle.length, ENGINE.body, vehicle.width, vehicle.yaw), index),
+        on(
+          tag(turnedBox(vehicle.x, vehicle.z, vehicle.length, ENGINE.body, vehicle.width, vehicle.yaw), index),
+          vehicle.y,
+        ),
       );
       const cab = onVehicle(vehicle, vehicle.length / 2 - ENGINE.cabLength / 2, 0);
       boxes.push(
-        tag(turnedBox(cab.x, cab.z, ENGINE.cabLength, ENGINE.cab, vehicle.width, vehicle.yaw), index),
+        on(
+          tag(turnedBox(cab.x, cab.z, ENGINE.cabLength, ENGINE.cab, vehicle.width, vehicle.yaw), index),
+          vehicle.y,
+        ),
       );
       continue;
     }
@@ -1286,16 +1319,19 @@ export function trainBoxes(
       // there is nothing to model but the outside -- and a tram is the same
       // problem as a carriage, lower.
       boxes.push(
-        tag(
-          turnedBox(
-            vehicle.x,
-            vehicle.z,
-            vehicle.length,
-            stockTop(vehicle.kind),
-            vehicle.width,
-            vehicle.yaw,
+        on(
+          tag(
+            turnedBox(
+              vehicle.x,
+              vehicle.z,
+              vehicle.length,
+              stockTop(vehicle.kind),
+              vehicle.width,
+              vehicle.yaw,
+            ),
+            index,
           ),
-          index,
+          vehicle.y,
         ),
       );
       continue;
@@ -1307,7 +1343,10 @@ export function trainBoxes(
     // pigeon already flies through a tree's foliage, and a wagon that is
     // moving kills on contact with the deck alone.
     boxes.push(
-      tag(turnedBox(vehicle.x, vehicle.z, vehicle.length, WAGON.deck, vehicle.width, vehicle.yaw), index),
+      on(
+        tag(turnedBox(vehicle.x, vehicle.z, vehicle.length, WAGON.deck, vehicle.width, vehicle.yaw), index),
+        vehicle.y,
+      ),
     );
   }
 

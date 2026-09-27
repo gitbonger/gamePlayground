@@ -26,6 +26,7 @@ import {
   stockIsHauled,
   stockRuns,
   stockTop,
+  vehicleTop,
   moveTrain,
   traceRoute,
   tweenAlong,
@@ -1015,6 +1016,26 @@ describe('a tram', () => {
     const boxes = trainBoxes(cars);
     expect(boxes).toHaveLength(4);
     for (const box of boxes) expect(box.maxY).toBeCloseTo(TRAM.roof, 6);
+  });
+
+  it('says where the top of a vehicle is in the world, not over its own floor', () => {
+    // The bug this is here for. `stockTop` is a fact about the sort of
+    // vehicle -- a wagon's deck is 1.25 m over its own floor -- and while
+    // every rail in the world was at nought it was also where the deck was.
+    // The Keleti yard is three and a half metres below the middle of the map
+    // now, so everything the game *put* on a wagon there -- the pigeon
+    // waiting on it, the seeds, the smoke over the funnel -- stood three and
+    // a half metres in the air above it.
+    const cars = layOutTrain(TRAMWAY, 300, 4, 'tram');
+    const dipped = cars.map((car) => ({ ...car, y: -3.6 }));
+    for (const car of dipped) {
+      expect(vehicleTop(car)).toBeCloseTo(car.y + stockTop(car.kind), 6);
+      // And it is the same height the collider gives the roof, which is what
+      // the hero lands on: the bird and whoever is waiting for him have to
+      // be standing on the same thing.
+      const box = trainBoxes([car])[0]!;
+      expect(vehicleTop(car)).toBeCloseTo(box.maxY, 6);
+    }
   });
 
   it('runs on tramway, and a train does not', () => {

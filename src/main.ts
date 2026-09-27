@@ -158,6 +158,7 @@ import {
   roomToComeOn,
   stockIsHauled,
   stockTop,
+  vehicleTop,
   pointAlong,
   tweenAlong,
   type Vehicle,
@@ -1854,7 +1855,7 @@ function standingSpot(spot: Standing): { at: Vec3; facing: number; on: number | 
     if (!wagon) return null;
     const at = onVehicle(wagon, person.along, person.across);
     return {
-      at: vec(at.x, stockTop(wagon.kind) + defaultParams.bodyRadius, at.z),
+      at: vec(at.x, vehicleTop(wagon) + defaultParams.bodyRadius, at.z),
       // Facing across the wagon, so it reads as standing about rather than
       // waiting to leave. It turns to look at you when you walk up to it.
       facing: wagon.yaw + Math.PI / 2,
@@ -2193,7 +2194,7 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
         const wagon = layout.trains[FREIGHT]?.vehicles[rider.car];
         if (!wagon) return [];
         const at = onVehicle(wagon, rider.along, rider.across);
-        return [vec(at.x, stockTop(wagon.kind) + defaultParams.bodyRadius, at.z)];
+        return [vec(at.x, vehicleTop(wagon) + defaultParams.bodyRadius, at.z)];
       }),
     );
   }
@@ -2604,7 +2605,7 @@ function listen(): Source[] {
     if (amongTheTrams && train.stock === 'tram') {
       const car = train.vehicles[Math.floor(train.vehicles.length / 2)];
       if (car && within(car.x, car.z)) {
-        near_.push({ noise: 'jegyeket', x: car.x, y: stockTop(train.stock) / 2, z: car.z });
+        near_.push({ noise: 'jegyeket', x: car.x, y: car.y + stockTop(train.stock) / 2, z: car.z });
       }
     }
     // Standing still makes neither noise: a bell is rung on pulling away and
@@ -2615,9 +2616,9 @@ function listen(): Source[] {
     near_.push({
       noise: train.stock === 'tram' ? 'bell' : 'screech',
       x: head.x,
-      // A vehicle is placed on the ground and has no height of its own here;
-      // roof height is near enough, and it is what the bird flies over.
-      y: stockTop(train.stock),
+      // Roof height over the rail it is on, which is what the bird flies
+      // over -- and on the river bridge the rail is eleven metres up.
+      y: vehicleTop(head),
       z: head.z,
     });
   });
@@ -3332,7 +3333,9 @@ function moveTrains(dt: number) {
 
     const stack = stackTop();
     const at = onVehicle(engine, stack.along, stack.across);
-    plume.puffs.update(dt, { x: at.x, y: stack.height, z: at.z }, air);
+    // Over the rail the engine is on, not over the middle of the map: the
+    // chimney's height is measured from its own floor.
+    plume.puffs.update(dt, { x: at.x, y: engine.y + stack.height, z: at.z }, air);
   }
 
   // Off the wing tips, and only while the burn lasts. Turned with him, so a
@@ -4122,7 +4125,7 @@ function frame(nowMs: number) {
       const wagon = rake?.vehicles[grain.car];
       if (!wagon) return [];
       const at = onVehicle(wagon, grain.along, grain.across);
-      return [{ x: at.x, y: stockTop(wagon.kind) + SEED_SIZE / 2, z: at.z }];
+      return [{ x: at.x, y: vehicleTop(wagon) + SEED_SIZE / 2, z: at.z }];
     }),
   ]);
 
@@ -4269,11 +4272,11 @@ function frame(nowMs: number) {
     const shown =
       !ridersFlown &&
       near[FREIGHT] &&
-      sighted({ x: at.x, y: stockTop(wagon.kind), z: at.z }, sight);
+      sighted({ x: at.x, y: vehicleTop(wagon), z: at.z }, sight);
     drawn.rig.object.visible = shown;
     if (!shown) return;
 
-    drawn.state.position = vec(at.x, stockTop(wagon.kind) + defaultParams.bodyRadius, at.z);
+    drawn.state.position = vec(at.x, vehicleTop(wagon) + defaultParams.bodyRadius, at.z);
     // Turned in the wagon's frame and then with it, so a bird looking along
     // the train goes on looking along the train round a curve.
     rider.facing += rider.turning * frameTime;
