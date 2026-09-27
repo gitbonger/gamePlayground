@@ -2564,7 +2564,14 @@ function listen(): Source[] {
     if (!within(stop.x, stop.z)) continue;
     for (const each of stop.waiting) {
       // On the island, which is a step up from the road it stands in.
-      if (each.dog) near_.push({ noise: 'bark', x: each.dog.x, y: stop.height, z: each.dog.z });
+      if (each.dog) {
+        near_.push({
+          noise: 'bark',
+          x: each.dog.x,
+          y: standingOn.groundAt(each.dog.x, each.dog.z) + stop.height,
+          z: each.dog.z,
+        });
+      }
     }
   }
 
