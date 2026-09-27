@@ -22,7 +22,12 @@ export interface Waymark {
    * `next` of null leaves the arrow off: there is nowhere after the last
    * mark, and an arrow pointing at nothing in particular is worse than none.
    */
-  show(at: { x: number; z: number } | null, next?: { x: number; z: number } | null): void;
+  show(
+    at: { x: number; z: number } | null,
+    next?: { x: number; z: number } | null,
+    /** How high the ground under it is; nought where the world is a plane. */
+    floor?: number,
+  ): void;
   /** Turn it, so it reads as a thing rather than a decal. */
   update(seconds: number): void;
   dispose(): void;
@@ -80,10 +85,12 @@ export function createWaymark(): Waymark {
 
   return {
     object,
-    show(at, next) {
+    show(at, next, floor = 0) {
       object.visible = at !== null;
       if (!at) return;
-      object.position.set(at.x, 0, at.z);
+      // On the ground under it, not on the plane the world used to be: a
+      // column standing at nought over Buda is a column halfway up a hill.
+      object.position.set(at.x, floor, at.z);
 
       arrow.visible = next != null;
       if (next) {

@@ -606,7 +606,19 @@ export function buildLayoutFromMap(
   const landmarks: Landmark[] = (options.landmarks ?? []).map((landmark) => ({ ...landmark }));
   const bushes: Bush[] = [];
   const people: Person[] = [];
+  /**
+   * Which boxes belong to a described thing, and to which one.
+   *
+   * A landmark is *drawn* as one object standing on the height under its own
+   * middle -- see `standOn` in `city.ts` -- so it has to be *felt* there too.
+   * Lifted box by box, as everything generated is, a hundred-metre building
+   * on a slope becomes a staircase the collider knows about and nobody can
+   * see: at the Loft that was the twenty centimetres the hero settled into
+   * his own roof by.
+   */
+  const claimed: { from: number; x: number; z: number }[] = [];
   for (const landmark of landmarks) {
+    claimed.push({ from: boxes.length, x: landmark.x, z: landmark.z });
     // Whoever is standing on it, or beside it. Before the height test rather
     // than after it: a patch of concrete is a described thing with nothing to
     // fly into, and somebody standing next to one is still somebody.
@@ -726,6 +738,15 @@ export function buildLayoutFromMap(
       );
     }
   }
+  // Closed after the loop rather than at the end of the body, because the
+  // body leaves by a `continue` for every sort of landmark there is: each
+  // one's boxes run from where it started to where the next one did.
+  const whole = new Map<number, number>();
+  claimed.forEach((landmark, i) => {
+    const to = claimed[i + 1]?.from ?? boxes.length;
+    const lift = ground.heightAt(landmark.x, landmark.z);
+    for (let box = landmark.from; box < to; box += 1) whole.set(box, lift);
+  });
 
   /**
    * Whether a point is on ground a landmark has taken, plus its margin.
@@ -1959,6 +1980,28 @@ export function buildLayoutFromMap(
     });
   }
 
+  // Everything solid built so far stands on the ground, so it goes up by the
+  // height under its middle, exactly as the drawing does.
+  //
+  // Before the bridges and the grid, and that is the whole of why it is here
+  // rather than at the end. A box built from a *height* -- a wall two storeys
+  // tall, a wagon's deck -- is measured from its own floor and has to be
+  // lifted onto the ground it stands on. A box built from a *level* is not:
+  // a bridge deck is seven metres over the water however deep the riverbed
+  // is, and a cable hangs from the tower it is strung between. Lifting those
+  // a second time put the Danube bridges nine metres under the river they
+  // cross and every wire five metres below the one that is drawn.
+  if (ground !== FLAT) {
+    boxes.forEach((box, i) => {
+      // A described thing goes up as one, by the height under its own middle:
+      // see `whole`. Everything else goes up by the height under itself.
+      const lift =
+        whole.get(i) ?? ground.heightAt((box.minX + box.maxX) / 2, (box.minZ + box.maxZ) / 2);
+      box.minY += lift;
+      box.maxY += lift;
+    });
+  }
+
   // --- Bridges --------------------------------------------------------------
   // A deck piece at a time, boxed exactly where it is drawn. Solid so the
   // bird cannot go through it and can stand on it, and raised so it can go
@@ -1996,9 +2039,6 @@ export function buildLayoutFromMap(
     }
   }
 
-  // Everything solid stands on the ground too, or the bird would hit a house
-  // that is drawn a hundred metres above where it is felt. The box goes up by
-  // the height under its middle, exactly as the drawing does.
   // The grid: towers where the survey says, cable sagging between them, and
   // both of them solid -- a wire you can land on is the point of it.
   const grid = buildGrid(map.power ?? [], map.towers ?? [], (x, z) => ground.heightAt(x, z));
@@ -2033,14 +2073,6 @@ export function buildLayoutFromMap(
         maxZ: Math.max(a[2], b[2]) + WIRE_THICK,
         soft: true,
       });
-    }
-  }
-
-  if (ground !== FLAT) {
-    for (const box of boxes) {
-      const lift = ground.heightAt((box.minX + box.maxX) / 2, (box.minZ + box.maxZ) / 2);
-      box.minY += lift;
-      box.maxY += lift;
     }
   }
 

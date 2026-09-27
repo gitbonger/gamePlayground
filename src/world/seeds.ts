@@ -108,6 +108,14 @@ export interface Scattering {
   from: { x: number; y: number; z: number };
   /** The middle of the ground they are throwing at. */
   onto: { x: number; z: number };
+  /**
+   * How high that ground is, in metres.
+   *
+   * Nought while the world was a plane, and the concrete at Teleki tér is a
+   * metre above it: seeds solved to land at nought went a metre into the
+   * slab, where a pigeon cannot see them and walks over them.
+   */
+  floor?: number;
   /** How far from that middle a seed may land. */
   spread: number;
   /** How many may be down at once. */
@@ -142,7 +150,7 @@ export function createScatter(spec: Scattering): Scatter {
       // A seed comes to rest on its own radius, so a throw solved to y=0
       // touches down early and lands short by half its own width -- which is
       // nothing at three millimetres and visible at four centimetres.
-      y: REST,
+      y: (spec.floor ?? 0) + REST,
       z: spec.onto.z + Math.sin(angle) * away,
     };
     // A little under a second in the air: a lob rather than a bowl.
@@ -166,7 +174,7 @@ export function createScatter(spec: Scattering): Scatter {
   return {
     seeds,
     update(dt, now) {
-      flySeeds(seeds, dt);
+      flySeeds(seeds, dt, spec.floor ?? 0);
       if (now < next) return;
       // Set from the throw rather than added to, so a long frame does not
       // make up for lost time with a burst.

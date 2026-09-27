@@ -791,7 +791,11 @@ export function buildWorld(
         createMarker(
           landmark.name,
           material,
-          new THREE.Vector3(landmark.x, landmark.height, landmark.z),
+          new THREE.Vector3(
+            landmark.x,
+            standOn(landmark.x, landmark.z) + landmark.height,
+            landmark.z,
+          ),
           disposables,
           overlay,
         ),
@@ -800,7 +804,7 @@ export function buildWorld(
     }
 
     if (landmark.canopy) {
-      markers.push(growTree(landmark, group, disposables, overlay));
+      markers.push(growTree(landmark, group, disposables, overlay, standOn(landmark.x, landmark.z)));
       continue;
     }
 
@@ -826,7 +830,7 @@ export function buildWorld(
         createMarker(
           landmark.name,
           material,
-          new THREE.Vector3(aim.x, aim.top, aim.z),
+          new THREE.Vector3(aim.x, standOn(landmark.x, landmark.z) + aim.top, aim.z),
           disposables,
           overlay,
         ),
@@ -888,7 +892,7 @@ export function buildWorld(
         createMarker(
           landmark.name,
           deck ? [material, deck] : material,
-          new THREE.Vector3(aim.x, aim.top, aim.z),
+          new THREE.Vector3(aim.x, standOn(landmark.x, landmark.z) + aim.top, aim.z),
           disposables,
           overlay,
         ),
@@ -919,7 +923,7 @@ export function buildWorld(
       createMarker(
         landmark.name,
         concrete,
-        new THREE.Vector3(landmark.x, 0, landmark.z),
+        new THREE.Vector3(landmark.x, standOn(landmark.x, landmark.z), landmark.z),
         disposables,
         overlay,
       ),
@@ -1711,7 +1715,7 @@ export function buildWorld(
   // After the bridges and before the return, because a sign stands on a roof
   // and the roofs are already up.
   if (layout.signs?.length) {
-    const { geometry, material } = buildSigns(layout.signs, brandsIn(layout.signs));
+    const { geometry, material } = buildSigns(layout.signs, brandsIn(layout.signs), standOn);
     disposables.push(geometry, material);
     const boards = new THREE.Mesh(geometry, material);
     boards.castShadow = true;
@@ -2210,6 +2214,15 @@ function growTree(
   group: THREE.Group,
   disposables: { dispose(): void }[],
   overlay: THREE.Group,
+  /**
+   * How high the ground is under it.
+   *
+   * A tree grew from nought, which was where the ground was until the ground
+   * had a shape. Everything in here is measured from the foot of the trunk,
+   * so this is added once, at the bottom -- including to the nest, and to the
+   * arrow that hangs over the crown.
+   */
+  base: number,
 ): TargetMarker {
   const canopy = landmark.canopy!;
   // Two radii, and the difference between them is the shape of the tree: the
@@ -2231,7 +2244,7 @@ function growTree(
   trunk.translate(0, trunkHeight / 2, 0);
   disposables.push(trunk);
   const stem = new THREE.Mesh(trunk, bark);
-  stem.position.set(landmark.x, 0, landmark.z);
+  stem.position.set(landmark.x, base, landmark.z);
   stem.castShadow = true;
   group.add(stem);
 
@@ -2245,7 +2258,7 @@ function growTree(
   crown.translate(0, (landmark.height + shoulder) / 2, 0);
   disposables.push(crown);
   const cap = new THREE.Mesh(crown, [leaves, crownTop, leaves]);
-  cap.position.set(landmark.x, 0, landmark.z);
+  cap.position.set(landmark.x, base, landmark.z);
   cap.castShadow = true;
   cap.receiveShadow = true;
   group.add(cap);
@@ -2254,7 +2267,7 @@ function growTree(
   under.translate(0, (shoulder + clear) / 2, 0);
   disposables.push(under);
   const skirt = new THREE.Mesh(under, leaves);
-  skirt.position.set(landmark.x, 0, landmark.z);
+  skirt.position.set(landmark.x, base, landmark.z);
   skirt.castShadow = true;
   group.add(skirt);
 
@@ -2301,11 +2314,11 @@ function growTree(
     disposables.push(rim, floor, nestMaterial);
 
     const sticks = new THREE.Mesh(rim, nestMaterial);
-    sticks.position.set(nest.x, nest.base, nest.z);
+    sticks.position.set(nest.x, base + nest.base, nest.z);
     sticks.castShadow = true;
     group.add(sticks);
     const lining = new THREE.Mesh(floor, nestMaterial);
-    lining.position.set(nest.x, nest.base, nest.z);
+    lining.position.set(nest.x, base + nest.base, nest.z);
     group.add(lining);
 
     // One egg, lying on its side in the hollow the way an egg lies. Its
@@ -2317,7 +2330,7 @@ function growTree(
     const eggMaterial = new THREE.MeshLambertMaterial({ color: EGG_COLOR });
     disposables.push(shell, eggMaterial);
     const egg = new THREE.Mesh(shell, eggMaterial);
-    egg.position.set(nest.x, nest.base + 0.03 + (nest.egg * 0.74) / 2, nest.z);
+    egg.position.set(nest.x, base + nest.base + 0.03 + (nest.egg * 0.74) / 2, nest.z);
     egg.rotation.y = 0.6;
     egg.castShadow = true;
     group.add(egg);
@@ -2326,7 +2339,7 @@ function growTree(
   return createMarker(
     landmark.name,
     [leaves, crownTop],
-    new THREE.Vector3(landmark.x, landmark.height, landmark.z),
+    new THREE.Vector3(landmark.x, base + landmark.height, landmark.z),
     disposables,
     overlay,
   );
@@ -3004,6 +3017,15 @@ function makeSignAtlas(
 function buildSigns(
   signs: readonly Sign[],
   brands: readonly string[],
+  /**
+   * How high the ground is under a point.
+   *
+   * A sign's `base` is measured from the roof it is bolted to, and a roof is
+   * measured from the ground the house stands on -- so the ground has to be
+   * added here or every hoarding in Buda hangs in the air by the height of
+   * the hill it is over.
+   */
+  standOn: (x: number, z: number) => number = () => 0,
 ): { geometry: THREE.BufferGeometry; material: THREE.Material } {
   // Whichever of them said what colour to paint them. Collected from the
   // signs rather than passed in, so a sign carries its own answer and there
@@ -3031,7 +3053,7 @@ function buildSigns(
     const rise = height * Math.cos(SIGN_RAKE);
 
     // Bottom edge on the roof, top edge leaning back away from the street.
-    const foot = [sign.x, sign.base, sign.z];
+    const foot = [sign.x, standOn(sign.x, sign.z) + sign.base, sign.z];
     const corner = (side: number, up: boolean) => [
       foot[0]! + rx * half * side - (up ? fx * lean : 0),
       foot[1]! + (up ? rise : 0),

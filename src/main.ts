@@ -642,8 +642,15 @@ const scatter =
     ? createScatter({
         // Out of a hand rather than off the ground: chest height on somebody
         // two metres tall.
-        from: { x: hand.x, y: hand.base + PERSON_HEIGHT * 0.7, z: hand.z },
+        from: {
+          x: hand.x,
+          y: (layout.ground ?? FLAT).heightAt(hand.x, hand.z) + hand.base + PERSON_HEIGHT * 0.7,
+          z: hand.z,
+        },
         onto: { x: feeder.x, z: feeder.z },
+        // And onto the slab's own height: the concrete at Teleki tér stands a
+        // metre above nought, which is where the grain used to land.
+        floor: (layout.ground ?? FLAT).heightAt(feeder.x, feeder.z),
         // Onto the slab and not over its edge, a seed's width in from it.
         spread: Math.min(feeder.width, feeder.depth) / 2 - 0.3,
         most: SEEDS_AT_ONCE,
@@ -1357,8 +1364,9 @@ function crowdOn(landmark: string, count: number, spread = 0) {
       // touching down in the middle of them.
       width: on.width + spread * 2,
       depth: on.depth + spread * 2,
-      // A flat thing has no top of its own, so it is the ground's.
-      top: on.height > 0 ? on.height : standingOn.groundAt(on.x, on.z),
+      // On the ground it stands on: a flat thing has no top of its own, so
+      // it is the ground's, and a thing with a height is that far above it.
+      top: standingOn.groundAt(on.x, on.z) + on.height,
     },
     morphs: PIGEON_MORPHS.length,
     flight: flightParams,
@@ -1879,17 +1887,23 @@ function standingSpot(spot: Standing): { at: Vec3; facing: number; on: number | 
   }
 
   // Otherwise it is one of the described things, which stands still and whose
-  // shape is written down. The marker gives the place -- over the terrace of
-  // a block of flats, over the middle of a patch of concrete -- and the
-  // description gives the height, because a flat one's marker sits a hair
-  // above the marking while what stands there stands on the ground.
+  // shape is written down. The marker gives the whole of it: where it is --
+  // over the terrace of a block of flats, over the middle of a patch of
+  // concrete -- and how high its top is, in the world.
+  //
+  // Off the marker rather than off the description, and that is the fix for
+  // a whole family of bugs. A landmark's `height` is measured from its own
+  // footings, so while the ground was a plane at nought it was also the
+  // height of the roof; it has not been since the ground got its shape. The
+  // Loft stands a metre below nought, so the cast on its roof floated a
+  // metre over it and the cage with them; Keleti stands two above, so
+  // everything up there was two metres into the slates. The marker is drawn
+  // at the top of the thing and the marker is what the game aims at, so
+  // there is one answer to how high a roof is and this is it.
   const described = LANDMARKS.find((landmark) => landmark.name === place.name);
   const marker = objective(place.name);
   if (!described || !marker) return null;
-  const top =
-    described.height > 0
-      ? described.height
-      : standingOn.groundAt(marker.position.x, marker.position.z);
+  const top = marker.position.y;
   // Placed along and across the thing rather than along and across the world,
   // so turning the building turns where its pigeon stands with it.
   const yaw = described.yaw ?? 0;
@@ -1960,6 +1974,10 @@ function hint(spec: Level, on: boolean): void {
  * out all at once is a map, and reading a map is a different activity from
  * flying.
  */
+/** How high the ground is under the mark being steered at. */
+const groundUnderMark = (): number =>
+  waymarks.at ? standingOn.groundAt(waymarks.at.x, waymarks.at.z) : 0;
+
 function paintWayline(): void {
   const here = LEVELS[level]?.name;
   for (const gate of world.gates) {
@@ -2204,7 +2222,7 @@ function playLevel(at: number, where: 'released' | 'in place' = 'released'): voi
   // likely to want them.
   waymarks = createWaymarks(markedRoute(spec));
   markedAt = clock;
-  waymark.show(waymarks.at, waymarks.next);
+  waymark.show(waymarks.at, waymarks.next, groundUnderMark());
   paintWayline();
 
   finished = false;
@@ -2555,13 +2573,23 @@ function listen(): Source[] {
   if (LEVELS[level]?.voices) {
     for (const person of layout.people) {
       if (within(person.x, person.z)) {
-        near_.push({ noise: 'cigi', x: person.x, y: person.base + PERSON_HEIGHT, z: person.z });
+        near_.push({
+          noise: 'cigi',
+          x: person.x,
+          y: standingOn.groundAt(person.x, person.z) + person.base + PERSON_HEIGHT,
+          z: person.z,
+        });
       }
     }
     for (const stop of layout.platforms ?? []) {
       if (!within(stop.x, stop.z)) continue;
       for (const each of stop.waiting) {
-        near_.push({ noise: 'cigi', x: each.person.x, y: stop.height + PERSON_HEIGHT, z: each.person.z });
+        near_.push({
+          noise: 'cigi',
+          x: each.person.x,
+          y: standingOn.groundAt(each.person.x, each.person.z) + stop.height + PERSON_HEIGHT,
+          z: each.person.z,
+        });
       }
     }
   }
@@ -3846,7 +3874,7 @@ function frame(nowMs: number) {
     for (const crowd of crowds) crowd.update(TICK, solid, wind);
     if (waymarks.update(bird.position.x, bird.position.z)) {
       markedAt = clock;
-      waymark.show(waymarks.at, waymarks.next);
+      waymark.show(waymarks.at, waymarks.next, groundUnderMark());
       paintWayline();
     }
     if (bird.ending === null) run.update(bird, TICK);
